@@ -24,12 +24,21 @@ class LLM(BaseLLM):
 
     def _web_search_mode(self, content, references, freshness=None) -> str:
         request = classify_information_request(content, freshness=freshness)
-        return search_mode(
+        mode = search_mode(
             request,
             references,
             enabled=self.settings.chat_web_search,
             default_location=getattr(self.settings, "runtime_default_location", ""),
         )
+        if request.relation_or_event and mode == "none":
+            trusted = any(
+                str(row.get("reference", "")).startswith(("canon.", "runtime_lore."))
+                for row in references
+                if row.get("kind") == "world_fact"
+            )
+            if not trusted:
+                return "required" if self.settings.chat_web_search else "none"
+        return mode
 
 
 __all__ = ["LLM"]
