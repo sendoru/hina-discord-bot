@@ -5,6 +5,8 @@ from datetime import timedelta
 
 import discord
 
+from .routing import trigger_text
+
 log = logging.getLogger("hina")
 TARGET_CONTEXT = ContextVar("target_context", default=())
 TARGET_QUERY = re.compile(
@@ -26,7 +28,14 @@ def targets(message, bot_id):
     return rows
 
 
-async def collect(message, bot_id, text):
+async def collect(
+    message,
+    bot_id,
+    text,
+    *,
+    direct_only: bool = False,
+    call_prefixes: tuple[str, ...] = ("히나야",),
+):
     if getattr(message, "guild", None) is None or not TARGET_QUERY.search(text):
         return []
     selected = targets(message, bot_id)
@@ -45,6 +54,8 @@ async def collect(message, bot_id, text):
         async for old in message.channel.history(limit=300, before=message, after=after, oldest_first=False):
             uid = getattr(getattr(old, "author", None), "id", None)
             if uid not in chosen or getattr(old, "webhook_id", None) is not None:
+                continue
+            if direct_only and trigger_text(old, bot_id, False, call_prefixes) is None:
                 continue
             text_value = (getattr(old, "content", "") or "").strip()
             if not text_value or len(found[uid]) >= 8 or sizes[uid] >= 2400:
