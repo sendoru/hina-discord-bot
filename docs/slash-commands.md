@@ -17,22 +17,37 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 | `/memory server-note text:<내용>` | 서버 공통 메모 교체. Discord `Manage Server` 권한 필요 |
 | `/memory server-clear` | 서버 공통 메모 삭제. Discord `Manage Server` 권한 필요 |
 
-서버에서 `/memory clear`를 실행하면 서버 단기 문맥도 초기화될 수 있으므로 봇 관리자 또는
-Discord `Manage Server` 권한이 필요합니다. DM에서는 본인이 직접 실행할 수 있습니다.
+`/memory clear`는 해당 사용자의 지속 장기 기억만 삭제하며 최근 채널 대화 문맥은 유지합니다.
 
 장기 기억 최종 모드에서 쓰기가 꺼져 있으면 `/memory note`와 `/memory server-note`는 새 데이터를
 저장하지 않습니다.
 
-## 봇 관리자 기억/로그 설정
+## 봇 관리자 장기 기억 설정
 
 다음 명령은 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자만 실행할 수 있습니다.
 
 | 명령 | 기능 |
 | --- | --- |
 | `/memory mode` | 전역/서버/채널 장기 기억 읽기·쓰기 모드 설정 |
-| `/memory chatlog` | 전역/서버/채널 최근 채널 로그 읽기 설정 |
-| `/memory status` | 현재 채널의 최종 기억·로그 설정 확인 |
-| `/memory overview` | 전체 서버/채널의 직접 설정과 상속 결과 확인 |
+| `/memory status` | 현재 채널의 최종 장기 기억 설정 확인 |
+| `/memory overview` | 전체 서버/채널의 장기 기억 직접 설정과 상속 결과 확인 |
+| `/memory purge` | 채널/서버/전역 범위의 사용자 장기 기억 초기화 |
+
+`/memory purge`는 사용자 대화 기록·자동 요약·개인 메모를 범위에 맞게 삭제하지만 서버 공통 메모와
+memory/chatlog 설정 자체는 유지합니다.
+
+## 최근 채널 대화 문맥
+
+`/chatlog` 그룹 전체는 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자만 실행할 수 있습니다.
+
+| 명령 | 기능 |
+| --- | --- |
+| `/chatlog mode` | 전역/서버/채널 최근 채널 문맥 읽기 설정 |
+| `/chatlog status` | 현재 채널의 최종 chatlog 설정 확인 |
+| `/chatlog overview` | 전체 서버/채널의 직접 설정과 상속 결과 확인 |
+| `/chatlog clear` | 현재 채널의 메모리 내 최근 대화 문맥 비우기 |
+
+최근 채널 대화 문맥은 장기 기억과 별개의 TTL 기반 임시 버퍼이며 장기 요약에는 포함되지 않습니다.
 
 ## 이모지
 
@@ -41,12 +56,25 @@ Discord `Manage Server` 권한이 필요합니다. DM에서는 본인이 직접 
 | 명령 | 기능 |
 | --- | --- |
 | `/emoji add` | 기존 서버 이모지 `source` 또는 이미지 `image` 중 하나를 지정해 등록 |
+| `/emoji import` | 현재 서버의 이모지를 이름으로 찾아 여러 개 한꺼번에 등록 |
 | `/emoji list` | 등록된 모델용 별칭·미리보기·사용 상황 확인 |
 | `/emoji edit` | 등록된 별칭의 사용 상황 수정 |
 | `/emoji remove` | 모델 사용 목록에서 제외. 원본 이모지는 삭제하지 않음 |
 
 `/emoji add`의 `source`에는 커스텀 이모지 markup 또는 숫자 ID를 넣을 수 있습니다. `image`는
 256 KiB 이하 PNG/GIF/JPEG/WebP를 받습니다. `source`와 `image`를 동시에 지정할 수 없습니다.
+
+`/emoji import`의 `items`에는 줄마다 아래 형식으로 최대 20개를 입력합니다.
+
+```text
+hina_sleep | 졸리거나 잠이 올 때
+hina_cry | 슬프거나 울고 싶을 때
+hina_angry | 화가 나거나 짜증이 났을 때
+```
+
+각 줄의 왼쪽 이름은 현재 서버의 커스텀 이모지 이름과 정확히 같아야 하며, 그 이름이 모델이 사용할
+alias가 됩니다. 오른쪽 설명은 모델이 해당 이모지를 사용할 상황으로 1~100자입니다. 일부 이모지를
+찾지 못하거나 이미 등록된 경우 해당 항목만 실패하고 나머지는 계속 처리합니다.
 
 ## 동적 prompt / knowledge
 
