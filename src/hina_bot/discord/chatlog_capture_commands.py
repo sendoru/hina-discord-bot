@@ -10,6 +10,11 @@ _CAPTURE_CHOICES = [
     app_commands.Choice(name="direct — 히나에게 직접 말한 대화와 히나 답변만", value="direct"),
     app_commands.Choice(name="inherit — 상위 설정 따르기", value="inherit"),
 ]
+_TARGET_CHOICES = [
+    app_commands.Choice(name="현재 채널", value="channel"),
+    app_commands.Choice(name="현재 서버", value="server"),
+    app_commands.Choice(name="전역", value="global"),
+]
 _SOURCE_LABEL = {"channel": "채널", "server": "서버", "global": "전역", "default": "기본값"}
 
 
@@ -40,7 +45,7 @@ def install_chatlog_capture(client) -> None:
         value="all/direct 또는 상위 설정 상속",
         target="적용 범위. 기본은 현재 채널",
     )
-    @app_commands.choices(value=_CAPTURE_CHOICES)
+    @app_commands.choices(value=_CAPTURE_CHOICES, target=_TARGET_CHOICES)
     async def capture(
         interaction: discord.Interaction,
         value: str,
