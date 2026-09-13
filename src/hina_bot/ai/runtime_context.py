@@ -31,22 +31,13 @@ def build_runtime_context(settings, *, now: datetime | None = None) -> dict[str,
 def runtime_instruction(context: dict[str, str]) -> str:
     """Render trusted runtime facts as a compact system instruction."""
     location = context.get("default_location")
-    if location:
-        location_lines = (
-            f"기본 지역: {location}\n"
-            "사용자가 지역을 생략한 지역 의존 질문에는 이 지역을 기본값으로 사용할 수 있습니다. "
-            "이 값은 사용자의 실제 현재 위치라고 주장하지 마세요.\n"
-        )
-    else:
-        location_lines = (
-            "기본 지역: 설정되지 않음\n"
-            "날씨·교통·영업시간처럼 지역이 필요한데 사용자가 지역을 주지 않았다면 위치를 추측하지 말고 필요한 지역을 물어보세요.\n"
-        )
-    return (
+    label = f"기본 지역: {location}" if location else "기본 지역: 설정되지 않음"
+    lines = (
         "[현재 시점]\n"
-        f"기준 시각: {context['current_datetime']} ({context['weekday']})\n"
-        f"시간대: {context['timezone']} / locale: {context['locale']}\n"
-        + location_lines
-        + "오늘·내일·이번 주·몇 시간 뒤 같은 상대적 시간 표현은 위 기준 시각으로 해석하세요. "
-        "현재 날짜나 시각 자체를 답할 때는 외부 검색보다 이 런타임 값을 우선하세요."
+        f"{context['current_datetime']} ({context['weekday']}), timezone={context['timezone']}, "
+        f"locale={context['locale']}, {label}.\n"
+        "상대적 시간은 이 시각을 기준으로 해석하고 현재 날짜·시각 자체는 검색하지 마세요."
     )
+    if location:
+        return lines + " 기본 지역은 지역 생략 시 fallback일 뿐 사용자의 실제 현재 위치라고 주장하지 마세요."
+    return lines + " 지역 의존 질문에 지역이 없으면 추측하지 말고 필요한 지역을 물어보세요."
