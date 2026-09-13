@@ -1,7 +1,6 @@
 import unittest
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace as NS
-from unittest.mock import AsyncMock
 
 from hina_bot.discord.chatlog_capture import (
     capture_mode,
@@ -66,6 +65,7 @@ class FakeHistoryChannel:
 class TargetContextCaptureTests(unittest.IsolatedAsyncioTestCase):
     async def test_direct_mode_ignores_target_users_unaddressed_chat(self):
         now = datetime.now(UTC)
+        guild = NS(id=1)
         target = NS(id=200, bot=False, display_name="대상", name="대상")
         bot = NS(id=99, bot=True, display_name="히나")
         ordinary = NS(
@@ -75,6 +75,7 @@ class TargetContextCaptureTests(unittest.IsolatedAsyncioTestCase):
             webhook_id=None,
             created_at=now - timedelta(minutes=2),
             mentions=[],
+            guild=guild,
         )
         direct = NS(
             id=2,
@@ -83,13 +84,14 @@ class TargetContextCaptureTests(unittest.IsolatedAsyncioTestCase):
             webhook_id=None,
             created_at=now - timedelta(minutes=1),
             mentions=[bot],
+            guild=guild,
         )
         channel = FakeHistoryChannel([direct, ordinary])
         message = NS(
             id=10,
             content="히나야 <@200> 어떻게 생각해?",
             author=NS(id=100, bot=False),
-            guild=NS(id=1),
+            guild=guild,
             channel=channel,
             mentions=[target],
             created_at=now,
