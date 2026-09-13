@@ -2,12 +2,12 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.config import Settings
-from hina_bot.discord.vision import collect_visual_inputs
 from hina_bot.store import Store
 from hina_bot.web_bot import HinaClient
+
+from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
+from hina_bot.discord.vision import collect_visual_inputs
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 16
 GIF = b"GIF89a" + b"x" * 16
