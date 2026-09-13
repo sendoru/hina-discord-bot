@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from hina_bot.ai.llm import POLICY
 from hina_bot.ai.providers import _gemini_input
 from hina_bot.ai.vision import (
     CURRENT_VISUAL_INPUTS,
@@ -11,6 +12,14 @@ from hina_bot.ai.vision import (
     VisionClient,
     VisualInput,
 )
+
+
+def test_base_policy_describes_conditional_vision_capability():
+    assert "파일/이미지 열람 능력이 없습니다" not in POLICY
+    assert "첨부파일은 보지 못합니다" not in POLICY
+    assert "현재 요청에 실제 입력이나 도구로 제공된 범위" in POLICY
+    assert "실제 시각 입력으로 포함된 이미지·커스텀 이모지·스티커" in POLICY
+    assert "기본 POLICY의" not in VISION_INPUT_POLICY
 
 
 @pytest.mark.asyncio
