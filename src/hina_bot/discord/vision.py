@@ -26,7 +26,7 @@ class VisionLimits:
     stickers: int = 8
 
     @classmethod
-    def from_settings(cls, settings) -> "VisionLimits":
+    def from_settings(cls, settings) -> VisionLimits:
         return cls(
             attachments=settings.vision_max_attachments,
             emojis=settings.vision_max_emojis,
