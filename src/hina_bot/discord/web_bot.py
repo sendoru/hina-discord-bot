@@ -9,7 +9,7 @@ from .routing import trigger_text
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
 from .target_recent import TargetAwareRecentMessages
-from .vision import collect_visual_inputs
+from .vision import VisionLimits, collect_visual_inputs
 
 log = logging.getLogger("hina")
 
@@ -22,6 +22,7 @@ class HinaClient(BaseHinaClient):
             llm = LLM(settings)
         super().__init__(settings, store=store, llm=llm)
         self.recent = TargetAwareRecentMessages(budget=settings.channel_context_chars)
+        self.vision_limits = VisionLimits.from_settings(settings)
         install_slash_commands(self)
 
     @staticmethod
@@ -41,7 +42,10 @@ class HinaClient(BaseHinaClient):
             self.settings.call_prefixes,
         )
         sampled = await collect(message, self.user.id, text) if text is not None else []
-        visuals = await collect_visual_inputs(message) if text is not None else []
+        visuals = (
+            await collect_visual_inputs(message, limits=self.vision_limits)
+            if text is not None else []
+        )
         target_token = TARGET_CONTEXT.set(tuple(sampled))
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
 
