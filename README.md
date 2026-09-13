@@ -102,14 +102,19 @@ Discord Developer Portal에서 Bot을 만들고 **Message Content Intent**를 �
 - 래스터 스티커
 - 호출어/멘션과 이미지만 보낸 image-only 호출
 
-현재 제한:
+기본 source별 count quota:
 
-- 한 호출 최대 4개
-- 개별 이미지 최대 5 MiB
-- 합계 최대 12 MiB
-- Lottie 스티커 제외
+```dotenv
+VISION_MAX_ATTACHMENTS=4
+VISION_MAX_EMOJIS=12
+VISION_MAX_STICKERS=8
+```
 
-지원하지 않는 범위:
+각 값은 0~32이고 합계는 32 이하여야 합니다. 0이면 해당 source를 비전 입력에서 끕니다.
+개별 이미지 5 MiB, 한 호출 전체 12 MiB의 byte limit도 별도로 적용됩니다. 파일 byte 크기와 실제
+이미지 token 비용은 동일하지 않으며 provider/model과 이미지 크기에 따라 달라질 수 있습니다.
+
+현재 지원하지 않는 범위:
 
 - 과거 메시지의 이미지 자동 재조회
 - 답장 대상 이미지 자동 조회
@@ -118,6 +123,7 @@ Discord Developer Portal에서 Bot을 만들고 **Message Content Intent**를 �
 - PDF/문서 파일 해석
 - 이미지 생성·편집
 - 이미지 원본/caption을 장기 기억에 자동 저장
+- Lottie 스티커
 
 이미지 bytes는 현재 `answer()` 요청에만 사용하고 recent chatlog나 SQLite memory에 저장하지 않습니다.
 이미지 안의 텍스트, QR, prompt처럼 보이는 내용도 모두 신뢰할 수 없는 사용자 데이터로 취급합니다.
