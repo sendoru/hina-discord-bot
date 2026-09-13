@@ -35,6 +35,7 @@ _LEGACY_MODULES = {
     "web_search_runtime": "hina_bot.ai.web_search_runtime",
     "web_search_text": "hina_bot.ai.web_search_text",
     "bot": "hina_bot.discord.bot",
+    "chatlog_commands": "hina_bot.discord.chatlog_commands",
     "emoji_commands": "hina_bot.discord.emoji_commands",
     "instruction_commands": "hina_bot.discord.instruction_commands",
     "knowledge_commands": "hina_bot.discord.knowledge_commands",
