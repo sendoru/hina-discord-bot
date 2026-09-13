@@ -48,7 +48,31 @@ def test_runtime_context_converts_clock_to_configured_timezone():
     )
     assert context["current_datetime"] == "2026-09-13T17:30:00+09:00"
     assert context["weekday"] == "일요일"
+    assert context["daypart"] == "오후"
+    assert context["season"] == "가을"
+    assert context["day_type"] == "주말"
     assert context["default_location"] == "서울"
     instruction = runtime_instruction(context)
     assert "2026-09-13T17:30:00+09:00" in instruction
+    assert "시간대=오후" in instruction
+    assert "계절=가을" in instruction
     assert "사용자의 실제 현재 위치라고 주장하지 마세요" in instruction
+
+
+def test_runtime_instruction_supports_ambient_morning_conversation():
+    settings = Settings("test", "test", runtime_timezone="Asia/Seoul", runtime_locale="ko-KR")
+    context = build_runtime_context(
+        settings,
+        now=datetime(2026, 9, 13, 22, 57, tzinfo=UTC),
+    )
+
+    assert context["current_datetime"] == "2026-09-14T07:57:00+09:00"
+    assert context["weekday"] == "월요일"
+    assert context["daypart"] == "아침"
+    assert context["season"] == "가을"
+    assert context["day_type"] == "평일"
+
+    instruction = runtime_instruction(context)
+    assert "사용자의 상태·일정·행동과 관련 있을 때 대화에 자연스럽게" in instruction
+    assert "현재 시점과 모순되는 시간대 표현" in instruction
+    assert "날씨처럼 제공되지 않은 현재 환경 정보는 추측하지 마세요" in instruction
