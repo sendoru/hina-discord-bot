@@ -3,6 +3,7 @@ import logging
 from .bot import HinaClient as BaseHinaClient
 from .chat_llm import LLM
 from .config import Settings
+from .routing import trigger_text
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
 from .target_recent import TargetAwareRecentMessages
@@ -22,18 +23,21 @@ class HinaClient(BaseHinaClient):
 
     @staticmethod
     def _management_text(text):
-        # Runtime management no longer uses `히나야 /...` message commands.
         return False
 
     async def command(self, message, scope, text):
-        # All management/configuration commands are native Discord slash commands.
         return None
 
     async def on_message(self, message):
         if self.user is None:
             return await super().on_message(message)
-        text = message.content or ""
-        sampled = await collect(message, self.user.id, text)
+        text = trigger_text(
+            message,
+            self.user.id,
+            self.settings.dm_always_reply,
+            self.settings.call_prefixes,
+        )
+        sampled = await collect(message, self.user.id, text) if text is not None else []
         token = TARGET_CONTEXT.set(tuple(sampled))
         try:
             return await super().on_message(message)
@@ -42,7 +46,6 @@ class HinaClient(BaseHinaClient):
 
 
 def main():
-    # Do not log SDK request bodies, prompts, credentials, or Discord message content.
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     log.setLevel(logging.INFO)
     try:
