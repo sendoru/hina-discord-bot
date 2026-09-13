@@ -164,6 +164,9 @@ class LLM(BaseLLM):
         if freshness == FreshnessMode.CLOCK:
             return "none"
         if freshness == FreshnessMode.REQUIRED:
+            # Do not force an arbitrary local lookup for clearly place-less questions. If the
+            # user supplied a city, venue, route, etc. it remains in the query and this stays
+            # required even when no global default location is configured.
             default_location = getattr(self.settings, "runtime_default_location", "")
             if needs_location_clarification(content) and not default_location:
                 return "auto"
@@ -205,6 +208,8 @@ class LLM(BaseLLM):
         runtime = build_runtime_context(self.settings)
         references = self.lore_references(content)
         freshness = classify_freshness(content)
+        # A live real-world domain should not accidentally inherit Blue Archive-specific
+        # response rules merely because it contains a generic phrase such as "누구야".
         fact_question = self._looks_like_world_fact_question(content) and not (
             freshness == FreshnessMode.REQUIRED and is_live_domain(content)
         )
