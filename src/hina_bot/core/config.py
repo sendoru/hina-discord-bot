@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 
@@ -74,6 +75,9 @@ class Settings:
     lore_max_chars: int = 3200
     community_lore: bool = True
     chat_web_search: bool = True
+    runtime_timezone: str = "Asia/Seoul"
+    runtime_locale: str = "ko-KR"
+    runtime_default_location: str = ""
 
     def api_key_for(self, provider: str) -> str:
         provider = _provider(provider, "provider")
@@ -145,6 +149,18 @@ class Settings:
         if chat_web_search not in {"true", "false"}:
             raise ValueError("CHAT_WEB_SEARCH는 true 또는 false여야 합니다.")
 
+        runtime_timezone = os.getenv("RUNTIME_TIMEZONE", "Asia/Seoul").strip() or "Asia/Seoul"
+        try:
+            ZoneInfo(runtime_timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"알 수 없는 RUNTIME_TIMEZONE입니다: {runtime_timezone}") from exc
+        runtime_locale = os.getenv("RUNTIME_LOCALE", "ko-KR").strip() or "ko-KR"
+        runtime_default_location = os.getenv("RUNTIME_DEFAULT_LOCATION", "").strip()
+        if (len(runtime_locale) > 32 or any(c in runtime_locale for c in "\r\n\0")
+                or len(runtime_default_location) > 100
+                or any(c in runtime_default_location for c in "\r\n\0")):
+            raise ValueError("RUNTIME_LOCALE은 32자, RUNTIME_DEFAULT_LOCATION은 100자 이하여야 합니다.")
+
         s = cls(
             api_key=keys[provider], discord_token=token,
             provider=provider, memory_provider=memory_provider,
@@ -181,6 +197,9 @@ class Settings:
             lore_max_chars=int(os.getenv("LORE_MAX_CHARS", "3200")),
             community_lore=community_lore == "true",
             chat_web_search=chat_web_search == "true",
+            runtime_timezone=runtime_timezone,
+            runtime_locale=runtime_locale,
+            runtime_default_location=runtime_default_location,
         )
         if s.special_dm_user_id is not None and s.special_dm_user_id <= 0:
             raise ValueError("SPECIAL_DM_USER_ID는 양의 Discord 사용자 ID여야 합니다.")

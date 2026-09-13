@@ -33,7 +33,7 @@ def test_source_request_forces_web_search_when_enabled():
     assert llm._web_search_mode("그거 출처 어디야?", []) == "required"
 
 
-def test_personal_context_does_not_force_external_search():
+def test_personal_context_does_not_offer_external_search():
     llm = object.__new__(LLM)
     llm.settings = SimpleNamespace(chat_web_search=True)
-    assert llm._web_search_mode("내 생일 기억하고 있어?", []) == "auto"
+    assert llm._web_search_mode("내 생일 기억하고 있어?", []) == "none"

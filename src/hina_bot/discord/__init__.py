@@ -19,8 +19,10 @@ _CORE_ALIASES = (
 _AI_ALIASES = (
     "chat_llm",
     "chat_llm_v2",
+    "freshness",
     "llm",
     "rp_output_policy",
+    "runtime_context",
     "runtime_llm",
     "usage",
     "web_search_runtime",
