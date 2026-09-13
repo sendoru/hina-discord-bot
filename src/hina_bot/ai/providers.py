@@ -198,10 +198,24 @@ class _GeminiResponses:
         unknown_tools = [tool for tool in tools if tool.get("type") != "web_search"]
         if unknown_tools:
             raise ValueError("Gemini provider는 현재 web_search 서버 도구만 변환합니다.")
+
+        required_search = bool(tools and kwargs.get("tool_choice") == "required")
         if tools:
             payload["tools"] = [{"type": "google_search", "search_types": ["web_search"]}]
-            if kwargs.get("tool_choice") == "required":
-                generation_config["tool_choice"] = "any"
+            if required_search:
+                # OpenAI `required` means that a tool must be used before the final answer.
+                # Gemini `any` is stronger: every model step must be a tool call. With a
+                # server-side built-in search this can loop until Gemini rejects the request as
+                # "Model generated too many tool calls". Keep Gemini in auto mode and express
+                # the one-search requirement in the system instruction instead.
+                generation_config["tool_choice"] = "auto"
+                guidance = (
+                    "이 요청은 외부 확인이 필수입니다. Google Search를 사용해 필요한 사실을 "
+                    "확인한 뒤, 충분한 근거를 얻으면 검색을 반복하지 말고 최종 답변을 작성하세요."
+                )
+                payload["system_instruction"] = (
+                    (payload.get("system_instruction") or "") + "\n\n" + guidance
+                ).strip()
 
         payload["generation_config"] = generation_config
 
@@ -210,6 +224,32 @@ class _GeminiResponses:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             error = _gemini_http_error(response)
+            too_many_calls = (
+                bool(tools)
+                and error.status_code == 400
+                and "too many tool calls" in error.error_message.lower()
+            )
+            if too_many_calls:
+                # Gemini recommends retrying this specific failure with the error included in
+                # the prompt. Retry once with a strict single-search bound.
+                retry_payload = dict(payload)
+                retry_payload["generation_config"] = dict(generation_config)
+                retry_note = (
+                    "이전 시도에서 'Model generated too many tool calls.' 오류가 발생했습니다. "
+                    "Google Search 호출은 최대 1회만 사용하세요. 확인할 검색어가 여러 개면 한 "
+                    "호출에 묶고, 검색 결과를 확인한 뒤 반드시 최종 답변을 작성하세요."
+                )
+                retry_payload["system_instruction"] = (
+                    (payload.get("system_instruction") or "") + "\n\n" + retry_note
+                ).strip()
+                retry = await self.http.post(GEMINI_INTERACTIONS_URL, json=retry_payload)
+                try:
+                    retry.raise_for_status()
+                except httpx.HTTPStatusError as retry_exc:
+                    retry_error = _gemini_http_error(retry)
+                    log.warning("Provider request failed (%s)", retry_error.safe_diagnostic)
+                    raise retry_error from retry_exc
+                return _gemini_output(retry.json())
             log.warning("Provider request failed (%s)", error.safe_diagnostic)
             raise error from exc
         return _gemini_output(response.json())

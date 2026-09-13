@@ -73,15 +73,61 @@ async def test_gemini_translates_search_and_normalizes_response():
         await http.aclose()
 
     payload = seen["json"]
-    assert payload["system_instruction"] == "system"
+    assert payload["system_instruction"].startswith("system")
+    assert "외부 확인이 필수" in payload["system_instruction"]
     assert payload["tools"] == [{"type": "google_search", "search_types": ["web_search"]}]
-    assert payload["generation_config"]["tool_choice"] == "any"
+    assert payload["generation_config"]["tool_choice"] == "auto"
     assert payload["generation_config"]["thinking_level"] == "low"
     assert payload["generation_config"]["max_output_tokens"] == 4096
     assert response.status == "completed"
     assert "example.com/source" in response.output_text
     assert response.usage.total_tokens == 17
     assert [item.type for item in response.output].count("web_search_call") == 1
+
+
+@pytest.mark.asyncio
+async def test_gemini_retries_tool_call_overflow_once():
+    payloads = []
+
+    async def handler(request: httpx.Request):
+        payloads.append(__import__("json").loads(request.content))
+        if len(payloads) == 1:
+            return httpx.Response(400, json={
+                "error": {
+                    "code": "Model generated function call(s).",
+                    "message": (
+                        "Model generated too many tool calls. Please retry the request. "
+                        "If the issue persists, include this error message in the retry prompt."
+                    ),
+                }
+            })
+        return httpx.Response(200, json={
+            "status": "completed",
+            "steps": [{
+                "type": "model_output",
+                "content": [{"type": "text", "text": "재시도 성공"}],
+            }],
+            "usage": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        response = await _GeminiResponses(http).create(
+            model="gemini-test",
+            instructions="system",
+            input="질문",
+            tools=[{"type": "web_search", "search_context_size": "low"}],
+            tool_choice="required",
+        )
+    finally:
+        await http.aclose()
+
+    assert len(payloads) == 2
+    assert payloads[0]["generation_config"]["tool_choice"] == "auto"
+    assert payloads[1]["generation_config"]["tool_choice"] == "auto"
+    assert "too many tool calls" in payloads[1]["system_instruction"]
+    assert "최대 1회" in payloads[1]["system_instruction"]
+    assert response.output_text == "재시도 성공"
 
 
 @pytest.mark.asyncio
