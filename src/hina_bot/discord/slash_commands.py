@@ -134,8 +134,7 @@ def upgrade_memory_group(client):
         name = getattr(command, "name", "")
         if name in _ADMIN_MEMORY_COMMANDS and not _is_bot_admin(client, interaction.user.id):
             await interaction.response.send_message(
-                "봇 소유자 또는 지정된 관리자만 사용할 수 있어요.", ephemeral=True
-            )
+                "봇 소유자 또는 지정된 관리자만 사용할 수 있어요.", ephemeral=True)
             return False
         return True
 
@@ -167,14 +166,12 @@ def upgrade_memory_group(client):
             return
         if not MemoryMode(client.store.memory_mode(scope)).writes:
             await interaction.response.send_message(
-                "현재 모드는 새 기억 저장이 꺼져 있어요. /memory mode로 변경해 주세요.", ephemeral=True
-            )
+                "현재 모드는 새 기억 저장이 꺼져 있어요. /memory mode로 변경해 주세요.", ephemeral=True)
             return
         async with client.channel_lock(scope), _user_lock(client, scope):
             client.store.set_note(scope.user_note, text.strip())
         await interaction.response.send_message(
-            "개인 메모를 저장했어요. 서버에서는 같은 서버의 다른 채널에서도 참고해요.", ephemeral=True
-        )
+            "개인 메모를 저장했어요. 서버에서는 같은 서버의 다른 채널에서도 참고해요.", ephemeral=True)
 
     @app_commands.command(name="note-clear", description="내 개인 메모 삭제")
     async def note_clear(interaction: discord.Interaction):
@@ -197,8 +194,7 @@ def upgrade_memory_group(client):
             return
         if not confirm:
             await interaction.response.send_message(
-                "삭제하지 않았어요. 실제로 삭제하려면 confirm을 true로 선택해 주세요.", ephemeral=True
-            )
+                "삭제하지 않았어요. 실제로 삭제하려면 confirm을 true로 선택해 주세요.", ephemeral=True)
             return
         async with client.channel_lock(scope), _user_lock(client, scope):
             client.store.forget(scope)
@@ -219,8 +215,7 @@ def upgrade_memory_group(client):
             await interaction.response.send_message("서버에서만 사용할 수 있는 명령이에요.", ephemeral=True)
             return
         await interaction.response.send_message(
-            client.store.note(scope.realm) or "서버 공통 메모가 없어요.", ephemeral=True
-        )
+            client.store.note(scope.realm) or "서버 공통 메모가 없어요.", ephemeral=True)
 
     @app_commands.command(name="server-note", description="현재 서버의 공통 메모 교체 (서버 관리자)")
     @app_commands.describe(text="저장할 서버 공통 메모 (1~1500자)")
@@ -241,14 +236,12 @@ def upgrade_memory_group(client):
             return
         if not MemoryMode(client.store.memory_mode(scope)).writes:
             await interaction.response.send_message(
-                "현재 모드는 새 기억 저장이 꺼져 있어요. /memory mode로 변경해 주세요.", ephemeral=True
-            )
+                "현재 모드는 새 기억 저장이 꺼져 있어요. /memory mode로 변경해 주세요.", ephemeral=True)
             return
         async with client.channel_lock(scope):
             client.store.set_note(scope.realm, text.strip())
         await interaction.response.send_message(
-            "서버 공통 메모를 교체했어요. 서버 전체에서 참고해요.", ephemeral=True
-        )
+            "서버 공통 메모를 교체했어요. 서버 전체에서 참고해요.", ephemeral=True)
 
     @app_commands.command(name="server-clear", description="현재 서버의 공통 메모 삭제 (서버 관리자)")
     async def server_clear(interaction: discord.Interaction):
@@ -283,8 +276,7 @@ class EmojiSlashCommands(app_commands.Group):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if not _is_bot_admin(self.client, interaction.user.id):
             await interaction.response.send_message(
-                "봇 소유자 또는 지정된 관리자만 사용할 수 있어요.", ephemeral=True
-            )
+                "봇 소유자 또는 지정된 관리자만 사용할 수 있어요.", ephemeral=True)
             return False
         return True
 
@@ -313,14 +305,12 @@ class EmojiSlashCommands(app_commands.Group):
     ):
         if (source is None) == (image is None):
             await interaction.response.send_message(
-                "source의 기존 이모지 또는 image 파일 중 하나만 지정해 주세요.", ephemeral=True
-            )
+                "source의 기존 이모지 또는 image 파일 중 하나만 지정해 주세요.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
         try:
             markup = await self.client.emoji_registry.add(
-                alias, description, attachment=image, source=source
-            )
+                alias, description, attachment=image, source=source)
         except ValueError as exc:
             text = str(exc).replace("히나야 /이모지 수정", "/emoji edit")
             await interaction.followup.send(text, ephemeral=True)
@@ -362,8 +352,7 @@ class EmojiSlashCommands(app_commands.Group):
                 continue
             try:
                 markup = await self.client.emoji_registry.add(
-                    alias, description, source=str(emoji.id)
-                )
+                    alias, description, source=str(emoji.id))
             except ValueError as exc:
                 reason = str(exc).replace("히나야 /이모지 수정", "/emoji edit")
                 lines.append(f"`:{alias}:` ❌ {reason}")
@@ -410,8 +399,7 @@ class EmojiSlashCommands(app_commands.Group):
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
         await interaction.response.send_message(
-            "사용 목록에서 제외했어요. 원본 이모지는 삭제하지 않아요.", ephemeral=True
-        )
+            "사용 목록에서 제외했어요. 원본 이모지는 삭제하지 않아요.", ephemeral=True)
 
 
 def install_slash_commands(client):
