@@ -10,22 +10,30 @@ import logging
 import discord
 from discord import app_commands
 
+from .chatlog_commands import ChatLogCommands
 from .memory_commands import MemoryMode
 from .routing import Scope
 
 log = logging.getLogger("hina")
 
-_ADMIN_MEMORY_COMMANDS = {"mode", "chatlog", "status", "overview"}
+_ADMIN_MEMORY_COMMANDS = {"mode", "status", "overview", "purge"}
 
 HELP_TEXT = """일반 대화는 @멘션, 답장 핑, 또는 메시지 맨 앞의 `히나야`로 호출해 주세요.
 관리·설정 기능은 Discord 슬래시 명령으로만 사용합니다.
 
-기억
+장기 기억
 `/memory show` — 현재 채널의 내 요약과 개인 메모 확인
 `/memory note` / `/memory note-clear` — 개인 메모 설정/삭제
-`/memory clear` — 내 기억 삭제 (서버에서는 관리자 확인 필요)
+`/memory clear` — 현재 서버 또는 DM에서 내 장기 기억 삭제
 `/memory server-show` / `server-note` / `server-clear` — 서버 공통 메모
-`/memory mode` / `chatlog` / `status` / `overview` — 봇 관리자용 기억·최근 로그 설정
+`/memory mode` / `status` / `overview` — 봇 관리자용 장기 기억 설정
+`/memory purge` — 봇 관리자용 범위별 사용자 장기 기억 초기화
+
+최근 대화 문맥
+`/chatlog mode` — 최근 채널 대화 사용 여부 설정
+`/chatlog status` — 현재 채널 설정 확인
+`/chatlog overview` — 전체 서버/채널 설정 확인
+`/chatlog clear` — 현재 채널의 임시 최근 대화 문맥 비우기
 
 관리
 `/instruction ...` — 동적 캐릭터 지침 관리
@@ -86,7 +94,7 @@ def _text_pages(lines: list[str], *, limit: int = 1850) -> list[str]:
 
 
 def upgrade_memory_group(client):
-    """Turn the existing /memory admin group into the complete slash-only memory surface."""
+    """Turn the base /memory admin group into the complete user/admin memory surface."""
     group = client.tree.get_command("memory")
     if not isinstance(group, app_commands.Group):
         raise TypeError("/memory group is not registered")
@@ -100,8 +108,7 @@ def upgrade_memory_group(client):
             return False
         return True
 
-    # The original group used one blanket admin check. User-owned memory operations are now slash
-    # commands too, so only the four configuration/debug commands remain bot-admin-only.
+    # User-owned memory operations share /memory with bot-admin configuration operations.
     group.interaction_check = selective_check
 
     @app_commands.command(name="show", description="현재 채널의 내 장기 요약과 개인 메모 확인")
@@ -147,7 +154,7 @@ def upgrade_memory_group(client):
             client.store.set_note(scope.user_note, "")
         await interaction.response.send_message("개인 메모를 삭제했어요.", ephemeral=True)
 
-    @app_commands.command(name="clear", description="이 서버 또는 DM에서의 내 기억과 단기 문맥 삭제")
+    @app_commands.command(name="clear", description="이 서버 또는 DM에서의 내 장기 기억 삭제")
     @app_commands.describe(confirm="삭제를 확인하려면 true")
     async def clear(interaction: discord.Interaction, confirm: bool):
         try:
@@ -159,19 +166,13 @@ def upgrade_memory_group(client):
             await interaction.response.send_message(
                 "삭제하지 않았어요. 실제로 삭제하려면 confirm을 true로 선택해 주세요.", ephemeral=True)
             return
-        if (scope.guild_id is not None
-                and not _is_bot_admin(client, interaction.user.id)
-                and not _can_manage_guild(interaction)):
-            await interaction.response.send_message(
-                "서버 단기 문맥 전체가 초기화되므로 봇 관리자 또는 서버 관리 권한이 필요해요.",
-                ephemeral=True,
-            )
-            return
         async with client.channel_lock(scope), _user_lock(client, scope):
             client.store.forget(scope)
-            client.recent.forget(scope)
         await interaction.response.send_message(
-            "이 서버 또는 DM에서의 대화 기록, 자동 요약, 개인 메모를 삭제했어요.", ephemeral=True)
+            "이 서버 또는 DM에서의 대화 기록, 자동 요약, 개인 메모를 삭제했어요. "
+            "최근 채널 대화 문맥은 그대로 유지돼요.",
+            ephemeral=True,
+        )
 
     @app_commands.command(name="server-show", description="현재 서버의 공통 메모 확인")
     async def server_show(interaction: discord.Interaction):
@@ -328,6 +329,7 @@ class EmojiSlashCommands(app_commands.Group):
 def install_slash_commands(client):
     """Install the slash-only user/admin command surface on a production client."""
     upgrade_memory_group(client)
+    client.tree.add_command(ChatLogCommands(client))
     client.tree.add_command(EmojiSlashCommands(client))
 
     @app_commands.command(name="help", description="히나 봇 사용법과 관리 명령 보기")

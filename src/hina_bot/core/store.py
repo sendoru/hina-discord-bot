@@ -122,6 +122,43 @@ class Store:
                                 (scope.realm, str(scope.user_id)))
             self.db.execute("DELETE FROM notes WHERE scope=?", (scope.user_note,))
 
+    @staticmethod
+    def _rowcount(cursor) -> int:
+        return max(0, int(cursor.rowcount or 0))
+
+    def purge_channel_memory(self, scope: Scope) -> int:
+        """Delete persistent user memory for every user in one channel."""
+        prefix = scope.channel + ":user:%"
+        deleted = 0
+        with self.db:
+            for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
+                cursor = self.db.execute(f"DELETE FROM {table} WHERE scope LIKE ?", (prefix,))
+                deleted += self._rowcount(cursor)
+        return deleted
+
+    def purge_realm_memory(self, scope: Scope) -> int:
+        """Delete all user-owned persistent memory in a guild/realm, preserving realm notes."""
+        deleted = 0
+        with self.db:
+            for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
+                cursor = self.db.execute(f"DELETE FROM {table} WHERE realm=?", (scope.realm,))
+                deleted += self._rowcount(cursor)
+            cursor = self.db.execute(
+                "DELETE FROM notes WHERE scope LIKE ?", (scope.realm + ":user:%",))
+            deleted += self._rowcount(cursor)
+        return deleted
+
+    def purge_all_memory(self) -> int:
+        """Delete all user-owned persistent memory while preserving config and shared realm notes."""
+        deleted = 0
+        with self.db:
+            for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
+                cursor = self.db.execute(f"DELETE FROM {table}")
+                deleted += self._rowcount(cursor)
+            cursor = self.db.execute("DELETE FROM notes WHERE instr(scope, ':user:') > 0")
+            deleted += self._rowcount(cursor)
+        return deleted
+
     def add_shared_call(self, scope, message_id, name, content):
         if scope.guild_id is None or not scope.public_at_capture:
             return
