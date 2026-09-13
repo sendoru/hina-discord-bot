@@ -5,6 +5,7 @@ from .chat_llm import LLM
 from .config import Settings
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
+from .target_recent import TargetAwareRecentMessages
 
 log = logging.getLogger("hina")
 
@@ -16,6 +17,7 @@ class HinaClient(BaseHinaClient):
         if llm is None:
             llm = LLM(settings)
         super().__init__(settings, store=store, llm=llm)
+        self.recent = TargetAwareRecentMessages(budget=settings.channel_context_chars)
         install_slash_commands(self)
 
     @staticmethod
