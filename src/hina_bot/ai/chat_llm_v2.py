@@ -77,6 +77,8 @@ _PERSONAL_CONTEXT_QUERY = re.compile(
     r"기억해|기억하고|방금|아까|저번에|전에\s*말한|우리\s*(?:대화|얘기))",
     re.IGNORECASE,
 )
+_SERVER_RECENT_TURNS = 4
+_SERVER_RECENT_CHARS = 4000
 
 
 class LLM(BaseLLM):
@@ -100,6 +102,36 @@ class LLM(BaseLLM):
             and item.get("awareness") not in {"audience_only", "inference", "unknown"}
             for item in references
         )
+
+    @staticmethod
+    def _server_recent_conversation(store, scope, summary_through: int,
+                                    channel_context: list[dict]) -> list[dict]:
+        if scope.guild_id is None:
+            return []
+        seen_ids = {
+            str(row.get("message_id", "")) for row in channel_context
+            if row.get("message_id") is not None
+        }
+        selected = []
+        used = 0
+        for turn in reversed(store.history(scope)):
+            if int(turn["id"]) <= int(summary_through):
+                break
+            if str(turn["message_id"]) in seen_ids:
+                continue
+            size = len(turn["content"]) + len(turn["reply"])
+            if used + size > _SERVER_RECENT_CHARS:
+                break
+            selected.append({
+                "message_id": str(turn["message_id"]),
+                "at": turn["created_at"],
+                "user": turn["content"],
+                "hina": turn["reply"],
+            })
+            used += size
+            if len(selected) >= _SERVER_RECENT_TURNS:
+                break
+        return list(reversed(selected))
 
     def _web_search_mode(
         self,
@@ -136,7 +168,8 @@ class LLM(BaseLLM):
     async def answer(self, store, scope, name: str, content: str,
                      public_context: list | None = None, channel_context: list | None = None,
                      emoji_catalog: list | None = None, use_memory: bool = True) -> str:
-        summary, _ = store.summary(scope) if use_memory else ("", 0)
+        summary, summary_through = store.summary(scope) if use_memory else ("", 0)
+        channel_context = channel_context or []
         history = []
         if use_memory and scope.guild_id is None:
             turns = []
@@ -152,6 +185,10 @@ class LLM(BaseLLM):
                     {"role": "user", "content": turn["content"]},
                     {"role": "assistant", "content": turn["reply"]},
                 ))
+        server_recent = (
+            self._server_recent_conversation(store, scope, summary_through, channel_context)
+            if use_memory else []
+        )
 
         runtime = build_runtime_context(self.settings)
         references = self.lore_references(content)
@@ -171,8 +208,9 @@ class LLM(BaseLLM):
             "server_note": store.note(scope.realm) if use_memory and scope.guild_id is not None else "",
             "user_note": store.note(scope.user_note) if use_memory else "",
             "conversation_memory": summary,
+            "personal_recent_conversation": server_recent,
             "public_server_context": self.authorized_context(scope, public_context or []) if use_memory else [],
-            "channel_recent_messages": channel_context or [],
+            "channel_recent_messages": channel_context,
             "conversation_history": history,
             "available_custom_emojis": [
                 {"alias": ":" + emoji["name"] + ":", "description": emoji.get("description", "")}
