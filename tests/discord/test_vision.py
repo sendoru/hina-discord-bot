@@ -5,7 +5,6 @@ import pytest
 
 from hina_bot.discord.vision import collect_visual_inputs
 
-
 PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 16
 GIF = b"GIF89a" + b"x" * 16
 
