@@ -48,9 +48,20 @@ memory/chatlog 설정 자체는 유지합니다.
 | 명령 | 기능 |
 | --- | --- |
 | `/chatlog mode` | 전역/서버/채널 최근 채널 문맥 읽기 설정 |
-| `/chatlog status` | 현재 채널의 최종 chatlog 설정 확인 |
-| `/chatlog overview` | 전체 서버/채널의 직접 설정과 상속 결과 확인 |
+| `/chatlog capture` | 전역/서버/채널에서 어떤 메시지를 recent context에 수집할지 설정 |
+| `/chatlog status` | 현재 채널의 최종 chatlog on/off와 capture 범위 확인 |
+| `/chatlog overview` | 전체 서버/채널의 직접 on/off 설정과 상속 결과 확인 |
 | `/chatlog clear` | 현재 채널의 메모리 내 최근 대화 문맥 비우기 |
+
+`/chatlog capture`의 기본값은 기존 동작과 호환되는 `all`입니다. `direct`를 선택하면 같은 채널의
+일반 대화는 recent context에 넣지 않고, 사용자가 `히나야`·멘션·답장 핑 등으로 히나를 직접 호출한
+메시지와 히나가 실제로 보낸 답변만 보관합니다. `all`/`direct` 모두 `global → server → channel`
+순서로 override되며 `inherit`으로 상위 설정을 따를 수 있습니다.
+
+capture 정책을 바꾸면 해당 범위의 메모리 내 recent buffer를 즉시 비워 이전의 더 넓은 문맥이 TTL
+동안 남지 않게 합니다. 이후 필요한 history backfill도 현재 capture 정책을 적용합니다. 또한
+`@사용자 어떻게 생각해?` 같은 대상 사용자 문맥 조회는 `direct` 모드에서 그 사용자가 과거에 히나를
+직접 호출했던 메시지만 대상으로 삼습니다.
 
 최근 채널 대화 문맥은 장기 기억과 별개의 TTL 기반 임시 버퍼이며 장기 요약에는 포함되지 않습니다.
 현재 턴 이미지 원본도 이 recent buffer에 저장하지 않습니다.
