@@ -39,5 +39,5 @@ def runtime_instruction(context: dict[str, str]) -> str:
         "상대적 시간은 이 시각을 기준으로 해석하고 현재 날짜·시각 자체는 검색하지 마세요."
     )
     if location:
-        return lines + " 기본 지역은 지역 생략 시 fallback일 뿐 사용자의 실제 위치라고 주장하지 마세요."
+        return lines + " 기본 지역은 지역 생략 시 fallback일 뿐 사용자의 실제 현재 위치라고 주장하지 마세요."
     return lines + " 지역 의존 질문에 지역이 없으면 추측하지 말고 필요한 지역을 물어보세요."
