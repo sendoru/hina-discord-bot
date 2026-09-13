@@ -6,10 +6,10 @@ import pytest
 from hina_bot.ai.providers import _gemini_input
 from hina_bot.ai.vision import (
     CURRENT_VISUAL_INPUTS,
-    VISION_REQUEST_ACTIVE,
     VISION_INPUT_POLICY,
-    VisualInput,
+    VISION_REQUEST_ACTIVE,
     VisionClient,
+    VisualInput,
 )
 
 
