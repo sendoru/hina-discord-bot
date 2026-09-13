@@ -4,6 +4,7 @@ from .bot import HinaClient as BaseHinaClient
 from .chat_llm import LLM
 from .config import Settings
 from .slash_commands import install_slash_commands
+from .target_context import TARGET_CONTEXT, collect
 
 log = logging.getLogger("hina")
 
@@ -25,6 +26,17 @@ class HinaClient(BaseHinaClient):
     async def command(self, message, scope, text):
         # All management/configuration commands are native Discord slash commands.
         return None
+
+    async def on_message(self, message):
+        if self.user is None:
+            return await super().on_message(message)
+        text = message.content or ""
+        sampled = await collect(message, self.user.id, text)
+        token = TARGET_CONTEXT.set(tuple(sampled))
+        try:
+            return await super().on_message(message)
+        finally:
+            TARGET_CONTEXT.reset(token)
 
 
 def main():
