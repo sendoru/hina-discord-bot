@@ -1,9 +1,13 @@
 from types import SimpleNamespace as NS
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
+from hina_bot.config import Settings
 from hina_bot.discord.vision import collect_visual_inputs
+from hina_bot.store import Store
+from hina_bot.web_bot import HinaClient
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 16
 GIF = b"GIF89a" + b"x" * 16
@@ -76,3 +80,60 @@ async def test_lottie_sticker_is_not_sent_as_image():
 
     assert await collect_visual_inputs(message, downloader=downloader) == []
     downloader.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
+    observed = []
+
+    async def answer(*args, **kwargs):
+        observed.extend(CURRENT_VISUAL_INPUTS.get())
+        return "사진은 잘 보여."
+
+    llm = NS(
+        answer=AsyncMock(side_effect=answer),
+        summarize=AsyncMock(),
+        summarize_shared=AsyncMock(),
+        close=AsyncMock(),
+    )
+    store = Store(":memory:")
+    bot = HinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
+    bot._connection.user = NS(id=99)
+    channel = MagicMock()
+    channel.id = 10
+    channel.send = AsyncMock(return_value=NS(id=1000))
+    channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
+    channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
+    author = NS(
+        id=100,
+        bot=False,
+        display_name="사용자",
+        guild_permissions=NS(manage_guild=False),
+    )
+    attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="photo.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    message = NS(
+        id=1,
+        content="히나야",
+        author=author,
+        guild=None,
+        channel=channel,
+        mentions=[],
+        webhook_id=None,
+        attachments=[attachment],
+        stickers=[],
+    )
+
+    try:
+        await bot.on_message(message)
+        llm.answer.assert_awaited_once()
+        assert len(observed) == 1
+        assert observed[0].source == "attachment"
+        assert observed[0].name == "photo.png"
+        assert message.content == "히나야"
+    finally:
+        await bot.close()
