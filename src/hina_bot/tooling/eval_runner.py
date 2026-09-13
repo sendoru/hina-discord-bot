@@ -8,8 +8,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .config import Settings
-from .llm import LLM
+from hina_bot.ai.runtime_llm import LLM
+
+from .config import SUPPORTED_MODEL_PROVIDERS, Settings
 from .routing import Scope
 from .store import Store
 
@@ -51,20 +52,43 @@ def read_cases(path: Path) -> list[dict]:
     return cases
 
 
+def _provider_key(provider: str) -> str:
+    variable = {
+        "openai": "OPENAI_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+    }[provider]
+    value = os.getenv(variable, "").strip()
+    if not value:
+        raise ValueError(f"{variable}가 필요합니다.")
+    return value
+
+
 def eval_settings(args) -> Settings:
     load_dotenv(Path.cwd() / ".env.local", override=False)
     load_dotenv(Path.cwd() / ".env", override=False)
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY가 필요합니다.")
+    provider = (args.provider or os.getenv("LLM_PROVIDER", "openai")).strip().lower()
+    if provider not in SUPPORTED_MODEL_PROVIDERS:
+        raise ValueError("--provider는 openai, gemini, openrouter 중 하나여야 합니다.")
+    api_key = _provider_key(provider)
+    model = (args.model or os.getenv("LLM_MODEL", "").strip()
+             or os.getenv("OPENAI_MODEL", "").strip()
+             or ("gpt-4.1-mini" if provider == "openai" else ""))
+    if not model:
+        raise ValueError("--model 또는 LLM_MODEL이 필요합니다.")
     community = os.getenv("COMMUNITY_LORE", "true").lower()
     if community not in {"true", "false"}:
         raise ValueError("COMMUNITY_LORE는 true 또는 false여야 합니다.")
     base = Settings(
         api_key=api_key,
         discord_token="eval-only",
-        model=args.model or os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
-        memory_model=args.model or os.getenv("MEMORY_MODEL", os.getenv("OPENAI_MODEL", "gpt-4.1-mini")),
+        provider=provider,
+        memory_provider=provider,
+        openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
+        gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", "").strip(),
+        model=model,
+        memory_model=model,
         db_path=os.getenv("DATABASE_PATH", "data/hina.sqlite3"),
         prompt_path=os.getenv("CHARACTER_PROMPT_PATH", ""),
         instruction_path=os.getenv("INSTRUCTION_PATH", "data/instructions.json"),
@@ -122,6 +146,7 @@ async def run_case(llm: LLM, case: dict) -> dict:
         "expected": case["expected"],
         "responses": responses,
         "error": error,
+        "provider": llm.settings.provider,
         "model": llm.settings.model,
     }
 
@@ -136,6 +161,7 @@ def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
         "# Hina character eval results",
         "",
         f"- cases: {len(results)}",
+        f"- provider: `{results[0]['provider'] if results else ''}`",
         f"- model: `{results[0]['model'] if results else ''}`",
         f"- errors: {sum(bool(row['error']) for row in results)}",
         "",
@@ -193,7 +219,8 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--cases", default=str(DEFAULT_CASES))
     root.add_argument("--id", action="append", help="특정 case id만 실행합니다. 반복 지정할 수 있습니다.")
     root.add_argument("--limit", type=int, help="앞에서부터 N개 case만 실행합니다.")
-    root.add_argument("--model", help="평가에 사용할 모델. 기본은 OPENAI_MODEL입니다.")
+    root.add_argument("--provider", help="openai, gemini, openrouter. 기본은 LLM_PROVIDER입니다.")
+    root.add_argument("--model", help="평가에 사용할 모델. 기본은 LLM_MODEL입니다.")
     root.add_argument("--output", help="결과 JSONL 경로. 같은 이름의 .md 리포트도 생성합니다.")
     root.add_argument("--usage-log", default="data/logs/eval-usage.jsonl")
     return root

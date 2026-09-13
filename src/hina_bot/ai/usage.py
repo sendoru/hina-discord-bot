@@ -39,6 +39,24 @@ def _web_search_calls(response) -> int:
     return count
 
 
+def _provider_error_fields(exc: BaseException) -> dict:
+    """Return only adapter-approved diagnostics; never serialize arbitrary exception strings."""
+    fields = {}
+    provider = getattr(exc, "provider", None)
+    status_code = getattr(exc, "status_code", None)
+    error_code = getattr(exc, "error_code", None)
+    error_message = getattr(exc, "error_message", None)
+    if isinstance(provider, str) and provider:
+        fields["provider"] = provider
+    if isinstance(status_code, int):
+        fields["http_status"] = status_code
+    if isinstance(error_code, str) and error_code:
+        fields["provider_error_code"] = error_code
+    if isinstance(error_message, str) and error_message:
+        fields["provider_error_message"] = error_message
+    return fields
+
+
 class UsageLogger:
     def __init__(self, path: str):
         self.handler = self._handler(path)
@@ -131,10 +149,12 @@ class UsageLogger:
         started = perf_counter()
         token = self._exchange.set(state)
         error_type = None
+        error_fields = {}
         try:
             yield
         except BaseException as exc:
             error_type = type(exc).__name__
+            error_fields = _provider_error_fields(exc)
             raise
         finally:
             self._exchange.reset(token)
@@ -142,6 +162,7 @@ class UsageLogger:
             if error_type:
                 state["status"] = "error"
                 state["error_type"] = error_type
+                state.update(error_fields)
             elif state["failed_calls"]:
                 state["status"] = "completed_with_api_errors"
             else:
@@ -168,9 +189,13 @@ class UsageLogger:
                                                 "reasoning_tokens", None),
                        web_search_calls=web_calls,
                        web_search_used=web_calls > 0)
+            error_codes = getattr(response, "_hina_error_codes", None)
+            if error_codes:
+                row["response_error_codes"] = list(error_codes)
             return response
         except BaseException as exc:
             row.update(status="error", error_type=type(exc).__name__)
+            row.update(_provider_error_fields(exc))
             raise
         finally:
             row["elapsed_ms"] = round((perf_counter() - started) * 1000)

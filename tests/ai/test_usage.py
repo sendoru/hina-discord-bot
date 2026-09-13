@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from hina_bot.ai.providers import ProviderAPIError
 from hina_bot.usage import UsageLogger
 
 
@@ -39,15 +40,40 @@ async def test_usage_success_and_error_do_not_log_content(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_provider_error_logs_safe_diagnostics_without_request_content(tmp_path):
+    path = tmp_path / 'usage.jsonl'
+    logger = UsageLogger(str(path))
+    error = ProviderAPIError(
+        'gemini', 400, code='INVALID_ARGUMENT', message='generation_config.foo is invalid')
+    client = NS(responses=NS(create=AsyncMock(side_effect=error)))
+
+    with pytest.raises(ProviderAPIError):
+        await logger.request(client, 'answer', model='gemini-test', input='secret user message')
+    logger.close()
+
+    text = path.read_text()
+    assert 'secret user message' not in text
+    row = json.loads(text)
+    assert row['error_type'] == 'ProviderAPIError'
+    assert row['provider'] == 'gemini'
+    assert row['http_status'] == 400
+    assert row['provider_error_code'] == 'INVALID_ARGUMENT'
+    assert row['provider_error_message'] == 'generation_config.foo is invalid'
+
+
+@pytest.mark.asyncio
 async def test_missing_usage_is_unknown(tmp_path):
     path = tmp_path / 'usage.jsonl'
     logger = UsageLogger(str(path))
-    client = NS(responses=NS(create=AsyncMock(return_value=NS(status='incomplete', output=[]))))
+    incomplete = NS(
+        status='incomplete', output=[], _hina_error_codes=['budget_exceeded'], usage=None)
+    client = NS(responses=NS(create=AsyncMock(return_value=incomplete)))
     await logger.request(client, 'answer', model='test')
     logger.close()
     row = json.loads(path.read_text())
     assert row['input_tokens'] is None
     assert row['status'] == 'incomplete'
+    assert row['response_error_codes'] == ['budget_exceeded']
 
 
 @pytest.mark.asyncio

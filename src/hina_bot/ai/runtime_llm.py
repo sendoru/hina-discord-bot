@@ -1,4 +1,8 @@
+import json
+
 from . import chat_llm_v2
+from .llm import SUMMARY_POLICY
+from .providers import create_provider_client
 
 GENERAL_RP_OUTPUT_POLICY = """[일반 RP 출력 원칙]
 참고자료가 히나를 3인칭으로 서술해도 최종 답변에서는 자기 행동·감정·관계를 반드시 1인칭으로
@@ -23,8 +27,78 @@ GENERAL_RP_OUTPUT_POLICY = """[일반 RP 출력 원칙]
 
 
 class LLM(chat_llm_v2.LLM):
-    """Production chat LLM with output-level RP rules applied to every answer."""
+    """Production chat LLM with provider routing and RP output rules."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, settings, client=None, memory_client=None):
+        primary_client = client or create_provider_client(settings, settings.provider)
+        super().__init__(settings, client=primary_client)
+        memory_provider = settings.memory_provider or settings.provider
+        if memory_client is not None:
+            self.memory_client = memory_client
+        elif memory_provider == settings.provider:
+            self.memory_client = self.client
+        else:
+            self.memory_client = create_provider_client(settings, memory_provider)
         self.character = self.character.rstrip() + "\n\n" + GENERAL_RP_OUTPUT_POLICY
+
+    async def close(self):
+        try:
+            if self.memory_client is not self.client:
+                await self.memory_client.close()
+        finally:
+            await super().close()
+
+    async def summarize(self, store, scope):
+        pending = store.pending(scope)
+        if len(pending) < self.settings.summary_every:
+            return
+        old, _ = store.summary(scope)
+        payload = {"previous_memory": old, "new_turns": [
+            {"at": turn["created_at"], "user": turn["content"],
+             **({"hina": turn["reply"]} if scope.guild_id is None else {})}
+            for turn in pending
+        ]}
+        response = await self.usage.request(
+            self.memory_client,
+            "summarize",
+            model=self.settings.memory_model,
+            instructions=SUMMARY_POLICY,
+            input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            max_output_tokens=900,
+            store=False,
+        )
+        if response.status == "completed" and response.output_text.strip():
+            store.save_summary(scope, response.output_text.strip()[:1500], pending[-1]["id"])
+
+    async def summarize_shared(self, store, scope):
+        pending = store.pending_shared(scope)
+        if len(pending) < self.settings.summary_every:
+            return
+        payload = {
+            "previous_memory": store.shared_summary(scope)[0],
+            "speaker_id": str(scope.user_id),
+            "direct_calls": [
+                {"at": turn["created_at"], "user": turn["content"]} for turn in pending
+            ],
+        }
+        response = await self.usage.request(
+            self.memory_client,
+            "summarize_shared",
+            model=self.settings.memory_model,
+            instructions=(
+                SUMMARY_POLICY
+                + "\n직접 호출한 발화만 요약하세요. 앞선 발언을 가리키는 대명사나 인용의 빈 "
+                  "맥락을 보충하지 마세요. 화자 자신의 명시적 사실·선호·약속만 기억하세요. "
+                  "제3자의 발언이나 사실은 저장하지 마세요."
+            ),
+            input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            max_output_tokens=900,
+            store=False,
+        )
+        if response.status == "completed" and response.output_text.strip():
+            store.save_shared_summary(
+                scope,
+                pending[-1]["name"],
+                response.output_text.strip(),
+                pending[-1]["id"],
+            )
