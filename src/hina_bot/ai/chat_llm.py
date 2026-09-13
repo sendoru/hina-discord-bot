@@ -7,6 +7,7 @@ from .information_routing import (
     looks_like_relation_or_event_question,
     looks_like_world_fact_question,
 )
+from .self_profile_lore import fallback_references
 
 
 class LLM(BaseLLM):
@@ -20,7 +21,16 @@ class LLM(BaseLLM):
 
     def lore_references(self, content: str) -> list[dict]:
         request = classify_information_request(content)
-        return super().lore_references(request.lore_query)
+        references = super().lore_references(request.lore_query)
+        if not request.self_profile:
+            return references
+
+        existing = {str(row.get("reference", "")) for row in references}
+        fallbacks = [
+            row for row in fallback_references(request.lore_query)
+            if str(row.get("reference", "")) not in existing
+        ]
+        return fallbacks + references
 
     def _web_search_mode(self, content, references, freshness=None) -> str:
         request = classify_information_request(content, freshness=freshness)
