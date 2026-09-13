@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 
 import httpx
 
@@ -11,10 +12,33 @@ from hina_bot.ai.vision import VisualInput
 
 log = logging.getLogger("hina")
 
-MAX_VISUAL_INPUTS = 4
 MAX_VISUAL_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_VISUAL_BYTES = 12 * 1024 * 1024
 _CUSTOM_EMOJI = re.compile(r"<(?P<animated>a?):(?P<name>[^:<>\s]{1,32}):(?P<id>[0-9]{1,20})>")
+
+
+@dataclass(frozen=True)
+class VisionLimits:
+    """Per-source count quotas for one current-turn vision request."""
+
+    attachments: int = 4
+    emojis: int = 12
+    stickers: int = 8
+
+    @classmethod
+    def from_settings(cls, settings) -> "VisionLimits":
+        return cls(
+            attachments=settings.vision_max_attachments,
+            emojis=settings.vision_max_emojis,
+            stickers=settings.vision_max_stickers,
+        )
+
+    def for_source(self, source: str) -> int:
+        return {
+            "attachment": self.attachments,
+            "emoji": self.emojis,
+            "sticker": self.stickers,
+        }[source]
 
 
 def _sniff_image_mime(data: bytes) -> str | None:
@@ -61,14 +85,24 @@ def _sticker_candidate(sticker):
     return url, str(getattr(sticker, "name", "") or "")
 
 
-async def collect_visual_inputs(message, *, downloader=_download) -> list[VisualInput]:
-    """Return up to four raster images without retaining them after this turn."""
+async def collect_visual_inputs(
+    message,
+    *,
+    limits: VisionLimits | None = None,
+    downloader=_download,
+) -> list[VisualInput]:
+    """Return bounded raster inputs without retaining them after this turn."""
+    limits = limits or VisionLimits()
     result: list[VisualInput] = []
+    counts = {"attachment": 0, "emoji": 0, "sticker": 0}
     used = 0
+
+    def has_room(source: str) -> bool:
+        return counts[source] < limits.for_source(source) and used < MAX_TOTAL_VISUAL_BYTES
 
     async def add_bytes(data: bytes, source: str, name: str):
         nonlocal used
-        if len(result) >= MAX_VISUAL_INPUTS or not data:
+        if not has_room(source) or not data:
             return
         if len(data) > MAX_VISUAL_BYTES or used + len(data) > MAX_TOTAL_VISUAL_BYTES:
             return
@@ -76,10 +110,11 @@ async def collect_visual_inputs(message, *, downloader=_download) -> list[Visual
         if mime is None:
             return
         result.append(VisualInput(data=data, mime_type=mime, source=source, name=name))
+        counts[source] += 1
         used += len(data)
 
     for attachment in getattr(message, "attachments", ()):
-        if len(result) >= MAX_VISUAL_INPUTS:
+        if not has_room("attachment"):
             break
         size = int(getattr(attachment, "size", 0) or 0)
         if size > MAX_VISUAL_BYTES or used + size > MAX_TOTAL_VISUAL_BYTES:
@@ -105,8 +140,10 @@ async def collect_visual_inputs(message, *, downloader=_download) -> list[Visual
             remote.append((candidate[0], "sticker", candidate[1]))
 
     for url, source, name in remote:
-        if len(result) >= MAX_VISUAL_INPUTS or used >= MAX_TOTAL_VISUAL_BYTES:
+        if used >= MAX_TOTAL_VISUAL_BYTES:
             break
+        if not has_room(source):
+            continue
         try:
             data = await downloader(url)
         except Exception as exc:  # noqa: BLE001 - do not log Discord CDN URLs
