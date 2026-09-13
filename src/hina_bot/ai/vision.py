@@ -1,16 +1,8 @@
 """Provider-neutral image inputs for the current chat turn."""
 
-from __future__ import annotations
-
 import base64
 from contextvars import ContextVar
 from dataclasses import dataclass
-
-
-CURRENT_VISUAL_INPUTS: ContextVar[tuple["VisualInput", ...]] = ContextVar(
-    "current_visual_inputs", default=()
-)
-VISION_REQUEST_ACTIVE: ContextVar[bool] = ContextVar("vision_request_active", default=False)
 
 VISION_INPUT_POLICY = """[현재 시각 입력]
 이 섹션이 있는 응답에는 현재 사용자 메시지와 함께 실제 이미지 입력이 제공됩니다. 기본 POLICY의
@@ -42,6 +34,12 @@ class VisualInput:
         }.get(self.source, "이미지")
         name = " ".join(self.name.split())[:80]
         return f"[현재 메시지의 {source} {index}" + (f": {name}]" if name else "]")
+
+
+CURRENT_VISUAL_INPUTS: ContextVar[tuple[VisualInput, ...]] = ContextVar(
+    "current_visual_inputs", default=()
+)
+VISION_REQUEST_ACTIVE: ContextVar[bool] = ContextVar("vision_request_active", default=False)
 
 
 def _augment_input(input_value, visuals: tuple[VisualInput, ...]):
