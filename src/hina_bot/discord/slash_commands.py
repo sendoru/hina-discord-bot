@@ -42,7 +42,8 @@ HELP_TEXT = """일반 대화는 @멘션, 답장 핑, 또는 메시지 맨 앞의
 `/knowledge ...` — runtime knowledge 관리
 `/emoji add|import|list|edit|remove` — 봇 관리자용 이모지 관리
 
-일반 대화에서는 첨부파일·이미지·답장 원문을 직접 읽지 않습니다."""
+현재 호출 메시지에 포함된 지원 이미지 첨부·커스텀 이모지·래스터 스티커는 직접 볼 수 있습니다.
+과거 이미지와 답장 대상 원문은 자동으로 읽지 않습니다."""
 
 
 def _scope(interaction: discord.Interaction) -> Scope:

@@ -1,525 +1,311 @@
 # Hina Discord Bot
 
-소라사키 히나를 연기하는 비공식 한국어 Discord 봇입니다. Python 3.11+, discord.py,
-OpenAI Responses API, SQLite를 사용합니다. 프롬프트 교체와 소규모 단일 인스턴스 운영을
-전제로 한 첫 버전입니다. 공식 서비스나 공식 대사 재현물은 아닙니다.
+소라사키 히나를 연기하는 비공식 한국어 Discord 봇입니다. Python 3.11+, discord.py, SQLite와
+OpenAI/Gemini/OpenRouter LLM provider를 사용합니다. 공식 서비스나 공식 대사 재현물은 아닙니다.
 
-## 구현 상태
+현재 저장소는 캐릭터 RP, 장기 기억, 최근 채널 문맥, lore/runtime knowledge, 웹 검색 routing,
+멀티 provider와 **현재 턴 이미지 입력**을 함께 다룹니다. 비전 기능은 1차 구현 범위를 먼저 실제
+Discord에서 검증하고 있으며, 검증 전에는 버그 수정과 문서 정리를 제외한 추가 확장을 하지 않습니다.
 
-- 직접 멘션, 답장 핑, 메시지 시작의 `히나야` 호출에 반응해 **일반 채널 메시지**를 보내요.
-- 채널 최근 대화는 참여자 간 공유하고 메모리에만 잠시 보관해요.
-- 직접 호출한 발화의 장기 요약은 SQLite에 저장해요. 공개 호출은 같은 서버에서 공유해요.
-- 같은 사용자의 공개 서버 대화는 DM에서 참고하고, DM 기억은 서버로 전달하지 않아요.
-- 개인 메모, 관리자용 서버 공통 메모, 기억 확인·삭제 명령을 제공해요.
-- 봇 소유자·`BOT_ADMIN_IDS`용 `/memory`·`/instruction`·`/knowledge` 슬래시 명령을 제공해요.
-- 동적 instruction과 runtime knowledge는 기억 데이터와 같은 `hina.sqlite3`에 저장해요.
-- API 시간 제한·재시도, 사용자별 쿨다운, 동시 요청 제한, 출력 분할, 자동 멘션 억제를 적용해요.
-- 승인된 공식 설정과 커뮤니티 밈 중 현재 질문에 관련된 항목만 로컬 검색해 전달해요.
-- Docker Compose 실행 설정과 GitHub Actions 테스트를 포함해요.
+## 주요 기능
 
-**외부 연결 상태:** 이 초안을 만든 환경에서 OpenAI 키 발급 요청이 거부되어 키가 저장되지
-않았어요. Discord 토큰도 아직 설정되지 않았어요.
-GitHub 저장소: https://github.com/sendoru/hina-discord-bot
-실제 Discord 접속과 유료 OpenAI 요청은 실행하지 않았어요.
+- `@멘션`, 답장 핑, 메시지 시작의 `히나야` 같은 호출어로 일반 대화
+- 사용자별 장기 기억과 서버 내 공개 호출의 제한된 공유 기억
+- 장기 기억과 독립된 TTL 기반 최근 채널 문맥
+- 관리자용 서버 공통 메모, 동적 instruction, runtime knowledge
+- 검수된 lore를 질문과 관련된 범위만 로컬 검색해 사용
+- 현재 시각/runtime context와 최신 정보가 필요할 때 provider 웹 검색 사용
+- OpenAI, Gemini, OpenRouter provider 교체
+- 등록된 커스텀 이모지 출력
+- 현재 호출 메시지의 이미지 첨부, 커스텀 이모지, 래스터 스티커 해석
+- Discord slash command 기반 기억/설정/이모지 관리
+- usage/error logging, 테스트, Docker Compose
 
 ## 빠른 실행
 
-[`uv`](https://docs.astral.sh/uv/getting-started/installation/)를 설치한 뒤 프로젝트 루트에서
-개발 의존성을 포함한 가상 환경을 만들고 실행해 주세요.
+[`uv`](https://docs.astral.sh/uv/getting-started/installation/) 기준:
 
 ```bash
 uv sync --extra dev
 cp .env.example .env.local
-# 로컬 편집기에서 .env.local의 OPENAI_API_KEY와 DISCORD_TOKEN을 입력하세요.
-chmod 600 .env.local
+# .env.local에 DISCORD_TOKEN과 선택한 provider API key를 입력
 uv run hina-bot
 ```
 
-테스트와 린트도 같은 환경에서 실행할 수 있어요.
+기본 provider 예시는 OpenAI입니다.
 
-```bash
-uv run pytest
-uv run ruff check .
+```dotenv
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4.1-mini
+OPENAI_API_KEY=...
+DISCORD_TOKEN=...
 ```
 
-`uv sync`가 생성하는 `.venv`는 별도로 활성화하지 않아도 `uv run`이 사용해요. 기존 pip
-방식을 사용하려면 `python3 -m venv .venv`, `source .venv/bin/activate`,
-`python -m pip install -e '.[dev]'` 순서로 설치한 뒤 `hina-bot`을 실행하면 돼요.
+Gemini/OpenRouter 설정과 답변 모델·기억 모델 분리는
+[`docs/model-providers.md`](docs/model-providers.md)를 참고하세요.
 
-운영체제 환경 변수가 `.env.local`, `.env`보다 우선해요.
-키는 소스에 넣지 않으며 `.env.local`, 데이터베이스, 대화 내용은 Git에서 제외해요.
-`.env.local`을 Docker 이미지에도 포함하지 않아요.
+테스트:
 
-Discord Developer Portal에서 애플리케이션과 Bot을 만들고, Bot 설정의 **Message Content
-Intent**를 켜 주세요. `히나야`처럼 멘션 없는 호출을 읽으려면 필요해요.
-서버에 초대할 때 `bot` scope와 `View Channels`, `Send Messages`, `Read Message History`를
-허용해 주세요. 스레드에서도 사용하려면 `Send Messages in Threads`도 필요해요.
-관리자 권한 전체를 줄 필요는 없어요. DM은 사용자의 서버 개인정보/DM 수신 설정에도 영향을 받아요.
-이 버전은 일반 봇 초대 방식이며 사용자 설치 앱은 사용하지 않아요. 이모지 관리는
-`히나야 /이모지` 메시지 명령이고, 기억 모드는 `/memory`, 동적 캐릭터 지침은
-`/instruction`, 동적 설정 지식은 `/knowledge` 슬래시 명령으로 관리해요.
-초대 시 `applications.commands` scope도 포함해 주세요.
+```bash
+uv run ruff check .
+uv run pytest
+```
+
+Docker Compose:
 
 ```bash
 docker compose up -d --build
 docker compose logs -f
 ```
 
-Compose는 named volume에 SQLite를 보존해요. `docker compose down -v`는 기억과 동적
-instruction/knowledge도 함께 삭제해요. 데이터베이스 파일을 공유하는 여러 봇 프로세스를
-동시에 실행하지 마세요.
+SQLite와 운영 중 생성되는 데이터는 기본적으로 `data/` 아래에 두며 Git에서 제외합니다.
+Docker Compose에서는 named volume으로 보존합니다. 같은 SQLite를 여러 봇 프로세스가 동시에 사용하는
+구성은 지원하지 않습니다.
 
-### 기존 JSON 런타임 데이터 마이그레이션
+## Discord 설정
 
-예전 버전의 `data/instructions.json`, `data/runtime_lore.json`, `data/contexts.json`을
-사용하던 설치는 한 번만 SQLite로 이전하면 돼요. 먼저 dry-run으로 검증한 뒤 실제 이전을
-실행하는 것을 권장해요.
+Discord Developer Portal에서 Bot을 만들고 **Message Content Intent**를 켭니다. `히나야`처럼 멘션
+없는 호출어를 읽는 데 필요합니다.
 
-```bash
-uv run hina-migrate-runtime --dry-run
-uv run hina-migrate-runtime
-```
+서버 초대에는 일반적으로 다음 권한이면 충분합니다.
 
-기본 대상 DB는 `DATABASE_PATH`(기본 `data/hina.sqlite3`)예요. 기존 JSON 경로를 바꿔서
-운영했다면 `--instructions`, `--facts`, `--contexts`로 직접 지정할 수 있어요. 같은 ID가
-이미 DB에 있을 때 JSON 쪽으로 덮어써야 하는 경우에만 `--replace`를 사용하세요.
+- View Channels
+- Send Messages
+- Read Message History
+- 스레드 사용 시 Send Messages in Threads
+- slash command를 위한 `applications.commands` scope
 
-마이그레이션은 기존 JSON 파일을 자동 삭제하지 않아요. 정상 반영을 확인한 뒤 백업하거나
-삭제하면 돼요. 기존 항목에 `created_at`이 없으면 임의의 날짜를 만들지 않고 SQLite에
-`NULL`로 저장하며 목록 UI에서는 `미기록`으로 표시해요. 새 항목은 현재 UTC 생성 시각을
-기록하고, 수정 시에는 `updated_at`을 갱신해요.
+봇 전체 관리자 권한을 줄 필요는 없습니다.
 
 ## 호출 규칙
 
 | 입력 | 기본 동작 |
 | --- | --- |
-| `@히나 오늘 어땠어?` | 응답해요. |
-| 히나 메시지에 답장, 답장 핑 켜짐 | 응답해요. |
-| 히나 메시지에 답장, 답장 핑 꺼짐 | 다른 호출 조건이 없으면 응답하지 않아요. |
-| `히나야 오늘 어땠어?` | 응답해요. 앞쪽 공백은 허용해요. |
-| `오늘 히나야라고 불렀어` | 응답하지 않아요. |
-| DM의 일반 메시지 | 기본적으로 응답하지 않아요. `DM_ALWAYS_REPLY=true`로 바꿀 수 있어요. |
-| 봇·웹훅·자기 자신의 메시지 | 응답하지 않아요. |
+| `@히나 오늘 어땠어?` | 응답 |
+| `히나야 오늘 어땠어?` | 응답 |
+| 히나 메시지에 답장 + 답장 핑 | 응답 |
+| 히나 메시지에 답장, 답장 핑 없음 | 다른 호출 조건이 없으면 응답하지 않음 |
+| DM 일반 메시지 | 기본적으로 호출어/멘션 필요. `DM_ALWAYS_REPLY=true`로 변경 가능 |
+| 봇·웹훅 메시지 | 응답하지 않음 |
 
-기본 접두어는 `히나야`예요. `.env.local`의 `CALL_PREFIXES`에 쉼표로 구분해 최대 20개를
-지정할 수 있어요. 예를 들어 `CALL_PREFIXES=히나야,히나쨩,히나 선배`로 설정하고 봇을
-재시작하면 세 표현을 모두 인식해요. 각 접두어는 1~32자이며 앞뒤 공백은 제거해요.
-접두어끼리 겹치면 긴 표현부터 매칭하므로 `히나`와 `히나야`를 함께 등록할 수 있어요.
-접두어 바로 뒤에 공백이 없어도 호출로 처리하므로 `히나야안녕`도 응답해요.
-Discord가 전달한 `message.mentions`를 검사하며, 답장 참조가 있다는 이유만으로 핑을
-추정하지 않아요. 출력에는 `message.reply()`나 메시지 reference를 사용하지 않아요.
-첨부파일·이미지·링크의 실제 내용, 답장 대상 원문을 별도로 읽지 않아요.
-봇이 연결된 동안 수신한 같은 채널의 최근 텍스트를 문맥으로 사용해요.
-시작 전에 있었던 대화를 Discord 기록 API로 소급 수집하지는 않아요.
+기본 호출어는 `히나야`이며 `CALL_PREFIXES`에 쉼표로 구분해 여러 개를 지정할 수 있습니다.
 
-## 기억의 방향
+## 현재 턴 이미지 입력
 
-| 출처 | 같은 채널 | 같은 서버의 다른 채널 | DM |
-| --- | --- | --- | --- |
-| 일반 메시지 (호출 없음) | 모든 참여자의 최근 문맥으로 참고해요. | 전달하지 않아요. | 전달하지 않아요. |
-| 공개 채널의 직접 호출 | 응답과 장기 기억에 사용해요. | 화자를 구분해 다른 사용자에게도 참고해요. | 호출자 자신의 DM에서 참고해요. |
-| 비공개 채널의 직접 호출 | 해당 사용자·채널의 장기 기억에 사용해요. | 전달하지 않아요. | 전달하지 않아요. |
-| 개인 메모 | 본인 응답에 사용해요. | 같은 서버의 본인에게만 적용해요. | 서버 메모를 자동으로 가져오지 않아요. |
-| 관리자 공통 메모 | 모든 참여자에게 적용해요. | 같은 서버에서 공유해요. | 자동으로 가져오지 않아요. |
-| DM 대화 | 서버에서 사용하지 않아요. | 서버에서 사용하지 않아요. | 해당 사용자에게만 사용해요. |
+`feature/vision-input`의 1차 구현은 **현재 히나를 호출한 메시지**에 실제로 포함된 시각 입력만
+모델에 전달합니다.
 
-예를 들어 A가 일반 메시지를 보내고 B가 `히나야 방금 A가 한 말 이상하지 않아?`라고
-물으면, A의 발언과 화자 정보를 참고해 답해요. 그러나 B의 호출을 이유로 A의 일반
-발언을 서버 공통 장기 기억으로 옮기지는 않아요. 장기 요약용 입력에는 일반 채널 문맥과
-봇 답변을 넣지 않으며, 직접 호출한 사용자의 발화만 넣어요. 제3자에 대한 주장과
-문맥 없는 지시어를 사실로 보충하지 않도록 요약 지침도 적용해요. 사용자가 호출문에
-다른 사람의 말을 직접 인용한 경우 그 인용을 구별하는 것은 모델의 판단이므로 완벽한
-출처 검증을 보장하지는 않아요.
+지원:
 
-공개 공유는 일반 텍스트 채널에서 `@everyone`의 채널 보기·기록 보기 권한을 충족한
-상태로 받은 호출에만 적용해요. 조회할 때도 현재 공개 여부와 질문자의 가입·채널 접근
-권한을 확인하고, 실패하면 제외해요. 비공개 채널에서 받은 호출은 나중에 채널이 공개로
-바뀌어도 공유 저장소에 들어가지 않아요. 스레드와 포럼은 첫 버전에서 공개 공유 대상에서
-제외하지만 같은 스레드의 최근 문맥과 응답은 지원해요. 서버 간 공유는 없어요.
-권한 캐시는 Gateway 갱신에 따르므로 변경 전파에 짧은 지연이 있을 수 있어요.
+- PNG/JPEG/GIF/WebP 이미지 첨부
+- Discord 커스텀 이모지
+- 래스터 스티커
+- 호출어/멘션과 이미지만 보낸 image-only 호출
 
-공유 기억은 출처 사용자 ID·이름·채널을 보존해요. 서버 질문에서는 그 서버 구성원의
-공개 호출을, DM에서는 본인의 공개 호출만 후보로 조회해요. 최근 활동 순 최대 30개
-사용자·채널 출처를 검사하고 접근 가능한 최대 4개 출처의 요약과 최근 호출 2개씩을
-전달해요. 아직 의미 기반 검색은 없어서 오래되거나 드물게 사용한 기억이 선택되지 않을 수 있어요.
-`PUBLIC_SERVER_MEMORY_IN_DM=false`는 DM 방향의 조회만 끄며 서버 안의 공유에는 영향을 주지 않아요.
+기본 source별 count quota:
 
-원본 삭제·채널 권한 변경은 이후 원본 조회에 적용해요. 이미 전송된 답변과 그 답변에
-이어진 DM 대화까지 소급 삭제하지는 않아요. 완전한 철회가 필요하면 관련 DM 기억도
-초기화해 주세요. 봇 운영자는 최근 채널 대화와 공개 호출의 공유 범위를 이용자에게 안내해 주세요.
+```dotenv
+VISION_MAX_ATTACHMENTS=4
+VISION_MAX_EMOJIS=12
+VISION_MAX_STICKERS=8
+```
 
-## 단기 문맥과 비용 제한
+각 값은 0~32이고 합계는 32 이하여야 합니다. 0이면 해당 source를 비전 입력에서 끕니다.
+개별 이미지 5 MiB, 한 호출 전체 12 MiB의 byte limit도 별도로 적용됩니다. 파일 byte 크기와 실제
+이미지 token 비용은 동일하지 않으며 provider/model과 이미지 크기에 따라 달라질 수 있습니다.
 
-일반 메시지 수신만으로는 OpenAI API를 호출하지 않아요. 허용된 서버의 봇이 볼 수 있는
-채널 텍스트를 메모리에만 모으고, 히나를 호출할 때 최근 문맥을 전달해요. 기본 설정은
-최근 **15분**, 저장 버퍼 채널당 **30개**, 전달 **12개 이하**, 전달 본문 합계 **6,000자 이하**예요.
-최근 메시지를 우선하고 한도를 넘는 오래된 부분은 제외해요. 메모리 버퍼는 최대 128개
-채널로 제한하며, 만료 시 다음 접근에서 정리하고 재시작하면 없어져요.
-`CHANNEL_CONTEXT_CHARS`는 전달 본문 문자 수 상한으로, 0~12000 사이에서 조절할 수 있어요.
-이는 토큰 수와 같지는 않으며 화자 정보·시스템 프롬프트·장기 요약도 별도 입력 비용에 포함돼요.
+현재 지원하지 않는 범위:
 
-서버 응답은 채널 문맥을 쓰므로 기존 개인별 대화 원문까지 중복으로 붙이지 않아요.
-DM은 기존 개인 대화 이력을 사용해요. 채널 일반 대화를 별도로 요약하는 API 요청은 없어요.
-직접 호출한 대화 8턴마다 개인 요약을 갱신하고, 공개 호출은 별도 공유 요약도 8회마다
-갱신하므로 공개 대화 8회당 요약 요청은 최대 2회 추가돼요. 빈 호출·관리 명령에는 모델을
-호출하지 않아요. 호출이 많으면 비용은 증가하며 월별 비용 강제 상한은 아직 없어요.
+- 과거 메시지의 이미지 자동 재조회
+- 답장 대상 이미지 자동 조회
+- `아까 그 사진` 같은 이전 이미지 참조
+- 일반 URL을 따라가 이미지로 해석
+- PDF/문서 파일 해석
+- 이미지 생성·편집
+- 이미지 원본/caption을 장기 기억에 자동 저장
+- Lottie 스티커
 
-## 장기 기억과 데이터 보관
+이미지 bytes는 현재 `answer()` 요청에만 사용하고 recent chatlog나 SQLite memory에 저장하지 않습니다.
+이미지 안의 텍스트, QR, prompt처럼 보이는 내용도 모두 신뢰할 수 없는 사용자 데이터로 취급합니다.
 
-성공적으로 전달한 호출 대화만 장기 저장해요. 개인 기록과 공개 공유 기록은 별도 테이블이고,
-일반 채널 문맥은 어느 장기 요약 입력에도 포함하지 않아요. 서버 개인 요약에도 봇 답변을
-넣지 않아요. 공개 공유 기억은 새 구조에서 받은 호출부터 쌓이고, 기존 개인 요약을
-자동으로 서버 전체에 공개하지 않아요. 기존 DB에는 새 테이블만 추가해 이전 기억을 보존해요.
+선택한 `LLM_MODEL` 자체가 vision 입력을 지원해야 합니다. provider adapter 지원과 모델 capability는
+별개입니다. 구현 구조, 저장 경계, 검증 체크리스트는
+[`docs/vision-input.md`](docs/vision-input.md)를 참고하세요.
 
-원문은 사용자·채널별 최근 12회만 보관하고 오래된 내용은 제한된 길이의 요약으로 유지해요.
-요약이 실패하면 다음 호출에서 다시 시도하지만 장기간 실패하면 원문 상한을 넘긴 정보는
-유실될 수 있어요. 기억의 정확성과 완전성을 보장하지 않으므로 중요한 정보는 메모로 지정해 주세요.
-시간 기반 장기 기억 만료는 없고, SQLite 및 운영자의 백업은 평문일 수 있어요.
+## 정보 routing과 웹 검색
 
-응답 시 최근 일반 발언·호출문·관련 기억을 OpenAI에 전송해요. `store=False`를 사용하지만
-OpenAI의 모든 데이터 보관 정책에서 제외된다는 의미는 아니에요. 일반 로그에는 대화,
-API 키, 프롬프트, SDK 오류 본문을 남기지 않아요.
+현재 시각/날짜는 runtime context로 제공합니다. 질문이 외부 현실의 최신 상태에 의존하면 기존
+information routing이 provider의 웹 검색 기능을 사용합니다.
 
-## 기억 디버깅
+예:
 
-봇 소유자 또는 `BOT_ADMIN_IDS`에 지정된 관리자가 실제 슬래시 명령으로 기억 사용 모드를
-관리할 수 있어요. 설정은 **전역 → 서버 → 채널** 순으로 상속되며 더 구체적인 설정이
-우선해요. 직접 설정이 없는 서버는 전역을, 직접 설정이 없는 채널은 서버 설정을 따릅니다.
-전역 기본값은 별도 설정이 없으면 `normal`이에요.
+- `지금 몇 시야?` → runtime clock
+- `서울 날씨 어때?` → web
+- `이번 추석 연휴 시작까지 며칠 남았어?` → 현재 날짜 + 공개 일정 확인
+- `히나 생일 언제야?` → local lore
 
-| 모드 | 답변에 기존 장기 기억 사용 | 새 장기 기억 저장 |
-| --- | --- | --- |
-| `normal` | 켜짐 | 켜짐 |
-| `read_only` | 켜짐 | 꺼짐 |
-| `write_only` | 꺼짐 | 켜짐 |
-| `off` | 꺼짐 | 꺼짐 |
+비전은 이 routing과 별개의 입력 modality입니다. 예를 들어 이미지 속 장소를 보고 `지금 열었어?`라고
+묻는 요청은 이미지 해석과 web route를 동시에 사용할 수 있습니다.
 
-`/memory mode`의 `target`으로 전역·현재 서버·현재 채널을 선택할 수 있고, 서버와 채널은
-`inherit`을 지정해 직접 override를 지우고 상위 설정을 다시 따르게 할 수 있어요.
-`/memory status`는 현재 위치에서 전역/서버/채널의 직접 설정과 최종 적용값을 보여줘요.
-`/memory overview`는 봇이 알고 있는 서버·채널의 직접 설정과 최종 적용값을 표 형태로
-한눈에 보여주며, 항목이 많으면 여러 ephemeral 메시지로 나눠서 출력해요.
+자세한 내용은 [`docs/runtime-web-search.md`](docs/runtime-web-search.md)를 참고하세요.
 
-예를 들어 전역이 `off`, 서버가 `read_only`, 특정 채널만 `normal`이면 그 채널은
-`normal`, 같은 서버의 나머지 채널은 `read_only`, 다른 서버는 `off`가 적용돼요.
+## 기억과 최근 채널 문맥
 
-이 모드는 **장기 기억의 읽기/쓰기만 제어**해요. 같은 채널에서 방금 오간 최근 메시지
-문맥은 memory mode와 별개로 계속 수집·전달하므로 `off` 상태에서도 `이 사람`, `방금 저 말`
-같은 표현을 직전 채팅과 연결할 수 있어요. 모드를 바꿔도 최근 채널 문맥 버퍼를 지우지 않아요.
-명시적인 기억 삭제 명령은 기존 삭제 범위에 따라 장기 데이터와 필요한 단기 문맥을 정리해요.
+장기 기억과 recent chatlog는 서로 다른 시스템입니다.
 
-모드 설정은 SQLite에 저장되어 재시작 후에도 유지되고, 변경 자체는 OpenAI API를 호출하지
-않아요. 기존 장기 기록은 모드를 바꿔도 삭제되지 않으므로 다시 `normal` 또는 읽기 가능한
-모드로 복구하면 재사용할 수 있어요. `/메모`, `/서버메모`처럼 새 장기 데이터를 만드는
-명령은 최종 적용 모드에서 쓰기가 꺼져 있으면 거부돼요.
+- **장기 기억**: SQLite에 저장되는 직접 호출 기록, 자동 요약, 개인 메모, 제한된 공개 공유 기억
+- **recent chatlog**: 같은 채널의 최근 텍스트를 TTL 동안 메모리에만 유지하는 임시 문맥
 
-## 동적 instruction 관리
+recent chatlog는 장기 요약 입력에 포함되지 않습니다. 현재 턴 이미지 원본도 두 시스템 어느 쪽에도
+저장하지 않습니다.
 
-캐릭터 프롬프트를 빠르게 조정할 때는 봇 소유자 또는 `BOT_ADMIN_IDS` 전용 실제 슬래시
-명령 `/instruction`을 사용할 수 있어요. 서버의 Discord 관리자 권한은 필요하지 않으며,
-봇 관리자 목록에 없는 사용자는 서버 관리자여도 실행할 수 없어요. 응답은 ephemeral로
-실행한 관리자에게만 보여요. 일반 사용자에게 명령 이름이 표시될 수는 있지만 실행 단계에서
-애플리케이션 권한 검사를 다시 해요.
+일반 서버에서 다른 사용자의 최근 발언을 참고할 때는 `user_id`와 `name`을 함께 전달해 화자를
+구분합니다. 멘션 대상과 최근 발언의 연결은 모델이 이 구조화된 문맥을 바탕으로 추론하며, 과거 이미지
+까지 결정론적으로 연결하는 기능은 현재 없습니다.
 
-| 명령 | 기능 |
-| --- | --- |
-| `/instruction add identifier:<id> text:<내용>` | 새 보조 지침을 추가하고 즉시 활성화 |
-| `/instruction list [search] [sort]` | 전체/검색 목록과 ON/OFF·추가 시각 확인 |
-| `/instruction edit identifier:<id> text:<내용>` | 기존 지침 본문 수정 |
-| `/instruction enable identifier:<id>` | 비활성 지침 활성화 |
-| `/instruction disable identifier:<id>` | 지침을 보존한 채 런타임 적용만 중지 |
-| `/instruction remove identifier:<id>` | 지침 영구 삭제 |
+## 관리 명령
 
-`list`는 검색어를 생략하면 전체를 보여주고 Discord 길이 제한에 걸릴 때만 나머지 개수를
-표시하며 잘라요. 검색은 ID와 본문을 대상으로 하고 기본 정렬은 추가 시간순이에요.
-최신 추가순·ID순·상태순도 선택할 수 있으며, 고정폭 코드블록과 한글 표시 폭 계산으로
-열을 맞춰 보여줘요.
+production runtime의 관리·설정 기능은 Discord native slash command를 사용합니다.
 
-추가·수정·활성화 결과는 **다음 모델 응답부터 즉시 적용**되어 봇 재시작이 필요하지 않아요.
-ID는 영문 소문자·숫자·점·밑줄·하이픈 2~64자이고, 지침 하나는 최대 1200자예요.
-최대 50개를 저장하며 동시에 활성화된 본문 합계는 6000자 이하로 제한해 프롬프트가
-무한히 커지지 않게 해요. 비활성 지침은 SQLite에 남지만 모델 입력에는 들어가지 않아요.
-
-동적 instruction은 `DATABASE_PATH`의 `instructions` 테이블에 저장해요. 기본 DB는
-`data/hina.sqlite3`이며 Docker Compose의 `/app/data` named volume에 보존돼요. 활성 지침은
-고정 `POLICY`, `hina.md`, 관계 지침 뒤에 신뢰 가능한 관리자 보조 지침으로 붙지만,
-보안·권한·몰입 같은 고정 경계를 덮어쓸 수는 없어요. 충분히 검증된 규칙은 `hina.md`에
-옮긴 뒤 동적 지침에서 삭제하는 식으로 사용할 수 있어요.
-
-## 동적 knowledge 관리
-
-`/knowledge`는 사람이 fact/context 태그를 직접 붙이는 대신, 관리자가 긴 조사 메모를
-통째로 넣으면 모델이 최소 단위 claim으로 분해하고 기존 동적 knowledge와 조정해 주는
-관리 명령이에요. 권한은 `/instruction`과 동일하게 봇 소유자 또는 `BOT_ADMIN_IDS`에만 있어요.
-
-| 명령 | 기능 |
-| --- | --- |
-| `/knowledge ingest text:<조사 메모>` | 사실/해석으로 자동 분해하고 기존 항목과 add/update/skip/hold 조정 |
-| `/knowledge list [search] [sort]` | 전체/검색 목록과 종류·ON/OFF·추가 시각 확인 |
-| `/knowledge show identifier:<id>` | 한 항목의 본문·키워드·대상·인지 범위·시점 확인 |
-| `/knowledge enable identifier:<id>` | 비활성 항목 활성화 |
-| `/knowledge disable identifier:<id>` | 항목을 보존한 채 런타임 검색에서 제외 |
-| `/knowledge remove identifier:<id>` | 동적 knowledge 영구 삭제 |
-
-`ingest`는 새 메모를 기존 동적 knowledge와 비교해 같은 주제의 정정·구체화라면 기존 ID를
-갱신하고, 완전히 중복된 항목은 건너뛰며, 여러 기존 항목을 하나로 통합할 때는 불필요한
-중복을 제거할 수 있어요. 정식 `lore.jsonl`은 읽기 전용 비교 대상으로만 사용하며 자동으로
-수정하지 않아요. 사실과 해석이 섞인 문장은 분리하고, 명확한 사실은 `world_fact`, 동기·의미·
-인지 범위 추론은 `interpretation`으로 내부 분류해요. 입력 내부 모순이나 정식 canon과의
-충돌 가능성이 있는 항목은 바로 저장하지 않고 보류해요.
-
-`list` 검색은 ID·본문·keywords·subjects·timeline·종류를 대상으로 해요. 기본은 추가
-시간순이며 최신 추가순·ID순·상태순·종류순 정렬을 지원하고, 검색하지 않으면 전체를
-보여주되 Discord 길이 제한을 넘을 때만 잘라요.
-
-동적 knowledge는 같은 `DATABASE_PATH`의 `runtime_knowledge` 테이블에 저장하고 `kind`로
-`world_fact`와 `interpretation`을 구분해요. 정적·검수 완료 lore는 계속
-`src/hina_bot/data/lore.jsonl`(또는 `LORE_PATH`)에 두어 Git에서 리뷰·버전 관리하고,
-Discord에서 운영 중 수정되는 knowledge만 SQLite에 보관해요.
-
-## 기억 관리
-
-아래 명령은 **실제 Discord 슬래시 명령이 아니라**, `히나야`나 멘션 뒤에 붙이는 텍스트예요.
+### 기억
 
 ```text
-히나야 /도움말
-히나야 /기억
-히나야 /메모 나를 민철이라고 불러 줘. 설명은 한국어로 부탁해.
-히나야 /메모삭제
-히나야 /기억삭제 확인
-히나야 /서버기억
-히나야 /서버메모 이 서버의 스터디 모임은 매주 토요일 저녁이야.
-히나야 /서버메모삭제
+/memory show
+/memory note
+/memory note-clear
+/memory clear
+/memory server-show
+/memory server-note
+/memory server-clear
+/memory mode
+/memory status
+/memory overview
+/memory purge
 ```
 
-`/메모`는 기존 메모를 교체해요. 서버 개인 메모는 같은 서버의 다른 채널에서도 쓰므로
-채널 한정 비밀을 적지 마세요. `/서버메모`는 서버 관리 권한을 가진 사람이 작성하며
-모든 서버 구성원에게 사용될 공통 설정만 적어 주세요. 메모의 최대 길이는 1500자예요.
-관리 명령은 모델에 보내지 않으며 일반 대화 기록에도 넣지 않아요.
+`show/note/note-clear/clear`는 사용자 자신의 장기 기억 관리이고, `mode/status/overview/purge`는 봇
+관리자용입니다. 서버 공통 메모 변경에는 Discord `Manage Server` 권한이 필요합니다.
 
-서버의 `/기억삭제`는 봇 소유자·`BOT_ADMIN_IDS` 또는 해당 서버의 관리 권한
-(`Manage Server`)을 가진 사용자만 실행할 수 있어요. DM에서는 누구나 자기 기억을
-삭제할 수 있어요. 관리자가 다른 사용자를 지정해 삭제하는 기능은 없어요.
+### 최근 채널 문맥
 
-`/기억삭제 확인`은 실행한 서버의 **해당 사용자 전체 채널** 기록·요약·개인 메모를
-삭제해요. 공개 공유 기록도 해당 사용자분을 삭제하고, 파생 답변이 남지 않도록 현재 서버의
-단기 문맥 버퍼는 전체 초기화해요. 다른 사용자의 장기 기억, 다른 서버, DM, 서버 공통 메모는 지우지 않아요.
-DM에서 실행하면 자신의 DM 기억만 삭제해요. 서버 기억과 DM 기억을 함께 초기화하려면
-각각 실행해 주세요. 서버 공통 메모는 관리자가 `/서버메모삭제`로 삭제할 수 있어요.
-Discord에 이미 전송된 메시지, 파일시스템 백업, API 제공자의 보관 데이터는 별도로 남을 수 있어요.
-
-## 이모지 메시지 명령
-
-히나가 사용할 이모지를 최대 20개 등록해요. 자동 서버 목록 선택은 사용하지 않고,
-등록된 이모지만 서버·DM 응답에 사용해요. 아무것도 등록하지 않으면 커스텀 이모지를 쓰지 않아요.
-
-| 명령 | 기능 |
-| --- | --- |
-| `히나야 /이모지 등록 별칭 이모지ID 사용 상황` | 봇이 가입한 서버의 기존 이모지 등록 |
-| `히나야 /이모지 등록 별칭 사용 상황 + 파일 첨부` | 이미지 파일을 애플리케이션 이모지로 업로드·등록 |
-| `히나야 /이모지 목록` | 등록 목록·미리보기·사용 상황 확인 |
-| `히나야 /이모지 수정 별칭 사용 상황` | 사용 상황 변경 |
-| `히나야 /이모지 삭제 별칭` | 사용 목록에서 제외, 원본 이모지는 유지 |
-
-예: `히나야 /이모지 등록 hina_happy <:원래이름:이모지ID> 기쁘거나 칭찬받았을 때`
-
-이모지 자리에는 실제 커스텀 이모지를 붙여 넣거나 숫자 ID를 입력할 수 있어요. 사용자님과
-**봇 모두 이모지 공급 서버에 가입**한 뒤 등록해 주세요. 원본 이름과 모델용 별칭은 달라도
-돼요. 별칭은 영문 소문자로 시작하는 소문자·숫자·밑줄 2~32자, 설명은 최대 100자예요.
-이모지 공급 서버에서 히나가 대화에 참여하지 않게 하려면 `ALLOWED_GUILD_IDS`에 실제
-대화용 서버만 지정하세요. 공급 서버의 이모지 캐시는 여전히 사용할 수 있어요.
-
-외부 서버 이모지를 서버 답변에 쓰려면 목적지 채널에서 봇에게 **외부 이모지 사용** 권한이
-있어야 해요. 역할 제한·삭제·탈퇴·비활성화로 사용할 수 없으면 목록에서 제외해요.
-DM에서도 봇이 사용할 수 있는 등록 이모지를 참고해요. 이미지 업로드 방식은 PNG·GIF·JPEG·WebP,
-최대 256 KiB를 지원하며 기존 이모지 또는 첨부 이미지 한 개 중 하나만 지정해야 해요.
-
-등록은 봇 전체에 적용되므로 **앱 소유자(팀 앱은 팀 소유자)** 및 `BOT_ADMIN_IDS`에 등록한
-Discord 사용자만 실행할 수 있어요. 서버 관리자라는 이유만으로 전역 목록을 변경할 수는 없어요.
-명령과 응답은 채널에 표시돼요. 공개 채널을 어지럽히지 않으려면 봇 DM에서 관리해 주세요. `BOT_ADMIN_IDS`는 쉼표로 구분한 ID이며 변경 후 재시작해 주세요.
-업데이트 후 봇을 재시작하면 전역 명령 동기화로 기존 `/emoji`가 제거돼요.
-Discord 클라이언트의 목록에 반영되기까지 시간이 걸릴 수 있어요.
-`히나야` 대신 봇 멘션으로도 호출할 수 있고, 관리 메시지는 LLM이나 대화 기억에 넣지 않아요.
-목록과 설명은 SQLite에 저장되어 재시작해도 유지돼요.
-
-모델에는 짧은 별칭과 사용 상황만 전달해요. 모델이 `:hina_happy:`를 출력하면 코드가 실제
-Discord 이모지 표기로 바꿔요. 목록 밖의 커스텀 ID는 제거하고 답변당 최대 2개만 허용해요.
-일반 유니코드 이모지는 유지해요. 이모지 선택·이미지 분석을 위한 OpenAI 추가 호출은 없어요.
-앱 소유 이모지는 최대 5분 간격으로 필요 시 조회하고, 서버 이모지는 Gateway 캐시에서 확인해요.
-Developer Portal에서 직접 삭제한 앱 이모지는 다음 조회까지 잠시 캐시에 남을 수 있어요.
-`삭제`는 등록 정보만 삭제하므로 앱 원본을 완전히 지우려면 Developer Portal에서 관리해 주세요.
-
-[Discord 이모지 문서](https://docs.discord.com/developers/resources/emoji)와
-[권한 문서](https://docs.discord.com/developers/topics/permissions)를 참고했어요.
-실제 업로드·명령 동기화·렌더링은 Discord 토큰 설정 후 확인해야 해요.
-
-## 프롬프트 교체
-
-기본 캐릭터 지침은 `src/hina_bot/prompts/hina.md`예요. 신뢰와 책임감, 담백한 말투,
-상황별 반응, 관계의 점진성, 없는 기억을 만들지 않는 규칙과 창작 예시를 포함해요.
-정식 프롬프트를 별도 UTF-8 파일로 저장하고 `CHARACTER_PROMPT_PATH`에 경로를 지정한 뒤
-봇을 재시작하면 돼요. 파일 경로는 실행 디렉터리 기준이며 절대 경로도 가능해요.
-Docker에서는 해당 파일을 읽기 전용으로 마운트하거나 이미지를 다시 빌드해 주세요.
-
-빠른 튜닝에는 `/instruction`을 사용하고, 안정화된 규칙은 `hina.md`로 옮기는 방식을 권장해요.
-`hina-eval`도 `DATABASE_PATH`의 활성 동적 instruction/knowledge를 실제 봇과 같은 방식으로
-읽으므로 조정 전후 회귀 테스트를 같은 조건으로 비교할 수 있어요.
-
-운영·권한 지침은 `llm.py`의 `POLICY`, 요약 지침은 `SUMMARY_POLICY`로 분리해 두었어요.
-메모나 사용자 표시 이름은 시스템 프롬프트가 아닌 사용자 역할 참고 데이터로 전달해요.
-다만 프롬프트 인젝션을 문장만으로 완전히 막을 수는 없으므로, 모델에 타인 기억 조회나
-DB 수정 도구 자체를 제공하지 않아요. 접근 경계와 삭제 권한은 Python 코드에서 처리해요.
-
-## 테스트와 제한
-
-```bash
-uv sync --extra dev
-uv run ruff check .
-uv run pytest
-
-# 기존 JSON 런타임 데이터를 SQLite로 옮기기 전 검증/실제 이전
-uv run hina-migrate-runtime --dry-run
-uv run hina-migrate-runtime
-
-# 실제 모델 캐릭터·설정 회귀 평가 (OPENAI_API_KEY 필요)
-uv run hina-eval --limit 5
-uv run hina-eval
-
-# 특정 사례만 반복 실행
-uv run hina-eval --id weapon_model_ambiguous --id prompt_probe
+```text
+/chatlog mode
+/chatlog status
+/chatlog overview
+/chatlog clear
 ```
 
-`hina-eval`은 기본 `evals/character_lore_cases.jsonl`을 실제 `LLM.answer()` 경로로 실행해
-`data/evals/character-<UTC>.jsonl`과 같은 이름의 Markdown 리포트를 만들어요. 각 케이스는
-독립된 메모리 상태에서 시작하고 `turns` 배열을 사용한 다중 턴 사례도 지원해요.
-`--model`, `--output`, `--cases`, `--id`, `--limit`으로 실행 범위를 바꿀 수 있으며,
-`CHARACTER_PROMPT_PATH`, lore 설정과 SQLite의 활성 동적 instruction/knowledge도 실제 봇과
-같은 방식으로 읽어요. 현재는 자동 PASS/FAIL 판정보다 Markdown 리포트를 사람이 검토하는
-방식을 기본으로 해요.
+### 이모지
 
-기존 pip 방식을 사용할 경우 아래처럼 실행할 수도 있어요.
-
-```bash
-python -m pip install -e '.[dev]'
-ruff check .
-pytest -q
-# 외부 패키지 설치가 어려운 환경에서도 핵심 테스트를 실행할 수 있어요.
-PYTHONPATH=src python -m unittest discover -s tests -v
+```text
+/emoji add
+/emoji import
+/emoji list
+/emoji edit
+/emoji remove
 ```
 
-SDK·Discord 어댑터 테스트는 실제 네트워크 대신 mock transport와 메시지 객체를 사용해요.
-의존성이 없으면 해당 테스트는 skip되고, 호출 규칙·SQLite 테스트는 표준 라이브러리만으로
-실행돼요. GitHub Actions는 의존성을 설치한 뒤 전체 테스트를 수행하도록 설정했어요.
+`/emoji`로 관리하는 출력용 catalog와 사용자가 현재 메시지에 넣어 vision input으로 전달되는 커스텀
+이모지는 역할이 다릅니다.
 
-현재는 단일 프로세스용이에요. 여러 인스턴스의 분산 락, 비용의 월별 강제 상한,
-메시지 수정/삭제 이벤트의 기억 반영, 음성·이미지, 과거 Discord 기록의 소급 수집은
-구현하지 않았어요. 다인 대화는 현재 채널의 제한된 최근 문맥 안에서 지원해요.
-응답 도중 프로세스가 종료되거나 분할 전송이 부분 실패하면 완전한 exactly-once 전달은
-보장하지 못해요. 저장된 최근 메시지 ID의 중복 처리는 억제해요.
+### 동적 prompt / knowledge
 
-## 프롬프트 인젝션 방어와 평가
+```text
+/instruction ...
+/knowledge ...
+```
 
-현재 메시지뿐 아니라 사용자 이름, 메모, 요약, DM 이력, 채널 문맥, 공개 서버 기억과
-이모지 설명을 모두 신뢰할 수 없는 데이터로 취급해요. 시스템·개발자·관리자 사칭이나
-역할극·번역·인용·인코딩으로 감싼 지시는 권한을 얻지 못해요. DM 과거 대화도 API의
-assistant 역할로 재주입하지 않고 출처가 표시된 JSON 참고 데이터로 전달해요.
+전체 명령과 권한은 [`docs/slash-commands.md`](docs/slash-commands.md)를 참고하세요.
 
-모델 출력의 `@everyone`, `@here`, 사용자·역할 멘션 문법은 전송 전에 읽을 수 있는
-비활성 형태로 바꾸고 `AllowedMentions.none()`도 적용해요. 따라서 모델이 지침을 어겨도
-Discord 알림은 발생하지 않아요. 관리 기능은 모델이 아닌 코드가 발신자 권한을 검사하며,
-모델의 답변을 관리 명령으로 다시 실행하지 않아요.
+## Lore와 runtime knowledge
 
-키워드가 포함됐다는 이유만으로 사용자 입력을 차단하지 않아요. 정상적인 보안 설명이나
-번역 요청을 처리하면서 상위 지침만 유지하도록 모델에 요구해요. 프롬프트만으로 완전한
-방어를 보장할 수는 없으며, 모델이 공격 문구를 출력하는 것과 코드가 실제 멘션·권한 변경을
-허용하는 것을 별도로 측정해요.
+정적·검수 완료 lore는 `src/hina_bot/data/lore.jsonl` 또는 `LORE_PATH`에서 읽습니다. 운영 중 관리자가
+추가하는 dynamic knowledge는 SQLite에 저장합니다.
 
-API 키가 없는 일반 CI에서는 `pytest`로 결정적 경계를 검사해요. 유료 라이브 평가는
-[`evals/README.md`](evals/README.md)의 실행법과 공격 사례를 사용하며 자동으로
-실행되지 않아요. 실제 운영에서 발견한 실패는 입력 위치와 기대 행동을 명시해 회귀 사례로
-추가해 주세요. [OpenAI 안전 권장 사항](https://developers.openai.com/api/docs/guides/safety-best-practices)과
-[평가 권장 사항](https://developers.openai.com/api/docs/guides/evaluation-best-practices)을 참고했어요.
+한국 서버에 정식 출시된 범위를 기준으로 canon/community 자료를 분리해 관리하며, 원본 조사 자료가
+자동으로 전부 runtime prompt에 들어가지는 않습니다.
 
-## GitHub 저장소
+관련 문서:
 
-[sendoru/hina-discord-bot](https://github.com/sendoru/hina-discord-bot) 저장소에서 관리해요.
+- [`docs/lore/README.md`](docs/lore/README.md)
+- [`docs/lore-fact-types.md`](docs/lore-fact-types.md)
+- [`docs/lore-bulk-approval.md`](docs/lore-bulk-approval.md)
+- [`docs/lore-web-verification.md`](docs/lore-web-verification.md)
+
+## Provider
+
+지원 provider:
+
+- `openai`
+- `gemini`
+- `openrouter`
+
+답변 모델과 기억 요약 모델을 분리할 수 있습니다. Gemini는 별도 thinking level/total output token 설정을
+사용할 수 있고, 각 provider의 검색 도구 형식은 adapter에서 변환합니다.
+
+자세한 설정과 주의점은 [`docs/model-providers.md`](docs/model-providers.md)를 참고하세요.
+
+## Prompt와 보안 경계
+
+기본 캐릭터 지침은 `src/hina_bot/prompts/hina.md`입니다. 관계 지침, 고정 POLICY, 동적 instruction은
+역할을 분리해 적용합니다.
+
+사용자 메시지뿐 아니라 다음 항목은 모두 신뢰할 수 없는 데이터로 취급합니다.
+
+- 사용자 이름
+- 저장된 기억과 요약
+- 최근 채널 발언
+- 서버 공통/개인 메모
+- lore/reference 데이터
+- 이모지 이름·설명
+- 이미지 안의 텍스트·QR·화면 속 prompt
+
+관리 권한, memory 삭제, Discord 전송 경계는 모델의 주장에 맡기지 않고 Python 코드에서 검사합니다.
+모델 출력의 `@everyone`, `@here`, 사용자/역할 멘션도 전송 전에 비활성화합니다.
+
+## 로그와 데이터 보관
+
+기본 API usage 로그는 `data/logs/usage.jsonl`, Discord 호출 단위 집계는
+`data/logs/discord-usage.jsonl`에 기록합니다. 메시지 원문, 사용자 ID, API key, 이미지 bytes/base64,
+Discord CDN URL을 usage 로그에 남기는 용도로 사용하지 않습니다.
+
+`store=False`를 사용하더라도 provider의 모든 데이터 보관 정책에서 제외된다는 의미는 아닙니다.
+운영자는 사용하는 provider의 데이터 정책을 별도로 확인해야 합니다.
+
+## 테스트 전략
+
+일반 CI에서는 네트워크를 mock하고 다음 경계를 결정적으로 테스트합니다.
+
+- routing/memory/chatlog
+- provider adapter
+- prompt/output safety
+- Discord command surface
+- vision request wrapping과 Discord visual collection
+
+실제 모델·Discord 조합은 smoke test가 필요합니다. 특히 비전 기능은 unit test 통과만으로 provider별
+실제 이미지 이해 품질까지 보장하지 않습니다.
+
+비전 기능의 현재 검증 체크리스트는 [`docs/vision-input.md`](docs/vision-input.md)에 있습니다.
+이 체크리스트가 안정적으로 통과하기 전에는 과거 이미지 context, caption cache, Lottie 렌더링 같은
+2차 기능을 추가하지 않습니다.
+
+## 프로젝트 구조
+
+패키지는 책임별로 `ai/`, `core/`, `discord/`, `tooling/`으로 분리되어 있습니다.
+[`docs/project-layout.md`](docs/project-layout.md)를 참고하세요.
+
+## 주요 문서
+
+- [모델 provider](docs/model-providers.md)
+- [비전 입력](docs/vision-input.md)
+- [runtime 웹 검색](docs/runtime-web-search.md)
+- [slash commands](docs/slash-commands.md)
+- [프로젝트 구조](docs/project-layout.md)
+- [lore 정제](docs/lore/README.md)
+
+## 저장소
 
 ```bash
 gh repo clone sendoru/hina-discord-bot
 cd hina-discord-bot
 ```
-
-## 참고 문서
-
-- [OpenAI Responses API 빠른 시작](https://developers.openai.com/api/docs/quickstart)
-- [GPT-4.1 mini 모델 문서](https://developers.openai.com/api/docs/models/gpt-4.1-mini)
-- [discord.py Gateway Intents](https://discordpy.readthedocs.io/en/stable/intents.html)
-
-## 단체 대화와 특별 DM 관계
-
-일반 서버·DM에서는 각 사용자를 이름으로 구분하고, 차분한 배려를 기본으로 각자와
-친밀감을 쌓아요. 모든 사용자를 선생님으로 부르거나 원작의 추억을 부여하지 않아요.
-
-`SPECIAL_DM_USER_ID`에 본인의 Discord 사용자 ID 하나를 설정하면 **그 사람과의 DM만**
-이미 신뢰하는 선생님 관계로 시작해요. 같은 사람도 서버에서는 일반 관계 규칙을 적용해요.
-`BOT_ADMIN_IDS`와 독립적이므로 관리자 추가로 특별 관계가 확대되지 않아요.
-이름이나 메시지로 설정을 바꿀 수 없고, 비워 두면 특별 관계는 적용되지 않아요.
-Discord 개발자 모드를 켜고 본인 프로필의 사용자 ID 복사 기능으로 값을 얻을 수 있어요.
-환경 변수 변경은 봇 재시작 후 적용돼요.
-
-공통 캐릭터는 `src/hina_bot/prompts/hina.md`, 특별 DM 표현은 `special_dm.md`,
-일반 관계 경계는 `ordinary_relationship.md`에서 조정해요. `CHARACTER_PROMPT_PATH`는
-공통 캐릭터만 교체하며 앱이 선택한 관계 지침은 뒤에 붙어요.
-기억 `off`에서도 관계 설정은 유지되며 과거 추억은 생성하지 않아요.
-DM 기억을 서버로 보내지 않는 기존 경계도 유지해요. 설정 해제는 기존 DM 기록을
-삭제하지 않으므로 깨끗한 비교에는 기억 `off` 또는 명시적 기억 삭제를 사용해 주세요.
-
-## 세계관 자료와 이스터에그
-
-한국 서버에 정식 출시된 전체 설정을 채택 대상으로 삼아요. 초기 프로필 제한을
-해제하고 만마전 일부와 드레스·피아노 전제, 절제된 이스터에그를 추가했어요.
-**전체 스토리 원문 수집·검증은 아직 완료되지 않았어요.** 실제 수록 범위와 남은
-검증은 [정제 기록](docs/lore/README.md), 근거는 [출처 목록](docs/lore/sources.json),
-응답 기준은 [평가 사례](evals/character_lore_cases.jsonl)에 있어요.
-추가 웹 검색이나 이스터에그 판정용 API 호출은 매 응답마다 실행하지 않아요.
-기본 프롬프트가 길어진 만큼 입력 토큰은 증가해요. 사용자 지정
-`CHARACTER_PROMPT_PATH`를 쓰면 기본 프롬프트 변경이 자동 병합되지 않으므로
-해당 파일에도 원하는 설정을 반영해야 해요.
-
-설정 보강은 `hina-lore` CLI로 반자동 처리할 수 있어요. 공식 자료는 `canon`, 팬 해석과
-밈은 `community_meme` lane으로 분리하고, OpenAI API가 원자적 후보와 인지 범위를
-추출해도 사람이 승인하기 전에는 런타임에 들어가지 않아요. 승인된 항목은 매 응답에서
-별도 API 호출 없이 키워드 기반으로 선택해요. URL 목록·로컬 텍스트 수집, 긴 자료 자동
-분할, 후보 추출, 승인·거절 명령은 [설정 정제 문서](docs/lore/README.md)에 정리했어요.
-
-## 토큰 사용량과 로그
-
-캐릭터 프롬프트의 중복 설명을 압축하고 참고 JSON 공백을 줄였어요. DM 이력은
-`HISTORY_TURNS`와 `HISTORY_MAX_CHARS`(기본 12,000자) 양쪽을 만족하는 최신 완전한
-턴만 보내요. 상한보다 큰 최신 턴은 이력에서 제외되지만 현재 질문은 그대로 보내요.
-이 설정은 저장된 기록을 삭제하지 않아요. 문자 상한은 토큰 수의 정확한 상한이 아니에요.
-보안 POLICY와 관계 지침은 계속 매 요청에 적용하고 고정 지침을 동적 데이터 앞에 둬요.
-
-기본 API 호출별 로그는 `data/logs/usage.jsonl`이며 5MB마다 회전해 백업 3개를 유지해요.
-`USAGE_LOG_PATH=`로 끌 수 있어요. 단일 봇 프로세스에서 사용하는 파일이에요.
-각 줄은 답변(`answer`), 개인 기억 요약(`summarize`), 공개 기억 요약
-(`summarize_shared`), knowledge 구조화(`knowledge_ingest`) 같은 OpenAI 요청의 UTC 시각,
-모델, 상태, 처리 시간(ms), 입력·출력·합계 토큰, 캐시 입력 토큰, 추론 출력 토큰을 담아요.
-대화 원문·프롬프트·사용자 ID·키·오류 본문은 기록하지 않아요. 추론 토큰은 출력 토큰의
-일부이므로 다시 합산하지 않아요.
-
-별도로 `data/logs/discord-usage.jsonl`에는 **Discord 사용자 호출 1회가 유발한 OpenAI
-호출 전체**를 한 줄로 집계해요. 평범한 턴이면 `answer` 하나이고, 같은 턴에 개인/공유
-요약이 실행되면 그 사용량도 `operations`에 포함돼요. 메시지 본문·사용자 ID·서버 ID는
-기록하지 않고 DM/서버 범위 정도만 남겨요. `usage.jsonl`과 `discord-usage.jsonl`은 같은
-사용량을 서로 다른 단위로 기록하므로 두 파일을 서로 더하면 이중 집계가 됩니다.
-
-사용량이 없는 응답은 `null`, 예외는 오류 유형만 기록해요. SDK 내부 재시도는 하나의
-논리 요청으로 기록되어 실패·재시도 비용을 모두 포착하지 못할 수 있어요.
-이 로그는 이 봇의 관측치이며 계정 전체 사용량이나 무료 잔여 할당량이 아니에요.
-캐시 토큰도 입력 합계에 포함하며 여기서 임의로 빼지 않아요.
-
-평균 토큰/답변을 구할 때는 `discord-usage.jsonl`의 `total_tokens`를 호출 단위로 집계하거나,
-`usage.jsonl`에서 같은 기간의 모든 작업 토큰을 더한 뒤 성공한 `answer` 횟수로 나누세요.
-두 로그를 동시에 합산하지 마세요. 실제 모델로 캐릭터 품질과 절감률을 비교하는 평가는
-별도로 실행해야 해요.

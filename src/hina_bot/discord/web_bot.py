@@ -1,5 +1,7 @@
 import logging
 
+from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
+
 from .bot import HinaClient as BaseHinaClient
 from .chat_llm import LLM
 from .config import Settings
@@ -7,18 +9,20 @@ from .routing import trigger_text
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
 from .target_recent import TargetAwareRecentMessages
+from .vision import VisionLimits, collect_visual_inputs
 
 log = logging.getLogger("hina")
 
 
 class HinaClient(BaseHinaClient):
-    """Production Discord client wired to chat web search and slash-only controls."""
+    """Production Discord client wired to current context, web search, and vision."""
 
     def __init__(self, settings: Settings, *, store=None, llm=None):
         if llm is None:
             llm = LLM(settings)
         super().__init__(settings, store=store, llm=llm)
         self.recent = TargetAwareRecentMessages(budget=settings.channel_context_chars)
+        self.vision_limits = VisionLimits.from_settings(settings)
         install_slash_commands(self)
 
     @staticmethod
@@ -38,11 +42,26 @@ class HinaClient(BaseHinaClient):
             self.settings.call_prefixes,
         )
         sampled = await collect(message, self.user.id, text) if text is not None else []
-        token = TARGET_CONTEXT.set(tuple(sampled))
+        visuals = (
+            await collect_visual_inputs(message, limits=self.vision_limits)
+            if text is not None else []
+        )
+        target_token = TARGET_CONTEXT.set(tuple(sampled))
+        visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
+
+        # The legacy base client treats an empty normalized text as a ping-only call. Preserve
+        # its trigger syntax while giving image-only calls a useful user prompt.
+        original_content = None
+        if text is not None and not text and visuals:
+            original_content = message.content
+            message.content = (message.content + " 이 이미지나 스티커를 봐줘.").strip()
         try:
             return await super().on_message(message)
         finally:
-            TARGET_CONTEXT.reset(token)
+            if original_content is not None:
+                message.content = original_content
+            CURRENT_VISUAL_INPUTS.reset(visual_token)
+            TARGET_CONTEXT.reset(target_token)
 
 
 def main():

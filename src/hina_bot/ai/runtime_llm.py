@@ -3,6 +3,7 @@ import json
 from .chat_llm import LLM as ChatLLM
 from .llm import SUMMARY_POLICY
 from .providers import create_provider_client
+from .vision import VISION_REQUEST_ACTIVE, wrap_vision_client
 
 GENERAL_RP_OUTPUT_POLICY = """[일반 RP 출력 원칙]
 참고자료가 히나를 3인칭으로 서술해도 최종 답변에서는 자기 행동·감정·관계를 반드시 1인칭으로
@@ -30,16 +31,26 @@ class LLM(ChatLLM):
     """Production chat LLM with information routing, provider selection, and RP rules."""
 
     def __init__(self, settings, client=None, memory_client=None):
-        primary_client = client or create_provider_client(settings, settings.provider)
+        primary_client = wrap_vision_client(
+            client or create_provider_client(settings, settings.provider)
+        )
         super().__init__(settings, client=primary_client)
         memory_provider = settings.memory_provider or settings.provider
         if memory_client is not None:
             self.memory_client = memory_client
         elif memory_provider == settings.provider:
+            # The vision facade is safe for summaries because only answer() marks a request active.
             self.memory_client = self.client
         else:
             self.memory_client = create_provider_client(settings, memory_provider)
         self.character = self.character.rstrip() + "\n\n" + GENERAL_RP_OUTPUT_POLICY
+
+    async def answer(self, *args, **kwargs):
+        token = VISION_REQUEST_ACTIVE.set(True)
+        try:
+            return await super().answer(*args, **kwargs)
+        finally:
+            VISION_REQUEST_ACTIVE.reset(token)
 
     async def close(self):
         try:

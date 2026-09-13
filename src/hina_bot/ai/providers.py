@@ -2,6 +2,7 @@
 
 import json
 import logging
+import mimetypes
 from types import SimpleNamespace as NS
 from urllib.parse import urlsplit
 
@@ -62,20 +63,51 @@ def _gemini_http_error(response: httpx.Response) -> ProviderAPIError:
     return ProviderAPIError("gemini", response.status_code, code=code, message=message)
 
 
-def _text_content(value) -> str:
+def _gemini_image_block(image_url: str):
+    if image_url.startswith("data:") and ";base64," in image_url:
+        header, data = image_url.split(",", 1)
+        mime_type = header[5:].split(";", 1)[0]
+        if mime_type.startswith("image/") and data:
+            return {"type": "image", "data": data, "mime_type": mime_type}
+        return None
+    mime_type = mimetypes.guess_type(urlsplit(image_url).path)[0] or "image/png"
+    if not mime_type.startswith("image/"):
+        mime_type = "image/png"
+    return {"type": "image", "uri": image_url, "mime_type": mime_type}
+
+
+def _gemini_content(value):
     if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        pieces = []
-        for item in value:
-            if isinstance(item, str):
-                pieces.append(item)
-            elif isinstance(item, dict):
-                text = item.get("text")
-                if isinstance(text, str):
-                    pieces.append(text)
-        return "\n".join(pieces)
-    return str(value)
+        return [{"type": "text", "text": value}] if value else []
+    if not isinstance(value, list):
+        text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        return [{"type": "text", "text": text}]
+
+    blocks = []
+    for item in value:
+        if isinstance(item, str):
+            if item:
+                blocks.append({"type": "text", "text": item})
+            continue
+        if not isinstance(item, dict):
+            continue
+        block_type = item.get("type")
+        if block_type in {"input_text", "text"}:
+            text = item.get("text")
+            if isinstance(text, str) and text:
+                blocks.append({"type": "text", "text": text})
+            continue
+        if block_type == "input_image":
+            image_url = item.get("image_url")
+            if isinstance(image_url, str) and image_url:
+                image = _gemini_image_block(image_url)
+                if image is not None:
+                    blocks.append(image)
+            continue
+        text = item.get("text")
+        if isinstance(text, str) and text:
+            blocks.append({"type": "text", "text": text})
+    return blocks
 
 
 def _gemini_input(value):
@@ -89,11 +121,11 @@ def _gemini_input(value):
         if not isinstance(item, dict):
             continue
         role = item.get("role", "user")
-        text = _text_content(item.get("content", ""))
-        if not text:
+        content = _gemini_content(item.get("content", ""))
+        if not content:
             continue
         step_type = "model_output" if role == "assistant" else "user_input"
-        steps.append({"type": step_type, "content": [{"type": "text", "text": text}]})
+        steps.append({"type": step_type, "content": content})
     return steps
 
 

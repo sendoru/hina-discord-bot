@@ -49,6 +49,24 @@ Freshness routing은 기존 Blue Archive lore 정책을 대체하지 않습니�
 공식 → 게임 데이터/스크립트 전사 → 정리형 위키 → 커뮤니티 순으로 우선하며, 로컬 카논과 검색
 결과 하나가 충돌한다고 기존 카논을 바로 덮어쓰지 않습니다.
 
+## Vision input과의 관계
+
+비전 입력은 freshness/information routing의 새 route가 아닙니다. 현재 호출 메시지에 이미지가
+있으면 기존 텍스트 질문과 함께 시각 입력이 전달되고, routing은 별도로 필요한 사실 출처를 결정합니다.
+
+예를 들어 다음 요청은 이미지와 web을 동시에 사용할 수 있습니다.
+
+```text
+[가게 사진 첨부]
+히나야 여기 지금 열었어?
+```
+
+이 경우 이미지는 장소나 간판을 해석하는 자료이고, `지금 열었어?`는 현재 영업 상태에 의존하므로
+기존 live-information route가 web을 선택할 수 있습니다. 반대로 `이 이모지 무슨 표정 같아?`처럼
+현재 이미지 자체만 보면 되는 요청은 웹 검색을 요구하지 않습니다.
+
+비전의 현재 범위와 저장 경계는 [`vision-input.md`](vision-input.md)를 참고하세요.
+
 ## Provider mapping
 
 공통 `web_search` 요청은 provider adapter가 변환합니다.

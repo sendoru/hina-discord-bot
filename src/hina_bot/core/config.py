@@ -78,6 +78,9 @@ class Settings:
     runtime_timezone: str = "Asia/Seoul"
     runtime_locale: str = "ko-KR"
     runtime_default_location: str = ""
+    vision_max_attachments: int = 4
+    vision_max_emojis: int = 12
+    vision_max_stickers: int = 8
 
     def api_key_for(self, provider: str) -> str:
         provider = _provider(provider, "provider")
@@ -161,6 +164,10 @@ class Settings:
                 or any(c in runtime_default_location for c in "\r\n\0")):
             raise ValueError("RUNTIME_LOCALE은 32자, RUNTIME_DEFAULT_LOCATION은 100자 이하여야 합니다.")
 
+        vision_max_attachments = int(os.getenv("VISION_MAX_ATTACHMENTS", "4"))
+        vision_max_emojis = int(os.getenv("VISION_MAX_EMOJIS", "12"))
+        vision_max_stickers = int(os.getenv("VISION_MAX_STICKERS", "8"))
+
         s = cls(
             api_key=keys[provider], discord_token=token,
             provider=provider, memory_provider=memory_provider,
@@ -200,18 +207,27 @@ class Settings:
             runtime_timezone=runtime_timezone,
             runtime_locale=runtime_locale,
             runtime_default_location=runtime_default_location,
+            vision_max_attachments=vision_max_attachments,
+            vision_max_emojis=vision_max_emojis,
+            vision_max_stickers=vision_max_stickers,
         )
         if s.special_dm_user_id is not None and s.special_dm_user_id <= 0:
             raise ValueError("SPECIAL_DM_USER_ID는 양의 Discord 사용자 ID여야 합니다.")
+        vision_total = s.vision_max_attachments + s.vision_max_emojis + s.vision_max_stickers
         if not (0 <= s.cooldown <= 3600 and 1 <= s.concurrency <= 20
                 and 128 <= s.output_tokens <= 4096
                 and s.output_tokens <= s.gemini_total_output_tokens <= 65536
                 and 0 <= s.history_max_chars <= 120000
                 and 0 <= s.channel_context_chars <= 12000
                 and 2 <= s.summary_every <= s.history_turns <= 30
-                and 0 <= s.lore_max_items <= 20 and 0 <= s.lore_max_chars <= 12000):
+                and 0 <= s.lore_max_items <= 20 and 0 <= s.lore_max_chars <= 12000
+                and 0 <= s.vision_max_attachments <= 32
+                and 0 <= s.vision_max_emojis <= 32
+                and 0 <= s.vision_max_stickers <= 32
+                and vision_total <= 32):
             raise ValueError("설정 범위 오류: cooldown 0~3600, concurrency 1~20, "
                              "output_tokens 128~4096, Gemini total output은 output_tokens~65536, "
                              "2 <= summary_every <= history_turns <= 30, "
-                             "lore_max_items 0~20, lore_max_chars 0~12000")
+                             "lore_max_items 0~20, lore_max_chars 0~12000, "
+                             "vision source quota는 각각 0~32이고 합계는 32 이하")
         return s
