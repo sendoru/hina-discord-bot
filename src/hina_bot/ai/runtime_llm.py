@@ -1,6 +1,6 @@
 import json
 
-from . import chat_llm_v2
+from .chat_llm import LLM as ChatLLM
 from .llm import SUMMARY_POLICY
 from .providers import create_provider_client
 
@@ -26,8 +26,8 @@ GENERAL_RP_OUTPUT_POLICY = """[일반 RP 출력 원칙]
 """
 
 
-class LLM(chat_llm_v2.LLM):
-    """Production chat LLM with provider routing and RP output rules."""
+class LLM(ChatLLM):
+    """Production chat LLM with information routing, provider selection, and RP rules."""
 
     def __init__(self, settings, client=None, memory_client=None):
         primary_client = client or create_provider_client(settings, settings.provider)
