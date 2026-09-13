@@ -7,7 +7,7 @@ from hina_bot.store import Store
 from hina_bot.web_bot import HinaClient
 
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
-from hina_bot.discord.vision import collect_visual_inputs
+from hina_bot.discord.vision import VisionLimits, collect_visual_inputs
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 16
 GIF = b"GIF89a" + b"x" * 16
@@ -66,6 +66,68 @@ async def test_collects_custom_emoji_once_and_raster_sticker():
     assert len([url for url in urls if "/emojis/123." in url]) == 1
     assert visuals[0].mime_type == "image/gif"
     assert visuals[1].mime_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_source_quotas_are_independent_and_skip_extra_downloads():
+    attachments = [
+        NS(
+            size=len(PNG),
+            content_type="image/png",
+            filename=f"screen-{index}.png",
+            read=AsyncMock(return_value=PNG),
+        )
+        for index in range(3)
+    ]
+    stickers = [
+        NS(
+            name=f"sticker-{index}",
+            url=f"https://cdn.discordapp.com/stickers/{100 + index}.png",
+            format=NS(name="png"),
+        )
+        for index in range(3)
+    ]
+    content = "히나야 " + " ".join(
+        f"<:emoji_{index}:{200 + index}>" for index in range(5)
+    )
+    message = NS(content=content, attachments=attachments, stickers=stickers)
+    urls = []
+
+    async def downloader(url):
+        urls.append(url)
+        return PNG
+
+    visuals = await collect_visual_inputs(
+        message,
+        limits=VisionLimits(attachments=1, emojis=3, stickers=2),
+        downloader=downloader,
+    )
+
+    assert [v.source for v in visuals] == [
+        "attachment",
+        "emoji",
+        "emoji",
+        "emoji",
+        "sticker",
+        "sticker",
+    ]
+    assert attachments[0].read.await_count == 1
+    attachments[1].read.assert_not_awaited()
+    attachments[2].read.assert_not_awaited()
+    assert len([url for url in urls if "/emojis/" in url]) == 3
+    assert len([url for url in urls if "/stickers/" in url]) == 2
+
+
+def test_vision_limits_follow_runtime_settings():
+    limits = VisionLimits.from_settings(Settings(
+        "test",
+        "test",
+        vision_max_attachments=2,
+        vision_max_emojis=15,
+        vision_max_stickers=5,
+    ))
+
+    assert limits == VisionLimits(attachments=2, emojis=15, stickers=5)
 
 
 @pytest.mark.asyncio
