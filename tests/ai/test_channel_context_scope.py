@@ -2,7 +2,6 @@ import json
 
 import httpx
 import pytest
-
 from hina_bot.chat_llm import LLM
 from hina_bot.config import Settings
 from hina_bot.routing import Scope
