@@ -6,6 +6,7 @@ fixtures, but the production web_bot entrypoint installs this surface and disabl
 
 import asyncio
 import logging
+import re
 
 import discord
 from discord import app_commands
@@ -17,6 +18,7 @@ from .routing import Scope
 log = logging.getLogger("hina")
 
 _ADMIN_MEMORY_COMMANDS = {"mode", "status", "overview", "purge"}
+_EMOJI_ALIAS_RE = re.compile(r"[a-z][a-z0-9_]{1,31}")
 
 HELP_TEXT = """일반 대화는 @멘션, 답장 핑, 또는 메시지 맨 앞의 `히나야`로 호출해 주세요.
 관리·설정 기능은 Discord 슬래시 명령으로만 사용합니다.
@@ -38,7 +40,7 @@ HELP_TEXT = """일반 대화는 @멘션, 답장 핑, 또는 메시지 맨 앞의
 관리
 `/instruction ...` — 동적 캐릭터 지침 관리
 `/knowledge ...` — runtime knowledge 관리
-`/emoji add|list|edit|remove` — 봇 관리자용 이모지 관리
+`/emoji add|import|list|edit|remove` — 봇 관리자용 이모지 관리
 
 일반 대화에서는 첨부파일·이미지·답장 원문을 직접 읽지 않습니다."""
 
@@ -91,6 +93,33 @@ def _text_pages(lines: list[str], *, limit: int = 1850) -> list[str]:
     if current:
         pages.append(current)
     return pages
+
+
+def _parse_emoji_import_items(items: str) -> list[tuple[str, str]]:
+    parsed: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for line_number, raw in enumerate(items.splitlines(), 1):
+        line = raw.strip()
+        if not line:
+            continue
+        if "|" not in line:
+            raise ValueError(f"{line_number}번째 줄은 `이모지이름 | 사용 상황` 형식으로 입력해 주세요.")
+        alias, description = (part.strip() for part in line.split("|", 1))
+        if not _EMOJI_ALIAS_RE.fullmatch(alias):
+            raise ValueError(
+                f"{line_number}번째 줄의 이름은 소문자로 시작하는 영문·숫자·밑줄 2~32자여야 해요."
+            )
+        if not 1 <= len(description) <= 100:
+            raise ValueError(f"{line_number}번째 줄의 사용 상황은 1~100자로 입력해 주세요.")
+        if alias in seen:
+            raise ValueError(f"{line_number}번째 줄의 `{alias}`가 입력 안에서 중복됐어요.")
+        seen.add(alias)
+        parsed.append((alias, description))
+    if not parsed:
+        raise ValueError("등록할 항목을 한 줄 이상 입력해 주세요.")
+    if len(parsed) > 20:
+        raise ValueError("한 번에 최대 20개까지 가져올 수 있어요.")
+    return parsed
 
 
 def upgrade_memory_group(client):
@@ -286,6 +315,52 @@ class EmojiSlashCommands(app_commands.Group):
             await interaction.followup.send(text, ephemeral=True)
             return
         await interaction.followup.send(f"등록했어요: {markup} `:{alias}:`", ephemeral=True)
+
+    @app_commands.command(name="import", description="현재 서버 이모지를 이름으로 여러 개 한꺼번에 등록")
+    @app_commands.describe(items="줄마다 `이모지이름 | 사용 상황` 형식으로 입력 (최대 20개)")
+    async def import_emojis(self, interaction: discord.Interaction, items: str):
+        if interaction.guild is None:
+            await interaction.response.send_message("서버에서만 사용할 수 있는 명령이에요.", ephemeral=True)
+            return
+        try:
+            parsed = _parse_emoji_import_items(items)
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        usable: dict[str, discord.Emoji] = {}
+        ambiguous: set[str] = set()
+        for emoji in interaction.guild.emojis:
+            if not emoji.is_usable():
+                continue
+            if emoji.name in usable:
+                ambiguous.add(emoji.name)
+            else:
+                usable[emoji.name] = emoji
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        success = 0
+        lines: list[str] = []
+        for alias, description in parsed:
+            if alias in ambiguous:
+                lines.append(f"`:{alias}:` ❌ 같은 이름의 서버 이모지가 여러 개 있어요.")
+                continue
+            emoji = usable.get(alias)
+            if emoji is None:
+                lines.append(f"`:{alias}:` ❌ 같은 이름의 사용 가능한 서버 이모지를 찾지 못했어요.")
+                continue
+            try:
+                markup = await self.client.emoji_registry.add(
+                    alias, description, source=str(emoji.id))
+            except ValueError as exc:
+                reason = str(exc).replace("히나야 /이모지 수정", "/emoji edit")
+                lines.append(f"`:{alias}:` ❌ {reason}")
+                continue
+            success += 1
+            lines.append(f"{markup} `:{alias}:` ✅")
+
+        result = [f"{success}/{len(parsed)}개 등록 완료"] + lines
+        await _send_ephemeral_pages(interaction, _text_pages(result))
 
     @app_commands.command(name="list", description="등록된 이모지와 사용 상황 목록")
     async def list_emojis(self, interaction: discord.Interaction):
