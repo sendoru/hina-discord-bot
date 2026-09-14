@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 
 from .admin_export import text_attachment
-from .admin_list import created_compact, created_label, sort_rows
+from .admin_list import created_label, sort_rows
 from .knowledge_ingest import KnowledgeIngestor
 from .runtime_knowledge import RuntimeKnowledgeRegistry
 
