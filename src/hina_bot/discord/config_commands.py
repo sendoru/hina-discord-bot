@@ -50,6 +50,10 @@ class ConfigCommands(app_commands.Group):
     def _apply_side_effects(self, key: str) -> None:
         if key == "channel_context_chars":
             self.client.recent.budget = self.client.settings.channel_context_chars
+        elif key == "external_context_policy":
+            # Do not let context collected under a broader policy survive a hot privacy change.
+            # The final egress filter is still authoritative even if a future caller forgets this.
+            self.client.recent.clear_all()
 
     @app_commands.command(name="status", description="현재 런타임 설정과 DB override 확인")
     async def status(self, interaction: discord.Interaction):
