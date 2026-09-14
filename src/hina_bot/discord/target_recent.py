@@ -24,12 +24,16 @@ class TargetAwareRecentMessages(RecentMessages):
         unix_time=None,
         author_user_id=None,
         reply_target_user_id=None,
+        direct_trigger=None,
     ):
+        direct = direct_trigger
+        if role != "assistant" and direct is None:
+            direct = bool(CURRENT_DIRECT_TRIGGER.get())
         if (
             role != "assistant"
             and self.store is not None
             and capture_mode(self.store, scope) == "direct"
-            and not CURRENT_DIRECT_TRIGGER.get()
+            and not direct
         ):
             return
 
@@ -51,6 +55,7 @@ class TargetAwareRecentMessages(RecentMessages):
             unix_time=unix_time,
             author_user_id=author_user_id,
             reply_target_user_id=reply_target_user_id,
+            direct_trigger=direct,
         )
 
     @staticmethod
@@ -149,6 +154,7 @@ class TargetAwareRecentMessages(RecentMessages):
                     "user_id": str(target.get("user_id", "")),
                     "author_user_id": str(target.get("user_id", "")),
                     "reply_target_user_id": None,
+                    "direct_trigger": sampled.get("direct_trigger"),
                     "name": str(target.get("name", ""))[:100],
                     "content": str(sampled.get("content", ""))[:2400],
                     "role": "user",
