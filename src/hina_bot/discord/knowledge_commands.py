@@ -3,8 +3,8 @@ import logging
 import discord
 from discord import app_commands
 
-from .admin_export import text_attachment
-from .admin_list import created_label, sort_rows
+from .admin_export import export_timestamp, text_attachment
+from .admin_list import sort_rows
 from .knowledge_ingest import KnowledgeIngestor
 from .runtime_knowledge import RuntimeKnowledgeRegistry
 
@@ -75,7 +75,8 @@ class KnowledgeCommands(app_commands.Group):
         kind = "사실" if label == "fact" else "해석"
         return "\n".join([
             f"[{row['id']}] {kind}/{state}",
-            f"추가: {created_label(row)}",
+            f"created_at: {export_timestamp(row.get('created_at'))}",
+            f"updated_at: {export_timestamp(row.get('updated_at'))}",
             f"awareness: {row['awareness']}",
             f"timeline: {row['timeline']}",
             f"subjects: {', '.join(row['subjects'])}",
@@ -201,7 +202,10 @@ class KnowledgeCommands(app_commands.Group):
         state = "ON" if row["enabled"] else "OFF"
         await interaction.response.send_message(
             f"`{row['id']}` [{kind}/{state}] 전체 내용은 첨부 파일에 넣었어요.",
-            file=text_attachment(self._export_entry(label, row) + "\n", "knowledge-item.txt"),
+            file=text_attachment(
+                self._export_entry(label, row) + "\n",
+                f"knowledge-{row['id']}.txt",
+            ),
             ephemeral=True,
         )
 
