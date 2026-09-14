@@ -1,5 +1,6 @@
 from contextvars import ContextVar
 
+from ..ai.egress_policy import filter_channel_context
 from .chatlog_capture import capture_mode
 from .recent import RecentMessages
 from .reply_context import REPLY_CONTEXT
@@ -9,9 +10,10 @@ CURRENT_DIRECT_TRIGGER = ContextVar("current_direct_trigger", default=False)
 
 
 class TargetAwareRecentMessages(RecentMessages):
-    def __init__(self, *args, store=None, **kwargs):
+    def __init__(self, *args, store=None, external_context_policy="full", **kwargs):
         super().__init__(*args, **kwargs)
         self.store = store
+        self.external_context_policy = external_context_policy
 
     def add(
         self,
@@ -57,6 +59,12 @@ class TargetAwareRecentMessages(RecentMessages):
             reply_target_user_id=reply_target_user_id,
             direct_trigger=direct,
         )
+        # Delivered answers own ephemeral sources; buffer eviction/deletion removes both.
+        if role == "assistant" and unix_time is None:
+            for row in self.buffers.get(self._key(scope), ()):
+                if row["message_id"] == message_id:
+                    row["reply_sources"] = [dict(source) for source in REPLY_CONTEXT.get()][:1]
+                    break
 
     @staticmethod
     def _take_recent(rows, budget, slots):
@@ -72,6 +80,8 @@ class TargetAwareRecentMessages(RecentMessages):
                 continue
             item = dict(row)
             item["content"] = content[:remaining]
+            if len(item["content"]) < len(content):
+                item["truncated"] = True
             remaining -= len(item["content"])
             selected.append(item)
         return list(reversed(selected)), remaining
@@ -91,6 +101,32 @@ class TargetAwareRecentMessages(RecentMessages):
     def context(self, scope, before_id):
         current_user_id = str(scope.user_id)
         base = super().candidates(scope, before_id)
+
+        explicit_ids = {str(row.get("message_id", "")) for row in REPLY_CONTEXT.get()}
+        turns = [row for row in base if row.get("role") == "assistant" and (
+            str(row.get("reply_target_user_id")) == current_user_id
+            or str(row.get("message_id")) in explicit_ids
+        )][-4:]
+        sources = []
+        seen_sources = set()
+        for turn in reversed(turns):
+            for source in turn.get("reply_sources", ()):
+                source_id = str(source.get("message_id", ""))
+                if source_id in seen_sources or source_id in explicit_ids:
+                    continue
+                seen_sources.add(source_id)
+                item = dict(source)
+                item.pop("reply_sources", None)
+                item.update(context_kind="prior_reply_source",
+                            reference_strength="prior_explicit_reply",
+                            source_turn_message_id=str(turn["message_id"]),
+                            source_turn_user_id=str(turn.get("reply_target_user_id", "")))
+                sources.append(item)
+        sources = list(reversed(sources[:2]))
+        sources = filter_channel_context(sources, scope.user_id, self.external_context_policy)
+        # Flatten before budgeting/filtering; nested data must never bypass egress policy.
+        for row in base:
+            row.pop("reply_sources", None)
 
         replied = []
         reply_ids = set()
@@ -165,6 +201,9 @@ class TargetAwareRecentMessages(RecentMessages):
         replied_selected, remaining = self._take_recent(replied, remaining, slots)
         slots -= len(replied_selected)
 
+        source_selected, remaining = self._take_recent(sources, remaining, min(2, slots))
+        slots -= len(source_selected)
+
         target_slots = min(3, slots) if extra else 0
         target_reserve = min(1500, remaining // 5) if extra else 0
         channel_budget = max(0, remaining - target_reserve)
@@ -216,4 +255,4 @@ class TargetAwareRecentMessages(RecentMessages):
         )
         selected_base.sort(key=lambda row: row.get("message_id", ""))
 
-        return target_selected + selected_base + replied_selected
+        return target_selected + selected_base + source_selected + replied_selected
