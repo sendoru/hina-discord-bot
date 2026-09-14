@@ -32,7 +32,29 @@ class TargetAwareRecentMessages(RecentMessages):
 
     def context(self, scope, before_id):
         base = super().context(scope, before_id)
-        seen = {str(row.get("message_id", "")) for row in base}
+
+        replied = []
+        reply_ids = set()
+        for row in REPLY_CONTEXT.get():
+            message_id = str(row.get("message_id", ""))
+            item = dict(row)
+            item["content"] = str(item.get("content", ""))[:4000]
+            item["context_kind"] = "replied_message"
+            item["reference_strength"] = "explicit_reply"
+            replied.append(item)
+            if message_id:
+                reply_ids.add(message_id)
+
+        if reply_ids:
+            base = [
+                row for row in base
+                if str(row.get("message_id", "")) not in reply_ids
+            ]
+
+        seen = reply_ids | {
+            str(row.get("message_id", "")) for row in base
+            if row.get("message_id") is not None
+        }
         extra = []
         for target in TARGET_CONTEXT.get():
             for sampled in target.get("sampled_messages", ()):
@@ -51,19 +73,4 @@ class TargetAwareRecentMessages(RecentMessages):
                 if message_id:
                     seen.add(message_id)
 
-        replied = []
-        for row in REPLY_CONTEXT.get():
-            message_id = str(row.get("message_id", ""))
-            if message_id and message_id in seen:
-                continue
-            item = dict(row)
-            item["content"] = str(item.get("content", ""))[:4000]
-            item["context_kind"] = "replied_message"
-            item["reference_strength"] = "explicit_reply"
-            replied.append(item)
-            if message_id:
-                seen.add(message_id)
-
-        # The explicit replied-to message is placed last so it is the closest channel-context row
-        # to the current invocation even when direct capture omitted it from the rolling buffer.
         return extra + base + replied
