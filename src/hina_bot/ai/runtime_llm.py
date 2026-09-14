@@ -1,6 +1,6 @@
 import json
 
-from .chat_llm import LLM as ChatLLM
+from .information_pipeline import InformationPipeline
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .providers import create_provider_client
 from .routing_plan import build_routing_plan
@@ -42,7 +42,7 @@ Discord 최종 답변에는 사용자가 실제로 읽을 대사와 필요한 �
 """
 
 
-class LLM(ChatLLM):
+class LLM(InformationPipeline):
     """Production LLM orchestrating routing, vision, memory, and RP policy."""
 
     def __init__(self, settings, client=None, memory_client=None):
