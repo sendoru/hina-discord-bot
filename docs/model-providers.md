@@ -27,7 +27,8 @@ MEMORY_MODEL=
 `MODEL_ROUTING_MODE=adaptive`로 설정하면 별도의 분류용 모델 호출 없이 기존 정보 routing 결과와
 질문의 명시적 특성을 조합해 답변 모델을 선택합니다. 분석·설계·코드·증명·긴 답변 요청은 smart,
 짧은 잡담·단순 번역·명확한 후속 질문은 fast가 기본입니다. 웹 검색이나 이미지 같은 약한 신호 하나만
-있을 때는 fast를 유지하고, 여러 신호가 겹치면 smart로 승격합니다.
+있을 때는 fast를 유지하고, 여러 신호가 겹치면 smart로 승격합니다. 대상 사용자의 basic history
+확인은 약한 신호로, deep history 분석은 그 자체로 smart 신호로 취급합니다.
 
 ```dotenv
 LLM_PROVIDER=gemini
