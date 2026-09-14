@@ -16,6 +16,39 @@ def _base(**overrides):
     return Settings(**values)
 
 
+def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    for name in (
+        "CALL_PREFIXES",
+        "DM_ALWAYS_REPLY",
+        "PUBLIC_SERVER_MEMORY_IN_DM",
+        "CHAT_WEB_SEARCH",
+        "COMMUNITY_LORE",
+        "MAX_OUTPUT_TOKENS",
+        "CHANNEL_CONTEXT_CHARS",
+        "HISTORY_MAX_CHARS",
+        "LORE_MAX_ITEMS",
+        "LORE_MAX_CHARS",
+        "RUNTIME_DEFAULT_LOCATION",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings.load()
+    assert settings.call_prefixes == ("히나야",)
+    assert settings.dm_always_reply is False
+    assert settings.public_memory_in_dm is True
+    assert settings.chat_web_search is True
+    assert settings.community_lore is True
+    assert settings.output_tokens == 1000
+    assert settings.channel_context_chars == 6000
+    assert settings.history_max_chars == 12000
+    assert settings.lore_max_items == 6
+    assert settings.lore_max_chars == 3200
+    assert settings.runtime_default_location == ""
+
+
 def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
     store = Store(":memory:")
     try:
