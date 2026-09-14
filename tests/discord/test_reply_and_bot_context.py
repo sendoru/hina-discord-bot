@@ -3,14 +3,14 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
 import pytest
-
 from hina_bot.config import Settings
-from hina_bot.discord.chatlog_capture import set_capture_mode_override
-from hina_bot.discord.reply_context import REPLY_CONTEXT, collect_reply_context
-from hina_bot.discord.target_recent import TargetAwareRecentMessages
 from hina_bot.routing import Scope
 from hina_bot.store import Store
 from hina_bot.web_bot import HinaClient
+
+from hina_bot.discord.chatlog_capture import set_capture_mode_override
+from hina_bot.discord.reply_context import REPLY_CONTEXT, collect_reply_context
+from hina_bot.discord.target_recent import TargetAwareRecentMessages
 
 
 class FakeHistoryChannel:
