@@ -1,12 +1,13 @@
 from types import SimpleNamespace
 
-from hina_bot.ai.information_pipeline import InformationPipeline
 from hina_bot.rp_output_policy import (
     ProvenanceMode,
     hide_web_citations,
     provenance_instruction,
     provenance_mode,
 )
+
+from hina_bot.ai.information_pipeline import InformationPipeline
 
 
 def test_provenance_modes():
