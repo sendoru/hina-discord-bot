@@ -1,8 +1,12 @@
-"""Compatibility import for the request-assembly layer.
+"""Compatibility import for the former v2 chat layer.
 
-New code should import :mod:`hina_bot.ai.request_assembly` directly.
+Production behavior now lives in :mod:`hina_bot.ai.information_pipeline`; request construction
+lives in :mod:`hina_bot.ai.request_assembly`.
 """
 
-from .request_assembly import LLM, RequestAssembler
+from .information_pipeline import InformationPipeline
+from .request_assembly import RequestAssembler
+
+LLM = InformationPipeline
 
 __all__ = ["LLM", "RequestAssembler"]
