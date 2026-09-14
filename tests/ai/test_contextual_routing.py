@@ -1,6 +1,7 @@
-from hina_bot.ai.contextual_routing import build_query, find_anchor, is_followup
 from hina_bot.routing import Scope
 from hina_bot.store import Store
+
+from hina_bot.ai.contextual_routing import build_query, find_anchor, is_followup
 
 
 def test_short_followup_reuses_same_speaker_topic():
