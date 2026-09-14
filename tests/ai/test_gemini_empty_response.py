@@ -3,7 +3,6 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
 import pytest
-
 from hina_bot.usage import EmptyProviderResponseError, UsageLogger
 
 
