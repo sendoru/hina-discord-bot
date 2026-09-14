@@ -3,7 +3,8 @@ import unittest
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
-from hina_bot.chatlog_commands import ChatLogCommands
+from hina_bot.discord.chatlog_capture import set_capture_mode_override
+from hina_bot.discord.chatlog_commands import ChatLogCommands, _set_mode_override
 from hina_bot.recent import RecentMessages
 from hina_bot.routing import Scope
 from hina_bot.store import Store
@@ -11,20 +12,62 @@ from hina_bot.store import Store
 
 class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
     async def test_access_control_and_command_surface(self):
-        group = ChatLogCommands(NS(emoji_admin_ids={100, 101}))
-        interaction = NS(user=NS(id=200), response=NS(send_message=AsyncMock()))
-        self.assertFalse(await group.interaction_check(interaction))
-        interaction.user.id = 100
-        self.assertTrue(await group.interaction_check(interaction))
-        self.assertEqual({c.name for c in group.commands}, {"mode", "status", "overview", "clear"})
+        store = Store(":memory:")
+        try:
+            group = ChatLogCommands(NS(store=store, emoji_admin_ids={100, 101}))
+            interaction = NS(user=NS(id=200), response=NS(send_message=AsyncMock()))
+            self.assertFalse(await group.interaction_check(interaction))
+            interaction.user.id = 100
+            self.assertTrue(await group.interaction_check(interaction))
+            self.assertEqual(
+                {command.name for command in group.commands},
+                {"mode", "status", "overview", "clear"},
+            )
+            self.assertIsNone(group.get_command("capture"))
+        finally:
+            store.close()
 
     def test_available_in_guilds_and_private_contexts(self):
-        group = ChatLogCommands(NS(emoji_admin_ids={100}))
-        self.assertTrue(group.allowed_contexts.guild)
-        self.assertTrue(group.allowed_contexts.dm_channel)
-        self.assertTrue(group.allowed_contexts.private_channel)
-        self.assertTrue(group.allowed_installs.guild)
-        self.assertTrue(group.allowed_installs.user)
+        store = Store(":memory:")
+        try:
+            group = ChatLogCommands(NS(store=store, emoji_admin_ids={100}))
+            self.assertTrue(group.allowed_contexts.guild)
+            self.assertTrue(group.allowed_contexts.dm_channel)
+            self.assertTrue(group.allowed_contexts.private_channel)
+            self.assertTrue(group.allowed_installs.guild)
+            self.assertTrue(group.allowed_installs.user)
+        finally:
+            store.close()
+
+    async def test_mode_direct_clears_target_buffer_and_keeps_chatlog_enabled(self):
+        store, recent, lock = Store(":memory:"), RecentMessages(), asyncio.Lock()
+        scope, other = Scope(1, 10, 100), Scope(1, 20, 100)
+        recent.add(scope, 1, "A", "current")
+        recent.add(other, 2, "A", "other channel")
+        client = NS(
+            store=store,
+            recent=recent,
+            channel_lock=lambda _: lock,
+            emoji_admin_ids={100},
+        )
+        group = ChatLogCommands(client)
+        interaction = NS(
+            guild_id=1,
+            channel_id=10,
+            user=NS(id=100),
+            response=NS(defer=AsyncMock(), send_message=AsyncMock()),
+            followup=NS(send=AsyncMock()),
+        )
+
+        await group.mode.callback(group, interaction, "direct", "channel")
+
+        self.assertTrue(store.chat_log_enabled(scope))
+        self.assertEqual(store.note(f"config:chatlog_capture:{scope.channel}"), "direct")
+        self.assertEqual(recent.context(scope, 3), [])
+        self.assertEqual(len(recent.context(other, 3)), 1)
+        text = interaction.followup.send.call_args.args[0]
+        self.assertIn("최종 적용: **direct**", text)
+        store.close()
 
     async def test_mode_off_clears_only_target_buffer_and_not_memory(self):
         store, recent, lock = Store(":memory:"), RecentMessages(), asyncio.Lock()
@@ -55,16 +98,12 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(recent.context(scope, 3), [])
         self.assertEqual(len(recent.context(other, 3)), 1)
         text = interaction.followup.send.call_args.args[0]
-        self.assertIn("최근 채널 로그", text)
-        self.assertIn("꺼짐", text)
+        self.assertIn("최종 적용: **off**", text)
         store.close()
 
-    async def test_inherit_removes_lower_override_and_status_shows_chain(self):
+    async def test_inherit_removes_both_backing_overrides_and_uses_parent_policy(self):
         store, recent, lock = Store(":memory:"), RecentMessages(), asyncio.Lock()
         scope = Scope(1, 10, 100)
-        store.set_chat_log_mode_override("global", "off")
-        store.set_chat_log_mode_override("guild:1", "on")
-        store.set_chat_log_mode_override(scope.channel, "off")
         client = NS(
             store=store,
             recent=recent,
@@ -72,6 +111,9 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
             emoji_admin_ids={100},
         )
         group = ChatLogCommands(client)
+        _set_mode_override(store, "global", "direct")
+        _set_mode_override(store, scope.realm, "all")
+        _set_mode_override(store, scope.channel, "off")
         interaction = NS(
             guild_id=1,
             channel_id=10,
@@ -83,9 +125,10 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         await group.mode.callback(group, interaction, "inherit", "channel")
 
         self.assertIsNone(store.chat_log_mode_override(scope.channel))
+        self.assertEqual(store.note(f"config:chatlog_capture:{scope.channel}"), "")
         self.assertTrue(store.chat_log_enabled(scope))
         text = interaction.followup.send.call_args.args[0]
-        self.assertIn("최종 적용: **on**", text)
+        self.assertIn("최종 적용: **all**", text)
         store.close()
 
     async def test_global_cannot_inherit_and_server_target_requires_guild(self):
@@ -112,11 +155,23 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("DM에서는 서버 설정", interaction.response.send_message.call_args.args[0])
         store.close()
 
-    def test_overview_lists_chatlog_values_only(self):
+    def test_legacy_mode_and_capture_settings_are_migrated_to_one_policy(self):
         store = Store(":memory:")
-        store.set_chat_log_mode_override("global", "off")
-        store.set_chat_log_mode_override("guild:1", "on")
-        store.set_chat_log_mode_override("guild:1:channel:11", "off")
+        store.set_chat_log_mode_override("global", "on")
+        set_capture_mode_override(store, "global", "direct")
+        store.set_chat_log_mode_override("guild:1", "off")
+
+        group = ChatLogCommands(NS(store=store, emoji_admin_ids={100}))
+        global_scope = Scope(2, 20, 100)
+        disabled_scope = Scope(1, 10, 100)
+
+        self.assertIn("최종 적용: **direct**", group._status_text(global_scope))
+        self.assertIn("최종 적용: **off**", group._status_text(disabled_scope))
+        self.assertEqual(store.note("config:chatlog_unified_v1"), "1")
+        store.close()
+
+    def test_overview_lists_one_unified_policy_column(self):
+        store = Store(":memory:")
         guild = NS(
             id=1,
             name="테스트 서버",
@@ -136,20 +191,26 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
             emoji_admin_ids={100},
         )
         group = ChatLogCommands(client)
+        _set_mode_override(store, "global", "direct")
+        _set_mode_override(store, "guild:1", "all")
+        _set_mode_override(store, "guild:1:channel:11", "off")
 
         rows = group._overview_rows(100, "all")
-        self.assertIn(["전역", "GLOBAL", "off", "off"], rows)
-        self.assertIn(["서버", "테스트 서버", "on", "on"], rows)
-        self.assertIn(["채널", "테스트 서버/#일반", "상속", "on"], rows)
+        self.assertIn(["전역", "GLOBAL", "direct", "direct"], rows)
+        self.assertIn(["서버", "테스트 서버", "all", "all"], rows)
+        self.assertIn(["채널", "테스트 서버/#일반", "상속", "all"], rows)
         self.assertIn(["채널", "테스트 서버/#봇", "off", "off"], rows)
-        self.assertIn(["서버", "상속 서버", "상속", "off"], rows)
+        self.assertIn(["서버", "상속 서버", "상속", "direct"], rows)
 
         compact = group._overview_rows(100, "overrides")
-        self.assertEqual(compact, [
-            ["전역", "GLOBAL", "off", "off"],
-            ["서버", "테스트 서버", "on", "on"],
-            ["채널", "테스트 서버/#봇", "off", "off"],
-        ])
+        self.assertEqual(
+            compact,
+            [
+                ["전역", "GLOBAL", "direct", "direct"],
+                ["서버", "테스트 서버", "all", "all"],
+                ["채널", "테스트 서버/#봇", "off", "off"],
+            ],
+        )
         store.close()
 
     async def test_clear_only_drops_current_channel_recent_buffer(self):
