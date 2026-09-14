@@ -110,7 +110,7 @@ class PurgeTests(unittest.TestCase):
         self.assertEqual(store.note(first.user_note), "keep user note")
         store.close()
 
-    def test_realm_purge_removes_user_memory_but_preserves_server_note_and_other_realms(self):
+    def test_realm_purge_removes_auto_memory_but_preserves_manual_notes(self):
         store = Store(":memory:")
         first = Scope(1, 10, 100)
         second = Scope(1, 20, 200)
@@ -128,13 +128,13 @@ class PurgeTests(unittest.TestCase):
         self.assertEqual(store.history(first), [])
         self.assertEqual(store.history(second), [])
         self.assertEqual(len(store.history(other)), 1)
-        self.assertEqual(store.note(first.user_note), "")
-        self.assertEqual(store.note(second.user_note), "")
+        self.assertEqual(store.note(first.user_note), "user one")
+        self.assertEqual(store.note(second.user_note), "user two")
         self.assertEqual(store.note(first.realm), "server note")
         self.assertEqual(store.note(other.user_note), "other user")
         store.close()
 
-    def test_global_purge_preserves_configuration_and_server_notes(self):
+    def test_global_purge_preserves_manual_notes_configuration_and_server_notes(self):
         store = Store(":memory:")
         guild = Scope(1, 10, 100)
         dm = Scope(None, 20, 200)
@@ -150,8 +150,8 @@ class PurgeTests(unittest.TestCase):
 
         self.assertEqual(store.history(guild), [])
         self.assertEqual(store.history(dm), [])
-        self.assertEqual(store.note(guild.user_note), "")
-        self.assertEqual(store.note(dm.user_note), "")
+        self.assertEqual(store.note(guild.user_note), "guild user")
+        self.assertEqual(store.note(dm.user_note), "dm user")
         self.assertEqual(store.note(guild.realm), "server note")
         self.assertEqual(store.memory_mode_override("global"), "read_only")
         self.assertEqual(store.chat_log_mode_override("global"), "off")
