@@ -1,4 +1,4 @@
-"""Current chat LLM with information-source routing layered over the v2 implementation."""
+"""Information-source routing layered over request assembly."""
 
 import re
 
@@ -12,6 +12,7 @@ from .information_routing import (
     looks_like_relation_or_event_question,
     looks_like_world_fact_question,
 )
+from .routing_plan import RoutingPlan
 from .self_profile_lore import fallback_references
 
 _IN_WORLD_PRESENT_STATE_QUERY = re.compile(
@@ -47,13 +48,7 @@ class LLM(BaseLLM):
         references: list[dict],
         freshness: FreshnessMode,
     ) -> bool:
-        """Treat fictional 'right now' roleplay as local context, not live-world search.
-
-        Temporal words such as '지금' are intentionally broad in the freshness classifier. When
-        the same message is anchored by retrieved world lore and asks about an in-world incident
-        or state, offering a live web-search tool is usually a category error. Explicit external
-        markers keep release/news/merchandise questions on the normal live-information path.
-        """
+        """Treat fictional 'right now' roleplay as local context, not live-world search."""
         if freshness != FreshnessMode.AUTO:
             return False
         if _EXTERNAL_PRESENT_STATE_MARKER.search(content):
@@ -70,7 +65,8 @@ class LLM(BaseLLM):
 
         existing = {str(row.get("reference", "")) for row in references}
         fallbacks = [
-            row for row in fallback_references(request.lore_query)
+            row
+            for row in fallback_references(request.lore_query)
             if str(row.get("reference", "")) not in existing
         ]
         return fallbacks + references
@@ -109,8 +105,10 @@ class LLM(BaseLLM):
         channel_context: list | None = None,
         emoji_catalog: list | None = None,
         use_memory: bool = True,
+        routing_plan: RoutingPlan | None = None,
     ) -> str:
-        request = classify_information_request(content)
+        plan = routing_plan or RoutingPlan(content, content)
+        request = classify_information_request(plan.routing_query)
         weather = None
         if request.route == InformationRoute.GENERAL:
             weather = await self.ambient_weather.current(self.settings)
@@ -125,6 +123,7 @@ class LLM(BaseLLM):
                 channel_context=channel_context,
                 emoji_catalog=emoji_catalog,
                 use_memory=use_memory,
+                routing_plan=plan,
             )
         finally:
             CURRENT_AMBIENT_WEATHER.reset(token)
