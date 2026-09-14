@@ -3,7 +3,8 @@ import logging
 import discord
 from discord import app_commands
 
-from .admin_list import created_compact, created_label, fit_table, sort_rows
+from .admin_export import text_attachment
+from .admin_list import created_compact, created_label, sort_rows
 from .knowledge_ingest import KnowledgeIngestor
 from .runtime_knowledge import RuntimeKnowledgeRegistry
 
@@ -68,6 +69,21 @@ class KnowledgeCommands(app_commands.Group):
             raise ValueError("같은 ID가 사실/해석 양쪽에 있어 자동 처리할 수 없습니다.")
         return matches[0]
 
+    @staticmethod
+    def _export_entry(label: str, row: dict) -> str:
+        state = "ON" if row["enabled"] else "OFF"
+        kind = "사실" if label == "fact" else "해석"
+        return "\n".join([
+            f"[{row['id']}] {kind}/{state}",
+            f"추가: {created_label(row)}",
+            f"awareness: {row['awareness']}",
+            f"timeline: {row['timeline']}",
+            f"subjects: {', '.join(row['subjects'])}",
+            f"keywords: {', '.join(row['keywords'])}",
+            "",
+            str(row["content"]),
+        ])
+
     @app_commands.command(
         name="ingest",
         description="긴 조사 메모를 기존 knowledge와 조정해 자동 반영",
@@ -117,7 +133,7 @@ class KnowledgeCommands(app_commands.Group):
                 lines.append(f"- … 외 {len(held) - 6}개")
         await interaction.followup.send("\n".join(lines)[:1900], ephemeral=True)
 
-    @app_commands.command(name="list", description="knowledge 검색·정렬 및 전체 목록 확인")
+    @app_commands.command(name="list", description="knowledge 검색·정렬 결과를 전체 내용 파일로 받기")
     @app_commands.describe(
         search="ID·본문·키워드·대상·시점에서 찾을 검색어. 비워 두면 전체 표시",
         sort="목록 정렬 방식. 기본은 추가 시간순",
@@ -165,43 +181,29 @@ class KnowledgeCommands(app_commands.Group):
         else:
             header = f"knowledge {len(rows)}/200 · {_SORT_LABELS.get(sort, '추가 시간순')}"
 
-        table_rows = []
-        for label, row in rows:
-            state = "ON" if row["enabled"] else "OFF"
-            kind = "사실" if label == "fact" else "해석"
-            table_rows.append([
-                str(row.get("id", "?")),
-                f"{kind}/{state}",
-                created_compact(row),
-                str(row.get("content", "")),
-            ])
-        text = fit_table(
-            header,
-            ["ID", "종류/상태", "추가(UTC)", "내용"],
-            table_rows,
-            [26, 9, 12, 43],
+        sections = [header]
+        sections.extend(self._export_entry(label, row) for label, row in rows)
+        filename = "knowledge-search.txt" if query else "knowledge.txt"
+        await interaction.response.send_message(
+            f"{header}\n전체 내용과 메타데이터는 첨부 파일에 넣었어요.",
+            file=text_attachment("\n\n---\n\n".join(sections) + "\n", filename),
+            ephemeral=True,
         )
-        await interaction.response.send_message(text, ephemeral=True)
 
-    @app_commands.command(name="show", description="자동 반영된 knowledge 한 항목 자세히 보기")
+    @app_commands.command(name="show", description="knowledge 한 항목을 전체 내용 파일로 받기")
     async def show(self, interaction: discord.Interaction, identifier: str):
         try:
             label, _, row = self._find(identifier)
         except ValueError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
-        state = "ON" if row["enabled"] else "OFF"
         kind = "사실" if label == "fact" else "해석"
-        text = (
-            f"`{row['id']}` [{kind}/{state}]\n"
-            f"추가: {created_label(row)}\n"
-            f"awareness: `{row['awareness']}`\n"
-            f"timeline: {row['timeline']}\n"
-            f"subjects: {', '.join(row['subjects'])}\n"
-            f"keywords: {', '.join(row['keywords'])}\n\n"
-            f"{row['content']}"
+        state = "ON" if row["enabled"] else "OFF"
+        await interaction.response.send_message(
+            f"`{row['id']}` [{kind}/{state}] 전체 내용은 첨부 파일에 넣었어요.",
+            file=text_attachment(self._export_entry(label, row) + "\n", "knowledge-item.txt"),
+            ephemeral=True,
         )
-        await interaction.response.send_message(text[:1900], ephemeral=True)
 
     async def _set_enabled(self, interaction, identifier: str, enabled: bool):
         try:
