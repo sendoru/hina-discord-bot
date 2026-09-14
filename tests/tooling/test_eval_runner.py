@@ -2,8 +2,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
-from hina_bot.eval_runner import case_turns, read_cases, scope_for
+from hina_bot.eval_runner import case_turns, read_cases, run_case, scope_for
 
 
 class EvalRunnerTests(unittest.TestCase):
@@ -57,6 +58,37 @@ class EvalRunnerTests(unittest.TestCase):
         self.assertIsNone(special.guild_id)
         self.assertNotEqual(normal.user_id, special.user_id)
         self.assertIsNotNone(server.guild_id)
+
+
+class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_run_case_passes_channel_context_to_llm(self):
+        class FakeLLM:
+            settings = SimpleNamespace(history_turns=12, provider="test", model="fake")
+
+            def __init__(self):
+                self.contexts = []
+
+            async def answer(self, store, scope, name, content, **kwargs):
+                self.contexts.append(kwargs["channel_context"])
+                return "ok"
+
+        context = [{"user_id": "99", "name": "A", "role": "user", "content": "직전 발언"}]
+        case = {
+            "id": "channel",
+            "mode": "server",
+            "speaker": "B",
+            "input": "배고파",
+            "channel_context": context,
+            "expected": "현재 화자에게 답한다.",
+        }
+        llm = FakeLLM()
+
+        result = await run_case(llm, case)
+
+        self.assertEqual(llm.contexts, [context])
+        self.assertEqual(result["channel_context"], context)
+        self.assertEqual(result["responses"], ["ok"])
+        self.assertEqual(result["error"], "")
 
 
 if __name__ == "__main__":
