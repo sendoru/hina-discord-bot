@@ -110,6 +110,26 @@ def test_lore_synthesis_and_large_relevant_context_can_escalate():
     assert context_plan.tier == ModelTier.SMART
 
 
+def test_target_history_depth_participates_in_model_routing():
+    basic = [{
+        "context_kind": "target_user_history",
+        "target_retrieval_mode": "basic",
+        "content": "방금 한 말",
+    }]
+    deep = [{
+        "context_kind": "target_user_history",
+        "target_retrieval_mode": "deep",
+        "content": "분석할 발언",
+    }]
+
+    assert build_model_plan(
+        settings(), information("방금 뭐라고 했어?"), channel_context=basic,
+    ).tier == ModelTier.FAST
+    assert build_model_plan(
+        settings(), information("어떤 사람 같아?"), channel_context=deep,
+    ).tier == ModelTier.SMART
+
+
 def test_fixed_mode_preserves_legacy_request_settings():
     plan = build_model_plan(
         settings(

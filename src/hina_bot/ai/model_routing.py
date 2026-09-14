@@ -22,7 +22,7 @@ _LONG_ANSWER_REQUEST = re.compile(
 )
 _LISTED_REQUIREMENT = re.compile(r"(?:^|\n)\s*(?:[-*]|\d+[.)])\s+", re.MULTILINE)
 _RELEVANT_CONTEXT_KINDS = frozenset({
-    "speaker_thread", "replied_message", "prior_reply_source",
+    "speaker_thread", "replied_message", "prior_reply_source", "target_user_history",
 })
 
 
@@ -101,6 +101,15 @@ def build_model_plan(
         add(1, "multi_source_lore")
     if len(information.references) >= 4:
         add(1, "many_references")
+
+    target_rows = [
+        row for row in channel_context
+        if row.get("context_kind") == "target_user_history"
+    ]
+    if any(row.get("target_retrieval_mode") == "deep" for row in target_rows):
+        add(2, "deep_target_history")
+    elif target_rows:
+        add(1, "basic_target_history")
 
     relevant_chars = sum(
         len(str(row.get("content", "")))
