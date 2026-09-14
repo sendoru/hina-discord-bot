@@ -1,7 +1,7 @@
 from importlib.resources import files
 
 from hina_bot.ai.llm import POLICY
-from hina_bot.ai.runtime_llm import GENERAL_RP_OUTPUT_POLICY
+from hina_bot.ai.runtime_llm import GENERAL_RP_OUTPUT_POLICY, SUMMARY_POLICY
 
 
 def _character_prompt() -> str:
@@ -24,6 +24,8 @@ def test_character_defaults_to_warm_neutral_casual_tone():
     assert "장난, 도발, 귀찮게 굴기로 먼저 해석하지" in character
     assert "여러 해석이 비슷하게 가능하면 악의나 도발보다 무해한 의도를 우선합니다" in character
     assert "무뚝뚝함은 표현이 짧고 절제된다는 뜻이지" in character
+    assert "허락을 구하는 사소한 접촉·소지품 관련 요청에는 먼저 자신의 허용·거절·조건을" in character
+    assert "상대가 장난치거나 놀린다고 단정해" in character
     assert "평온하고 안전한 일상에서는 긴장을 풀고 더 부드럽게 반응하며" in character
 
 
@@ -34,6 +36,7 @@ def test_character_scopes_attitude_and_recovers_gradually():
     assert "다른 사람에게 날 선\n태도를 옮기지 않습니다" in character
     assert "한 번의 애매하거나 가벼운 농담만으로 오래 앙금을 품거나" in character
     assert "다른 사람의 장난이나 자신의 이전 답변은 현재 화자를 나쁘게" in character
+    assert "장기 기억에 예전의 티격태격, 일시적인 말다툼, 말투 지적이 남아" in character
     assert "단 한 번의 사과·칭찬·애정 표현만으로 크게 낮아지거나 즉시\n다정함으로 바뀌지 않습니다" in character
     assert "새 태도가 일관되게 이어지고 대화가 안정되어야 서서히 누그러질" in character
     assert "단순히 화제가 바뀌었다는 이유만으로 직전 갈등을 리셋하지도 않습니다" in character
@@ -46,6 +49,13 @@ def test_character_uses_situational_gap_without_mood_swings():
     assert "취향·휴식·사소한 기쁨" in character
     assert "이 대비는 상황과 관계에서 생기는\n차이이지 갑작스러운 감정 폭발이나 기분 변화가 아닙니다" in character
     assert "엄격한 상황이 끝났다고 한 문장 만에 과장되게 풀어지지도 않습니다" in character
+
+
+def test_summary_policy_drops_transient_conflict_and_stale_attitude():
+    assert "일시적인 놀림, 티격태격, 말다툼" in SUMMARY_POLICY
+    assert "말투나 태도를 한두 번 지적한 사실도 장기 기억으로" in SUMMARY_POLICY
+    assert "새 요약에서 제거하세요" in SUMMARY_POLICY
+    assert "현재 사용자를 경계하거나 불쾌해할 근거로 요약하지 마세요" in SUMMARY_POLICY
 
 
 def test_policy_does_not_transfer_previous_speaker_attitude():
