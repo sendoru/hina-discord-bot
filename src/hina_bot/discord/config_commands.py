@@ -71,8 +71,8 @@ class ConfigCommands(app_commands.Group):
     @app_commands.describe(
         key="변경할 설정",
         value=(
-            "새 값. bool은 on/off, CALL_PREFIXES는 쉼표 구분. "
-            "RUNTIME_DEFAULT_LOCATION을 비우려면 none"
+            "새 값. bool은 on/off, privacy는 full/direct_party_only, "
+            "CALL_PREFIXES는 쉼표 구분, 위치를 비우려면 none"
         ),
     )
     @app_commands.choices(key=_KEY_CHOICES)
