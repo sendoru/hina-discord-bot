@@ -20,6 +20,14 @@ from .vision import VisionLimits, collect_visual_inputs
 log = logging.getLogger("hina")
 
 
+def _augment_empty_call(content: str, text: str | None, has_visuals: bool) -> str | None:
+    """Route a bare call through the LLM instead of the legacy hard-coded reply."""
+    if text is None or text:
+        return None
+    suffix = " 이 이미지나 스티커를 봐줘." if has_visuals else " 잠깐 봐줘."
+    return (content + suffix).strip()
+
+
 class HinaClient(BaseHinaClient):
     """Production Discord client wired to current context, web search, and vision."""
 
@@ -161,12 +169,13 @@ class HinaClient(BaseHinaClient):
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
         direct_token = CURRENT_DIRECT_TRIGGER.set(text is not None)
 
-        # The legacy base client treats an empty normalized text as a ping-only call. Preserve
-        # its trigger syntax while giving image-only calls a useful user prompt.
+        # The legacy base client has a hard-coded reply for an empty normalized trigger. Give bare
+        # calls a minimal conversational prompt instead so relationship and persona rules still run.
         original_content = None
-        if text is not None and not text and visuals:
+        augmented_content = _augment_empty_call(message.content, text, bool(visuals))
+        if augmented_content is not None:
             original_content = message.content
-            message.content = (message.content + " 이 이미지나 스티커를 봐줘.").strip()
+            message.content = augmented_content
         try:
             return await super().on_message(message)
         finally:
