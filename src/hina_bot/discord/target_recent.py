@@ -33,6 +33,17 @@ class TargetAwareRecentMessages(RecentMessages):
     def context(self, scope, before_id):
         base = super().context(scope, before_id)
 
+        # Live assistant rows inherit the triggering user's scope, so their user_id identifies the
+        # reply target. Hydrated bot-authored rows instead carry the bot author's id and therefore
+        # have no trustworthy target. Keep an assistant reply only for the same current user; this
+        # prevents one user's tense exchange from becoming the next user's default tone, and also
+        # fails closed for untargeted assistant history recovered after a restart.
+        current_user_id = str(scope.user_id)
+        base = [
+            row for row in base
+            if row.get("role") != "assistant" or str(row.get("user_id", "")) == current_user_id
+        ]
+
         replied = []
         reply_ids = set()
         for row in REPLY_CONTEXT.get():
