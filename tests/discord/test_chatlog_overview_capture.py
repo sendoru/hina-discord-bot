@@ -3,6 +3,7 @@ from types import SimpleNamespace as NS
 
 from hina_bot.chatlog_commands import ChatLogCommands
 from hina_bot.store import Store
+
 from hina_bot.discord.chatlog_capture import (
     capture_mode_overrides,
     set_capture_mode_override,
