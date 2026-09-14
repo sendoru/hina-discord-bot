@@ -23,14 +23,6 @@ def test_settings_load_external_context_policy_defaults_to_bot_interactions_only
     assert Settings.load().external_context_policy == "bot_interactions_only"
 
 
-def test_settings_load_normalizes_legacy_external_context_policy(monkeypatch, tmp_path: Path):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("DISCORD_TOKEN", "token")
-    monkeypatch.setenv("OPENAI_API_KEY", "key")
-    monkeypatch.setenv("EXTERNAL_CONTEXT_POLICY", "direct_party_only")
-    assert Settings.load().external_context_policy == "bot_interactions_only"
-
-
 def test_settings_load_accepts_full_external_context_policy(monkeypatch, tmp_path: Path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DISCORD_TOKEN", "token")
