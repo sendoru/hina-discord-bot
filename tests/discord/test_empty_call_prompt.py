@@ -1,6 +1,7 @@
+from hina_bot.routing import Scope
+
 from hina_bot.discord.bot import _bare_call_reply
 from hina_bot.discord.web_bot import _augment_empty_call
-from hina_bot.routing import Scope
 
 
 def test_bare_text_call_does_not_invent_llm_intent():
