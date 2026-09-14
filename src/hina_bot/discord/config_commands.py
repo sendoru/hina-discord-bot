@@ -103,8 +103,9 @@ class ConfigCommands(app_commands.Group):
         if parsed == "bot_interactions_only":
             detail = (
                 "현재 채널에서 사용자들이 히나를 직접 호출한 말과 히나 답변, "
-                "호출자 본인의 허용된 기억만 외부 모델 요청에 포함해요. 일반 채널 잡담·"
-                "target history·cross-user memory·서버 공통 메모는 제외돼요."
+                "호출자 본인의 허용된 기억만 외부 모델 요청에 포함해요. 대상 사용자 조회도 "
+                "히나를 직접 호출한 발언만 허용하고, 일반 채널 잡담·cross-user memory·"
+                "서버 공통 메모는 제외돼요."
             )
         else:
             detail = (

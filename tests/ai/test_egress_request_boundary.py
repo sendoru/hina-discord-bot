@@ -96,6 +96,15 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
             "context_kind": "target_user_history",
             "content": "TARGET-HISTORY",
         },
+        {
+            "message_id": "16",
+            "role": "user",
+            "user_id": "200",
+            "author_user_id": "200",
+            "direct_trigger": False,
+            "context_kind": "target_user_history",
+            "content": "TARGET-AMBIENT-HISTORY",
+        },
     ]
     public_context = [
         {
@@ -130,11 +139,13 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
         assert "MY-NOTE" in serialized
         assert "MY-SUMMARY" in serialized
         assert "MY-PUBLIC-MEMORY" in serialized
+        assert "TARGET-HISTORY" in serialized
+        assert "[대상 사용자의 채널 발언]" in payload["instructions"]
 
         for blocked in (
             "SERVER-NOTE-SECRET",
             "MY-AMBIENT",
-            "TARGET-HISTORY",
+            "TARGET-AMBIENT-HISTORY",
             "OTHER-PUBLIC-MEMORY",
         ):
             assert blocked not in serialized

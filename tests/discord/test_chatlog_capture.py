@@ -140,7 +140,7 @@ class TargetContextCaptureTests(unittest.IsolatedAsyncioTestCase):
             message,
             99,
             "<@200> 어떻게 생각해?",
-            direct_only=True,
+            visibility_mode="direct",
             call_prefixes=("히나야",),
         )
 

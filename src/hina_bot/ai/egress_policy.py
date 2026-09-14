@@ -43,7 +43,9 @@ def allow_channel_row(row: dict, current_user_id: int | str, policy: str) -> boo
     kind = str(row.get("context_kind") or "")
     role = str(row.get("role") or "")
 
-    if kind in {"target_user_history", "prior_reply_source"}:
+    if kind == "target_user_history":
+        return role == "user" and row.get("direct_trigger") is True
+    if kind == "prior_reply_source":
         return False
     if role == "assistant":
         return True
