@@ -15,17 +15,48 @@
 - `RUNTIME_TIMEZONE` (기본 `Asia/Seoul`)
 - `RUNTIME_LOCALE` (기본 `ko-KR`)
 - 선택적 `RUNTIME_DEFAULT_LOCATION`
+- 기본 지역이 설정된 일반 대화에서는 캐시된 현재 날씨 스냅샷
 
 따라서 `지금 몇 시야?`, `오늘 무슨 요일이야?` 같은 질문은 검색 없이 런타임 clock으로
 답합니다. 또한 단순 잡담에서도 사용자의 상태·일정·행동과 자연스럽게 관련될 때는 시간대·요일·계절을
 반영할 수 있습니다. 예를 들어 아침에 `너무 졸려`라고 하면 현재 시점에 맞는 반응을 할 수 있지만,
 관련 없는 답변마다 시간이나 계절을 반복해서 언급하지 않도록 지시합니다. 제공된 현재 시점과
-모순되는 시간대 표현을 만들지 않으며, 날씨처럼 runtime context에 없는 현재 환경 정보는 추측하지
-않습니다.
+모순되는 시간대 표현을 만들지 않습니다.
 
 `RUNTIME_DEFAULT_LOCATION`은 날씨·교통·영업시간처럼 사용자가 지역을 생략한 경우의 fallback일
 뿐이며 실제 사용자 위치로 취급하지 않습니다. 기본 지역도 없으면 지역을 추측하지 않고 필요한
 위치를 물어보도록 지시합니다.
+
+## Ambient weather context
+
+`RUNTIME_DEFAULT_LOCATION`이 설정되어 있으면 일반 잡담(`InformationRoute.GENERAL`)에서만 현재
+날씨를 보조 환경 context로 준비합니다. 위치 문자열은 Open-Meteo Geocoding API로 좌표화하고,
+Forecast API의 current weather에서 다음 항목을 가져옵니다.
+
+- 날씨 상태(WMO weather code를 짧은 한국어 표현으로 변환)
+- 기온 / 체감온도
+- 습도
+- 최근 강수량
+- 10 m 풍속
+- 낮/밤 여부
+
+날씨 스냅샷은 프로세스 메모리에 **20분 TTL**로 캐시합니다. 갱신 실패 시 답변 자체는 실패시키지
+않고 해당 턴에는 ambient weather를 생략하며, 60초 동안 재시도를 억제합니다. 따라서 Discord
+메시지마다 외부 날씨 요청을 보내지 않습니다.
+
+이 정보는 사용자의 외출·복장·피로·일정 같은 현실 대화와 관련 있을 때만 자연스럽게 활용하고,
+매 답변에 날씨를 억지로 언급하지 않도록 지시합니다. 또한 기본 지역의 날씨를 사용자의 실제 현재
+위치라고 단정하거나, 게헨나 같은 세계관 내부 장소의 환경으로 옮겨 쓰지 않습니다.
+
+사용자가 `지금 날씨 어때?`처럼 최신 현실 정보를 직접 묻는 경우에는 기존 freshness/web-search
+경로가 우선합니다. ambient weather는 그런 요청을 대신하는 정확성 경로가 아니라, 일반 대화에
+현실감을 더하기 위한 저비용 보조 context입니다.
+
+`RUNTIME_DEFAULT_LOCATION`을 비우면 ambient weather 네트워크 호출도 발생하지 않습니다.
+
+현재 구현은 Open-Meteo의 geocoding/forecast API와 날씨 데이터를 사용합니다. Open-Meteo 및
+원 데이터 제공자에 대한 attribution 요구사항은 Open-Meteo의 CC BY 4.0 라이선스 정책을 따릅니다:
+https://open-meteo.com/
 
 ## Freshness routing
 

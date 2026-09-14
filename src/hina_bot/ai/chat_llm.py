@@ -2,10 +2,12 @@
 
 import re
 
+from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
 from .chat_llm_v2 import LLM as BaseLLM
 from .freshness import FreshnessMode
 from .information_evidence import search_mode
 from .information_routing import (
+    InformationRoute,
     classify_information_request,
     looks_like_relation_or_event_question,
     looks_like_world_fact_question,
@@ -27,6 +29,10 @@ _EXTERNAL_PRESENT_STATE_MARKER = re.compile(
 
 
 class LLM(BaseLLM):
+    def __init__(self, settings, client=None):
+        super().__init__(settings, client=client)
+        self.ambient_weather = AmbientWeatherCache()
+
     @staticmethod
     def _looks_like_relation_or_event_question(content: str) -> bool:
         return looks_like_relation_or_event_question(content)
@@ -92,6 +98,36 @@ class LLM(BaseLLM):
             if not trusted:
                 return "required" if self.settings.chat_web_search else "none"
         return mode
+
+    async def answer(
+        self,
+        store,
+        scope,
+        name: str,
+        content: str,
+        public_context: list | None = None,
+        channel_context: list | None = None,
+        emoji_catalog: list | None = None,
+        use_memory: bool = True,
+    ) -> str:
+        request = classify_information_request(content)
+        weather = None
+        if request.route == InformationRoute.GENERAL:
+            weather = await self.ambient_weather.current(self.settings)
+        token = CURRENT_AMBIENT_WEATHER.set(weather)
+        try:
+            return await super().answer(
+                store,
+                scope,
+                name,
+                content,
+                public_context=public_context,
+                channel_context=channel_context,
+                emoji_catalog=emoji_catalog,
+                use_memory=use_memory,
+            )
+        finally:
+            CURRENT_AMBIENT_WEATHER.reset(token)
 
 
 __all__ = ["LLM"]
