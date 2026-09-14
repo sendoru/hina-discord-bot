@@ -115,6 +115,25 @@ class TargetAwareRecentMessages(RecentMessages):
                 if str(row.get("message_id", "")) not in reply_ids
             ]
 
+        # Busy public channels can produce many short side messages between two turns of the same
+        # conversation. Keep the caller's own thread as a first-class slice instead of letting
+        # unrelated ambient chatter evict it from a small recency window. Cross-user assistant
+        # replies are still excluded above, so this continuity does not reintroduce tone leakage.
+        speaker_thread = []
+        ambient = []
+        for row in base:
+            author_id = str(row.get("author_user_id") or row.get("user_id") or "")
+            reply_target = str(row.get("reply_target_user_id") or "")
+            if author_id == current_user_id or reply_target == current_user_id:
+                item = dict(row)
+                item["context_kind"] = "speaker_thread"
+                item["reference_strength"] = "same_speaker"
+                speaker_thread.append(item)
+            else:
+                item = dict(row)
+                item["context_kind"] = "channel_ambient"
+                ambient.append(item)
+
         seen = reply_ids | {
             str(row.get("message_id", "")) for row in base
             if row.get("message_id") is not None
@@ -139,27 +158,39 @@ class TargetAwareRecentMessages(RecentMessages):
                 if message_id:
                     seen.add(message_id)
 
-        # One budget now covers every source of channel context. Explicit replies have the highest
-        # priority, normal recent chat comes next, and target-user history receives only a small
-        # reserved slice so it cannot overwhelm the current conversation. Unused space is returned
-        # to normal recent chat.
+        # One character budget covers every source of channel context, but the item budget is now
+        # slightly wider because short ambient Discord chatter should not erase an ongoing speaker
+        # thread. Priority is: explicit reply, same-speaker continuity, ambient channel chat, then
+        # target-user history. Unused reservations flow back to the remaining sources.
         remaining = max(0, int(self.budget))
-        slots = 12
+        slots = 18
 
-        replied_selected, unused = self._take_recent(replied, remaining, slots)
-        remaining = unused
+        replied_selected, remaining = self._take_recent(replied, remaining, slots)
         slots -= len(replied_selected)
 
         target_slots = min(3, slots) if extra else 0
-        target_reserve = min(1800, remaining // 4) if extra else 0
-        base_slots = max(0, slots - target_slots)
-        base_selected, base_unused = self._take_recent(
-            base,
-            max(0, remaining - target_reserve),
-            base_slots,
+        target_reserve = min(1500, remaining // 5) if extra else 0
+        channel_budget = max(0, remaining - target_reserve)
+        channel_slots = max(0, slots - target_slots)
+
+        thread_slots = min(8, max(4, channel_slots // 2)) if speaker_thread else 0
+        thread_reserve = min(3000, channel_budget // 2) if speaker_thread else 0
+        thread_selected, thread_unused = self._take_recent(
+            speaker_thread,
+            thread_reserve,
+            thread_slots,
         )
-        remaining = target_reserve + base_unused
-        slots -= len(base_selected)
+        thread_used = thread_reserve - thread_unused
+        channel_budget -= thread_used
+        channel_slots -= len(thread_selected)
+
+        ambient_selected, ambient_unused = self._take_recent(
+            ambient,
+            channel_budget,
+            channel_slots,
+        )
+        remaining = target_reserve + ambient_unused
+        slots -= len(thread_selected) + len(ambient_selected)
 
         target_selected, target_unused = self._take_recent(
             extra,
@@ -170,13 +201,22 @@ class TargetAwareRecentMessages(RecentMessages):
         slots -= len(target_selected)
 
         selected_base_ids = {
-            str(row.get("message_id", "")) for row in base_selected
+            str(row.get("message_id", ""))
+            for row in thread_selected + ambient_selected
         }
         older_base = [
-            row for row in base
+            row for row in speaker_thread + ambient
             if str(row.get("message_id", "")) not in selected_base_ids
         ]
+        older_base.sort(key=lambda row: row.get("message_id", ""))
         base_backfill, remaining = self._take_recent(older_base, remaining, slots)
-        base_selected = self._merge_in_source_order(base, base_selected, base_backfill)
 
-        return target_selected + base_selected + replied_selected
+        selected_base = self._merge_in_source_order(
+            speaker_thread + ambient,
+            thread_selected,
+            ambient_selected,
+            base_backfill,
+        )
+        selected_base.sort(key=lambda row: row.get("message_id", ""))
+
+        return target_selected + selected_base + replied_selected
