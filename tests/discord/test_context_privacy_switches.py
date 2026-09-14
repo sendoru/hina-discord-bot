@@ -2,13 +2,11 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
 import pytest
-
 from hina_bot.config import Settings
+from hina_bot.discord.config_commands import ConfigCommands
 from hina_bot.routing import Scope
 from hina_bot.store import Store
 from hina_bot.web_bot import HinaClient
-
-from hina_bot.discord.config_commands import ConfigCommands
 
 
 @pytest.fixture
