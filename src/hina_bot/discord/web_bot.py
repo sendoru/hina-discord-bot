@@ -87,6 +87,7 @@ class HinaClient(BaseHinaClient):
         self.recent = TargetAwareRecentMessages(
             budget=settings.channel_context_chars,
             store=self.store,
+            external_context_policy=settings.external_context_policy,
         )
         self.vision_limits = VisionLimits.from_settings(settings)
         install_slash_commands(self)
