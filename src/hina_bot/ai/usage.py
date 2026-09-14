@@ -44,17 +44,60 @@ def _provider_error_fields(exc: BaseException) -> dict:
     fields = {}
     provider = getattr(exc, "provider", None)
     status_code = getattr(exc, "status_code", None)
+    response_status = getattr(exc, "response_status", None)
     error_code = getattr(exc, "error_code", None)
     error_message = getattr(exc, "error_message", None)
     if isinstance(provider, str) and provider:
         fields["provider"] = provider
     if isinstance(status_code, int):
         fields["http_status"] = status_code
+    if isinstance(response_status, str) and response_status:
+        fields["provider_response_status"] = response_status
     if isinstance(error_code, str) and error_code:
         fields["provider_error_code"] = error_code
     if isinstance(error_message, str) and error_message:
         fields["provider_error_message"] = error_message
     return fields
+
+
+def _usage_fields(response) -> dict:
+    usage = getattr(response, "usage", None)
+    return {
+        "input_tokens": getattr(usage, "input_tokens", None),
+        "output_tokens": getattr(usage, "output_tokens", None),
+        "total_tokens": getattr(usage, "total_tokens", None),
+        "cached_tokens": getattr(
+            getattr(usage, "input_tokens_details", None), "cached_tokens", None),
+        "reasoning_tokens": getattr(
+            getattr(usage, "output_tokens_details", None), "reasoning_tokens", None),
+    }
+
+
+def _combined_attempt_fields(responses) -> dict:
+    combined = {field: None for field in _TOKEN_FIELDS}
+    for response in responses:
+        values = _usage_fields(response)
+        for field in _TOKEN_FIELDS:
+            value = values[field]
+            if isinstance(value, int):
+                combined[field] = (combined[field] or 0) + value
+    return combined
+
+
+def _visible_text(response) -> str:
+    text = getattr(response, "output_text", "")
+    return text if isinstance(text, str) else ""
+
+
+class EmptyProviderResponseError(RuntimeError):
+    """A provider completed generation without returning visible response text."""
+
+    def __init__(self, provider: str, response_status: str):
+        self.provider = provider
+        self.response_status = response_status
+        self.error_code = "EMPTY_RESPONSE"
+        self.error_message = "retry after completed empty response produced no visible text"
+        super().__init__(f"{provider} returned no visible response text")
 
 
 class UsageLogger:
@@ -174,28 +217,48 @@ class UsageLogger:
         started = perf_counter()
         row = {"at": datetime.now(UTC).isoformat(), "operation": operation,
                "model": kwargs["model"]}
+        responses = []
 
         try:
             response = await client.responses.create(**kwargs)
-            usage = getattr(response, "usage", None)
-            web_calls = _web_search_calls(response)
+            responses.append(response)
+            provider = getattr(client, "provider_name", "")
+            completed_empty = (
+                provider == "gemini"
+                and getattr(response, "status", None) == "completed"
+                and not _visible_text(response).strip()
+            )
+            if completed_empty:
+                response = await client.responses.create(**kwargs)
+                responses.append(response)
+                row["empty_response_retries"] = 1
+                if not _visible_text(response).strip():
+                    raise EmptyProviderResponseError(
+                        "gemini", str(getattr(response, "status", "unknown")))
+
+            web_calls = sum(_web_search_calls(item) for item in responses)
             row.update(status=response.status,
-                       input_tokens=getattr(usage, "input_tokens", None),
-                       output_tokens=getattr(usage, "output_tokens", None),
-                       total_tokens=getattr(usage, "total_tokens", None),
-                       cached_tokens=getattr(getattr(usage, "input_tokens_details", None),
-                                             "cached_tokens", None),
-                       reasoning_tokens=getattr(getattr(usage, "output_tokens_details", None),
-                                                "reasoning_tokens", None),
+                       **_combined_attempt_fields(responses),
                        web_search_calls=web_calls,
-                       web_search_used=web_calls > 0)
-            error_codes = getattr(response, "_hina_error_codes", None)
+                       web_search_used=web_calls > 0,
+                       api_attempts=len(responses))
+            error_codes = []
+            for item in responses:
+                error_codes.extend(getattr(item, "_hina_error_codes", None) or [])
+            if completed_empty:
+                error_codes.append("empty_response_retried")
             if error_codes:
-                row["response_error_codes"] = list(error_codes)
+                row["response_error_codes"] = list(dict.fromkeys(error_codes))
             return response
         except BaseException as exc:
             row.update(status="error", error_type=type(exc).__name__)
             row.update(_provider_error_fields(exc))
+            if responses:
+                row.update(_combined_attempt_fields(responses))
+                web_calls = sum(_web_search_calls(item) for item in responses)
+                row["web_search_calls"] = web_calls
+                row["web_search_used"] = web_calls > 0
+                row["api_attempts"] = len(responses)
             raise
         finally:
             row["elapsed_ms"] = round((perf_counter() - started) * 1000)
