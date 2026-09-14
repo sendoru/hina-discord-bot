@@ -240,7 +240,13 @@ class ModeCommandTests(unittest.IsolatedAsyncioTestCase):
         store.set_memory_mode_override("guild:1:channel:11", "normal")
         guild = NS(id=1, name="테스트 서버",
                    text_channels=[NS(id=10, name="일반"), NS(id=11, name="봇")], threads=[])
-        client = NS(store=store, guilds=[guild], settings=NS(allowed_guild_ids=frozenset()))
+        inherited_guild = NS(id=2, name="상속 서버",
+                             text_channels=[NS(id=20, name="일반")], threads=[])
+        client = NS(
+            store=store,
+            guilds=[guild, inherited_guild],
+            settings=NS(allowed_guild_ids=frozenset()),
+        )
         group = MemoryCommands(client)
 
         rows = group._overview_rows(100, "all")
@@ -248,10 +254,14 @@ class ModeCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(["서버", "테스트 서버", "read_only", "read_only"], rows)
         self.assertIn(["채널", "테스트 서버/#일반", "상속", "read_only"], rows)
         self.assertIn(["채널", "테스트 서버/#봇", "normal", "normal"], rows)
+        self.assertIn(["서버", "상속 서버", "상속", "off"], rows)
 
         compact = group._overview_rows(100, "overrides")
-        self.assertIn(["채널", "테스트 서버/#봇", "normal", "normal"], compact)
-        self.assertIn(["채널", "테스트 서버/(나머지 1개)", "상속", "read_only"], compact)
+        self.assertEqual(compact, [
+            ["전역", "GLOBAL", "off", "off"],
+            ["서버", "테스트 서버", "read_only", "read_only"],
+            ["채널", "테스트 서버/#봇", "normal", "normal"],
+        ])
         store.close()
 
     async def test_purge_requires_confirmation_and_server_requires_guild(self):
