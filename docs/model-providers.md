@@ -22,6 +22,37 @@ MEMORY_MODEL=
 
 기존 설치의 `OPENAI_MODEL`은 호환 alias로 계속 읽지만 새 설정에서는 `LLM_MODEL`을 권장합니다.
 
+## 질문 복잡도에 따른 모델 라우팅
+
+`MODEL_ROUTING_MODE=adaptive`로 설정하면 별도의 분류용 모델 호출 없이 기존 정보 routing 결과와
+질문의 명시적 특성을 조합해 답변 모델을 선택합니다. 분석·설계·코드·증명·긴 답변 요청은 smart,
+짧은 잡담·단순 번역·명확한 후속 질문은 fast가 기본입니다. 웹 검색이나 이미지 같은 약한 신호 하나만
+있을 때는 fast를 유지하고, 여러 신호가 겹치면 smart로 승격합니다.
+
+```dotenv
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-3.5-flash
+MODEL_ROUTING_MODE=adaptive
+LLM_FAST_MODEL=gemini-3.5-flash-lite
+LLM_SMART_MODEL=gemini-3.8-flash
+
+FAST_MAX_OUTPUT_TOKENS=700
+SMART_MAX_OUTPUT_TOKENS=1600
+GEMINI_FAST_THINKING_LEVEL=minimal
+GEMINI_SMART_THINKING_LEVEL=medium
+GEMINI_FAST_TOTAL_OUTPUT_TOKENS=4096
+GEMINI_SMART_TOTAL_OUTPUT_TOKENS=8192
+```
+
+`fixed`가 호환 기본값이며 기존 `LLM_MODEL`, `MAX_OUTPUT_TOKENS`, `GEMINI_THINKING_LEVEL`,
+`GEMINI_TOTAL_OUTPUT_TOKENS`를 그대로 사용합니다. adaptive에서도 비어 있는 fast/smart 모델명은
+`LLM_MODEL`로 대체되므로, 모델은 같게 두고 예산만 분리하는 운영도 가능합니다. 기억 요약은 이
+라우터를 거치지 않고 기존 `MEMORY_MODEL` 하나를 사용합니다.
+
+선택 결과는 `usage.jsonl`의 `model_tier`, `model_route_score`, `model_route_reasons`와 요청 예산
+필드에 남습니다. 사유에는 사용자 메시지 원문이 기록되지 않습니다. 모델 이름과 thinking level의
+실제 지원 범위는 provider별로 다르므로 운영 모델 조합을 바꿀 때 smoke test가 필요합니다.
+
 ### Gemini
 
 ```dotenv
@@ -49,6 +80,8 @@ Gemini 3.x의 `max_output_tokens`에는 사용자에게 보이는 답변뿐 아�
   `max(4096, MAX_OUTPUT_TOKENS)`입니다.
 - `MAX_OUTPUT_TOKENS`: 앱의 일반 출력 크기 기준으로 계속 사용하며, Gemini 요청에서는 위 총 생성
   예산보다 작을 경우 총 예산을 줄이지 않습니다.
+- adaptive 모드에서는 위 두 고정 설정 대신 `GEMINI_FAST_*`, `GEMINI_SMART_*` 설정을 턴별로
+  전달합니다. 기본값은 각각 `minimal`/4096과 `medium`/8192입니다.
 
 문제가 다시 발생하면 `data/logs/usage.jsonl`의 마지막 `answer` 행에서 `status`,
 `reasoning_tokens`, `response_error_codes`를 확인하세요. `status`가 `incomplete`이고

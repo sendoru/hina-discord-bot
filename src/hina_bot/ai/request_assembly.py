@@ -8,6 +8,7 @@ from .freshness import FreshnessMode
 from .information_plan import InformationPlan
 from .llm import LLM as BaseLLM
 from .llm import POLICY
+from .model_routing import ModelPlan, fixed_model_plan
 from .rp_output_policy import hide_web_citations, provenance_instruction
 from .runtime_context import build_runtime_context, runtime_instruction
 from .web_search_runtime import tool_config
@@ -126,9 +127,11 @@ class RequestAssembler(BaseLLM):
         emoji_catalog: list | None = None,
         use_memory: bool = True,
         information_plan: InformationPlan | None = None,
+        model_plan: ModelPlan | None = None,
     ) -> str:
         if information_plan is None:
             raise ValueError("Request assembly requires an InformationPlan")
+        model_plan = model_plan or fixed_model_plan(self.settings)
 
         routing = information_plan.routing
         visible_content = routing.visible_content
@@ -235,19 +238,31 @@ class RequestAssembler(BaseLLM):
             instruction_parts.append(dynamic)
 
         request = {
-            "model": self.settings.model,
+            "model": model_plan.model,
             "instructions": "\n".join(instruction_parts),
             "input": messages,
-            "max_output_tokens": self.settings.output_tokens,
+            "max_output_tokens": model_plan.max_output_tokens,
             "store": False,
         }
+        if self.settings.provider == "gemini":
+            request["thinking_level"] = model_plan.thinking_level
+            request["total_output_tokens"] = model_plan.total_output_tokens
         tools = tool_config(search_mode)
         if tools:
             request["tools"] = tools
             if search_mode == "required":
                 request["tool_choice"] = "required"
 
-        response = await self.usage.request(self.client, "answer", **request)
+        route_metadata = model_plan.telemetry()
+        if self.settings.provider != "gemini":
+            route_metadata.pop("requested_thinking_level", None)
+            route_metadata.pop("requested_total_output_tokens", None)
+        response = await self.usage.request(
+            self.client,
+            "answer",
+            route_metadata=route_metadata,
+            **request,
+        )
         text = response_text(response, hide_citations=hide_web_citations(provenance))
         if response.status != "completed" or not text:
             raise ValueError("No completed model response")

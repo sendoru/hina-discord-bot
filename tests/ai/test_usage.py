@@ -40,6 +40,36 @@ async def test_usage_success_and_error_do_not_log_content(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_usage_logs_safe_model_route_metadata_without_forwarding_it(tmp_path):
+    path = tmp_path / 'usage.jsonl'
+    logger = UsageLogger(str(path))
+    create = AsyncMock(return_value=response(10, 5))
+    client = NS(responses=NS(create=create))
+
+    await logger.request(
+        client,
+        'answer',
+        model='gemini-smart',
+        input='secret',
+        route_metadata={
+            'model_tier': 'smart',
+            'model_route_score': 2,
+            'model_route_reasons': ['complex_request'],
+            'unknown': 'must-not-pass',
+        },
+    )
+    logger.close()
+
+    assert 'route_metadata' not in create.await_args.kwargs
+    row = json.loads(path.read_text())
+    assert row['model_tier'] == 'smart'
+    assert row['model_route_score'] == 2
+    assert row['model_route_reasons'] == ['complex_request']
+    assert 'unknown' not in row
+    assert 'secret' not in path.read_text()
+
+
+@pytest.mark.asyncio
 async def test_provider_error_logs_safe_diagnostics_without_request_content(tmp_path):
     path = tmp_path / 'usage.jsonl'
     logger = UsageLogger(str(path))
