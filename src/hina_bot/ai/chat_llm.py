@@ -3,7 +3,6 @@
 import re
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
-from .chat_llm_v2 import LLM as BaseLLM
 from .freshness import FreshnessMode
 from .information_evidence import search_mode
 from .information_routing import (
@@ -12,6 +11,7 @@ from .information_routing import (
     looks_like_relation_or_event_question,
     looks_like_world_fact_question,
 )
+from .request_assembly import LLM as BaseLLM
 from .routing_plan import RoutingPlan
 from .self_profile_lore import fallback_references
 
