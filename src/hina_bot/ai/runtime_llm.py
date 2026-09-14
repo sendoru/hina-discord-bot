@@ -1,6 +1,8 @@
 import json
+from contextvars import ContextVar
 
 from .chat_llm import LLM as ChatLLM
+from .contextual_routing import build_query, find_anchor, is_followup
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .providers import create_provider_client
 from .vision import VISION_REQUEST_ACTIVE, wrap_vision_client
@@ -40,31 +42,100 @@ Discord 최종 답변에는 사용자가 실제로 읽을 대사와 필요한 �
 후속 질문을 한 번 할 수 있습니다. 여러 후속 작업을 메뉴처럼 나열하지 마세요.
 """
 
+_VISIBLE_CONTENT = ContextVar("hina_visible_followup_content", default=None)
+
+
+class _ResponsesProxy:
+    """Restore the literal user turn after routing used an expanded follow-up query."""
+
+    def __init__(self, responses):
+        self._responses = responses
+
+    async def create(self, **kwargs):
+        visible = _VISIBLE_CONTENT.get()
+        items = kwargs.get("input")
+        if visible is not None and isinstance(items, list) and items:
+            tail = items[-1]
+            if isinstance(tail, dict) and tail.get("role") == "user":
+                rewritten = list(items)
+                rewritten_tail = dict(tail)
+                rewritten_tail["content"] = visible
+                rewritten[-1] = rewritten_tail
+                kwargs = dict(kwargs)
+                kwargs["input"] = rewritten
+        return await self._responses.create(**kwargs)
+
+
+class _ClientProxy:
+    def __init__(self, client):
+        self._client = client
+        self.responses = _ResponsesProxy(client.responses)
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
 
 class LLM(ChatLLM):
-    """Production chat LLM with information routing, provider selection, and RP rules."""
+    """Production LLM: follow-up routing, information routing, vision, memory, and RP policy."""
 
     def __init__(self, settings, client=None, memory_client=None):
         primary_client = wrap_vision_client(
             client or create_provider_client(settings, settings.provider)
         )
         super().__init__(settings, client=primary_client)
+        if not isinstance(self.client, _ClientProxy):
+            self.client = _ClientProxy(self.client)
+
         memory_provider = settings.memory_provider or settings.provider
         if memory_client is not None:
             self.memory_client = memory_client
         elif memory_provider == settings.provider:
-            # The vision facade is safe for summaries because only answer() marks a request active.
+            # The vision facade/proxy is safe for summaries because answer() alone sets routing
+            # and vision request state.
             self.memory_client = self.client
         else:
             self.memory_client = create_provider_client(settings, memory_provider)
         self.character = self.character.rstrip() + "\n\n" + GENERAL_RP_OUTPUT_POLICY
 
-    async def answer(self, *args, **kwargs):
-        token = VISION_REQUEST_ACTIVE.set(True)
+    async def answer(
+        self,
+        store,
+        scope,
+        name: str,
+        content: str,
+        public_context: list | None = None,
+        channel_context: list | None = None,
+        emoji_catalog: list | None = None,
+        use_memory: bool = True,
+    ) -> str:
+        rows = channel_context or []
+        anchor = (
+            find_anchor(store, scope, rows, use_memory=use_memory)
+            if is_followup(content)
+            else ""
+        )
+        routing_query = build_query(content, anchor)
+        visible_token = (
+            _VISIBLE_CONTENT.set(content)
+            if routing_query != content
+            else None
+        )
+        vision_token = VISION_REQUEST_ACTIVE.set(True)
         try:
-            return await super().answer(*args, **kwargs)
+            return await super().answer(
+                store,
+                scope,
+                name,
+                routing_query,
+                public_context=public_context,
+                channel_context=channel_context,
+                emoji_catalog=emoji_catalog,
+                use_memory=use_memory,
+            )
         finally:
-            VISION_REQUEST_ACTIVE.reset(token)
+            VISION_REQUEST_ACTIVE.reset(vision_token)
+            if visible_token is not None:
+                _VISIBLE_CONTENT.reset(visible_token)
 
     async def close(self):
         try:
@@ -127,3 +198,6 @@ class LLM(ChatLLM):
                 response.output_text.strip(),
                 pending[-1]["id"],
             )
+
+
+__all__ = ["LLM", "GENERAL_RP_OUTPUT_POLICY", "SUMMARY_POLICY"]
