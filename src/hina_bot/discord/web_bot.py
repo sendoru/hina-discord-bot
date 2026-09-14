@@ -116,7 +116,8 @@ class HinaClient(BaseHinaClient):
                 continue
             if source.guild_id not in members:
                 try:
-                    members[source.guild_id] = await guild.fetch_member(source.user_id)
+                    # Access is checked for the current caller, not for the source-message author.
+                    members[source.guild_id] = await guild.fetch_member(user_id)
                 except discord.HTTPException:
                     members[source.guild_id] = None
             member = members[source.guild_id]
