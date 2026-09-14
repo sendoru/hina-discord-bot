@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from hina_bot.chat_llm_v2 import LLM
+from hina_bot.ai.information_pipeline import InformationPipeline
 from hina_bot.rp_output_policy import (
     ProvenanceMode,
     hide_web_citations,
@@ -28,12 +28,12 @@ def test_natural_lookup_instruction_is_in_character():
 
 
 def test_source_request_forces_web_search_when_enabled():
-    llm = object.__new__(LLM)
+    llm = object.__new__(InformationPipeline)
     llm.settings = SimpleNamespace(chat_web_search=True)
     assert llm._web_search_mode("그거 출처 어디야?", []) == "required"
 
 
 def test_personal_context_does_not_offer_external_search():
-    llm = object.__new__(LLM)
+    llm = object.__new__(InformationPipeline)
     llm.settings = SimpleNamespace(chat_web_search=True)
     assert llm._web_search_mode("내 생일 기억하고 있어?", []) == "none"
