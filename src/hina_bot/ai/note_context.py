@@ -1,9 +1,15 @@
-class NoteContext:
+class NoteContextStore:
     def __init__(self, store):
         self.store = store
 
     def note(self, key):
         return self.store.note(key)
 
+    def summary(self, scope):
+        return "", 0
 
-__all__ = ["NoteContext"]
+    def history(self, scope):
+        return []
+
+
+__all__ = ["NoteContextStore"]
