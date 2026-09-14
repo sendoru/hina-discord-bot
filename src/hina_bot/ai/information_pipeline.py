@@ -135,7 +135,8 @@ class InformationPipeline(RequestAssembler):
             assembly_store = store
             assembly_public_context = public_context
             assembly_use_memory = use_memory
-            if not use_memory:
+            memory_mode = store.memory_mode(scope) if hasattr(store, "memory_mode") else "normal"
+            if not use_memory and memory_mode in {"off", "write_only"}:
                 assembly_store = NoteContextStore(store)
                 assembly_public_context = []
                 assembly_use_memory = True
