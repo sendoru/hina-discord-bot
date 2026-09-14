@@ -163,19 +163,18 @@ class HinaClient(BaseHinaClient):
                 if old.webhook_id is not None:
                     continue
                 own_bot = self.user is not None and old.author.id == self.user.id
-                # Discord history does not reliably identify who an old Hina message answered.
-                # Such rows would fail closed later anyway and can evict useful user messages from
-                # the bounded buffer, so do not hydrate them at all.
-                if own_bot:
-                    continue
-                other_bot = bool(old.author.bot)
-                historical_text = trigger_text(
-                    old,
-                    self.user.id,
-                    self.settings.dm_always_reply,
-                    self.settings.call_prefixes,
+                other_bot = bool(old.author.bot) and not own_bot
+                historical_text = (
+                    None
+                    if own_bot
+                    else trigger_text(
+                        old,
+                        self.user.id,
+                        self.settings.dm_always_reply,
+                        self.settings.call_prefixes,
+                    )
                 )
-                if policy == "direct" and historical_text is None:
+                if policy == "direct" and not own_bot and historical_text is None:
                     continue
                 if self._management_text(historical_text) or not old.content:
                     continue
@@ -192,8 +191,9 @@ class HinaClient(BaseHinaClient):
                         old.id,
                         old.author.display_name,
                         old.content,
-                        role="bot" if other_bot else "user",
+                        role="assistant" if own_bot else ("bot" if other_bot else "user"),
                         unix_time=old.created_at.timestamp(),
+                        author_user_id=old.author.id if own_bot else None,
                     )
                 finally:
                     CURRENT_DIRECT_TRIGGER.reset(direct_token)

@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 
 SUPPORTED_MODEL_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
 GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
-EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "direct_party_only"})
+EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
+_EXTERNAL_CONTEXT_POLICY_ALIASES = {"direct_party_only": "bot_interactions_only"}
 
 
 def parse_call_prefixes(value: str) -> tuple[str, ...]:
@@ -31,6 +32,7 @@ def _provider(value: str, variable: str) -> str:
 
 def parse_external_context_policy(value: str) -> str:
     policy = value.strip().lower()
+    policy = _EXTERNAL_CONTEXT_POLICY_ALIASES.get(policy, policy)
     if policy not in EXTERNAL_CONTEXT_POLICIES:
         allowed = ", ".join(sorted(EXTERNAL_CONTEXT_POLICIES))
         raise ValueError(f"EXTERNAL_CONTEXT_POLICY는 {allowed} 중 하나여야 합니다.")
@@ -68,7 +70,7 @@ class Settings:
     call_prefixes: tuple[str, ...] = ("히나야",)
     dm_always_reply: bool = False
     public_memory_in_dm: bool = True
-    external_context_policy: str = "direct_party_only"
+    external_context_policy: str = "bot_interactions_only"
     allowed_guild_ids: frozenset[int] = frozenset()
     cooldown: float = 5
     concurrency: int = 3
@@ -156,7 +158,7 @@ class Settings:
         if public_memory not in {"true", "false"}:
             raise ValueError("PUBLIC_SERVER_MEMORY_IN_DM은 true 또는 false여야 합니다.")
         external_context_policy = parse_external_context_policy(
-            os.getenv("EXTERNAL_CONTEXT_POLICY", "direct_party_only")
+            os.getenv("EXTERNAL_CONTEXT_POLICY", "bot_interactions_only")
         )
         community_lore = os.getenv("COMMUNITY_LORE", "true").lower()
         if community_lore not in {"true", "false"}:

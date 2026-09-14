@@ -20,8 +20,8 @@ _KEY_CHOICES = [
 ]
 _PRIVACY_CHOICES = [
     app_commands.Choice(
-        name="direct_party_only — 현재 사용자와 히나 사이의 문맥만 외부 전송",
-        value="direct_party_only",
+        name="bot_interactions_only — 현재 채널의 히나 참여 대화만 외부 전송",
+        value="bot_interactions_only",
     ),
     app_commands.Choice(
         name="full — 허용된 전체 문맥을 외부 모델에 제공",
@@ -90,7 +90,7 @@ class ConfigCommands(app_commands.Group):
             if value == "startup":
                 parsed = self.client.settings.reset("external_context_policy")
                 source = "startup"
-            elif value in {"full", "direct_party_only"}:
+            elif value in {"full", "bot_interactions_only"}:
                 parsed = self.client.settings.set_text("external_context_policy", value)
                 source = "DB override"
             else:
@@ -100,11 +100,11 @@ class ConfigCommands(app_commands.Group):
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
-        if parsed == "direct_party_only":
+        if parsed == "bot_interactions_only":
             detail = (
-                "현재 호출자와 히나 사이의 직접 대화 및 호출자 본인의 허용된 기억만 "
-                "외부 모델 요청에 포함해요. 제3자 채팅·target history·cross-user memory·"
-                "서버 공통 메모는 제외돼요."
+                "현재 채널에서 사용자들이 히나를 직접 호출한 말과 히나 답변, "
+                "호출자 본인의 허용된 기억만 외부 모델 요청에 포함해요. 일반 채널 잡담·"
+                "target history·cross-user memory·서버 공통 메모는 제외돼요."
             )
         else:
             detail = (

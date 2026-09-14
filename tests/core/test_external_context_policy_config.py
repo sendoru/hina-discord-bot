@@ -13,14 +13,22 @@ def _base(**overrides):
     return Settings(**values)
 
 
-def test_settings_load_external_context_policy_defaults_to_direct_party_only(
+def test_settings_load_external_context_policy_defaults_to_bot_interactions_only(
     monkeypatch, tmp_path: Path
 ):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DISCORD_TOKEN", "token")
     monkeypatch.setenv("OPENAI_API_KEY", "key")
     monkeypatch.delenv("EXTERNAL_CONTEXT_POLICY", raising=False)
-    assert Settings.load().external_context_policy == "direct_party_only"
+    assert Settings.load().external_context_policy == "bot_interactions_only"
+
+
+def test_settings_load_normalizes_legacy_external_context_policy(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("EXTERNAL_CONTEXT_POLICY", "direct_party_only")
+    assert Settings.load().external_context_policy == "bot_interactions_only"
 
 
 def test_settings_load_accepts_full_external_context_policy(monkeypatch, tmp_path: Path):
@@ -35,12 +43,12 @@ def test_runtime_external_context_policy_override_round_trip():
     store = Store(":memory:")
     try:
         settings = RuntimeSettings(_base(), store)
-        assert settings.external_context_policy == "direct_party_only"
+        assert settings.external_context_policy == "bot_interactions_only"
         assert settings.set_text("EXTERNAL_CONTEXT_POLICY", "full") == "full"
         assert settings.external_context_policy == "full"
         assert settings.source("EXTERNAL_CONTEXT_POLICY") == "db"
-        assert settings.reset("EXTERNAL_CONTEXT_POLICY") == "direct_party_only"
-        assert settings.external_context_policy == "direct_party_only"
+        assert settings.reset("EXTERNAL_CONTEXT_POLICY") == "bot_interactions_only"
+        assert settings.external_context_policy == "bot_interactions_only"
     finally:
         store.close()
 

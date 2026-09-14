@@ -20,21 +20,24 @@ class ContextBudgetTests(unittest.TestCase):
     def tearDown(self):
         self.store.close()
 
-    def test_assistant_filter_runs_before_recent_item_limit(self):
+    def test_cross_user_hina_replies_remain_available_with_target_metadata(self):
         recent = TargetAwareRecentMessages(limit=40, budget=6000, store=self.store)
         user_a = Scope(1, 10, 100)
         user_b = Scope(1, 10, 200)
 
-        for message_id in range(1, 13):
-            recent.add(user_b, message_id, "B", f"B의 유효한 과거 발언 {message_id}")
-        for message_id in range(13, 25):
-            recent.add(user_a, message_id, "히나", f"A에게 한 답변 {message_id}", role="assistant")
+        recent.add(user_a, 1, "A", "히나야 A의 질문", direct_trigger=True)
+        recent.add(user_a, 2, "히나", "A에게 한 답변", role="assistant")
+        recent.add(user_b, 3, "B", "히나야 B의 질문", direct_trigger=True)
+        recent.add(user_b, 4, "히나", "B에게 한 답변", role="assistant")
 
         rows = recent.context(user_b, 99)
-        self.assertEqual(len(rows), 12)
-        self.assertTrue(all(row["role"] == "user" for row in rows))
-        self.assertEqual(rows[0]["message_id"], 1)
-        self.assertEqual(rows[-1]["message_id"], 12)
+        self.assertEqual(
+            [row["content"] for row in rows],
+            ["히나야 A의 질문", "A에게 한 답변", "히나야 B의 질문", "B에게 한 답변"],
+        )
+        answer_to_a = next(row for row in rows if row["content"] == "A에게 한 답변")
+        self.assertEqual(answer_to_a["reply_target_user_id"], "100")
+        self.assertEqual(answer_to_a["context_kind"], "channel_ambient")
 
     def test_busy_channel_keeps_same_speaker_thread_and_some_ambient_chat(self):
         recent = TargetAwareRecentMessages(limit=40, budget=6000, store=self.store)
@@ -59,7 +62,7 @@ class ContextBudgetTests(unittest.TestCase):
         self.assertIn("channel_ambient", kinds)
         self.assertLessEqual(len(rows), 18)
 
-    def test_cross_user_assistant_tone_is_still_excluded_from_busy_context(self):
+    def test_cross_user_assistant_tone_remains_attributed_in_busy_context(self):
         recent = TargetAwareRecentMessages(limit=40, budget=6000, store=self.store)
         user_a = Scope(1, 10, 100)
         user_b = Scope(1, 10, 200)
@@ -75,7 +78,10 @@ class ContextBudgetTests(unittest.TestCase):
         contents = [row["content"] for row in rows]
         self.assertIn("내 얘기는 기억해 줘", contents)
         self.assertIn("응, 그 얘기 말이지.", contents)
-        self.assertNotIn("A한테만 한 날 선 답변", contents)
+        self.assertIn("A한테만 한 날 선 답변", contents)
+        row = next(item for item in rows if item["content"] == "A한테만 한 날 선 답변")
+        self.assertEqual(row["reply_target_user_id"], "100")
+        self.assertEqual(row["context_kind"], "channel_ambient")
 
     def test_all_channel_context_sources_share_one_budget(self):
         recent = TargetAwareRecentMessages(limit=30, budget=100, store=self.store)
@@ -172,7 +178,7 @@ class HydrationTests(unittest.IsolatedAsyncioTestCase):
             guild=NS(id=1),
         )
 
-    async def test_hydration_does_not_store_untargeted_old_hina_replies(self):
+    async def test_hydration_restores_old_hina_replies_as_shared_channel_context(self):
         now = datetime.now(UTC)
         channel = FakeHistoryChannel([
             self.old_message(1, "최근 사용자 발언", now - timedelta(minutes=3)),
@@ -185,5 +191,8 @@ class HydrationTests(unittest.IsolatedAsyncioTestCase):
         await self.bot.hydrate_recent_history(current, scope)
 
         raw_rows = list(self.bot.recent.buffers[self.bot.recent._key(scope)])
-        self.assertEqual([row["content"] for row in raw_rows], ["최근 사용자 발언"])
-        self.assertEqual([row["role"] for row in raw_rows], ["user"])
+        self.assertEqual(
+            [row["content"] for row in raw_rows],
+            ["최근 사용자 발언", "누구에게 했는지 모르는 히나 답변"],
+        )
+        self.assertEqual([row["role"] for row in raw_rows], ["user", "assistant"])

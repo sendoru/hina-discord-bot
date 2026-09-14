@@ -90,17 +90,7 @@ class TargetAwareRecentMessages(RecentMessages):
 
     def context(self, scope, before_id):
         current_user_id = str(scope.user_id)
-
-        def eligible_base(row):
-            # Only assistant replies explicitly targeted at the current user can carry relationship
-            # tone forward. Apply this before any item/character budget so discarded replies do not
-            # crowd out older but still useful channel messages.
-            return (
-                row.get("role") != "assistant"
-                or str(row.get("reply_target_user_id") or "") == current_user_id
-            )
-
-        base = super().candidates(scope, before_id, include=eligible_base)
+        base = super().candidates(scope, before_id)
 
         replied = []
         reply_ids = set()
@@ -122,8 +112,9 @@ class TargetAwareRecentMessages(RecentMessages):
 
         # Busy public channels can produce many short side messages between two turns of the same
         # conversation. Keep the caller's own thread as a first-class slice instead of letting
-        # unrelated ambient chatter evict it from a small recency window. Cross-user assistant
-        # replies are still excluded above, so this continuity does not reintroduce tone leakage.
+        # unrelated ambient chatter evict it from a small recency window. Cross-user Hina replies
+        # remain available as channel context; explicit reply-target metadata keeps their tone
+        # attributable to the user and situation that caused it.
         speaker_thread = []
         ambient = []
         for row in base:
