@@ -6,7 +6,7 @@ from importlib import abc, import_module, util
 # Preserve the existing public LLM behavior after splitting implementation modules
 # into feature-oriented subpackages.
 from .ai import llm as _llm
-from .ai.chat_llm import LLM as _ChatLLM
+from .ai.information_pipeline import LLM as _ChatLLM
 
 _llm.LLM = _ChatLLM
 
@@ -29,7 +29,10 @@ _LEGACY_MODULES = {
     "chat_llm": "hina_bot.ai.chat_llm",
     "chat_llm_v2": "hina_bot.ai.chat_llm_v2",
     "freshness": "hina_bot.ai.freshness",
+    "information_pipeline": "hina_bot.ai.information_pipeline",
     "llm": "hina_bot.ai.llm",
+    "request_assembly": "hina_bot.ai.request_assembly",
+    "routing_plan": "hina_bot.ai.routing_plan",
     "rp_output_policy": "hina_bot.ai.rp_output_policy",
     "runtime_context": "hina_bot.ai.runtime_context",
     "runtime_llm": "hina_bot.ai.runtime_llm",

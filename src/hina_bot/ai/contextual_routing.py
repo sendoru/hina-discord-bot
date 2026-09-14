@@ -2,7 +2,6 @@
 
 import re
 
-from .freshness import FreshnessMode, classify_freshness
 from .rp_output_policy import SOURCE_REQUEST_QUERY
 
 _FOLLOWUP = re.compile(
@@ -65,19 +64,3 @@ def build_query(content: str, anchor: str) -> str:
     followup = _TOPIC_PARTICLE.sub(r"\1", followup)
     suffix = "\n" + followup
     return topic[:max(0, 1400 - len(suffix))] + suffix
-
-
-def merged_freshness(content: str, anchor: str) -> FreshnessMode:
-    current = classify_freshness(content)
-    if not anchor:
-        return current
-    previous = classify_freshness(anchor)
-    if current == FreshnessMode.REQUIRED or previous == FreshnessMode.REQUIRED:
-        return FreshnessMode.REQUIRED
-    if current == FreshnessMode.CLOCK:
-        return FreshnessMode.CLOCK
-    if current == FreshnessMode.AUTO or previous == FreshnessMode.AUTO:
-        return FreshnessMode.AUTO
-    if previous == FreshnessMode.CLOCK:
-        return FreshnessMode.CLOCK
-    return current

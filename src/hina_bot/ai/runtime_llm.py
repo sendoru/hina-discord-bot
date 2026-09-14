@@ -1,8 +1,9 @@
 import json
 
-from .chat_llm import LLM as ChatLLM
+from .information_pipeline import InformationPipeline
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .providers import create_provider_client
+from .routing_plan import build_routing_plan
 from .vision import VISION_REQUEST_ACTIVE, wrap_vision_client
 
 SUMMARY_POLICY = BASE_SUMMARY_POLICY + """
@@ -41,30 +42,57 @@ Discord 최종 답변에는 사용자가 실제로 읽을 대사와 필요한 �
 """
 
 
-class LLM(ChatLLM):
-    """Production chat LLM with information routing, provider selection, and RP rules."""
+class LLM(InformationPipeline):
+    """Production LLM orchestrating routing, vision, memory, and RP policy."""
 
     def __init__(self, settings, client=None, memory_client=None):
         primary_client = wrap_vision_client(
             client or create_provider_client(settings, settings.provider)
         )
         super().__init__(settings, client=primary_client)
+
         memory_provider = settings.memory_provider or settings.provider
         if memory_client is not None:
             self.memory_client = memory_client
         elif memory_provider == settings.provider:
-            # The vision facade is safe for summaries because only answer() marks a request active.
             self.memory_client = self.client
         else:
             self.memory_client = create_provider_client(settings, memory_provider)
         self.character = self.character.rstrip() + "\n\n" + GENERAL_RP_OUTPUT_POLICY
 
-    async def answer(self, *args, **kwargs):
-        token = VISION_REQUEST_ACTIVE.set(True)
+    async def answer(
+        self,
+        store,
+        scope,
+        name: str,
+        content: str,
+        public_context: list | None = None,
+        channel_context: list | None = None,
+        emoji_catalog: list | None = None,
+        use_memory: bool = True,
+    ) -> str:
+        plan = build_routing_plan(
+            store,
+            scope,
+            content,
+            channel_context,
+            use_memory=use_memory,
+        )
+        vision_token = VISION_REQUEST_ACTIVE.set(True)
         try:
-            return await super().answer(*args, **kwargs)
+            return await super().answer(
+                store,
+                scope,
+                name,
+                content,
+                public_context=public_context,
+                channel_context=channel_context,
+                emoji_catalog=emoji_catalog,
+                use_memory=use_memory,
+                routing_plan=plan,
+            )
         finally:
-            VISION_REQUEST_ACTIVE.reset(token)
+            VISION_REQUEST_ACTIVE.reset(vision_token)
 
     async def close(self):
         try:
@@ -78,11 +106,17 @@ class LLM(ChatLLM):
         if len(pending) < self.settings.summary_every:
             return
         old, _ = store.summary(scope)
-        payload = {"previous_memory": old, "new_turns": [
-            {"at": turn["created_at"], "user": turn["content"],
-             **({"hina": turn["reply"]} if scope.guild_id is None else {})}
-            for turn in pending
-        ]}
+        payload = {
+            "previous_memory": old,
+            "new_turns": [
+                {
+                    "at": turn["created_at"],
+                    "user": turn["content"],
+                    **({"hina": turn["reply"]} if scope.guild_id is None else {}),
+                }
+                for turn in pending
+            ],
+        }
         response = await self.usage.request(
             self.memory_client,
             "summarize",
@@ -103,7 +137,8 @@ class LLM(ChatLLM):
             "previous_memory": store.shared_summary(scope)[0],
             "speaker_id": str(scope.user_id),
             "direct_calls": [
-                {"at": turn["created_at"], "user": turn["content"]} for turn in pending
+                {"at": turn["created_at"], "user": turn["content"]}
+                for turn in pending
             ],
         }
         response = await self.usage.request(
@@ -113,8 +148,8 @@ class LLM(ChatLLM):
             instructions=(
                 SUMMARY_POLICY
                 + "\n직접 호출한 발화만 요약하세요. 앞선 발언을 가리키는 대명사나 인용의 빈 "
-                  "맥락을 보충하지 마세요. 화자 자신의 명시적 사실·선호·약속만 기억하세요. "
-                  "제3자의 발언이나 사실은 저장하지 마세요."
+                "맥락을 보충하지 마세요. 화자 자신의 명시적 사실·선호·약속만 기억하세요. "
+                "제3자의 발언이나 사실은 저장하지 마세요."
             ),
             input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             max_output_tokens=900,
@@ -127,3 +162,6 @@ class LLM(ChatLLM):
                 response.output_text.strip(),
                 pending[-1]["id"],
             )
+
+
+__all__ = ["GENERAL_RP_OUTPUT_POLICY", "LLM", "SUMMARY_POLICY"]

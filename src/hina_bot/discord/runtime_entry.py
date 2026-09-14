@@ -1,4 +1,4 @@
-from hina_bot.ai.contextual_runtime_llm import LLM
+from hina_bot.ai.runtime_llm import LLM
 
 from . import web_bot
 

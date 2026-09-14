@@ -7,7 +7,7 @@ from hina_bot.routing import Scope
 from hina_bot.store import Store
 from openai import AsyncOpenAI
 
-from hina_bot.ai.contextual_chat_llm import LLM
+from hina_bot.ai.runtime_llm import LLM
 
 
 @pytest.mark.asyncio
