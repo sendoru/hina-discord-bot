@@ -1,4 +1,6 @@
 import logging
+import re
+from contextvars import ContextVar
 from datetime import timedelta
 
 import discord
@@ -19,12 +21,49 @@ from .vision import VisionLimits, collect_visual_inputs
 
 log = logging.getLogger("hina")
 
+CURRENT_PUBLIC_CONTEXT_REQUEST = ContextVar(
+    "current_public_context_request",
+    default=(False, ()),
+)
+_PUBLIC_MEMORY_QUERY = re.compile(
+    r"(?:기억(?:나|해|하고)|전에|저번|지난번|예전에|다른\s*(?:채널|방)|"
+    r"서버(?:에서|의)|평소|원래|(?:말|얘기)했|어떤\s*(?:사람|애|유저)|"
+    r"성격|인상|평판|어떻게\s*생각)",
+    re.IGNORECASE,
+)
+_BROAD_SERVER_MEMORY_QUERY = re.compile(
+    r"(?:서버(?:에서|의).*(?:누가|누구|사람들|다른\s*사람)|"
+    r"누가.*(?:말했|얘기했))",
+    re.IGNORECASE,
+)
+
 
 def _augment_empty_call(content: str, text: str | None, has_visuals: bool) -> str | None:
     """Only add intent when a bare trigger actually carries a visual attachment."""
     if text is None or text or not has_visuals:
         return None
     return (content + " 이 이미지나 스티커를 봐줘.").strip()
+
+
+def _public_context_request(scope: Scope, text: str, sampled: list[dict]):
+    """Choose whether cross-channel public memory is relevant to this invocation.
+
+    Ordinary chat should not receive unrelated users' summaries. Explicitly targeted user questions
+    may use that target's public memory, while history/memory questions without a target default to
+    the current user's own public calls. Only clearly broad server-history questions may fan out.
+    """
+    target_ids = tuple({
+        int(item["user_id"])
+        for item in sampled
+        if str(item.get("user_id", "")).isdigit()
+    })
+    if target_ids:
+        return True, target_ids
+    if not _PUBLIC_MEMORY_QUERY.search(text):
+        return False, ()
+    if scope.guild_id is not None and _BROAD_SERVER_MEMORY_QUERY.search(text):
+        return True, None
+    return True, (scope.user_id,)
 
 
 class HinaClient(BaseHinaClient):
@@ -49,6 +88,49 @@ class HinaClient(BaseHinaClient):
     async def command(self, message, scope, text):
         return None
 
+    async def public_sources(self, user_id: int, guild_id: int | None = None):
+        enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
+        if not enabled:
+            return []
+        if guild_id is None and not self.settings.public_memory_in_dm:
+            return []
+
+        requested = None if requested_ids is None else set(requested_ids)
+        allowed, members = [], {}
+        for source in self.store.public_candidates(user_id, guild_id):
+            if requested is not None and source.user_id not in requested:
+                continue
+            if (
+                self.settings.allowed_guild_ids
+                and source.guild_id not in self.settings.allowed_guild_ids
+            ):
+                continue
+            guild = self.get_guild(source.guild_id)
+            if guild is None or guild.unavailable:
+                continue
+            channel = guild.get_channel(source.channel_id)
+            if not isinstance(channel, discord.TextChannel):
+                continue
+            public = channel.permissions_for(guild.default_role)
+            if not (public.view_channel and public.read_message_history):
+                continue
+            if source.guild_id not in members:
+                try:
+                    # Access is checked for the current caller, not for the source-message author.
+                    members[source.guild_id] = await guild.fetch_member(user_id)
+                except discord.HTTPException:
+                    members[source.guild_id] = None
+            member = members[source.guild_id]
+            if member is None:
+                continue
+            permissions = channel.permissions_for(member)
+            if not (permissions.view_channel and permissions.read_message_history):
+                continue
+            allowed.append(source)
+            if len(allowed) == 4:
+                break
+        return allowed
+
     async def hydrate_recent_history(self, message, scope):
         """Backfill the bounded history while respecting the active capture policy."""
         if scope.guild_id is None or not self.recent.needs_hydration(scope):
@@ -71,14 +153,19 @@ class HinaClient(BaseHinaClient):
                 if old.webhook_id is not None:
                     continue
                 own_bot = self.user is not None and old.author.id == self.user.id
-                other_bot = bool(old.author.bot) and not own_bot
+                # Discord history does not reliably identify who an old Hina message answered.
+                # Such rows would fail closed later anyway and can evict useful user messages from
+                # the bounded buffer, so do not hydrate them at all.
+                if own_bot:
+                    continue
+                other_bot = bool(old.author.bot)
                 historical_text = trigger_text(
                     old,
                     self.user.id,
                     self.settings.dm_always_reply,
                     self.settings.call_prefixes,
                 )
-                if policy == "direct" and not own_bot and historical_text is None:
+                if policy == "direct" and historical_text is None:
                     continue
                 if self._management_text(historical_text) or not old.content:
                     continue
@@ -88,14 +175,14 @@ class HinaClient(BaseHinaClient):
                     old.author.id,
                     scope.public_at_capture,
                 )
-                direct_token = CURRENT_DIRECT_TRIGGER.set(own_bot or historical_text is not None)
+                direct_token = CURRENT_DIRECT_TRIGGER.set(historical_text is not None)
                 try:
                     self.recent.add(
                         historical_scope,
                         old.id,
                         old.author.display_name,
                         old.content,
-                        role="assistant" if own_bot else ("bot" if other_bot else "user"),
+                        role="bot" if other_bot else "user",
                         unix_time=old.created_at.timestamp(),
                     )
                 finally:
@@ -163,9 +250,15 @@ class HinaClient(BaseHinaClient):
             await collect_visual_inputs(message, limits=self.vision_limits)
             if text is not None else []
         )
+        public_request = (
+            _public_context_request(scope, text, sampled)
+            if text is not None
+            else (False, ())
+        )
         target_token = TARGET_CONTEXT.set(tuple(sampled))
         reply_token = REPLY_CONTEXT.set(tuple(replied))
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
+        public_token = CURRENT_PUBLIC_CONTEXT_REQUEST.set(public_request)
         direct_token = CURRENT_DIRECT_TRIGGER.set(text is not None)
 
         # A text-only bare call stays a bare call and uses the base client's relationship-aware
@@ -182,6 +275,7 @@ class HinaClient(BaseHinaClient):
             if original_content is not None:
                 message.content = original_content
             CURRENT_DIRECT_TRIGGER.reset(direct_token)
+            CURRENT_PUBLIC_CONTEXT_REQUEST.reset(public_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)
             REPLY_CONTEXT.reset(reply_token)
             TARGET_CONTEXT.reset(target_token)
