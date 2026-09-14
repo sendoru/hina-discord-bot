@@ -51,6 +51,26 @@ class CaptureModeTests(unittest.TestCase):
         self.assertEqual([row["content"] for row in rows], ["히나야 질문", "답변"])
         store.close()
 
+    def test_assistant_tone_is_scoped_to_reply_target(self):
+        store = Store(":memory:")
+        recent = TargetAwareRecentMessages(store=store)
+        user_a = Scope(1, 10, 100)
+        user_b = Scope(1, 10, 200)
+        bot_scope = Scope(1, 10, 999)
+
+        recent.add(user_a, 1, "A", "히나야 또 놀릴 거야")
+        recent.add(user_a, 2, "히나", "이제 그만해.", role="assistant")
+        recent.add(bot_scope, 3, "히나", "재시작 전 답변", role="assistant")
+        recent.add(user_b, 4, "B", "히나야 배고파")
+
+        rows_a = recent.context(user_a, 99)
+        rows_b = recent.context(user_b, 99)
+        self.assertIn("이제 그만해.", [row["content"] for row in rows_a])
+        self.assertNotIn("이제 그만해.", [row["content"] for row in rows_b])
+        self.assertNotIn("재시작 전 답변", [row["content"] for row in rows_a])
+        self.assertNotIn("재시작 전 답변", [row["content"] for row in rows_b])
+        store.close()
+
 
 class FakeHistoryChannel:
     def __init__(self, messages):
