@@ -21,11 +21,10 @@ log = logging.getLogger("hina")
 
 
 def _augment_empty_call(content: str, text: str | None, has_visuals: bool) -> str | None:
-    """Route a bare call through the LLM instead of the legacy hard-coded reply."""
-    if text is None or text:
+    """Only add intent when a bare trigger actually carries a visual attachment."""
+    if text is None or text or not has_visuals:
         return None
-    suffix = " 이 이미지나 스티커를 봐줘." if has_visuals else " 잠깐 봐줘."
-    return (content + suffix).strip()
+    return (content + " 이 이미지나 스티커를 봐줘.").strip()
 
 
 class HinaClient(BaseHinaClient):
@@ -169,8 +168,9 @@ class HinaClient(BaseHinaClient):
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
         direct_token = CURRENT_DIRECT_TRIGGER.set(text is not None)
 
-        # The legacy base client has a hard-coded reply for an empty normalized trigger. Give bare
-        # calls a minimal conversational prompt instead so relationship and persona rules still run.
+        # A text-only bare call stays a bare call and uses the base client's relationship-aware
+        # fixed reply. Only a visual-only call gets an explicit visual request so vision reaches
+        # the LLM without inventing an unrelated user intent such as "look at something".
         original_content = None
         augmented_content = _augment_empty_call(message.content, text, bool(visuals))
         if augmented_content is not None:
