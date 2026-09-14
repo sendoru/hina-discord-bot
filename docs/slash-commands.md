@@ -88,24 +88,27 @@ memory/chatlog 설정 자체는 유지합니다.
 로컬 recent buffer에 어떤 채널 대화를 모아 사용할지 정하고, 이 설정은 수집·라우팅된 데이터 중
 무엇이 실제 LLM provider 요청에 직렬화될 수 있는지를 마지막 단계에서 다시 제한합니다.
 
-- `direct_party_only` (기본): 현재 호출자와 히나 사이의 직접 대화만 외부 대화 문맥으로 허용합니다.
+- `bot_interactions_only` (기본): 현재 채널에서 히나가 직접 참여한 대화만 외부 대화 문맥으로
+  허용합니다.
 - `full`: 라우팅에서 허용한 주변 문맥까지 외부 모델에 제공할 수 있습니다. 신뢰하는 provider에서
   필요한 경우에만 명시적으로 선택합니다.
 
-`direct_party_only`에서는 현재 사용자의 현재 발화, 과거에 히나를 직접 호출한 발화, 그 사용자에게
-히나가 직접 보낸 답변, 현재 사용자의 수동 메모·자동 장기 기억·DM 대화·본인 소유 공개 기억은
-사용할 수 있습니다. 반면 같은 사용자의 일반 채널 잡담, 다른 사용자의 직접 호출, 다른 사용자에게
-보낸 히나 답변, 대상 사용자 7일 history scan, 다른 사용자의 공개 기억, 서버 공통 메모는 외부
-provider 요청에서 제외됩니다. 명시적 Discord reply는 **현재 호출자가 자기 자신의 과거 메시지를
-직접 선택한 경우에만** reply 원문을 허용하며, 제3자가 작성한 reply 대상 원문은 제외합니다.
+`bot_interactions_only`에서는 현재 사용자의 현재 발화와 허용된 개인 기억뿐 아니라, 같은 채널에서
+어떤 사용자든 히나를 직접 호출한 발화와 히나가 보낸 답변을 함께 사용할 수 있습니다. 같은 채널을
+'히나에게 보낸 메시지 + 히나가 보낸 메시지'만 보이는 공유 bot conversation space로 취급하는
+정책입니다. 반면 일반 채널 잡담, 대상 사용자 7일 history scan, 다른 사용자의 공개 기억, 서버
+공통 메모는 외부 provider 요청에서 제외됩니다. 명시적 Discord reply는 **현재 호출자가 자기 자신의
+과거 메시지를 직접 선택한 경우에만** reply 원문을 허용하며, 제3자가 작성한 일반 reply 대상 원문은
+제외합니다.
 
 엄격 모드에서는 대상 사용자 history 수집 자체도 생략하고 cross-user public memory 조회도 막습니다.
 또한 최종 request assembly 직전에 같은 정책을 다시 적용하므로, 앞 단계에서 더 넓은 데이터가
 실수로 남아 있더라도 provider 요청에는 포함되지 않도록 fail-closed 방식으로 동작합니다.
-`/config privacy value:direct_party_only` 또는 `value:full`로 즉시 변경할 수 있고,
+`/config privacy value:bot_interactions_only` 또는 `value:full`로 즉시 변경할 수 있고,
 `value:startup`은 DB override를 삭제해 `.env` 또는 코드 기본값으로 돌아갑니다. 정책을 바꾸면
 기존 recent buffer와 hydration 상태도 즉시 전부 비워, 더 넓은 정책에서 모은 임시 문맥이 남아
-있지 않게 합니다.
+있지 않게 합니다. 기존 배포에 저장된 `direct_party_only` 값은 같은 엄격 정책의 이전 이름으로
+인식해 `bot_interactions_only`로 정규화합니다.
 
 ## 최근 채널 대화 문맥
 
@@ -133,12 +136,14 @@ provider 요청에서 제외됩니다. 명시적 Discord reply는 **현재 호�
 `all/direct/off/inherit` 중 어떤 실질적인 정책 변경이든 해당 범위의 메모리 내 recent buffer와
 hydration 상태를 즉시 비웁니다. 따라서 `all → direct`에서 넓게 수집한 문맥이 남지 않고,
 `direct → all`에서도 다음 호출 때 현재 정책으로 필요한 history backfill을 다시 수행할 수 있습니다.
-`direct` 상태에서 backfill하면 최근 TTL 범위의 직접 호출 사용자 발화만 다시 채우며, 과거 히나
-답변은 답변 대상 사용자를 안전하게 복구할 수 없어 hydration하지 않습니다.
+`direct` 상태에서 backfill하면 최근 TTL 범위의 직접 호출 사용자 발화와 과거 히나 답변을 다시
+채웁니다. 과거 히나 답변의 정확한 대상 사용자는 복구할 수 없지만, 히나가 참여한 같은 채널의 공유
+대화로는 안전하게 사용할 수 있습니다.
 
 `@사용자 어떻게 생각해?` 같은 대상 사용자 문맥 조회는 `EXTERNAL_CONTEXT_POLICY=full`일 때 chatlog
 정책을 따릅니다. `mode=direct`라면 그 사용자가 과거에 히나를 직접 호출했던 메시지만 대상으로
-삼습니다. 반대로 기본 `direct_party_only`에서는 이 대상 사용자 history scan을 아예 수행하지 않습니다.
+삼습니다. 반대로 기본 `bot_interactions_only`에서는 이 대상 사용자 history scan을 아예 수행하지
+않습니다.
 
 최근 채널 대화 문맥은 장기 기억과 별개의 TTL 기반 임시 버퍼이며 장기 요약에는 포함되지 않습니다.
 현재 턴 이미지 원본도 이 recent buffer에 저장하지 않습니다.

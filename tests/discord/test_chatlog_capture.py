@@ -52,7 +52,7 @@ class CaptureModeTests(unittest.TestCase):
         self.assertEqual([row["content"] for row in rows], ["히나야 질문", "답변"])
         store.close()
 
-    def test_assistant_tone_is_scoped_to_reply_target(self):
+    def test_hina_replies_keep_targets_but_remain_shared_channel_context(self):
         store = Store(":memory:")
         recent = TargetAwareRecentMessages(store=store)
         user_a = Scope(1, 10, 100)
@@ -84,9 +84,9 @@ class CaptureModeTests(unittest.TestCase):
         rows_a = recent.context(user_a, 99)
         rows_b = recent.context(user_b, 99)
         self.assertIn("이제 그만해.", [row["content"] for row in rows_a])
-        self.assertNotIn("이제 그만해.", [row["content"] for row in rows_b])
-        self.assertNotIn("재시작 전 답변", [row["content"] for row in rows_a])
-        self.assertNotIn("재시작 전 답변", [row["content"] for row in rows_b])
+        self.assertIn("이제 그만해.", [row["content"] for row in rows_b])
+        self.assertIn("재시작 전 답변", [row["content"] for row in rows_a])
+        self.assertIn("재시작 전 답변", [row["content"] for row in rows_b])
         store.close()
 
 

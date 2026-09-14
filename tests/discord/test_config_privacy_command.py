@@ -24,7 +24,7 @@ async def test_privacy_command_sets_and_resets_external_context_policy():
         assert recent.clear_all.call_count == 1
 
         await group.privacy.callback(group, interaction, "startup")
-        assert settings.external_context_policy == "direct_party_only"
+        assert settings.external_context_policy == "bot_interactions_only"
         assert settings.source("external_context_policy") == "startup"
         assert recent.clear_all.call_count == 2
     finally:

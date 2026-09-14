@@ -11,7 +11,7 @@ from hina_bot.ai.runtime_llm import LLM
 
 
 @pytest.mark.asyncio
-async def test_direct_party_only_filters_provider_payload_even_if_broad_context_is_supplied():
+async def test_bot_interactions_only_filters_provider_payload_even_if_broad_context_is_supplied():
     calls = []
 
     def handler(request):
@@ -41,7 +41,7 @@ async def test_direct_party_only_filters_provider_payload_even_if_broad_context_
         model="test-model",
         usage_log_path="",
         chat_web_search=False,
-        external_context_policy="direct_party_only",
+        external_context_policy="bot_interactions_only",
     ), client=client)
     store = Store(":memory:")
     scope = Scope(1, 10, 100)
@@ -125,6 +125,8 @@ async def test_direct_party_only_filters_provider_payload_even_if_broad_context_
         serialized = json.dumps(reference, ensure_ascii=False)
         assert "MY-DIRECT" in serialized
         assert "HINA-TO-ME" in serialized
+        assert "OTHER-DIRECT" in serialized
+        assert "HINA-TO-OTHER" in serialized
         assert "MY-NOTE" in serialized
         assert "MY-SUMMARY" in serialized
         assert "MY-PUBLIC-MEMORY" in serialized
@@ -132,8 +134,6 @@ async def test_direct_party_only_filters_provider_payload_even_if_broad_context_
         for blocked in (
             "SERVER-NOTE-SECRET",
             "MY-AMBIENT",
-            "OTHER-DIRECT",
-            "HINA-TO-OTHER",
             "TARGET-HISTORY",
             "OTHER-PUBLIC-MEMORY",
         ):

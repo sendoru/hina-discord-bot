@@ -9,12 +9,15 @@ from __future__ import annotations
 from copy import deepcopy
 
 FULL = "full"
-DIRECT_PARTY_ONLY = "direct_party_only"
-POLICIES = frozenset({FULL, DIRECT_PARTY_ONLY})
+BOT_INTERACTIONS_ONLY = "bot_interactions_only"
+DIRECT_PARTY_ONLY = "direct_party_only"  # Deprecated compatibility alias.
+POLICIES = frozenset({FULL, BOT_INTERACTIONS_ONLY})
 
 
 def normalize_policy(value: str) -> str:
     policy = str(value).strip().lower()
+    if policy == DIRECT_PARTY_ONLY:
+        return BOT_INTERACTIONS_ONLY
     if policy not in POLICIES:
         allowed = ", ".join(sorted(POLICIES))
         raise ValueError(f"EXTERNAL_CONTEXT_POLICY는 {allowed} 중 하나여야 합니다.")
@@ -22,7 +25,7 @@ def normalize_policy(value: str) -> str:
 
 
 def strict_policy(value: str) -> bool:
-    return normalize_policy(value) == DIRECT_PARTY_ONLY
+    return normalize_policy(value) == BOT_INTERACTIONS_ONLY
 
 
 def _author_id(row: dict) -> str:
@@ -32,9 +35,9 @@ def _author_id(row: dict) -> str:
 def allow_channel_row(row: dict, current_user_id: int | str, policy: str) -> bool:
     """Return whether one recent/reply row may leave the process.
 
-    Strict mode is fail-closed.  A user row needs explicit direct-call provenance, except for the
-    caller's own message that they explicitly selected as the current Discord reply target.
-    Assistant rows need an explicit reply target matching the current caller.
+    Strict mode is fail-closed.  Any user's row needs explicit direct-call provenance, except for
+    the caller's own message that they explicitly selected as the current Discord reply target.
+    Hina's assistant rows are part of the shared bot conversation in this channel.
     """
     if normalize_policy(policy) == FULL:
         return True
@@ -46,12 +49,12 @@ def allow_channel_row(row: dict, current_user_id: int | str, policy: str) -> boo
     if kind == "target_user_history":
         return False
     if role == "assistant":
-        return str(row.get("reply_target_user_id") or "") == current
-    if role != "user" or _author_id(row) != current:
+        return True
+    if role != "user":
         return False
     if kind == "replied_message":
-        # The caller explicitly selected their own earlier message in this invocation.
-        return True
+        # Explicit replies do not turn arbitrary third-party chatter into bot conversation.
+        return _author_id(row) == current
     return row.get("direct_trigger") is True
 
 
@@ -96,6 +99,7 @@ def apply_context_policy(context: dict, current_user_id: int | str, policy: str)
 
 
 __all__ = [
+    "BOT_INTERACTIONS_ONLY",
     "DIRECT_PARTY_ONLY",
     "FULL",
     "POLICIES",
