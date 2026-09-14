@@ -86,16 +86,33 @@ class RecentMessages:
     def mark_hydrated(self, scope):
         self.hydrated.add(self._key(scope))
 
-    def context(self, scope, before_id):
+    def candidates(self, scope, before_id, *, include=None):
+        """Return eligible rows before applying item or character budgets.
+
+        Subclasses can filter rows here so ineligible entries do not consume the 12-message window
+        or the character budget before they are discarded.
+        """
         self.prune(time.monotonic())
-        result, remaining = [], self.budget
-        for row in reversed(self.buffers.get(self._key(scope), ())):
+        result = []
+        for row in self.buffers.get(self._key(scope), ()):
             if row["message_id"] >= before_id:
                 continue
-            if remaining <= 0 or len(result) >= 12:
+            if include is not None and not include(row):
+                continue
+            result.append(dict(row))
+        return result
+
+    def context(self, scope, before_id, *, include=None, max_items=12, budget=None):
+        remaining = self.budget if budget is None else max(0, int(budget))
+        result = []
+        for row in reversed(self.candidates(scope, before_id, include=include)):
+            if remaining <= 0 or len(result) >= max_items:
                 break
+            content = str(row.get("content", ""))
+            if not content:
+                continue
             item = dict(row)
-            item["content"] = item["content"][:remaining]
+            item["content"] = content[:remaining]
             remaining -= len(item["content"])
             result.append(item)
         return list(reversed(result))
