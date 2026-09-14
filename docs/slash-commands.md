@@ -41,6 +41,26 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 `/memory purge`는 사용자 대화 기록·자동 요약·개인 메모를 범위에 맞게 삭제하지만 서버 공통 메모와
 memory/chatlog 설정 자체는 유지합니다.
 
+## 런타임 설정
+
+`/config` 그룹 전체는 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자 전용입니다. 아래 설정은 봇을
+재시작하지 않고 바꿀 수 있으며 SQLite에 override로 저장됩니다.
+
+| 명령 | 기능 |
+| --- | --- |
+| `/config status` | 현재 effective 값과 DB override 여부 확인 |
+| `/config set key:<설정> value:<값>` | DB override 저장 후 즉시 적용 |
+| `/config reset key:<설정>` | DB override 삭제 후 시작 시 값으로 복귀 |
+
+대상 설정은 `CALL_PREFIXES`, `DM_ALWAYS_REPLY`, `PUBLIC_SERVER_MEMORY_IN_DM`, `CHAT_WEB_SEARCH`,
+`COMMUNITY_LORE`, `MAX_OUTPUT_TOKENS`, `CHANNEL_CONTEXT_CHARS`, `HISTORY_MAX_CHARS`,
+`LORE_MAX_ITEMS`, `LORE_MAX_CHARS`, `RUNTIME_DEFAULT_LOCATION`입니다.
+
+우선순위는 **SQLite override → 시작 시 `.env.local`/`.env` 값 → 코드 기본값**입니다. 따라서 env의
+값은 여전히 배포 기본값으로 사용할 수 있고, `/config reset`은 해당 DB override만 지웁니다.
+`RUNTIME_DEFAULT_LOCATION`을 명시적으로 비우려면 `/config set`의 value에 `none`을 사용합니다.
+`CALL_PREFIXES`는 쉼표 구분 문자열, 불리언 값은 `on/off` 또는 `true/false`를 받습니다.
+
 ## 최근 채널 대화 문맥
 
 `/chatlog` 그룹 전체는 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자만 실행할 수 있습니다.
