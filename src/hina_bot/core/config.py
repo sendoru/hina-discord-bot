@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 SUPPORTED_MODEL_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
 GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
+MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 
 
 def parse_call_prefixes(value: str) -> tuple[str, ...]:
@@ -52,6 +53,11 @@ class Settings:
     api_key: str
     discord_token: str
     model: str = "gpt-4.1-mini"
+    model_routing_mode: str = "fixed"
+    fast_model: str = "gpt-4.1-mini"
+    smart_model: str = "gpt-4.1-mini"
+    fast_output_tokens: int = 700
+    smart_output_tokens: int = 1600
     memory_model: str = "gpt-4.1-mini"
     provider: str = "openai"
     memory_provider: str = ""
@@ -60,6 +66,10 @@ class Settings:
     openrouter_api_key: str = ""
     gemini_thinking_level: str = "low"
     gemini_total_output_tokens: int = 4096
+    gemini_fast_thinking_level: str = "minimal"
+    gemini_smart_thinking_level: str = "medium"
+    gemini_fast_total_output_tokens: int = 4096
+    gemini_smart_total_output_tokens: int = 8192
     db_path: str = "data/hina.sqlite3"
     prompt_path: str = ""
     instruction_path: str = ""
@@ -127,6 +137,16 @@ class Settings:
         if not model:
             raise ValueError("LLM_MODEL을 설정해 주세요.")
 
+        model_routing_mode = os.getenv("MODEL_ROUTING_MODE", "fixed").strip().lower()
+        if model_routing_mode not in MODEL_ROUTING_MODES:
+            allowed = ", ".join(sorted(MODEL_ROUTING_MODES))
+            raise ValueError(f"MODEL_ROUTING_MODE은 {allowed} 중 하나여야 합니다.")
+        fast_model = os.getenv("LLM_FAST_MODEL", "").strip() or model
+        smart_model = os.getenv("LLM_SMART_MODEL", "").strip() or model
+        if any(len(value) > 200 or any(c in value for c in "\r\n\0")
+               for value in (fast_model, smart_model)):
+            raise ValueError("LLM_FAST_MODEL과 LLM_SMART_MODEL은 줄바꿈 없이 200자 이하여야 합니다.")
+
         memory_model_env = os.getenv("MEMORY_MODEL", "").strip()
         if memory_provider != provider and not memory_model_env:
             raise ValueError("MEMORY_PROVIDER가 다르면 MEMORY_MODEL도 설정해 주세요.")
@@ -142,12 +162,31 @@ class Settings:
                 raise ValueError(f"{_env_key(selected)}를 설정해 주세요.")
 
         output_tokens = int(os.getenv("MAX_OUTPUT_TOKENS", "1000"))
+        fast_output_tokens = int(os.getenv(
+            "FAST_MAX_OUTPUT_TOKENS", str(min(output_tokens, 700))))
+        smart_output_tokens = int(os.getenv(
+            "SMART_MAX_OUTPUT_TOKENS", str(max(output_tokens, 1600))))
         gemini_thinking_level = os.getenv("GEMINI_THINKING_LEVEL", "low").strip().lower()
         if gemini_thinking_level not in GEMINI_THINKING_LEVELS:
             allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
             raise ValueError(f"GEMINI_THINKING_LEVEL은 {allowed} 중 하나여야 합니다.")
         gemini_total_output_tokens = int(os.getenv(
             "GEMINI_TOTAL_OUTPUT_TOKENS", str(max(4096, output_tokens))))
+        gemini_fast_thinking_level = os.getenv(
+            "GEMINI_FAST_THINKING_LEVEL", "minimal").strip().lower()
+        gemini_smart_thinking_level = os.getenv(
+            "GEMINI_SMART_THINKING_LEVEL", "medium").strip().lower()
+        for variable, level in (
+            ("GEMINI_FAST_THINKING_LEVEL", gemini_fast_thinking_level),
+            ("GEMINI_SMART_THINKING_LEVEL", gemini_smart_thinking_level),
+        ):
+            if level not in GEMINI_THINKING_LEVELS:
+                allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
+                raise ValueError(f"{variable}은 {allowed} 중 하나여야 합니다.")
+        gemini_fast_total_output_tokens = int(os.getenv(
+            "GEMINI_FAST_TOTAL_OUTPUT_TOKENS", str(max(4096, fast_output_tokens))))
+        gemini_smart_total_output_tokens = int(os.getenv(
+            "GEMINI_SMART_TOTAL_OUTPUT_TOKENS", str(max(8192, smart_output_tokens))))
 
         dm = os.getenv("DM_ALWAYS_REPLY", "false").lower()
         if dm not in {"true", "false"}:
@@ -184,10 +223,18 @@ class Settings:
         s = cls(
             api_key=keys[provider], discord_token=token,
             provider=provider, memory_provider=memory_provider,
+            model_routing_mode=model_routing_mode,
+            fast_model=fast_model, smart_model=smart_model,
+            fast_output_tokens=fast_output_tokens,
+            smart_output_tokens=smart_output_tokens,
             openai_api_key=keys["openai"], gemini_api_key=keys["gemini"],
             openrouter_api_key=keys["openrouter"],
             gemini_thinking_level=gemini_thinking_level,
             gemini_total_output_tokens=gemini_total_output_tokens,
+            gemini_fast_thinking_level=gemini_fast_thinking_level,
+            gemini_smart_thinking_level=gemini_smart_thinking_level,
+            gemini_fast_total_output_tokens=gemini_fast_total_output_tokens,
+            gemini_smart_total_output_tokens=gemini_smart_total_output_tokens,
             special_dm_user_id=int(os.environ["SPECIAL_DM_USER_ID"])
             if os.getenv("SPECIAL_DM_USER_ID", "").strip() else None,
             bot_admin_ids=frozenset(int(x.strip()) for x in
@@ -231,6 +278,9 @@ class Settings:
         if not (0 <= s.cooldown <= 3600 and 1 <= s.concurrency <= 20
                 and 128 <= s.output_tokens <= 4096
                 and s.output_tokens <= s.gemini_total_output_tokens <= 65536
+                and 128 <= s.fast_output_tokens <= s.smart_output_tokens <= 4096
+                and s.fast_output_tokens <= s.gemini_fast_total_output_tokens <= 65536
+                and s.smart_output_tokens <= s.gemini_smart_total_output_tokens <= 65536
                 and 0 <= s.history_max_chars <= 120000
                 and 0 <= s.channel_context_chars <= 12000
                 and 2 <= s.summary_every <= s.history_turns <= 30
@@ -240,7 +290,8 @@ class Settings:
                 and 0 <= s.vision_max_stickers <= 32
                 and vision_total <= 32):
             raise ValueError("설정 범위 오류: cooldown 0~3600, concurrency 1~20, "
-                             "output_tokens 128~4096, Gemini total output은 output_tokens~65536, "
+                             "output_tokens 128~4096, fast output <= smart output, "
+                             "Gemini total output은 각 output_tokens~65536, "
                              "2 <= summary_every <= history_turns <= 30, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하")

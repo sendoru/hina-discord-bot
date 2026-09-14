@@ -213,10 +213,17 @@ class UsageLogger:
             state["models"] = sorted(state["models"])
             self._emit(self.exchange_handler, state)
 
-    async def request(self, client, operation: str, **kwargs):
+    async def request(self, client, operation: str, *, route_metadata=None, **kwargs):
         started = perf_counter()
         row = {"at": datetime.now(UTC).isoformat(), "operation": operation,
                "model": kwargs["model"]}
+        if route_metadata:
+            allowed = {
+                "model_tier", "model_route_score", "model_route_reasons",
+                "requested_max_output_tokens", "requested_thinking_level",
+                "requested_total_output_tokens",
+            }
+            row.update({key: value for key, value in route_metadata.items() if key in allowed})
         responses = []
 
         try:
