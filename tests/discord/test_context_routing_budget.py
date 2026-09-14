@@ -36,6 +36,47 @@ class ContextBudgetTests(unittest.TestCase):
         self.assertEqual(rows[0]["message_id"], 1)
         self.assertEqual(rows[-1]["message_id"], 12)
 
+    def test_busy_channel_keeps_same_speaker_thread_and_some_ambient_chat(self):
+        recent = TargetAwareRecentMessages(limit=40, budget=6000, store=self.store)
+        speaker = Scope(1, 10, 200)
+        other = Scope(1, 10, 300)
+
+        recent.add(speaker, 1, "B", "히나야 메이드복 입은 거 보고 싶어")
+        recent.add(speaker, 2, "히나", "그런 옷을 입어 달라는 건 좀 곤란해.", role="assistant")
+        recent.add(speaker, 3, "B", "장난 아닌데")
+        recent.add(speaker, 4, "히나", "그래도 지금은 싫어.", role="assistant")
+        for message_id in range(5, 21):
+            recent.add(other, message_id, "다른 사람", f"끼어든 짧은 채팅 {message_id}")
+
+        rows = recent.context(speaker, 99)
+        contents = [row["content"] for row in rows]
+        kinds = [row.get("context_kind") for row in rows]
+
+        self.assertIn("히나야 메이드복 입은 거 보고 싶어", contents)
+        self.assertIn("장난 아닌데", contents)
+        self.assertIn("그래도 지금은 싫어.", contents)
+        self.assertIn("speaker_thread", kinds)
+        self.assertIn("channel_ambient", kinds)
+        self.assertLessEqual(len(rows), 18)
+
+    def test_cross_user_assistant_tone_is_still_excluded_from_busy_context(self):
+        recent = TargetAwareRecentMessages(limit=40, budget=6000, store=self.store)
+        user_a = Scope(1, 10, 100)
+        user_b = Scope(1, 10, 200)
+        other = Scope(1, 10, 300)
+
+        recent.add(user_b, 1, "B", "내 얘기는 기억해 줘")
+        recent.add(user_b, 2, "히나", "응, 그 얘기 말이지.", role="assistant")
+        for message_id in range(3, 13):
+            recent.add(other, message_id, "다른 사람", f"주변 대화 {message_id}")
+        recent.add(user_a, 13, "히나", "A한테만 한 날 선 답변", role="assistant")
+
+        rows = recent.context(user_b, 99)
+        contents = [row["content"] for row in rows]
+        self.assertIn("내 얘기는 기억해 줘", contents)
+        self.assertIn("응, 그 얘기 말이지.", contents)
+        self.assertNotIn("A한테만 한 날 선 답변", contents)
+
     def test_all_channel_context_sources_share_one_budget(self):
         recent = TargetAwareRecentMessages(limit=30, budget=100, store=self.store)
         scope = Scope(1, 10, 200)
@@ -65,10 +106,10 @@ class ContextBudgetTests(unittest.TestCase):
             REPLY_CONTEXT.reset(reply_token)
 
         self.assertLessEqual(sum(len(row["content"]) for row in rows), 100)
-        self.assertLessEqual(len(rows), 12)
+        self.assertLessEqual(len(rows), 18)
         self.assertTrue(any(row.get("context_kind") == "replied_message" for row in rows))
         self.assertTrue(any(row.get("context_kind") == "target_user_history" for row in rows))
-        self.assertTrue(any(row.get("context_kind") is None for row in rows))
+        self.assertTrue(any(row.get("context_kind") == "speaker_thread" for row in rows))
 
 
 class PublicContextRoutingTests(unittest.TestCase):
