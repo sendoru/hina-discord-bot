@@ -4,7 +4,6 @@ The legacy prefix+slash parser still exists in the lower-level BaseHinaClient fo
 fixtures, but the production web_bot entrypoint installs this surface and disables that parser.
 """
 
-import asyncio
 import logging
 import re
 
@@ -12,7 +11,7 @@ import discord
 from discord import app_commands
 
 from .chatlog_commands import ChatLogCommands
-from .memory_commands import MemoryMode
+from .note_commands import NoteCommands
 from .routing import Scope
 
 log = logging.getLogger("hina")
@@ -23,13 +22,17 @@ _EMOJI_ALIAS_RE = re.compile(r"[a-z][a-z0-9_]{1,31}")
 HELP_TEXT = """일반 대화는 @멘션, 답장 핑, 또는 메시지 맨 앞의 `히나야`로 호출해 주세요.
 관리·설정 기능은 Discord 슬래시 명령으로만 사용합니다.
 
-장기 기억
-`/memory show` — 현재 채널의 내 요약과 개인 메모 확인
-`/memory note` / `/memory note-clear` — 개인 메모 설정/삭제
-`/memory clear` — 현재 서버 또는 DM에서 내 장기 기억 삭제
-`/memory server-show` / `server-note` / `server-clear` — 서버 공통 메모
-`/memory mode` / `status` / `overview` — 봇 관리자용 장기 기억 설정
-`/memory purge` — 봇 관리자용 범위별 사용자 장기 기억 초기화
+자동 장기 기억
+`/memory show` — 현재 채널에서 자동으로 요약된 내 기억 확인
+`/memory clear` — 현재 서버 또는 DM에서 내 자동 대화 기억 삭제
+`/memory mode` / `status` / `overview` — 봇 관리자용 자동 기억 설정
+`/memory purge` — 봇 관리자용 범위별 자동 기억 초기화
+
+수동 메모
+`/note show` — 내 메모 또는 서버 공통 메모 확인
+`/note set` — 내 메모 저장, 또는 서버 관리자가 서버 공통 메모 저장
+`/note clear` — 내 메모 삭제, 또는 서버 관리자가 서버 공통 메모 삭제
+수동 메모는 `/memory mode`와 독립적으로 유지됩니다.
 
 최근 대화 문맥
 `/chatlog mode` — 최근 채널 대화 사용 여부 설정
@@ -54,20 +57,6 @@ def _scope(interaction: discord.Interaction) -> Scope:
 
 def _is_bot_admin(client, user_id: int) -> bool:
     return user_id in client.emoji_admin_ids
-
-
-def _can_manage_guild(interaction: discord.Interaction) -> bool:
-    permissions = getattr(interaction.user, "guild_permissions", None)
-    return bool(permissions and permissions.manage_guild)
-
-
-def _user_lock(client, scope: Scope) -> asyncio.Lock:
-    key = scope.user_note
-    lock = client.locks.get(key)
-    if lock is None:
-        lock = asyncio.Lock()
-        client.locks[key] = lock
-    return lock
 
 
 async def _send_ephemeral_pages(interaction: discord.Interaction, pages: list[str]):
@@ -124,7 +113,7 @@ def _parse_emoji_import_items(items: str) -> list[tuple[str, str]]:
 
 
 def upgrade_memory_group(client):
-    """Turn the base /memory admin group into the complete user/admin memory surface."""
+    """Add user-facing automatic-memory commands to the base admin memory group."""
     group = client.tree.get_command("memory")
     if not isinstance(group, app_commands.Group):
         raise TypeError("/memory group is not registered")
@@ -138,10 +127,9 @@ def upgrade_memory_group(client):
             return False
         return True
 
-    # User-owned memory operations share /memory with bot-admin configuration operations.
     group.interaction_check = selective_check
 
-    @app_commands.command(name="show", description="현재 채널의 내 장기 요약과 개인 메모 확인")
+    @app_commands.command(name="show", description="현재 채널의 자동 장기 요약 확인")
     async def show(interaction: discord.Interaction):
         try:
             scope = _scope(interaction)
@@ -149,42 +137,12 @@ def upgrade_memory_group(client):
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
         summary, _ = client.store.summary(scope)
-        text = ("이 채널에서의 기억:\n" + (summary or "아직 요약된 기억이 없어요.")
-                + "\n\n개인 메모:\n" + (client.store.note(scope.user_note) or "없어요."))
-        await interaction.response.send_message(text, ephemeral=True)
-
-    @app_commands.command(name="note", description="같은 서버의 내 응답에 사용할 개인 메모 교체")
-    @app_commands.describe(text="저장할 개인 메모 (1~1500자)")
-    async def note(interaction: discord.Interaction, text: str):
-        try:
-            scope = _scope(interaction)
-        except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
-            return
-        if not 1 <= len(text.strip()) <= 1500:
-            await interaction.response.send_message("1~1500자의 개인 메모를 입력해 주세요.", ephemeral=True)
-            return
-        if not MemoryMode(client.store.memory_mode(scope)).writes:
-            await interaction.response.send_message(
-                "현재 모드는 새 기억 저장이 꺼져 있어요. /memory mode로 변경해 주세요.", ephemeral=True)
-            return
-        async with client.channel_lock(scope), _user_lock(client, scope):
-            client.store.set_note(scope.user_note, text.strip())
         await interaction.response.send_message(
-            "개인 메모를 저장했어요. 서버에서는 같은 서버의 다른 채널에서도 참고해요.", ephemeral=True)
+            "이 채널에서 자동으로 요약된 기억:\n" + (summary or "아직 요약된 기억이 없어요."),
+            ephemeral=True,
+        )
 
-    @app_commands.command(name="note-clear", description="내 개인 메모 삭제")
-    async def note_clear(interaction: discord.Interaction):
-        try:
-            scope = _scope(interaction)
-        except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
-            return
-        async with client.channel_lock(scope), _user_lock(client, scope):
-            client.store.set_note(scope.user_note, "")
-        await interaction.response.send_message("개인 메모를 삭제했어요.", ephemeral=True)
-
-    @app_commands.command(name="clear", description="이 서버 또는 DM에서의 내 장기 기억 삭제")
+    @app_commands.command(name="clear", description="이 서버 또는 DM에서의 내 자동 장기 기억 삭제")
     @app_commands.describe(confirm="삭제를 확인하려면 true")
     async def clear(interaction: discord.Interaction, confirm: bool):
         try:
@@ -196,71 +154,15 @@ def upgrade_memory_group(client):
             await interaction.response.send_message(
                 "삭제하지 않았어요. 실제로 삭제하려면 confirm을 true로 선택해 주세요.", ephemeral=True)
             return
-        async with client.channel_lock(scope), _user_lock(client, scope):
+        async with client.channel_lock(scope):
             client.store.forget(scope)
         await interaction.response.send_message(
-            "이 서버 또는 DM에서의 대화 기록, 자동 요약, 개인 메모를 삭제했어요. "
-            "최근 채널 대화 문맥은 그대로 유지돼요.",
+            "이 서버 또는 DM에서 자동으로 쌓인 대화 기록과 요약을 삭제했어요. "
+            "직접 저장한 /note 메모와 최근 채널 대화 문맥은 그대로 유지돼요.",
             ephemeral=True,
         )
 
-    @app_commands.command(name="server-show", description="현재 서버의 공통 메모 확인")
-    async def server_show(interaction: discord.Interaction):
-        try:
-            scope = _scope(interaction)
-        except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
-            return
-        if scope.guild_id is None:
-            await interaction.response.send_message("서버에서만 사용할 수 있는 명령이에요.", ephemeral=True)
-            return
-        await interaction.response.send_message(
-            client.store.note(scope.realm) or "서버 공통 메모가 없어요.", ephemeral=True)
-
-    @app_commands.command(name="server-note", description="현재 서버의 공통 메모 교체 (서버 관리자)")
-    @app_commands.describe(text="저장할 서버 공통 메모 (1~1500자)")
-    async def server_note(interaction: discord.Interaction, text: str):
-        try:
-            scope = _scope(interaction)
-        except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
-            return
-        if scope.guild_id is None:
-            await interaction.response.send_message("서버에서만 사용할 수 있는 명령이에요.", ephemeral=True)
-            return
-        if not _can_manage_guild(interaction):
-            await interaction.response.send_message("서버 관리 권한이 필요해요.", ephemeral=True)
-            return
-        if not 1 <= len(text.strip()) <= 1500:
-            await interaction.response.send_message("1~1500자의 서버 공통 메모를 입력해 주세요.", ephemeral=True)
-            return
-        if not MemoryMode(client.store.memory_mode(scope)).writes:
-            await interaction.response.send_message(
-                "현재 모드는 새 기억 저장이 꺼져 있어요. /memory mode로 변경해 주세요.", ephemeral=True)
-            return
-        async with client.channel_lock(scope):
-            client.store.set_note(scope.realm, text.strip())
-        await interaction.response.send_message(
-            "서버 공통 메모를 교체했어요. 서버 전체에서 참고해요.", ephemeral=True)
-
-    @app_commands.command(name="server-clear", description="현재 서버의 공통 메모 삭제 (서버 관리자)")
-    async def server_clear(interaction: discord.Interaction):
-        try:
-            scope = _scope(interaction)
-        except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
-            return
-        if scope.guild_id is None:
-            await interaction.response.send_message("서버에서만 사용할 수 있는 명령이에요.", ephemeral=True)
-            return
-        if not _can_manage_guild(interaction):
-            await interaction.response.send_message("서버 관리 권한이 필요해요.", ephemeral=True)
-            return
-        async with client.channel_lock(scope):
-            client.store.set_note(scope.realm, "")
-        await interaction.response.send_message("서버 공통 메모를 삭제했어요.", ephemeral=True)
-
-    for command in (show, note, note_clear, clear, server_show, server_note, server_clear):
+    for command in (show, clear):
         group.add_command(command)
 
     return group
@@ -405,6 +307,7 @@ class EmojiSlashCommands(app_commands.Group):
 def install_slash_commands(client):
     """Install the slash-only user/admin command surface on a production client."""
     upgrade_memory_group(client)
+    client.tree.add_command(NoteCommands(client))
     client.tree.add_command(ChatLogCommands(client))
     client.tree.add_command(EmojiSlashCommands(client))
 
