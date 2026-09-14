@@ -115,19 +115,18 @@ class Store:
         return row is None or bool(row[0])
 
     def forget(self, scope: Scope):
-        """Delete this user's history and notes across channels in the current realm."""
+        """Delete this user's automatically accumulated memory in the current realm."""
         with self.db:
             for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
                 self.db.execute(f"DELETE FROM {table} WHERE realm=? AND user_id=?",
                                 (scope.realm, str(scope.user_id)))
-            self.db.execute("DELETE FROM notes WHERE scope=?", (scope.user_note,))
 
     @staticmethod
     def _rowcount(cursor) -> int:
         return max(0, int(cursor.rowcount or 0))
 
     def purge_channel_memory(self, scope: Scope) -> int:
-        """Delete persistent user memory for every user in one channel."""
+        """Delete automatic persistent memory for every user in one channel."""
         prefix = scope.channel + ":user:%"
         deleted = 0
         with self.db:
@@ -137,26 +136,21 @@ class Store:
         return deleted
 
     def purge_realm_memory(self, scope: Scope) -> int:
-        """Delete all user-owned persistent memory in a guild/realm, preserving realm notes."""
+        """Delete automatic persistent memory in a guild/realm, preserving manual notes."""
         deleted = 0
         with self.db:
             for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE realm=?", (scope.realm,))
                 deleted += self._rowcount(cursor)
-            cursor = self.db.execute(
-                "DELETE FROM notes WHERE scope LIKE ?", (scope.realm + ":user:%",))
-            deleted += self._rowcount(cursor)
         return deleted
 
     def purge_all_memory(self) -> int:
-        """Delete all user-owned persistent memory while preserving config and shared realm notes."""
+        """Delete all automatic persistent memory while preserving notes and configuration."""
         deleted = 0
         with self.db:
             for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
                 cursor = self.db.execute(f"DELETE FROM {table}")
                 deleted += self._rowcount(cursor)
-            cursor = self.db.execute("DELETE FROM notes WHERE instr(scope, ':user:') > 0")
-            deleted += self._rowcount(cursor)
         return deleted
 
     def add_shared_call(self, scope, message_id, name, content):

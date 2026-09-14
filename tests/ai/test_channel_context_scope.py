@@ -38,7 +38,7 @@ async def test_current_channel_query_excludes_cross_channel_memory():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings("test", "test"), client=client)
+    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     scope = Scope(1, 10, 100, True)
     try:
@@ -92,7 +92,7 @@ async def test_server_query_keeps_authorized_cross_channel_context():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings("test", "test"), client=client)
+    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     scope = Scope(1, 10, 100, True)
     try:

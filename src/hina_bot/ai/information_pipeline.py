@@ -12,6 +12,7 @@ from .information_routing import (
     looks_like_relation_or_event_question,
     looks_like_world_fact_question,
 )
+from .note_context import NoteContextStore
 from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
@@ -131,15 +132,23 @@ class InformationPipeline(RequestAssembler):
             weather = await self.ambient_weather.current(self.settings)
         token = CURRENT_AMBIENT_WEATHER.set(weather)
         try:
+            assembly_store = store
+            assembly_public_context = public_context
+            assembly_use_memory = use_memory
+            memory_mode = store.memory_mode(scope) if hasattr(store, "memory_mode") else "normal"
+            if not use_memory and memory_mode in {"off", "write_only"}:
+                assembly_store = NoteContextStore(store)
+                assembly_public_context = []
+                assembly_use_memory = True
             return await super().answer(
-                store,
+                assembly_store,
                 scope,
                 name,
                 content,
-                public_context=public_context,
+                public_context=assembly_public_context,
                 channel_context=channel_context,
                 emoji_catalog=emoji_catalog,
-                use_memory=use_memory,
+                use_memory=assembly_use_memory,
                 information_plan=information,
             )
         finally:
