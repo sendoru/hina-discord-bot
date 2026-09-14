@@ -10,6 +10,7 @@ from .chat_llm import LLM
 from .chatlog_capture import capture_mode
 from .chatlog_capture_commands import install_chatlog_capture
 from .config import Settings
+from .reply_context import REPLY_CONTEXT, collect_reply_context
 from .routing import Scope, trigger_text
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
@@ -63,8 +64,7 @@ class HinaClient(BaseHinaClient):
                 if old.webhook_id is not None:
                     continue
                 own_bot = self.user is not None and old.author.id == self.user.id
-                if old.author.bot and not own_bot:
-                    continue
+                other_bot = bool(old.author.bot) and not own_bot
                 historical_text = trigger_text(
                     old,
                     self.user.id,
@@ -88,7 +88,7 @@ class HinaClient(BaseHinaClient):
                         old.id,
                         old.author.display_name,
                         old.content,
-                        role="assistant" if own_bot else "user",
+                        role="assistant" if own_bot else ("bot" if other_bot else "user"),
                         unix_time=old.created_at.timestamp(),
                     )
                 finally:
@@ -112,6 +112,29 @@ class HinaClient(BaseHinaClient):
             message.channel.id,
             message.author.id,
         )
+
+        # Other bots never trigger Hina, but in `capture=all` their visible channel messages are
+        # useful conversational context just like human side chatter. `capture=direct` keeps its
+        # stricter privacy/attention boundary and omits them unless the current user explicitly
+        # replies to one, which is handled below as request-scoped reply context.
+        own_bot = message.author.id == self.user.id
+        if message.author.bot and not own_bot:
+            if (
+                message.webhook_id is None
+                and scope.guild_id is not None
+                and self.store.chat_log_enabled(scope)
+                and capture_mode(self.store, scope) == "all"
+                and message.content
+            ):
+                self.recent.add(
+                    scope,
+                    message.id,
+                    message.author.display_name,
+                    message.content,
+                    role="bot",
+                )
+            return
+
         direct_only = scope.guild_id is not None and capture_mode(self.store, scope) == "direct"
         sampled = (
             await collect(
@@ -124,11 +147,17 @@ class HinaClient(BaseHinaClient):
             if text is not None
             else []
         )
+        replied = (
+            await collect_reply_context(message, self.user.id)
+            if text is not None
+            else []
+        )
         visuals = (
             await collect_visual_inputs(message, limits=self.vision_limits)
             if text is not None else []
         )
         target_token = TARGET_CONTEXT.set(tuple(sampled))
+        reply_token = REPLY_CONTEXT.set(tuple(replied))
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
         direct_token = CURRENT_DIRECT_TRIGGER.set(text is not None)
 
@@ -145,6 +174,7 @@ class HinaClient(BaseHinaClient):
                 message.content = original_content
             CURRENT_DIRECT_TRIGGER.reset(direct_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)
+            REPLY_CONTEXT.reset(reply_token)
             TARGET_CONTEXT.reset(target_token)
 
 
