@@ -12,11 +12,13 @@ from .information_routing import (
     looks_like_relation_or_event_question,
     looks_like_world_fact_question,
 )
+from .model_routing import build_model_plan
 from .note_context import NoteContextStore
 from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
 from .self_profile_lore import fallback_references
+from .vision import CURRENT_VISUAL_INPUTS
 
 _IN_WORLD_PRESENT_STATE_QUERY = re.compile(
     r"(?:지금|현재|오늘|요즘).*(?:무슨\s*일|사고|소동|난리|사건|전투|공격|습격|폭발|"
@@ -127,6 +129,12 @@ class InformationPipeline(RequestAssembler):
     ) -> str:
         routing = routing_plan or RoutingPlan(content, content)
         information = self.build_information_plan(routing)
+        model_plan = build_model_plan(
+            self.settings,
+            information,
+            channel_context=channel_context or (),
+            visual_count=len(CURRENT_VISUAL_INPUTS.get()),
+        )
         weather = None
         if information.route == InformationRoute.GENERAL:
             weather = await self.ambient_weather.current(self.settings)
@@ -150,6 +158,7 @@ class InformationPipeline(RequestAssembler):
                 emoji_catalog=emoji_catalog,
                 use_memory=assembly_use_memory,
                 information_plan=information,
+                model_plan=model_plan,
             )
         finally:
             CURRENT_AMBIENT_WEATHER.reset(token)

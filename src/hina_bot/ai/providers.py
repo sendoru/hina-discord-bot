@@ -218,13 +218,19 @@ class _GeminiResponses:
         if instructions:
             payload["system_instruction"] = instructions
 
-        generation_config = {"thinking_level": self.thinking_level}
+        thinking_level = kwargs.get("thinking_level", self.thinking_level)
+        if thinking_level not in {"minimal", "low", "medium", "high"}:
+            raise ValueError("Gemini thinking_level 값이 잘못되었습니다.")
+        total_output_tokens = kwargs.get("total_output_tokens", self.total_output_tokens)
+        if not isinstance(total_output_tokens, int) or total_output_tokens <= 0:
+            raise ValueError("Gemini total_output_tokens 값이 잘못되었습니다.")
+        generation_config = {"thinking_level": thinking_level}
         max_output_tokens = kwargs.get("max_output_tokens")
         if isinstance(max_output_tokens, int):
             # Gemini counts hidden thought tokens against max_output_tokens. Keep a separate
             # provider budget so a short visible-answer limit does not cut reasoning off first.
             generation_config["max_output_tokens"] = max(
-                max_output_tokens, self.total_output_tokens)
+                max_output_tokens, total_output_tokens)
 
         tools = kwargs.get("tools") or []
         unknown_tools = [tool for tool in tools if tool.get("type") != "web_search"]

@@ -161,6 +161,31 @@ async def test_gemini_custom_reasoning_budget_is_forwarded():
 
 
 @pytest.mark.asyncio
+async def test_gemini_per_request_routing_overrides_client_defaults():
+    seen = {}
+
+    async def handler(request: httpx.Request):
+        seen["json"] = __import__("json").loads(request.content)
+        return httpx.Response(200, json={"status": "completed", "steps": [], "usage": {}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        await _GeminiResponses(http, thinking_level="low", total_output_tokens=4096).create(
+            model="gemini-smart",
+            input="question",
+            max_output_tokens=1600,
+            thinking_level="medium",
+            total_output_tokens=8192,
+        )
+    finally:
+        await http.aclose()
+
+    config = seen["json"]["generation_config"]
+    assert config["thinking_level"] == "medium"
+    assert config["max_output_tokens"] == 8192
+
+
+@pytest.mark.asyncio
 async def test_gemini_http_error_exposes_safe_diagnostics():
     async def handler(request: httpx.Request):
         return httpx.Response(400, json={
