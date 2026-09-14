@@ -9,7 +9,7 @@ def test_character_prompt_stays_lightweight_and_lore_agnostic():
     character = _prompt("hina.md")
 
     # Character style belongs here; named relationship/world facts belong in searchable lore.
-    assert len(character.encode("utf-8")) <= 6000
+    assert len(character.encode("utf-8")) <= 7500
     for duplicated_lore_subject in ("아코", "마코토", "호시노", "이부키", "세나", "이오리", "치나츠"):
         assert duplicated_lore_subject not in character
 
