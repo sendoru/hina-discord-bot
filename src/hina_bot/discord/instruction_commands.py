@@ -3,7 +3,8 @@ import logging
 import discord
 from discord import app_commands
 
-from .admin_list import created_compact, fit_table, sort_rows
+from .admin_export import text_attachment
+from .admin_list import created_compact, sort_rows
 from .instructions import InstructionRegistry
 
 log = logging.getLogger("hina")
@@ -54,7 +55,7 @@ class InstructionCommands(app_commands.Group):
         await interaction.response.send_message(
             f"instruction `{identifier}`를 추가하고 활성화했어요.", ephemeral=True)
 
-    @app_commands.command(name="list", description="instruction 검색·정렬 및 전체 목록 확인")
+    @app_commands.command(name="list", description="instruction 검색·정렬 결과를 전체 내용 파일로 받기")
     @app_commands.describe(
         search="ID나 본문에서 찾을 검색어. 비워 두면 전체 표시",
         sort="목록 정렬 방식. 기본은 추가 시간순",
@@ -85,22 +86,20 @@ class InstructionCommands(app_commands.Group):
         else:
             header = f"동적 instruction {len(rows)}/50 · {_SORT_LABELS.get(sort, '추가 시간순')}"
 
-        table_rows = []
+        lines = [header, ""]
         for row in rows:
             state = "ON" if row.get("enabled", True) else "OFF"
-            table_rows.append([
-                str(row.get("id", "?")),
-                state,
-                created_compact(row),
+            lines.extend([
+                f"[{row.get('id', '?')}] {state} · 추가(UTC) {created_compact(row)}",
                 str(row.get("text", "")),
+                "",
             ])
-        text = fit_table(
-            header,
-            ["ID", "상태", "추가(UTC)", "내용"],
-            table_rows,
-            [26, 4, 12, 46],
+        filename = "instructions-search.txt" if query else "instructions.txt"
+        await interaction.response.send_message(
+            f"{header}\n전체 내용은 첨부 파일에 넣었어요.",
+            file=text_attachment("\n".join(lines).rstrip() + "\n", filename),
+            ephemeral=True,
         )
-        await interaction.response.send_message(text, ephemeral=True)
 
     @app_commands.command(name="edit", description="기존 instruction 본문 수정")
     @app_commands.describe(identifier="수정할 ID", text="새 보조 지침")
