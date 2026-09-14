@@ -11,7 +11,6 @@ from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from .bot import HinaClient as BaseHinaClient
 from .chat_llm import LLM
 from .chatlog_capture import capture_mode
-from .chatlog_capture_commands import install_chatlog_capture
 from .config import Settings
 from .reply_context import REPLY_CONTEXT, collect_reply_context
 from .routing import Scope, trigger_text
@@ -91,7 +90,6 @@ class HinaClient(BaseHinaClient):
         )
         self.vision_limits = VisionLimits.from_settings(settings)
         install_slash_commands(self)
-        install_chatlog_capture(self)
 
     @staticmethod
     def _management_text(text):
@@ -144,7 +142,7 @@ class HinaClient(BaseHinaClient):
         return allowed
 
     async def hydrate_recent_history(self, message, scope):
-        """Backfill the bounded history while respecting the active capture policy."""
+        """Backfill the bounded history while respecting the active chatlog mode."""
         if scope.guild_id is None or not self.recent.needs_hydration(scope):
             return
         created_at = getattr(message, "created_at", None)
@@ -219,9 +217,9 @@ class HinaClient(BaseHinaClient):
             message.author.id,
         )
 
-        # Other bots never trigger Hina, but in `capture=all` their visible channel messages are
-        # useful conversational context just like human side chatter. The final egress policy is a
-        # separate boundary and can still remove these rows before any external model request.
+        # Other bots never trigger Hina, but in chatlog `all` mode their visible channel messages
+        # are useful conversational context just like human side chatter. The final egress policy is
+        # a separate boundary and can still remove these rows before any external model request.
         own_bot = message.author.id == self.user.id
         if message.author.bot and not own_bot:
             if (
