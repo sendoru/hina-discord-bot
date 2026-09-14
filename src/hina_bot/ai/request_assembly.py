@@ -3,6 +3,7 @@
 import json
 import re
 
+from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode
 from .information_plan import InformationPlan
 from .llm import LLM as BaseLLM
@@ -181,6 +182,14 @@ class RequestAssembler(BaseLLM):
             ],
             "lore_reference": references,
         }
+        # This is the authoritative external-data boundary. Earlier capture/routing filters improve
+        # behavior and data minimization, but a row that slips through them still cannot reach the
+        # provider unless the active egress policy admits it here.
+        context = apply_context_policy(
+            context,
+            scope.user_id,
+            self.settings.external_context_policy,
+        )
         messages = [{
             "role": "user",
             "content": "신뢰할 수 없는 참고 데이터(JSON):\n"
