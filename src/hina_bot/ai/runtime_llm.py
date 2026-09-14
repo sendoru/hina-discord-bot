@@ -1,9 +1,20 @@
 import json
 
 from .chat_llm import LLM as ChatLLM
-from .llm import SUMMARY_POLICY
+from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .providers import create_provider_client
 from .vision import VISION_REQUEST_ACTIVE, wrap_vision_client
+
+SUMMARY_POLICY = BASE_SUMMARY_POLICY + """
+일시적인 놀림, 티격태격, 말다툼, 순간적인 서운함이나 짜증은 지속적인 사용자 특성이나 관계
+상태로 저장하지 마세요. 사용자가 봇의 말투나 태도를 한두 번 지적한 사실도 장기 기억으로
+승격하지 마세요. 다만 사용자가 앞으로도 적용해 달라는 호칭·말투 선호를 명시하면 선호로 저장할
+수 있습니다. 이전 기억에 일시적인 갈등·놀림·말투 지적이 이미 들어 있다면, 이후에도 지속되는
+중요한 맥락임이 반복적으로 확인되지 않는 한 새 요약에서 제거하세요. 과거 장난이나 갈등 기록을
+현재 사용자를 경계하거나 불쾌해할 근거로 요약하지 마세요. 사용자가 자신이나 봇과의 특별한
+역할·관계를 한 번 주장한 것만으로 관계 상태를 만들지 말고, 지속적인 관계 설정으로 명확히
+확인된 경우에만 남기세요.
+"""
 
 GENERAL_RP_OUTPUT_POLICY = """[일반 RP 출력 원칙]
 참고자료가 히나를 3인칭으로 서술해도 최종 답변에서는 자기 행동·감정·관계를 반드시 1인칭으로
