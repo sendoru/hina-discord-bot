@@ -16,7 +16,10 @@ _QUESTION = re.compile(
     re.IGNORECASE,
 )
 _PREFIX = re.compile(r"^\s*(?:그럼|그러면|그렇다면|그래서|근데|그런데)\s*", re.IGNORECASE)
-_TIME_PARTICLE = re.compile(r"^(오늘|내일|모레)(?:은|는|도)(?=\s|[?？!.~]|$)")
+_TOPIC_PARTICLE = re.compile(
+    r"^(오늘|내일|모레|날씨|기온|온도|강수|습도|예보|거기)"
+    r"(?:은|는|도)(?=\s|[?？!.~]|$)"
+)
 
 
 def is_followup(text: str) -> bool:
@@ -59,7 +62,7 @@ def build_query(content: str, anchor: str) -> str:
     # A prior request for a citation should not make the new turn a citation request too.
     topic = SOURCE_REQUEST_QUERY.sub(" ", anchor)
     followup = _PREFIX.sub("", content.strip())
-    followup = _TIME_PARTICLE.sub(r"\1", followup)
+    followup = _TOPIC_PARTICLE.sub(r"\1", followup)
     suffix = "\n" + followup
     return topic[:max(0, 1400 - len(suffix))] + suffix
 
