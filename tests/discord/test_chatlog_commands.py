@@ -123,9 +123,15 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
             text_channels=[NS(id=10, name="일반"), NS(id=11, name="봇")],
             threads=[],
         )
+        inherited_guild = NS(
+            id=2,
+            name="상속 서버",
+            text_channels=[NS(id=20, name="일반")],
+            threads=[],
+        )
         client = NS(
             store=store,
-            guilds=[guild],
+            guilds=[guild, inherited_guild],
             settings=NS(allowed_guild_ids=frozenset()),
             emoji_admin_ids={100},
         )
@@ -136,10 +142,14 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(["서버", "테스트 서버", "on", "on"], rows)
         self.assertIn(["채널", "테스트 서버/#일반", "상속", "on"], rows)
         self.assertIn(["채널", "테스트 서버/#봇", "off", "off"], rows)
+        self.assertIn(["서버", "상속 서버", "상속", "off"], rows)
 
         compact = group._overview_rows(100, "overrides")
-        self.assertIn(["채널", "테스트 서버/#봇", "off", "off"], compact)
-        self.assertIn(["채널", "테스트 서버/(나머지 1개)", "상속", "on"], compact)
+        self.assertEqual(compact, [
+            ["전역", "GLOBAL", "off", "off"],
+            ["서버", "테스트 서버", "on", "on"],
+            ["채널", "테스트 서버/#봇", "off", "off"],
+        ])
         store.close()
 
     async def test_clear_only_drops_current_channel_recent_buffer(self):
