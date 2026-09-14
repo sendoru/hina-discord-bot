@@ -166,10 +166,7 @@ class TargetAwareRecentMessages(RecentMessages):
                 item["context_kind"] = "channel_ambient"
                 ambient.append(item)
 
-        seen = reply_ids | {
-            str(row.get("message_id", "")) for row in base
-            if row.get("message_id") is not None
-        }
+        seen = set(reply_ids)
         extra = []
         for target in TARGET_CONTEXT.get():
             for sampled in target.get("sampled_messages", ()):
@@ -182,6 +179,10 @@ class TargetAwareRecentMessages(RecentMessages):
                     "author_user_id": str(target.get("user_id", "")),
                     "reply_target_user_id": None,
                     "direct_trigger": sampled.get("direct_trigger"),
+                    "target_retrieval_mode": str(target.get("retrieval_mode", "")),
+                    "explicit_history_request": bool(
+                        target.get("explicit_history_request", False)
+                    ),
                     "name": str(target.get("name", ""))[:100],
                     "content": str(sampled.get("content", ""))[:2400],
                     "role": "user",
@@ -190,6 +191,21 @@ class TargetAwareRecentMessages(RecentMessages):
                 })
                 if message_id:
                     seen.add(message_id)
+
+        # A freshly sampled target row is more specific than the same message's passive recent
+        # copy. Keep one copy with target provenance and target-budget priority.
+        extra_ids = {
+            str(row.get("message_id", "")) for row in extra
+            if row.get("message_id") is not None
+        }
+        speaker_thread = [
+            row for row in speaker_thread
+            if str(row.get("message_id", "")) not in extra_ids
+        ]
+        ambient = [
+            row for row in ambient
+            if str(row.get("message_id", "")) not in extra_ids
+        ]
 
         # One character budget covers every source of channel context, but the item budget is now
         # slightly wider because short ambient Discord chatter should not erase an ongoing speaker
@@ -204,8 +220,9 @@ class TargetAwareRecentMessages(RecentMessages):
         source_selected, remaining = self._take_recent(sources, remaining, min(2, slots))
         slots -= len(source_selected)
 
-        target_slots = min(3, slots) if extra else 0
-        target_reserve = min(1500, remaining // 5) if extra else 0
+        deep_target = any(row.get("target_retrieval_mode") == "deep" for row in extra)
+        target_slots = min(8 if deep_target else 3, slots) if extra else 0
+        target_reserve = min(2400 if deep_target else 1200, remaining // 3) if extra else 0
         channel_budget = max(0, remaining - target_reserve)
         channel_slots = max(0, slots - target_slots)
 

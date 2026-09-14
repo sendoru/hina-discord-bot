@@ -96,12 +96,14 @@ memory/chatlog 설정 자체는 유지합니다.
 `bot_interactions_only`에서는 현재 사용자의 현재 발화와 허용된 개인 기억뿐 아니라, 같은 채널에서
 어떤 사용자든 히나를 직접 호출한 발화와 히나가 보낸 답변을 함께 사용할 수 있습니다. 같은 채널을
 '히나에게 보낸 메시지 + 히나가 보낸 메시지'만 보이는 공유 bot conversation space로 취급하는
-정책입니다. 반면 일반 채널 잡담, 대상 사용자 7일 history scan, 다른 사용자의 공개 기억, 서버
+정책입니다. 대상 사용자 history 조회도 같은 채널에서 대상 사용자가 히나를 직접 호출한 발언만
+허용합니다. 반면 일반 채널 잡담과 일반 발언 target history, 다른 사용자의 공개 기억, 서버
 공통 메모는 외부 provider 요청에서 제외됩니다. 명시적 Discord reply는 **현재 호출자가 자기 자신의
 과거 메시지를 직접 선택한 경우에만** reply 원문을 허용하며, 제3자가 작성한 일반 reply 대상 원문은
 제외합니다.
 
-엄격 모드에서는 대상 사용자 history 수집 자체도 생략하고 cross-user public memory 조회도 막습니다.
+엄격 모드의 대상 사용자 history는 직접 호출 여부를 확인할 수 있는 행만 수집·전송하고,
+cross-user public memory 조회는 막습니다.
 또한 최종 request assembly 직전에 같은 정책을 다시 적용하므로, 앞 단계에서 더 넓은 데이터가
 실수로 남아 있더라도 provider 요청에는 포함되지 않도록 fail-closed 방식으로 동작합니다.
 `/config privacy value:bot_interactions_only` 또는 `value:full`로 즉시 변경할 수 있고,
@@ -139,10 +141,16 @@ hydration 상태를 즉시 비웁니다. 따라서 `all → direct`에서 넓게
 채웁니다. 과거 히나 답변의 정확한 대상 사용자는 복구할 수 없지만, 히나가 참여한 같은 채널의 공유
 대화로는 안전하게 사용할 수 있습니다.
 
-`@사용자 어떻게 생각해?` 같은 대상 사용자 문맥 조회는 `EXTERNAL_CONTEXT_POLICY=full`일 때 chatlog
-정책을 따릅니다. `mode=direct`라면 그 사용자가 과거에 히나를 직접 호출했던 메시지만 대상으로
-삼습니다. 반대로 기본 `bot_interactions_only`에서는 이 대상 사용자 history scan을 아예 수행하지
-않습니다.
+대상 사용자 문맥 조회 깊이는 관리 설정이 아니라 현재 요청의 의도에 따라 내부에서 결정합니다.
+`@사용자 아까 뭐라고 했어?` 같은 최근 발언 확인은 1일·최대 3개·1,200자의 basic 조회를,
+`@사용자 어떤 사람 같아?` 또는 명시적인 채팅 기록 분석·요약은 7일·최대 8개·2,400자의 deep 조회를
+사용합니다. 단순 멘션만으로는 별도 history 조회를 하지 않습니다.
+
+조회 가능한 발언 범위는 별도의 정책 경계를 따릅니다. `full + mode=all`은 같은 채널의 일반 발언까지,
+`full + mode=direct`와 `bot_interactions_only`는 그 사용자가 히나를 직접 호출한 발언만 대상으로
+삼습니다. 각 결과에는 직접 호출 provenance를 보존하며, `bot_interactions_only`의 최종 egress
+단계에서도 이 값이 명시적으로 참인 행만 허용합니다. `/chatlog mode off`에서는 Discord history
+조회 자체를 수행하지 않습니다.
 
 최근 채널 대화 문맥은 장기 기억과 별개의 TTL 기반 임시 버퍼이며 장기 요약에는 포함되지 않습니다.
 현재 턴 이미지 원본도 이 recent buffer에 저장하지 않습니다.

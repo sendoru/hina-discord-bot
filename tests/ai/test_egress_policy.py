@@ -38,7 +38,21 @@ def test_bot_interactions_only_keeps_shared_bot_conversation_and_fails_closed():
     ]
 
     filtered = filter_channel_context(rows, 100, BOT_INTERACTIONS_ONLY)
-    assert [row["message_id"] for row in filtered] == ["1", "3", "4", "5", "7"]
+    assert [row["message_id"] for row in filtered] == ["1", "3", "4", "5", "6", "7"]
+
+
+def test_bot_interactions_only_rejects_target_history_without_direct_provenance():
+    rows = [
+        {"message_id": "1", "role": "user", "context_kind": "target_user_history",
+         "direct_trigger": True, "content": "히나 직접 호출"},
+        {"message_id": "2", "role": "user", "context_kind": "target_user_history",
+         "direct_trigger": False, "content": "일반 대화"},
+        {"message_id": "3", "role": "user", "context_kind": "target_user_history",
+         "content": "provenance 없음"},
+    ]
+
+    filtered = filter_channel_context(rows, 100, BOT_INTERACTIONS_ONLY)
+    assert [row["message_id"] for row in filtered] == ["1"]
 
 
 def test_bot_interactions_only_filters_complete_serialized_context():

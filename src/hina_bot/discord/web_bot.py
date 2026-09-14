@@ -31,6 +31,16 @@ _PUBLIC_MEMORY_QUERY = re.compile(
     r"성격|인상|평판|어떻게\s*생각)",
     re.IGNORECASE,
 )
+
+
+def _target_history_visibility(store, scope, *, strict_egress: bool) -> str:
+    if not store.chat_log_enabled(scope):
+        return "off"
+    if strict_egress or capture_mode(store, scope) == "direct":
+        return "direct"
+    return "all"
+
+
 _BROAD_SERVER_MEMORY_QUERY = re.compile(
     r"(?:서버(?:에서|의).*(?:누가|누구|사람들|다른\s*사람)|"
     r"누가.*(?:말했|얘기했))",
@@ -240,16 +250,20 @@ class HinaClient(BaseHinaClient):
             return
 
         strict_egress = strict_policy(self.settings.external_context_policy)
-        direct_only = scope.guild_id is not None and capture_mode(self.store, scope) == "direct"
+        target_visibility = _target_history_visibility(
+            self.store,
+            scope,
+            strict_egress=strict_egress,
+        )
         sampled = (
             await collect(
                 message,
                 self.user.id,
                 text,
-                direct_only=direct_only,
+                visibility_mode=target_visibility,
                 call_prefixes=self.settings.call_prefixes,
             )
-            if text is not None and not strict_egress
+            if text is not None
             else []
         )
         replied = (
