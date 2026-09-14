@@ -20,8 +20,8 @@ _VALUE_CHOICES = [
     app_commands.Choice(name="inherit — 상위 설정 따르기", value="inherit"),
 ]
 _VIEW_CHOICES = [
-    app_commands.Choice(name="모든 서버/채널", value="all"),
-    app_commands.Choice(name="직접 설정된 override 중심", value="overrides"),
+    app_commands.Choice(name="직접 설정만 (기본)", value="overrides"),
+    app_commands.Choice(name="전체 상속 결과", value="all"),
 ]
 _SOURCE_LABEL = {"channel": "채널", "server": "서버", "global": "전역", "default": "기본값"}
 
@@ -179,28 +179,23 @@ class ChatLogCommands(app_commands.Group):
             server_mode = overrides.get(server_key)
             server_effective = server_mode or global_mode or "on"
             known.add(server_key)
-            rows.append(["서버", guild.name, server_mode or "상속", server_effective])
+            if view == "all" or server_mode is not None:
+                rows.append(["서버", guild.name, server_mode or "상속", server_effective])
 
             channels = list(getattr(guild, "text_channels", [])) + list(getattr(guild, "threads", []))
             channels = sorted(
                 {channel.id: channel for channel in channels}.values(),
                 key=lambda channel: channel.name.casefold(),
             )
-            inherited = 0
             for channel in channels:
                 scope = Scope(guild.id, channel.id, user_id)
                 direct = overrides.get(scope.channel)
                 known.add(scope.channel)
                 if view == "overrides" and direct is None:
-                    inherited += 1
                     continue
                 rows.append([
                     "채널", f"{guild.name}/#{channel.name}",
                     direct or "상속", direct or server_effective,
-                ])
-            if view == "overrides" and inherited:
-                rows.append([
-                    "채널", f"{guild.name}/(나머지 {inherited}개)", "상속", server_effective,
                 ])
 
         for key in sorted(set(overrides) - known):
@@ -208,16 +203,21 @@ class ChatLogCommands(app_commands.Group):
             rows.append(["미확인", key, mode, mode])
         return rows
 
-    @app_commands.command(name="overview", description="모든 서버/채널의 최근 대화 문맥 설정 한눈에 보기")
-    @app_commands.describe(view="모든 채널을 보거나 직접 override된 항목 중심으로 압축해서 보기")
+    @app_commands.command(name="overview", description="최근 대화 문맥 설정을 한눈에 보기")
+    @app_commands.describe(view="기본은 직접 설정만 표시하며, 필요하면 전체 상속 결과를 볼 수 있어요")
     @app_commands.choices(view=_VIEW_CHOICES)
-    async def overview(self, interaction: discord.Interaction, view: str = "all"):
+    async def overview(self, interaction: discord.Interaction, view: str = "overrides"):
         if view not in {choice.value for choice in _VIEW_CHOICES}:
             await interaction.response.send_message("알 수 없는 보기 방식이에요.", ephemeral=True)
             return
         rows = self._overview_rows(interaction.user.id, view)
+        title = (
+            "최근 대화 문맥 설정 · 직접 override만 표시 (상속 항목 숨김)"
+            if view == "overrides"
+            else "최근 대화 문맥 설정 · 전체 상속 결과"
+        )
         pages = _table_pages(
-            "최근 대화 문맥 설정 · 직접=직접 저장, 적용=상속까지 계산한 최종 값",
+            title,
             ["범위", "서버/채널", "직접", "적용"],
             rows,
             [6, 40, 14, 14],
