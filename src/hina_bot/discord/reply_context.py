@@ -27,6 +27,7 @@ def _row(target, bot_id: int) -> dict | None:
         "direct_trigger": None,
         "name": str(getattr(author, "display_name", getattr(author, "name", "")))[:100],
         "content": content[:4000],
+        "truncated": len(content) > 4000,
         "role": role,
         "context_kind": "replied_message",
         "reference_strength": "explicit_reply",
