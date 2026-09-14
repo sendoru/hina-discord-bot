@@ -13,7 +13,18 @@ class TargetAwareRecentMessages(RecentMessages):
         super().__init__(*args, **kwargs)
         self.store = store
 
-    def add(self, scope, message_id, name, content, *, role="user", unix_time=None):
+    def add(
+        self,
+        scope,
+        message_id,
+        name,
+        content,
+        *,
+        role="user",
+        unix_time=None,
+        author_user_id=None,
+        reply_target_user_id=None,
+    ):
         if (
             role != "assistant"
             and self.store is not None
@@ -21,6 +32,16 @@ class TargetAwareRecentMessages(RecentMessages):
             and not CURRENT_DIRECT_TRIGGER.get()
         ):
             return
+
+        # Existing callers use the triggering user's scope for live assistant replies, while
+        # Discord history hydration uses the bot author's scope and supplies an original timestamp.
+        # Translate those two call shapes into explicit metadata instead of overloading `user_id`.
+        if role == "assistant" and author_user_id is None and reply_target_user_id is None:
+            if unix_time is None:
+                reply_target_user_id = scope.user_id
+            else:
+                author_user_id = scope.user_id
+
         super().add(
             scope,
             message_id,
@@ -28,20 +49,20 @@ class TargetAwareRecentMessages(RecentMessages):
             content,
             role=role,
             unix_time=unix_time,
+            author_user_id=author_user_id,
+            reply_target_user_id=reply_target_user_id,
         )
 
     def context(self, scope, before_id):
         base = super().context(scope, before_id)
 
-        # Live assistant rows inherit the triggering user's scope, so their user_id identifies the
-        # reply target. Hydrated bot-authored rows instead carry the bot author's id and therefore
-        # have no trustworthy target. Keep an assistant reply only for the same current user; this
-        # prevents one user's tense exchange from becoming the next user's default tone, and also
-        # fails closed for untargeted assistant history recovered after a restart.
+        # Only assistant replies explicitly targeted at the current user can carry relationship
+        # tone forward. Hydrated bot-authored rows have no trustworthy target and fail closed.
         current_user_id = str(scope.user_id)
         base = [
             row for row in base
-            if row.get("role") != "assistant" or str(row.get("user_id", "")) == current_user_id
+            if row.get("role") != "assistant"
+            or str(row.get("reply_target_user_id") or "") == current_user_id
         ]
 
         replied = []
