@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 SUPPORTED_MODEL_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
 GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
+EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "direct_party_only"})
 
 
 def parse_call_prefixes(value: str) -> tuple[str, ...]:
@@ -26,6 +27,14 @@ def _provider(value: str, variable: str) -> str:
         allowed = ", ".join(sorted(SUPPORTED_MODEL_PROVIDERS))
         raise ValueError(f"{variable}는 {allowed} 중 하나여야 합니다.")
     return provider
+
+
+def parse_external_context_policy(value: str) -> str:
+    policy = value.strip().lower()
+    if policy not in EXTERNAL_CONTEXT_POLICIES:
+        allowed = ", ".join(sorted(EXTERNAL_CONTEXT_POLICIES))
+        raise ValueError(f"EXTERNAL_CONTEXT_POLICY는 {allowed} 중 하나여야 합니다.")
+    return policy
 
 
 def _env_key(provider: str) -> str:
@@ -59,6 +68,7 @@ class Settings:
     call_prefixes: tuple[str, ...] = ("히나야",)
     dm_always_reply: bool = False
     public_memory_in_dm: bool = True
+    external_context_policy: str = "full"
     allowed_guild_ids: frozenset[int] = frozenset()
     cooldown: float = 5
     concurrency: int = 3
@@ -145,6 +155,9 @@ class Settings:
         public_memory = os.getenv("PUBLIC_SERVER_MEMORY_IN_DM", "true").lower()
         if public_memory not in {"true", "false"}:
             raise ValueError("PUBLIC_SERVER_MEMORY_IN_DM은 true 또는 false여야 합니다.")
+        external_context_policy = parse_external_context_policy(
+            os.getenv("EXTERNAL_CONTEXT_POLICY", "full")
+        )
         community_lore = os.getenv("COMMUNITY_LORE", "true").lower()
         if community_lore not in {"true", "false"}:
             raise ValueError("COMMUNITY_LORE는 true 또는 false여야 합니다.")
@@ -189,6 +202,7 @@ class Settings:
             call_prefixes=parse_call_prefixes(os.getenv("CALL_PREFIXES", "히나야")),
             dm_always_reply=dm == "true",
             public_memory_in_dm=public_memory == "true",
+            external_context_policy=external_context_policy,
             allowed_guild_ids=frozenset(int(x.strip()) for x in
                                        os.getenv("ALLOWED_GUILD_IDS", "").split(",") if x.strip()),
             cooldown=float(os.getenv("COOLDOWN_SECONDS", "5")),
