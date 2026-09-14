@@ -68,7 +68,7 @@ class Settings:
     call_prefixes: tuple[str, ...] = ("히나야",)
     dm_always_reply: bool = False
     public_memory_in_dm: bool = True
-    external_context_policy: str = "full"
+    external_context_policy: str = "direct_party_only"
     allowed_guild_ids: frozenset[int] = frozenset()
     cooldown: float = 5
     concurrency: int = 3
@@ -156,7 +156,7 @@ class Settings:
         if public_memory not in {"true", "false"}:
             raise ValueError("PUBLIC_SERVER_MEMORY_IN_DM은 true 또는 false여야 합니다.")
         external_context_policy = parse_external_context_policy(
-            os.getenv("EXTERNAL_CONTEXT_POLICY", "full")
+            os.getenv("EXTERNAL_CONTEXT_POLICY", "direct_party_only")
         )
         community_lore = os.getenv("COMMUNITY_LORE", "true").lower()
         if community_lore not in {"true", "false"}:
