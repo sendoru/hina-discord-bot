@@ -1,5 +1,6 @@
+from hina_bot.ai.contextual_runtime_llm import LLM
+
 from . import web_bot
-from .runtime_llm import LLM
 
 
 def main():
