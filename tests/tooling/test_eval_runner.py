@@ -7,11 +7,15 @@ from hina_bot.eval_runner import case_turns, read_cases, scope_for
 
 
 class EvalRunnerTests(unittest.TestCase):
-    def test_reads_single_and_multi_turn_cases(self):
+    def test_reads_single_multi_turn_and_channel_context_cases(self):
         rows = [
             {"id": "single", "input": "안녕", "expected": "짧게 인사한다."},
             {"id": "multi", "turns": ["안녕", "오늘 뭐 했어?"],
              "expected": "맥락을 유지한다.", "mode": "special_dm"},
+            {"id": "channel", "input": "배고파", "expected": "현재 화자에게 답한다.",
+             "mode": "server", "channel_context": [
+                 {"user_id": "99", "name": "A", "role": "user", "content": "아까 한 말"},
+             ]},
         ]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "cases.jsonl"
@@ -21,8 +25,9 @@ class EvalRunnerTests(unittest.TestCase):
         self.assertEqual(case_turns(cases[0]), ["안녕"])
         self.assertEqual(case_turns(cases[1]), ["안녕", "오늘 뭐 했어?"])
         self.assertEqual(cases[1]["mode"], "special_dm")
+        self.assertEqual(cases[2]["channel_context"][0]["name"], "A")
 
-    def test_rejects_duplicate_ids_and_invalid_mode(self):
+    def test_rejects_duplicate_ids_invalid_mode_and_bad_channel_context(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "cases.jsonl"
             path.write_text(
@@ -34,6 +39,12 @@ class EvalRunnerTests(unittest.TestCase):
                 read_cases(path)
             path.write_text(json.dumps(
                 {"id": "bad", "input": "a", "expected": "x", "mode": "invalid"}) + "\n",
+                encoding="utf-8")
+            with self.assertRaises(ValueError):
+                read_cases(path)
+            path.write_text(json.dumps(
+                {"id": "bad-context", "input": "a", "expected": "x",
+                 "channel_context": [{"name": "A"}]}) + "\n",
                 encoding="utf-8")
             with self.assertRaises(ValueError):
                 read_cases(path)
