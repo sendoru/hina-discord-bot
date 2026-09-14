@@ -103,7 +103,7 @@ class MemoryTests(unittest.TestCase):
         for scope in [self.a, self.other_channel]:
             self.assertEqual(self.store.history(scope), [])
             self.assertEqual(self.store.summary(scope), ("", 0))
-            self.assertEqual(self.store.note(scope.user_note), "")
+            self.assertEqual(self.store.note(scope.user_note), "메모")
         for scope in [self.other_user, self.other_server, self.dm]:
             self.assertEqual(len(self.store.history(scope)), 1)
         self.assertEqual(self.store.note(self.a.realm), "공통")
