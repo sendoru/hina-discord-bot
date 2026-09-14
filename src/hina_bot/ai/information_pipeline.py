@@ -140,7 +140,6 @@ class InformationPipeline(RequestAssembler):
                 channel_context=channel_context,
                 emoji_catalog=emoji_catalog,
                 use_memory=use_memory,
-                routing_plan=routing,
                 information_plan=information,
             )
         finally:
