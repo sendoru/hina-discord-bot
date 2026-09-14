@@ -2,6 +2,7 @@ from contextvars import ContextVar
 
 from .chatlog_capture import capture_mode
 from .recent import RecentMessages
+from .reply_context import REPLY_CONTEXT
 from .target_context import TARGET_CONTEXT
 
 CURRENT_DIRECT_TRIGGER = ContextVar("current_direct_trigger", default=False)
@@ -49,4 +50,20 @@ class TargetAwareRecentMessages(RecentMessages):
                 })
                 if message_id:
                     seen.add(message_id)
-        return extra + base
+
+        replied = []
+        for row in REPLY_CONTEXT.get():
+            message_id = str(row.get("message_id", ""))
+            if message_id and message_id in seen:
+                continue
+            item = dict(row)
+            item["content"] = str(item.get("content", ""))[:4000]
+            item["context_kind"] = "replied_message"
+            item["reference_strength"] = "explicit_reply"
+            replied.append(item)
+            if message_id:
+                seen.add(message_id)
+
+        # The explicit replied-to message is placed last so it is the closest channel-context row
+        # to the current invocation even when direct capture omitted it from the rolling buffer.
+        return extra + base + replied
