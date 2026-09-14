@@ -70,14 +70,38 @@ memory/chatlog 설정 자체는 유지합니다.
 | `/config set key:<설정> value:<값>` | DB override 저장 후 즉시 적용 |
 | `/config reset key:<설정>` | DB override 삭제 후 시작 시 값으로 복귀 |
 
-대상 설정은 `CALL_PREFIXES`, `DM_ALWAYS_REPLY`, `PUBLIC_SERVER_MEMORY_IN_DM`, `CHAT_WEB_SEARCH`,
-`COMMUNITY_LORE`, `MAX_OUTPUT_TOKENS`, `CHANNEL_CONTEXT_CHARS`, `HISTORY_MAX_CHARS`,
-`LORE_MAX_ITEMS`, `LORE_MAX_CHARS`, `RUNTIME_DEFAULT_LOCATION`입니다.
+대상 설정은 `CALL_PREFIXES`, `DM_ALWAYS_REPLY`, `PUBLIC_SERVER_MEMORY_IN_DM`,
+`EXTERNAL_CONTEXT_POLICY`, `CHAT_WEB_SEARCH`, `COMMUNITY_LORE`, `MAX_OUTPUT_TOKENS`,
+`CHANNEL_CONTEXT_CHARS`, `HISTORY_MAX_CHARS`, `LORE_MAX_ITEMS`, `LORE_MAX_CHARS`,
+`RUNTIME_DEFAULT_LOCATION`입니다.
 
 우선순위는 **SQLite override → 시작 시 `.env.local`/`.env` 값 → 코드 기본값**입니다. 따라서 env의
 값은 여전히 배포 기본값으로 사용할 수 있고, `/config reset`은 해당 DB override만 지웁니다.
 `RUNTIME_DEFAULT_LOCATION`을 명시적으로 비우려면 `/config set`의 value에 `none`을 사용합니다.
 `CALL_PREFIXES`는 쉼표 구분 문자열, 불리언 값은 `on/off` 또는 `true/false`를 받습니다.
+
+### 외부 모델 전송 경계
+
+`EXTERNAL_CONTEXT_POLICY`는 `/chatlog capture`와 별개인 **최종 외부 전송 정책**입니다. capture는
+로컬 recent buffer에 무엇을 모을지 정하고, 이 설정은 수집·라우팅된 데이터 중 무엇이 실제 LLM
+provider 요청에 직렬화될 수 있는지를 마지막 단계에서 다시 제한합니다.
+
+- `full` (기본): 기존과 같은 문맥 사용 범위입니다.
+- `direct_party_only`: 현재 호출자와 히나 사이의 직접 대화만 외부 대화 문맥으로 허용합니다.
+
+`direct_party_only`에서는 현재 사용자의 현재 발화, 과거에 히나를 직접 호출한 발화, 그 사용자에게
+히나가 직접 보낸 답변, 현재 사용자의 수동 메모·자동 장기 기억·DM 대화·본인 소유 공개 기억은
+사용할 수 있습니다. 반면 같은 사용자의 일반 채널 잡담, 다른 사용자의 직접 호출, 다른 사용자에게
+보낸 히나 답변, 대상 사용자 7일 history scan, 다른 사용자의 공개 기억, 서버 공통 메모는 외부
+provider 요청에서 제외됩니다. 명시적 Discord reply는 **현재 호출자가 자기 자신의 과거 메시지를
+직접 선택한 경우에만** reply 원문을 허용하며, 제3자가 작성한 reply 대상 원문은 제외합니다.
+
+엄격 모드에서는 대상 사용자 history 수집 자체도 생략하고 cross-user public memory 조회도 막습니다.
+또한 최종 request assembly 직전에 같은 정책을 다시 적용하므로, 앞 단계에서 더 넓은 데이터가
+실수로 남아 있더라도 provider 요청에는 포함되지 않도록 fail-closed 방식으로 동작합니다.
+`/config set key:EXTERNAL_CONTEXT_POLICY value:direct_party_only`처럼 런타임에서 정책을 바꾸면
+기존 recent buffer와 hydration 상태도 즉시 전부 비워, 더 넓은 정책에서 모은 임시 문맥이 남아
+있지 않게 합니다.
 
 ## 최근 채널 대화 문맥
 
@@ -100,10 +124,15 @@ memory/chatlog 설정 자체는 유지합니다.
 메시지와 히나가 실제로 보낸 답변만 보관합니다. `all`/`direct` 모두 `global → server → channel`
 순서로 override되며 `inherit`으로 상위 설정을 따를 수 있습니다.
 
-capture 정책을 바꾸면 해당 범위의 메모리 내 recent buffer를 즉시 비워 이전의 더 넓은 문맥이 TTL
-동안 남지 않게 합니다. 이후 필요한 history backfill도 현재 capture 정책을 적용합니다. 또한
-`@사용자 어떻게 생각해?` 같은 대상 사용자 문맥 조회는 `direct` 모드에서 그 사용자가 과거에 히나를
-직접 호출했던 메시지만 대상으로 삼습니다.
+capture 정책을 바꾸면 해당 범위의 메모리 내 recent buffer와 hydration 상태를 즉시 비워 이전의
+더 넓은 문맥이 TTL 동안 남지 않게 합니다. 이후 필요한 history backfill도 현재 capture 정책을
+적용합니다. `direct` 상태에서 backfill하면 최근 TTL 범위의 직접 호출 사용자 발화만 다시 채우며,
+과거 히나 답변은 답변 대상 사용자를 안전하게 복구할 수 없어 hydration하지 않습니다.
+
+`@사용자 어떻게 생각해?` 같은 대상 사용자 문맥 조회는 `EXTERNAL_CONTEXT_POLICY=full`일 때 capture
+정책을 따릅니다. `capture=direct`라면 그 사용자가 과거에 히나를 직접 호출했던 메시지만 대상으로
+삼습니다. 반대로 `EXTERNAL_CONTEXT_POLICY=direct_party_only`에서는 이 대상 사용자 history scan을
+아예 수행하지 않습니다.
 
 최근 채널 대화 문맥은 장기 기억과 별개의 TTL 기반 임시 버퍼이며 장기 요약에는 포함되지 않습니다.
 현재 턴 이미지 원본도 이 recent buffer에 저장하지 않습니다.
