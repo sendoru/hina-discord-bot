@@ -34,9 +34,13 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 | 명령 | 기능 |
 | --- | --- |
 | `/memory mode` | 전역/서버/채널 장기 기억 읽기·쓰기 모드 설정 |
-| `/memory status` | 현재 채널의 최종 장기 기억 설정 확인 |
-| `/memory overview` | 전체 서버/채널의 장기 기억 직접 설정과 상속 결과 확인 |
+| `/memory status` | 현재 채널의 전역 → 서버 → 채널 상속 체인과 최종 적용값 확인 |
+| `/memory overview` | 기본적으로 직접 override된 범위만 표시. `view:전체 상속 결과`로 전체 확인 |
 | `/memory purge` | 채널/서버/전역 범위의 사용자 장기 기억 초기화 |
+
+`/memory overview`의 기본 화면에서는 상속만 받는 서버·채널을 숨깁니다. 현재 위치의 자세한 상속
+경로가 필요하면 `/memory status`, 모든 범위의 계산 결과가 필요하면 overview의
+`전체 상속 결과` 보기를 사용합니다.
 
 `/memory purge`는 사용자 대화 기록·자동 요약·개인 메모를 범위에 맞게 삭제하지만 서버 공통 메모와
 memory/chatlog 설정 자체는 유지합니다.
@@ -69,9 +73,13 @@ memory/chatlog 설정 자체는 유지합니다.
 | --- | --- |
 | `/chatlog mode` | 전역/서버/채널 최근 채널 문맥 읽기 설정 |
 | `/chatlog capture` | 전역/서버/채널에서 어떤 메시지를 recent context에 수집할지 설정 |
-| `/chatlog status` | 현재 채널의 최종 chatlog on/off와 capture 범위 확인 |
-| `/chatlog overview` | 전체 서버/채널의 직접 on/off 설정과 상속 결과 확인 |
+| `/chatlog status` | 현재 채널의 chatlog on/off와 capture 상속 체인·최종값 확인 |
+| `/chatlog overview` | 기본적으로 mode/capture 직접 override만 함께 표시. 필요하면 전체 상속 결과 확인 |
 | `/chatlog clear` | 현재 채널의 메모리 내 최근 대화 문맥 비우기 |
+
+`/chatlog overview`는 `mode(on/off)`와 `capture(all/direct)`를 같은 표에서 보여줍니다. 기본
+`직접 설정만` 보기에서는 둘 중 하나라도 직접 override된 서버·채널만 표시하며, 상속만 받는 범위는
+숨깁니다. `전체 상속 결과`를 선택하면 각 범위의 직접값과 최종 적용값을 모두 확인할 수 있습니다.
 
 `/chatlog capture`의 기본값은 기존 동작과 호환되는 `all`입니다. `direct`를 선택하면 같은 채널의
 일반 대화는 recent context에 넣지 않고, 사용자가 `히나야`·멘션·답장 핑 등으로 히나를 직접 호출한
@@ -120,8 +128,22 @@ alias가 됩니다. 오른쪽 설명은 모델이 해당 이모지를 사용할 
 
 ## 동적 prompt / knowledge
 
-기존 `/instruction ...`, `/knowledge ...` 명령도 그대로 Discord slash command로 유지합니다.
-두 그룹은 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자 전용입니다.
+`/instruction`, `/knowledge` 그룹은 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자 전용입니다. 긴 본문을
+Discord 메시지 폭에 맞춰 잘라 보여주지 않고 UTF-8 텍스트 파일로 첨부합니다.
+
+| 명령 | 기능 |
+| --- | --- |
+| `/instruction list` | 검색·정렬된 instruction 전체를 `instructions*.txt`로 받기 |
+| `/instruction show identifier:<ID>` | instruction 한 항목을 `instruction-<ID>.txt`로 받기 |
+| `/instruction add/edit/enable/disable/remove` | 동적 캐릭터 보조 지침 관리 |
+| `/knowledge list` | 검색·정렬된 knowledge 전체와 메타데이터를 `knowledge*.txt`로 받기 |
+| `/knowledge show identifier:<ID>` | knowledge 한 항목을 `knowledge-<ID>.txt`로 받기 |
+| `/knowledge ingest` | 조사 메모를 사실/해석 knowledge로 분해·조정해 반영 |
+| `/knowledge enable/disable/remove` | runtime knowledge 상태·항목 관리 |
+
+첨부 파일의 `created_at`/`updated_at`은 Discord 전용 `<t:...>` markup이 아니라 사람이 읽을 수 있는
+UTC 시각으로 기록됩니다. `knowledge` 파일에는 종류, ON/OFF, awareness, timeline, subjects,
+keywords와 본문 전체가 포함됩니다.
 
 ## 도움말
 
