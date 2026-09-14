@@ -17,7 +17,18 @@ class RecentMessages:
     def _key(scope):
         return (scope.realm, scope.channel_id)
 
-    def add(self, scope, message_id, name, content, *, role="user", unix_time=None):
+    def add(
+        self,
+        scope,
+        message_id,
+        name,
+        content,
+        *,
+        role="user",
+        unix_time=None,
+        author_user_id=None,
+        reply_target_user_id=None,
+    ):
         now = time.monotonic()
         wall_now = time.time()
         timestamp = wall_now if unix_time is None else min(float(unix_time), wall_now)
@@ -26,6 +37,15 @@ class RecentMessages:
         if age >= self.ttl:
             return
 
+        # `user_id` is retained for existing consumers, but it now always means the author.
+        # Assistant reply targets are separate metadata and must never be encoded as the author.
+        if author_user_id is None and role != "assistant":
+            author_user_id = scope.user_id
+        author_id = None if author_user_id is None else str(author_user_id)
+        reply_target_id = (
+            None if reply_target_user_id is None else str(reply_target_user_id)
+        )
+
         key = self._key(scope)
         self.prune(now)
         existing = list(self.buffers.get(key, ()))
@@ -33,7 +53,9 @@ class RecentMessages:
             return
         existing.append({
             "message_id": message_id,
-            "user_id": str(scope.user_id),
+            "user_id": author_id or "",
+            "author_user_id": author_id,
+            "reply_target_user_id": reply_target_id,
             "name": name[:100],
             "content": content[:4000],
             "role": role,
