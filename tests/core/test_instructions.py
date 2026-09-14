@@ -98,6 +98,29 @@ class InstructionCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(group.allowed_installs.guild)
         self.assertTrue(group.allowed_installs.user)
 
+    async def test_list_exports_full_instruction_text_as_file(self):
+        database = AdminDatabase(":memory:")
+        registry = InstructionRegistry(database)
+        long_text = "긴 instruction 본문 " + ("가나다라마바사" * 120)
+        registry.add("long-rule", long_text)
+        group = InstructionCommands(NS(
+            llm=NS(instructions=registry),
+            emoji_admin_ids={100},
+        ))
+        interaction = NS(response=NS(send_message=AsyncMock()))
+
+        await group.list_items.callback(group, interaction, None, "time")
+
+        kwargs = interaction.response.send_message.call_args.kwargs
+        attachment = kwargs["file"]
+        attachment.fp.seek(0)
+        exported = attachment.fp.read().decode("utf-8")
+        self.assertIn("long-rule", exported)
+        self.assertIn(long_text, exported)
+        self.assertTrue(kwargs["ephemeral"])
+        attachment.close()
+        database.close()
+
 
 if __name__ == "__main__":
     unittest.main()
