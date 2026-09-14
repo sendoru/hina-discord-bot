@@ -8,6 +8,7 @@ import logging
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass
+from functools import lru_cache
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -116,10 +117,8 @@ def _int(value) -> int | None:
         return None
 
 
-def fetch_weather_snapshot(location: str, locale: str, timezone: str) -> WeatherSnapshot:
-    language = locale.split("-", 1)[0].lower()
-    if len(language) != 2 or not language.isalpha():
-        language = "en"
+@lru_cache(maxsize=16)
+def _geocode(location: str, language: str) -> tuple[float, float]:
     geocode_url = "https://geocoding-api.open-meteo.com/v1/search?" + urlencode({
         "name": location,
         "count": 1,
@@ -137,6 +136,14 @@ def fetch_weather_snapshot(location: str, locale: str, timezone: str) -> Weather
     longitude = _float(place.get("longitude"))
     if latitude is None or longitude is None:
         raise ValueError("Geocoding result has no coordinates")
+    return latitude, longitude
+
+
+def fetch_weather_snapshot(location: str, locale: str, timezone: str) -> WeatherSnapshot:
+    language = locale.split("-", 1)[0].lower()
+    if len(language) != 2 or not language.isalpha():
+        language = "en"
+    latitude, longitude = _geocode(location, language)
 
     forecast_url = "https://api.open-meteo.com/v1/forecast?" + urlencode({
         "latitude": latitude,
