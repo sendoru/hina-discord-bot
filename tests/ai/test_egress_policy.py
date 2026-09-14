@@ -3,7 +3,6 @@ from hina_bot.ai.egress_policy import (
     FULL,
     apply_context_policy,
     filter_channel_context,
-    normalize_policy,
 )
 
 
@@ -40,10 +39,6 @@ def test_bot_interactions_only_keeps_shared_bot_conversation_and_fails_closed():
 
     filtered = filter_channel_context(rows, 100, BOT_INTERACTIONS_ONLY)
     assert [row["message_id"] for row in filtered] == ["1", "3", "4", "5", "7"]
-
-
-def test_legacy_direct_party_only_name_normalizes_to_new_policy():
-    assert normalize_policy("direct_party_only") == BOT_INTERACTIONS_ONLY
 
 
 def test_bot_interactions_only_filters_complete_serialized_context():

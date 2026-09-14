@@ -107,8 +107,7 @@ memory/chatlog 설정 자체는 유지합니다.
 `/config privacy value:bot_interactions_only` 또는 `value:full`로 즉시 변경할 수 있고,
 `value:startup`은 DB override를 삭제해 `.env` 또는 코드 기본값으로 돌아갑니다. 정책을 바꾸면
 기존 recent buffer와 hydration 상태도 즉시 전부 비워, 더 넓은 정책에서 모은 임시 문맥이 남아
-있지 않게 합니다. 기존 배포에 저장된 `direct_party_only` 값은 같은 엄격 정책의 이전 이름으로
-인식해 `bot_interactions_only`로 정규화합니다.
+있지 않게 합니다.
 
 ## 최근 채널 대화 문맥
 

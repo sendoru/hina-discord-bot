@@ -10,14 +10,11 @@ from copy import deepcopy
 
 FULL = "full"
 BOT_INTERACTIONS_ONLY = "bot_interactions_only"
-DIRECT_PARTY_ONLY = "direct_party_only"  # Deprecated compatibility alias.
 POLICIES = frozenset({FULL, BOT_INTERACTIONS_ONLY})
 
 
 def normalize_policy(value: str) -> str:
     policy = str(value).strip().lower()
-    if policy == DIRECT_PARTY_ONLY:
-        return BOT_INTERACTIONS_ONLY
     if policy not in POLICIES:
         allowed = ", ".join(sorted(POLICIES))
         raise ValueError(f"EXTERNAL_CONTEXT_POLICY는 {allowed} 중 하나여야 합니다.")
@@ -100,7 +97,6 @@ def apply_context_policy(context: dict, current_user_id: int | str, policy: str)
 
 __all__ = [
     "BOT_INTERACTIONS_ONLY",
-    "DIRECT_PARTY_ONLY",
     "FULL",
     "POLICIES",
     "allow_channel_row",
