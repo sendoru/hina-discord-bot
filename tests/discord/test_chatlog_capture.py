@@ -1,3 +1,4 @@
+import time
 import unittest
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace as NS
@@ -60,8 +61,25 @@ class CaptureModeTests(unittest.TestCase):
 
         recent.add(user_a, 1, "A", "히나야 또 놀릴 거야")
         recent.add(user_a, 2, "히나", "이제 그만해.", role="assistant")
-        recent.add(bot_scope, 3, "히나", "재시작 전 답변", role="assistant")
+        recent.add(
+            bot_scope,
+            3,
+            "히나",
+            "재시작 전 답변",
+            role="assistant",
+            unix_time=time.time(),
+        )
         recent.add(user_b, 4, "B", "히나야 배고파")
+
+        raw_rows = list(recent.buffers[recent._key(user_a)])
+        live = next(row for row in raw_rows if row["message_id"] == 2)
+        hydrated = next(row for row in raw_rows if row["message_id"] == 3)
+        self.assertEqual(live["reply_target_user_id"], "100")
+        self.assertIsNone(live["author_user_id"])
+        self.assertEqual(live["user_id"], "")
+        self.assertEqual(hydrated["author_user_id"], "999")
+        self.assertIsNone(hydrated["reply_target_user_id"])
+        self.assertEqual(hydrated["user_id"], "999")
 
         rows_a = recent.context(user_a, 99)
         rows_b = recent.context(user_b, 99)
