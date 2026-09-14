@@ -45,6 +45,13 @@ def read_cases(path: Path) -> list[dict]:
         mode = case.get("mode", "dm")
         if mode not in {"dm", "special_dm", "server"}:
             raise ValueError(f"{path}:{number}: mode는 dm, special_dm, server 중 하나여야 합니다.")
+        channel_context = case.get("channel_context", [])
+        if (not isinstance(channel_context, list)
+                or any(not isinstance(row, dict)
+                       or not isinstance(row.get("content"), str)
+                       or not row["content"].strip()
+                       for row in channel_context)):
+            raise ValueError(f"{path}:{number}: channel_context는 content가 있는 객체 배열이어야 합니다.")
         cases.append(case)
     ids = [case["id"] for case in cases]
     if len(ids) != len(set(ids)):
@@ -126,11 +133,12 @@ async def run_case(llm: LLM, case: dict) -> dict:
     store = Store(":memory:", history_turns=llm.settings.history_turns)
     responses = []
     error = ""
+    channel_context = case.get("channel_context", [])
     try:
         for index, turn in enumerate(case_turns(case), 1):
             reply = await llm.answer(
                 store, scope, case.get("speaker", "테스트 사용자"), turn,
-                public_context=[], channel_context=[], emoji_catalog=[], use_memory=True,
+                public_context=[], channel_context=channel_context, emoji_catalog=[], use_memory=True,
             )
             responses.append(reply)
             store.add(scope, index, turn, reply)
@@ -143,6 +151,7 @@ async def run_case(llm: LLM, case: dict) -> dict:
         "mode": mode,
         "input": case.get("input", ""),
         "turns": case_turns(case),
+        "channel_context": channel_context,
         "expected": case["expected"],
         "responses": responses,
         "error": error,
@@ -171,6 +180,9 @@ def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
     ]
     for row in results:
         lines += [f"## {row['id']} ({row['mode']})", "", f"**Expected:** {row['expected']}", ""]
+        if row["channel_context"]:
+            context_text = json.dumps(row["channel_context"], ensure_ascii=False, indent=2)
+            lines += ["**Channel context**", "", "```json", context_text, "```", ""]
         if row["error"]:
             lines += [f"**ERROR:** `{row['error']}`", ""]
         for index, (turn, response) in enumerate(zip(row["turns"], row["responses"]), 1):
