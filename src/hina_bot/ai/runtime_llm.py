@@ -1,5 +1,6 @@
 import json
 
+from .egress_policy import filter_channel_context, filter_public_context
 from .information_pipeline import InformationPipeline
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .providers import create_provider_client
@@ -71,11 +72,14 @@ class LLM(InformationPipeline):
         emoji_catalog: list | None = None,
         use_memory: bool = True,
     ) -> str:
+        policy = self.settings.external_context_policy
+        safe_channel_context = filter_channel_context(channel_context, scope.user_id, policy)
+        safe_public_context = filter_public_context(public_context, scope.user_id, policy)
         plan = build_routing_plan(
             store,
             scope,
             content,
-            channel_context,
+            safe_channel_context,
             use_memory=use_memory,
         )
         vision_token = VISION_REQUEST_ACTIVE.set(True)
@@ -85,8 +89,8 @@ class LLM(InformationPipeline):
                 scope,
                 name,
                 content,
-                public_context=public_context,
-                channel_context=channel_context,
+                public_context=safe_public_context,
+                channel_context=safe_channel_context,
                 emoji_catalog=emoji_catalog,
                 use_memory=use_memory,
                 routing_plan=plan,
