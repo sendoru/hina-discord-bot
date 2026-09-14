@@ -19,10 +19,6 @@ WEATHER_RETRY_SECONDS = 60
 _REQUEST_TIMEOUT_SECONDS = 4
 _MAX_RESPONSE_BYTES = 1_000_000
 
-CURRENT_AMBIENT_WEATHER: ContextVar["WeatherSnapshot | None"] = ContextVar(
-    "current_ambient_weather", default=None
-)
-
 _WEATHER_LABELS = {
     0: "맑음",
     1: "대체로 맑음",
@@ -87,15 +83,20 @@ class WeatherSnapshot:
         return result
 
 
+CURRENT_AMBIENT_WEATHER: ContextVar[WeatherSnapshot | None] = ContextVar(
+    "current_ambient_weather", default=None
+)
+
+
 def _json_get(url: str) -> dict:
     request = Request(url, headers={"User-Agent": "hina-discord-bot/0.1"})
-    with urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:  # noqa: S310
+    with urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
         body = response.read(_MAX_RESPONSE_BYTES + 1)
     if len(body) > _MAX_RESPONSE_BYTES:
         raise ValueError("Weather response too large")
     value = json.loads(body)
     if not isinstance(value, dict):
-        raise ValueError("Weather response is not an object")
+        raise TypeError("Weather response is not an object")
     return value
 
 
@@ -131,7 +132,7 @@ def _geocode(location: str, language: str) -> tuple[float, float]:
         raise ValueError("Runtime default location could not be geocoded")
     place = results[0]
     if not isinstance(place, dict):
-        raise ValueError("Invalid geocoding result")
+        raise TypeError("Invalid geocoding result")
     latitude = _float(place.get("latitude"))
     longitude = _float(place.get("longitude"))
     if latitude is None or longitude is None:
@@ -148,22 +149,17 @@ def fetch_weather_snapshot(location: str, locale: str, timezone: str) -> Weather
     forecast_url = "https://api.open-meteo.com/v1/forecast?" + urlencode({
         "latitude": latitude,
         "longitude": longitude,
-        "current": ",".join((
-            "temperature_2m",
-            "apparent_temperature",
-            "relative_humidity_2m",
-            "precipitation",
-            "weather_code",
-            "wind_speed_10m",
-            "is_day",
-        )),
+        "current": (
+            "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,"
+            "weather_code,wind_speed_10m,is_day"
+        ),
         "timezone": timezone,
         "forecast_days": 1,
     })
     forecast = _json_get(forecast_url)
     current = forecast.get("current")
     if not isinstance(current, dict):
-        raise ValueError("Weather response has no current conditions")
+        raise TypeError("Weather response has no current conditions")
 
     code = _int(current.get("weather_code"))
     condition = _WEATHER_LABELS.get(code, "현재 날씨")
@@ -223,7 +219,7 @@ class AmbientWeatherCache:
                 return None
             try:
                 snapshot = await asyncio.to_thread(self._fetcher, location, locale, timezone)
-            except Exception as exc:
+            except (OSError, TypeError, ValueError) as exc:
                 self._key = key
                 self._snapshot = None
                 self._retry_after = now + WEATHER_RETRY_SECONDS
