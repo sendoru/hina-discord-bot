@@ -43,7 +43,10 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "lore_max_chars", "LORE_MAX_CHARS", "int", minimum=0, maximum=12000
     ),
     "runtime_default_location": RuntimeSettingSpec(
-        "runtime_default_location", "RUNTIME_DEFAULT_LOCATION", "string", maximum=100,
+        "runtime_default_location",
+        "RUNTIME_DEFAULT_LOCATION",
+        "string",
+        maximum=100,
         empty_allowed=True,
     ),
 }
@@ -89,7 +92,9 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             and getattr(settings, "provider", "") == "gemini"
             and value > getattr(settings, "gemini_total_output_tokens", value)
         ):
-            raise ValueError("Gemini에서는 MAX_OUTPUT_TOKENS가 GEMINI_TOTAL_OUTPUT_TOKENS보다 클 수 없어요.")
+            raise ValueError(
+                "Gemini에서는 MAX_OUTPUT_TOKENS가 GEMINI_TOTAL_OUTPUT_TOKENS보다 클 수 없어요."
+            )
         return value
 
     if spec.kind == "prefixes":
@@ -157,15 +162,29 @@ class RuntimeSettings:
         object.__setattr__(self, "_base", base)
         object.__setattr__(self, "_store", store)
         object.__setattr__(self, "_overrides", {})
+        store.db.execute(
+            """CREATE TABLE IF NOT EXISTS runtime_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"""
+        )
+        store.db.commit()
         self.reload()
 
     @property
     def base(self) -> Settings:
         return self._base
 
+    def _stored(self) -> dict[str, str]:
+        rows = self._store.db.execute(
+            "SELECT key,value FROM runtime_config ORDER BY key"
+        ).fetchall()
+        return {str(row["key"]): str(row["value"]) for row in rows}
+
     def reload(self) -> None:
         loaded: dict[str, Any] = {}
-        for attr, encoded in self._store.runtime_config_overrides().items():
+        for attr, encoded in self._stored().items():
             spec = RUNTIME_SETTING_SPECS.get(attr)
             if spec is None:
                 continue
@@ -194,17 +213,30 @@ class RuntimeSettings:
         attr = runtime_setting_attr(key)
         return "db" if attr in self._overrides else "startup"
 
+    def _write(self, attr: str, encoded: str | None) -> None:
+        with self._store.db:
+            if encoded is None:
+                self._store.db.execute("DELETE FROM runtime_config WHERE key=?", (attr,))
+            else:
+                self._store.db.execute(
+                    """INSERT INTO runtime_config(key,value,updated_at)
+                       VALUES (?,?,CURRENT_TIMESTAMP)
+                       ON CONFLICT(key) DO UPDATE SET
+                           value=excluded.value, updated_at=CURRENT_TIMESTAMP""",
+                    (attr, encoded),
+                )
+
     def set_text(self, key: str, raw: str):
         attr = runtime_setting_attr(key)
         spec = RUNTIME_SETTING_SPECS[attr]
         value = parse_runtime_value(spec, raw, settings=self)
-        self._store.set_runtime_config_override(attr, encode_runtime_value(value))
+        self._write(attr, encode_runtime_value(value))
         self._overrides[attr] = value
         return value
 
     def reset(self, key: str):
         attr = runtime_setting_attr(key)
-        self._store.set_runtime_config_override(attr, None)
+        self._write(attr, None)
         self._overrides.pop(attr, None)
         return getattr(self._base, attr)
 
