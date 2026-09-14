@@ -1,10 +1,9 @@
 import json
-from contextvars import ContextVar
 
 from .chat_llm import LLM as ChatLLM
-from .contextual_routing import build_query, find_anchor, is_followup
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .providers import create_provider_client
+from .routing_plan import build_routing_plan
 from .vision import VISION_REQUEST_ACTIVE, wrap_vision_client
 
 SUMMARY_POLICY = BASE_SUMMARY_POLICY + """
@@ -42,56 +41,20 @@ Discord 최종 답변에는 사용자가 실제로 읽을 대사와 필요한 �
 후속 질문을 한 번 할 수 있습니다. 여러 후속 작업을 메뉴처럼 나열하지 마세요.
 """
 
-_VISIBLE_CONTENT = ContextVar("hina_visible_followup_content", default=None)
-
-
-class _ResponsesProxy:
-    """Restore the literal user turn after routing used an expanded follow-up query."""
-
-    def __init__(self, responses):
-        self._responses = responses
-
-    async def create(self, **kwargs):
-        visible = _VISIBLE_CONTENT.get()
-        items = kwargs.get("input")
-        if visible is not None and isinstance(items, list) and items:
-            tail = items[-1]
-            if isinstance(tail, dict) and tail.get("role") == "user":
-                rewritten = list(items)
-                rewritten_tail = dict(tail)
-                rewritten_tail["content"] = visible
-                rewritten[-1] = rewritten_tail
-                kwargs = dict(kwargs)
-                kwargs["input"] = rewritten
-        return await self._responses.create(**kwargs)
-
-
-class _ClientProxy:
-    def __init__(self, client):
-        self._client = client
-        self.responses = _ResponsesProxy(client.responses)
-
-    def __getattr__(self, name):
-        return getattr(self._client, name)
-
 
 class LLM(ChatLLM):
-    """Production LLM: follow-up routing, information routing, vision, memory, and RP policy."""
+    """Production LLM orchestrating routing, vision, memory, and RP policy."""
 
     def __init__(self, settings, client=None, memory_client=None):
         primary_client = wrap_vision_client(
             client or create_provider_client(settings, settings.provider)
         )
         super().__init__(settings, client=primary_client)
-        if not isinstance(self.client, _ClientProxy):
-            self.client = _ClientProxy(self.client)
 
         memory_provider = settings.memory_provider or settings.provider
         if memory_client is not None:
             self.memory_client = memory_client
         elif memory_provider == settings.provider:
-            # The vision facade/proxy is safe for summaries because answer() alone sets routing
-            # and vision request state.
             self.memory_client = self.client
         else:
             self.memory_client = create_provider_client(settings, memory_provider)
@@ -108,17 +71,12 @@ class LLM(ChatLLM):
         emoji_catalog: list | None = None,
         use_memory: bool = True,
     ) -> str:
-        rows = channel_context or []
-        anchor = (
-            find_anchor(store, scope, rows, use_memory=use_memory)
-            if is_followup(content)
-            else ""
-        )
-        routing_query = build_query(content, anchor)
-        visible_token = (
-            _VISIBLE_CONTENT.set(content)
-            if routing_query != content
-            else None
+        plan = build_routing_plan(
+            store,
+            scope,
+            content,
+            channel_context,
+            use_memory=use_memory,
         )
         vision_token = VISION_REQUEST_ACTIVE.set(True)
         try:
@@ -126,16 +84,15 @@ class LLM(ChatLLM):
                 store,
                 scope,
                 name,
-                routing_query,
+                content,
                 public_context=public_context,
                 channel_context=channel_context,
                 emoji_catalog=emoji_catalog,
                 use_memory=use_memory,
+                routing_plan=plan,
             )
         finally:
             VISION_REQUEST_ACTIVE.reset(vision_token)
-            if visible_token is not None:
-                _VISIBLE_CONTENT.reset(visible_token)
 
     async def close(self):
         try:
@@ -149,11 +106,17 @@ class LLM(ChatLLM):
         if len(pending) < self.settings.summary_every:
             return
         old, _ = store.summary(scope)
-        payload = {"previous_memory": old, "new_turns": [
-            {"at": turn["created_at"], "user": turn["content"],
-             **({"hina": turn["reply"]} if scope.guild_id is None else {})}
-            for turn in pending
-        ]}
+        payload = {
+            "previous_memory": old,
+            "new_turns": [
+                {
+                    "at": turn["created_at"],
+                    "user": turn["content"],
+                    **({"hina": turn["reply"]} if scope.guild_id is None else {}),
+                }
+                for turn in pending
+            ],
+        }
         response = await self.usage.request(
             self.memory_client,
             "summarize",
@@ -174,7 +137,8 @@ class LLM(ChatLLM):
             "previous_memory": store.shared_summary(scope)[0],
             "speaker_id": str(scope.user_id),
             "direct_calls": [
-                {"at": turn["created_at"], "user": turn["content"]} for turn in pending
+                {"at": turn["created_at"], "user": turn["content"]}
+                for turn in pending
             ],
         }
         response = await self.usage.request(
@@ -184,8 +148,8 @@ class LLM(ChatLLM):
             instructions=(
                 SUMMARY_POLICY
                 + "\n직접 호출한 발화만 요약하세요. 앞선 발언을 가리키는 대명사나 인용의 빈 "
-                  "맥락을 보충하지 마세요. 화자 자신의 명시적 사실·선호·약속만 기억하세요. "
-                  "제3자의 발언이나 사실은 저장하지 마세요."
+                "맥락을 보충하지 마세요. 화자 자신의 명시적 사실·선호·약속만 기억하세요. "
+                "제3자의 발언이나 사실은 저장하지 마세요."
             ),
             input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             max_output_tokens=900,
