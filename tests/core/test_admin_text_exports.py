@@ -30,21 +30,27 @@ class KnowledgeExportTests(unittest.IsolatedAsyncioTestCase):
         self.database.close()
 
     @staticmethod
-    def _exported_text(send_message: AsyncMock) -> str:
+    def _exported(send_message: AsyncMock) -> tuple[str, str]:
         attachment = send_message.call_args.kwargs["file"]
         attachment.fp.seek(0)
         text = attachment.fp.read().decode("utf-8")
+        filename = attachment.filename
         attachment.close()
-        return text
+        return text, filename
 
     async def test_list_exports_full_knowledge_content(self):
         interaction = NS(response=NS(send_message=AsyncMock()))
 
         await self.group.list_items.callback(self.group, interaction, None, "time")
 
-        exported = self._exported_text(interaction.response.send_message)
+        exported, filename = self._exported(interaction.response.send_message)
+        self.assertEqual(filename, "knowledge.txt")
         self.assertIn("long.fact", exported)
         self.assertIn(self.long_content, exported)
+        self.assertIn("created_at:", exported)
+        self.assertIn("updated_at:", exported)
+        self.assertIn(" UTC", exported)
+        self.assertNotIn("<t:", exported)
         self.assertTrue(interaction.response.send_message.call_args.kwargs["ephemeral"])
 
     async def test_show_exports_full_knowledge_content(self):
@@ -52,7 +58,8 @@ class KnowledgeExportTests(unittest.IsolatedAsyncioTestCase):
 
         await self.group.show.callback(self.group, interaction, "long.fact")
 
-        exported = self._exported_text(interaction.response.send_message)
+        exported, filename = self._exported(interaction.response.send_message)
+        self.assertEqual(filename, "knowledge-long.fact.txt")
         self.assertIn("long.fact", exported)
         self.assertIn(self.long_content, exported)
         self.assertIn("awareness: self", exported)
