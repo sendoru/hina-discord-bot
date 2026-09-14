@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import discord
 
+from hina_bot.ai.egress_policy import strict_policy
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 
 from .bot import HinaClient as BaseHinaClient
@@ -45,23 +46,34 @@ def _augment_empty_call(content: str, text: str | None, has_visuals: bool) -> st
     return (content + " 이 이미지나 스티커를 봐줘.").strip()
 
 
-def _public_context_request(scope: Scope, text: str, sampled: list[dict]):
+def _public_context_request(
+    scope: Scope,
+    text: str,
+    sampled: list[dict],
+    *,
+    allow_cross_user: bool = True,
+):
     """Choose whether cross-channel public memory is relevant to this invocation.
 
     Ordinary chat should not receive unrelated users' summaries. Explicitly targeted user questions
     may use that target's public memory, while history/memory questions without a target default to
     the current user's own public calls. Only clearly broad server-history questions may fan out.
+    A strict external-context policy disables cross-user fan-out entirely.
     """
     target_ids = tuple({
         int(item["user_id"])
         for item in sampled
         if str(item.get("user_id", "")).isdigit()
     })
-    if target_ids:
+    if target_ids and allow_cross_user:
         return True, target_ids
     if not _PUBLIC_MEMORY_QUERY.search(text):
         return False, ()
-    if scope.guild_id is not None and _BROAD_SERVER_MEMORY_QUERY.search(text):
+    if (
+        allow_cross_user
+        and scope.guild_id is not None
+        and _BROAD_SERVER_MEMORY_QUERY.search(text)
+    ):
         return True, None
     return True, (scope.user_id,)
 
@@ -208,9 +220,8 @@ class HinaClient(BaseHinaClient):
         )
 
         # Other bots never trigger Hina, but in `capture=all` their visible channel messages are
-        # useful conversational context just like human side chatter. `capture=direct` keeps its
-        # stricter privacy/attention boundary and omits them unless the current user explicitly
-        # replies to one, which is handled below as request-scoped reply context.
+        # useful conversational context just like human side chatter. The final egress policy is a
+        # separate boundary and can still remove these rows before any external model request.
         own_bot = message.author.id == self.user.id
         if message.author.bot and not own_bot:
             if (
@@ -229,6 +240,7 @@ class HinaClient(BaseHinaClient):
                 )
             return
 
+        strict_egress = strict_policy(self.settings.external_context_policy)
         direct_only = scope.guild_id is not None and capture_mode(self.store, scope) == "direct"
         sampled = (
             await collect(
@@ -238,11 +250,15 @@ class HinaClient(BaseHinaClient):
                 direct_only=direct_only,
                 call_prefixes=self.settings.call_prefixes,
             )
-            if text is not None
+            if text is not None and not strict_egress
             else []
         )
         replied = (
-            await collect_reply_context(message, self.user.id)
+            await collect_reply_context(
+                message,
+                self.user.id,
+                allowed_author_id=scope.user_id if strict_egress else None,
+            )
             if text is not None
             else []
         )
@@ -250,8 +266,22 @@ class HinaClient(BaseHinaClient):
             await collect_visual_inputs(message, limits=self.vision_limits)
             if text is not None else []
         )
+        third_party_mention = any(
+            getattr(user, "id", None) not in {self.user.id, scope.user_id}
+            and not getattr(user, "bot", False)
+            for user in getattr(message, "mentions", ())
+        )
         public_request = (
-            _public_context_request(scope, text, sampled)
+            (
+                (False, ())
+                if strict_egress and third_party_mention
+                else _public_context_request(
+                    scope,
+                    text,
+                    sampled,
+                    allow_cross_user=not strict_egress,
+                )
+            )
             if text is not None
             else (False, ())
         )
