@@ -2,7 +2,7 @@
 
 import re
 
-from .ambient_weather import AmbientWeatherCache, CURRENT_AMBIENT_WEATHER
+from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
 from .chat_llm_v2 import LLM as BaseLLM
 from .freshness import FreshnessMode
 from .information_evidence import search_mode
