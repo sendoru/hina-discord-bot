@@ -10,22 +10,36 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 답장 대상의 이미지는 자동으로 가져오지 않습니다. 자세한 범위는 [`vision-input.md`](vision-input.md)를
 참고하세요.
 
-## 일반 사용자 기억 명령
+## 자동 장기 기억
+
+`/memory`는 대화에서 자동으로 쌓이는 기록·요약만 관리합니다. 사용자가 직접 저장하는 메모는 아래
+`/note` 그룹으로 분리되어 있습니다.
 
 | 명령 | 기능 |
 | --- | --- |
-| `/memory show` | 현재 채널의 내 장기 요약과 개인 메모 확인 |
-| `/memory note text:<내용>` | 같은 서버의 내 응답에 사용할 개인 메모 교체 |
-| `/memory note-clear` | 개인 메모 삭제 |
-| `/memory clear confirm:true` | 해당 서버 또는 DM에서의 내 대화 기록·자동 요약·개인 메모 삭제 |
-| `/memory server-show` | 현재 서버 공통 메모 확인 |
-| `/memory server-note text:<내용>` | 서버 공통 메모 교체. Discord `Manage Server` 권한 필요 |
-| `/memory server-clear` | 서버 공통 메모 삭제. Discord `Manage Server` 권한 필요 |
+| `/memory show` | 현재 채널에서 자동으로 요약된 내 장기 기억 확인 |
+| `/memory clear confirm:true` | 해당 서버 또는 DM에서 자동으로 쌓인 내 대화 기록·요약 삭제 |
 
-`/memory clear`는 해당 사용자의 지속 장기 기억만 삭제하며 최근 채널 대화 문맥은 유지합니다.
+`/memory clear`는 직접 저장한 `/note` 메모와 최근 채널 대화 문맥을 삭제하지 않습니다.
 
-장기 기억 최종 모드에서 쓰기가 꺼져 있으면 `/memory note`와 `/memory server-note`는 새 데이터를
-저장하지 않습니다.
+## 수동 메모
+
+`/note`는 사용자가 명시적으로 저장하는 지속 메모를 관리합니다. 자동 장기 기억의 읽기·쓰기 모드와
+독립적으로 유지됩니다.
+
+| 명령 | 기능 |
+| --- | --- |
+| `/note show scope:me` | 같은 서버 또는 DM에서 사용할 내 메모 확인 |
+| `/note set text:<내용> scope:me` | 내 메모 저장·교체 |
+| `/note clear scope:me` | 내 메모 삭제 |
+| `/note show scope:server` | 현재 서버 공통 메모 확인 |
+| `/note set text:<내용> scope:server` | 서버 공통 메모 저장·교체. Discord `Manage Server` 권한 필요 |
+| `/note clear scope:server` | 서버 공통 메모 삭제. Discord `Manage Server` 권한 필요 |
+
+`scope`를 생략하면 `me`가 기본입니다. `server` 범위는 DM에서 사용할 수 없습니다. 자동 장기 기억을
+`off` 또는 `write_only`로 설정해 자동 기억 읽기가 꺼진 경우에도 명시적으로 저장한 메모는 응답에
+계속 참고됩니다. 다만 사용자가 질문 범위를 현재 채널로 명시한 경우에는 다른 채널·서버 범위의
+참고 정보와 마찬가지로 제외됩니다.
 
 ## 봇 관리자 장기 기억 설정
 
@@ -33,16 +47,16 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 
 | 명령 | 기능 |
 | --- | --- |
-| `/memory mode` | 전역/서버/채널 장기 기억 읽기·쓰기 모드 설정 |
+| `/memory mode` | 전역/서버/채널 자동 장기 기억 읽기·쓰기 모드 설정 |
 | `/memory status` | 현재 채널의 전역 → 서버 → 채널 상속 체인과 최종 적용값 확인 |
 | `/memory overview` | 기본적으로 직접 override된 범위만 표시. `view:전체 상속 결과`로 전체 확인 |
-| `/memory purge` | 채널/서버/전역 범위의 사용자 장기 기억 초기화 |
+| `/memory purge` | 채널/서버/전역 범위의 자동 사용자 기억 초기화 |
 
 `/memory overview`의 기본 화면에서는 상속만 받는 서버·채널을 숨깁니다. 현재 위치의 자세한 상속
 경로가 필요하면 `/memory status`, 모든 범위의 계산 결과가 필요하면 overview의
 `전체 상속 결과` 보기를 사용합니다.
 
-`/memory purge`는 사용자 대화 기록·자동 요약·개인 메모를 범위에 맞게 삭제하지만 서버 공통 메모와
+`/memory purge`는 자동 대화 기록·요약·공유 요약만 범위에 맞게 삭제합니다. 개인/서버 수동 메모와
 memory/chatlog 설정 자체는 유지합니다.
 
 ## 런타임 설정
