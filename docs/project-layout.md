@@ -30,6 +30,11 @@ Vision is not a new information-routing source. `information_routing` still deci
 memory, clock, local lore, web, or general reasoning; visual inputs are an orthogonal modality that can be used
 at the same time. See [`vision-input.md`](vision-input.md) for the current scope and limits.
 
+`src/hina_bot/ai/model_routing.py` converts the resolved information plan and bounded request features into a
+per-turn fast/smart model plan. It selects the model, answer limit, and Gemini thinking/total generation budget
+without making another provider request. The final request and content-free usage telemetry consume that same
+immutable plan.
+
 The console entry points use the new package paths. A small compatibility layer in `hina_bot.__init__`
 keeps the previous flat imports (for example `hina_bot.config`) working for existing local scripts/tests;
 new code should prefer the feature package paths such as `hina_bot.core.config`.

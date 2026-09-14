@@ -27,6 +27,15 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "CHAT_WEB_SEARCH",
         "COMMUNITY_LORE",
         "MAX_OUTPUT_TOKENS",
+        "MODEL_ROUTING_MODE",
+        "LLM_FAST_MODEL",
+        "LLM_SMART_MODEL",
+        "FAST_MAX_OUTPUT_TOKENS",
+        "SMART_MAX_OUTPUT_TOKENS",
+        "GEMINI_FAST_THINKING_LEVEL",
+        "GEMINI_SMART_THINKING_LEVEL",
+        "GEMINI_FAST_TOTAL_OUTPUT_TOKENS",
+        "GEMINI_SMART_TOTAL_OUTPUT_TOKENS",
         "CHANNEL_CONTEXT_CHARS",
         "HISTORY_MAX_CHARS",
         "LORE_MAX_ITEMS",
@@ -42,11 +51,42 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.chat_web_search is True
     assert settings.community_lore is True
     assert settings.output_tokens == 1000
+    assert settings.model_routing_mode == "fixed"
+    assert settings.fast_model == settings.model
+    assert settings.smart_model == settings.model
     assert settings.channel_context_chars == 6000
     assert settings.history_max_chars == 12000
     assert settings.lore_max_items == 6
     assert settings.lore_max_chars == 3200
     assert settings.runtime_default_location == ""
+
+
+def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("GEMINI_API_KEY", "key")
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("LLM_MODEL", "fallback")
+    monkeypatch.setenv("MODEL_ROUTING_MODE", "adaptive")
+    monkeypatch.setenv("LLM_FAST_MODEL", "gemini-fast")
+    monkeypatch.setenv("LLM_SMART_MODEL", "gemini-smart")
+    monkeypatch.setenv("FAST_MAX_OUTPUT_TOKENS", "600")
+    monkeypatch.setenv("SMART_MAX_OUTPUT_TOKENS", "1800")
+    monkeypatch.setenv("GEMINI_FAST_THINKING_LEVEL", "minimal")
+    monkeypatch.setenv("GEMINI_SMART_THINKING_LEVEL", "high")
+    monkeypatch.setenv("GEMINI_FAST_TOTAL_OUTPUT_TOKENS", "4096")
+    monkeypatch.setenv("GEMINI_SMART_TOTAL_OUTPUT_TOKENS", "10000")
+
+    value = Settings.load()
+    assert value.model_routing_mode == "adaptive"
+    assert value.fast_model == "gemini-fast"
+    assert value.smart_model == "gemini-smart"
+    assert value.fast_output_tokens == 600
+    assert value.smart_output_tokens == 1800
+    assert value.gemini_fast_thinking_level == "minimal"
+    assert value.gemini_smart_thinking_level == "high"
+    assert value.gemini_fast_total_output_tokens == 4096
+    assert value.gemini_smart_total_output_tokens == 10000
 
 
 def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
