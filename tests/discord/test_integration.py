@@ -40,7 +40,10 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
 
         client = AsyncOpenAI(api_key="test-not-a-real-key",
                              http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
-        self.llm = LLM(Settings("test", "test", summary_every=2), client=client)
+        self.llm = LLM(
+            Settings("test", "test", summary_every=2, external_context_policy="full"),
+            client=client,
+        )
         self.store = Store(":memory:")
 
     async def asyncTearDown(self):

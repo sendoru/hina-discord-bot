@@ -23,15 +23,18 @@ def slash_bot():
     store.close()
 
 
-def test_runtime_registers_separated_memory_and_chatlog_commands(slash_bot):
+def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot):
     memory = slash_bot.tree.get_command("memory")
     assert memory is not None
-    for name in (
-        "mode", "status", "overview", "purge", "show", "note", "note-clear", "clear",
-        "server-show", "server-note", "server-clear",
-    ):
+    for name in ("mode", "status", "overview", "purge", "show", "clear"):
         assert memory.get_command(name) is not None
-    assert memory.get_command("chatlog") is None
+    for removed in ("note", "note-clear", "server-show", "server-note", "server-clear"):
+        assert memory.get_command(removed) is None
+
+    note = slash_bot.tree.get_command("note")
+    assert note is not None
+    for name in ("show", "set", "clear"):
+        assert note.get_command(name) is not None
 
     chatlog = slash_bot.tree.get_command("chatlog")
     assert chatlog is not None
@@ -156,9 +159,10 @@ async def test_chatlog_group_is_bot_admin_only(slash_bot):
 
 
 @pytest.mark.asyncio
-async def test_memory_note_is_available_as_slash_command(slash_bot):
-    memory = slash_bot.tree.get_command("memory")
-    note = memory.get_command("note")
+async def test_note_set_is_independent_from_automatic_memory_mode(slash_bot):
+    note = slash_bot.tree.get_command("note").get_command("set")
+    scope = Scope(1, 10, 200)
+    slash_bot.store.set_memory_mode_override(scope.channel, "off")
     response = NS(send_message=AsyncMock())
     interaction = NS(
         guild_id=1,
@@ -167,14 +171,14 @@ async def test_memory_note_is_available_as_slash_command(slash_bot):
         response=response,
     )
 
-    await note.callback(interaction, "새 개인 메모")
+    await note.callback(slash_bot.tree.get_command("note"), interaction, "새 개인 메모", "me")
 
-    assert slash_bot.store.note("guild:1:user:200") == "새 개인 메모"
+    assert slash_bot.store.note(scope.user_note) == "새 개인 메모"
     response.send_message.assert_awaited()
 
 
 @pytest.mark.asyncio
-async def test_memory_clear_does_not_require_guild_admin_or_clear_chatlog(slash_bot):
+async def test_memory_clear_preserves_manual_note_and_chatlog(slash_bot):
     memory = slash_bot.tree.get_command("memory")
     clear = memory.get_command("clear")
     scope = Scope(1, 10, 200)
@@ -192,7 +196,8 @@ async def test_memory_clear_does_not_require_guild_admin_or_clear_chatlog(slash_
     await clear.callback(interaction, True)
 
     assert slash_bot.store.history(scope) == []
-    assert slash_bot.store.note(scope.user_note) == ""
+    assert slash_bot.store.note(scope.user_note) == "note"
     assert len(slash_bot.recent.context(scope, 999)) == 1
     text = response.send_message.call_args.args[0]
-    assert "최근 채널 대화 문맥은 그대로" in text
+    assert "/note" in text
+    assert "최근 채널 대화 문맥" in text

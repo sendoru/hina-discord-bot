@@ -22,6 +22,9 @@ def _row(target, bot_id: int) -> dict | None:
     return {
         "message_id": str(getattr(target, "id", "")),
         "user_id": str(user_id),
+        "author_user_id": str(user_id),
+        "reply_target_user_id": None,
+        "direct_trigger": None,
         "name": str(getattr(author, "display_name", getattr(author, "name", "")))[:100],
         "content": content[:4000],
         "role": role,
@@ -31,12 +34,18 @@ def _row(target, bot_id: int) -> dict | None:
     }
 
 
-async def collect_reply_context(message, bot_id: int) -> list[dict]:
+async def collect_reply_context(
+    message,
+    bot_id: int,
+    *,
+    allowed_author_id: int | None = None,
+) -> list[dict]:
     """Return the message explicitly replied to by the current invocation, if readable.
 
     This is request-scoped context rather than passive chat-log capture. In particular, a reply
     remains available even when `/chatlog capture direct` would normally omit the replied-to
-    message from the rolling channel buffer.
+    message from the rolling channel buffer.  A strict egress policy may additionally restrict the
+    replied-to author to the current caller before the message is admitted at all.
     """
     reference = getattr(message, "reference", None)
     if reference is None:
@@ -75,6 +84,10 @@ async def collect_reply_context(message, bot_id: int) -> list[dict]:
         and current_channel_id != target_channel_id
     ):
         return []
+    if allowed_author_id is not None:
+        author_id = getattr(getattr(target, "author", None), "id", None)
+        if author_id != allowed_author_id:
+            return []
 
     row = _row(target, bot_id)
     return [row] if row is not None else []

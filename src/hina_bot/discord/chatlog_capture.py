@@ -14,6 +14,19 @@ def capture_mode_override(store, scope_key: str) -> str | None:
     return value if value in {"all", "direct"} else None
 
 
+def capture_mode_overrides(store) -> dict[str, str]:
+    rows = store.db.execute(
+        "SELECT scope,text FROM notes WHERE scope LIKE ? ORDER BY scope",
+        (_PREFIX + "%",),
+    ).fetchall()
+    result = {}
+    for row in rows:
+        value = str(row["text"]).strip()
+        if value in {"all", "direct"}:
+            result[str(row["scope"])[len(_PREFIX):]] = value
+    return result
+
+
 def capture_mode_chain(store, scope: Scope) -> dict[str, str | None]:
     global_mode = capture_mode_override(store, "global")
     server_mode = capture_mode_override(store, scope.realm) if scope.guild_id is not None else None

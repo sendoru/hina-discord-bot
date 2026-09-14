@@ -16,6 +16,21 @@ log = logging.getLogger("hina")
 _KEY_CHOICES = [
     app_commands.Choice(name=spec.env_name, value=attr)
     for attr, spec in RUNTIME_SETTING_SPECS.items()
+    if attr != "external_context_policy"
+]
+_PRIVACY_CHOICES = [
+    app_commands.Choice(
+        name="bot_interactions_only — 현재 채널의 히나 참여 대화만 외부 전송",
+        value="bot_interactions_only",
+    ),
+    app_commands.Choice(
+        name="full — 허용된 전체 문맥을 외부 모델에 제공",
+        value="full",
+    ),
+    app_commands.Choice(
+        name="startup — DB override를 지우고 .env/코드 기본값 사용",
+        value="startup",
+    ),
 ]
 
 
@@ -50,6 +65,10 @@ class ConfigCommands(app_commands.Group):
     def _apply_side_effects(self, key: str) -> None:
         if key == "channel_context_chars":
             self.client.recent.budget = self.client.settings.channel_context_chars
+        elif key == "external_context_policy":
+            # Do not let context collected under a broader policy survive a hot privacy change.
+            # The final egress filter is still authoritative even if a future caller forgets this.
+            self.client.recent.clear_all()
 
     @app_commands.command(name="status", description="현재 런타임 설정과 DB override 확인")
     async def status(self, interaction: discord.Interaction):
@@ -63,16 +82,53 @@ class ConfigCommands(app_commands.Group):
             lines.append(f"`{spec.env_name}` = `{format_runtime_value(value)}`  [{label}]")
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
+    @app_commands.command(name="privacy", description="외부 LLM에 보낼 대화 문맥의 프라이버시 경계 설정")
+    @app_commands.describe(value="외부 모델 문맥 정책 또는 startup 기본값으로 복귀")
+    @app_commands.choices(value=_PRIVACY_CHOICES)
+    async def privacy(self, interaction: discord.Interaction, value: str):
+        try:
+            if value == "startup":
+                parsed = self.client.settings.reset("external_context_policy")
+                source = "startup"
+            elif value in {"full", "bot_interactions_only"}:
+                parsed = self.client.settings.set_text("external_context_policy", value)
+                source = "DB override"
+            else:
+                raise ValueError("알 수 없는 외부 문맥 정책이에요.")
+            self._apply_side_effects("external_context_policy")
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        if parsed == "bot_interactions_only":
+            detail = (
+                "현재 채널에서 사용자들이 히나를 직접 호출한 말과 히나 답변, "
+                "호출자 본인의 허용된 기억만 외부 모델 요청에 포함해요. 일반 채널 잡담·"
+                "target history·cross-user memory·서버 공통 메모는 제외돼요."
+            )
+        else:
+            detail = (
+                "라우팅에서 허용된 주변 채팅·대상 사용자 문맥·공개 기억 등을 외부 모델에 "
+                "제공할 수 있어요. 신뢰하는 provider에서만 사용해 주세요."
+            )
+        await interaction.response.send_message(
+            f"외부 모델 문맥 정책을 `{parsed}`로 적용했어요. [{source}]\n{detail}\n"
+            "정책 변경으로 기존 recent buffer도 초기화했어요.",
+            ephemeral=True,
+        )
+
     @app_commands.command(name="set", description="런타임 설정을 DB에 저장하고 즉시 적용")
     @app_commands.describe(
         key="변경할 설정",
-        value=(
-            "새 값. bool은 on/off, CALL_PREFIXES는 쉼표 구분. "
-            "RUNTIME_DEFAULT_LOCATION을 비우려면 none"
-        ),
+        value="새 값. bool은 on/off, CALL_PREFIXES는 쉼표 구분, 위치를 비우려면 none",
     )
     @app_commands.choices(key=_KEY_CHOICES)
     async def set_config(self, interaction: discord.Interaction, key: str, value: str):
+        if key == "external_context_policy":
+            await interaction.response.send_message(
+                "외부 모델 문맥 정책은 `/config privacy`에서 변경해 주세요.", ephemeral=True
+            )
+            return
         try:
             parsed = self.client.settings.set_text(key, value)
             self._apply_side_effects(key)
@@ -90,6 +146,12 @@ class ConfigCommands(app_commands.Group):
     @app_commands.describe(key="초기화할 설정")
     @app_commands.choices(key=_KEY_CHOICES)
     async def reset(self, interaction: discord.Interaction, key: str):
+        if key == "external_context_policy":
+            await interaction.response.send_message(
+                "외부 모델 문맥 정책은 `/config privacy value:startup`으로 초기화해 주세요.",
+                ephemeral=True,
+            )
+            return
         value = self.client.settings.reset(key)
         self._apply_side_effects(key)
         spec = RUNTIME_SETTING_SPECS[key]

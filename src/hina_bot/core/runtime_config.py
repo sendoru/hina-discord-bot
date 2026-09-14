@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from .config import Settings, parse_call_prefixes
+from .config import Settings, parse_call_prefixes, parse_external_context_policy
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,9 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "dm_always_reply": RuntimeSettingSpec("dm_always_reply", "DM_ALWAYS_REPLY", "bool"),
     "public_memory_in_dm": RuntimeSettingSpec(
         "public_memory_in_dm", "PUBLIC_SERVER_MEMORY_IN_DM", "bool"
+    ),
+    "external_context_policy": RuntimeSettingSpec(
+        "external_context_policy", "EXTERNAL_CONTEXT_POLICY", "string"
     ),
     "chat_web_search": RuntimeSettingSpec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
     "community_lore": RuntimeSettingSpec("community_lore", "COMMUNITY_LORE", "bool"),
@@ -101,6 +104,8 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
         return parse_call_prefixes(text)
 
     if spec.kind == "string":
+        if spec.attr == "external_context_policy":
+            return parse_external_context_policy(text)
         if spec.empty_allowed and text.lower() in {"none", "null", "off", "-"}:
             text = ""
         if not text and not spec.empty_allowed:

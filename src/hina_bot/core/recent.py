@@ -28,6 +28,7 @@ class RecentMessages:
         unix_time=None,
         author_user_id=None,
         reply_target_user_id=None,
+        direct_trigger=None,
     ):
         now = time.monotonic()
         wall_now = time.time()
@@ -45,6 +46,7 @@ class RecentMessages:
         reply_target_id = (
             None if reply_target_user_id is None else str(reply_target_user_id)
         )
+        direct = None if direct_trigger is None else bool(direct_trigger)
 
         key = self._key(scope)
         self.prune(now)
@@ -56,6 +58,7 @@ class RecentMessages:
             "user_id": author_id or "",
             "author_user_id": author_id,
             "reply_target_user_id": reply_target_id,
+            "direct_trigger": direct,
             "name": name[:100],
             "content": content[:4000],
             "role": role,

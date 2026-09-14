@@ -38,7 +38,7 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings("test", "test"), client=client)
+    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     scope = Scope(1, 10, 222, True)
     try:

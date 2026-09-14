@@ -3,7 +3,8 @@ import logging
 import discord
 from discord import app_commands
 
-from .admin_list import created_compact, fit_table, sort_rows
+from .admin_export import export_timestamp, text_attachment
+from .admin_list import sort_rows
 from .instructions import InstructionRegistry
 
 log = logging.getLogger("hina")
@@ -43,6 +44,17 @@ class InstructionCommands(app_commands.Group):
         else:
             await interaction.response.send_message(text, ephemeral=True)
 
+    @staticmethod
+    def _export_entry(row: dict) -> str:
+        state = "ON" if row.get("enabled", True) else "OFF"
+        return "\n".join([
+            f"[{row.get('id', '?')}] {state}",
+            f"created_at: {export_timestamp(row.get('created_at'))}",
+            f"updated_at: {export_timestamp(row.get('updated_at'))}",
+            "",
+            str(row.get("text", "")),
+        ])
+
     @app_commands.command(name="add", description="새 동적 instruction 추가 및 즉시 활성화")
     @app_commands.describe(identifier="영문 ID", text="히나에게 추가할 보조 지침")
     async def add(self, interaction: discord.Interaction, identifier: str, text: str):
@@ -54,7 +66,7 @@ class InstructionCommands(app_commands.Group):
         await interaction.response.send_message(
             f"instruction `{identifier}`를 추가하고 활성화했어요.", ephemeral=True)
 
-    @app_commands.command(name="list", description="instruction 검색·정렬 및 전체 목록 확인")
+    @app_commands.command(name="list", description="instruction 검색·정렬 결과를 전체 내용 파일로 받기")
     @app_commands.describe(
         search="ID나 본문에서 찾을 검색어. 비워 두면 전체 표시",
         sort="목록 정렬 방식. 기본은 추가 시간순",
@@ -85,22 +97,31 @@ class InstructionCommands(app_commands.Group):
         else:
             header = f"동적 instruction {len(rows)}/50 · {_SORT_LABELS.get(sort, '추가 시간순')}"
 
-        table_rows = []
-        for row in rows:
-            state = "ON" if row.get("enabled", True) else "OFF"
-            table_rows.append([
-                str(row.get("id", "?")),
-                state,
-                created_compact(row),
-                str(row.get("text", "")),
-            ])
-        text = fit_table(
-            header,
-            ["ID", "상태", "추가(UTC)", "내용"],
-            table_rows,
-            [26, 4, 12, 46],
+        sections = [header]
+        sections.extend(self._export_entry(row) for row in rows)
+        filename = "instructions-search.txt" if query else "instructions.txt"
+        await interaction.response.send_message(
+            f"{header}\n전체 내용은 첨부 파일에 넣었어요.",
+            file=text_attachment("\n\n---\n\n".join(sections) + "\n", filename),
+            ephemeral=True,
         )
-        await interaction.response.send_message(text, ephemeral=True)
+
+    @app_commands.command(name="show", description="instruction 한 항목을 전체 내용 파일로 받기")
+    async def show(self, interaction: discord.Interaction, identifier: str):
+        try:
+            row = self.registry.get(identifier)
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+        state = "ON" if row.get("enabled", True) else "OFF"
+        await interaction.response.send_message(
+            f"`{row['id']}` [{state}] 전체 내용은 첨부 파일에 넣었어요.",
+            file=text_attachment(
+                self._export_entry(row) + "\n",
+                f"instruction-{row['id']}.txt",
+            ),
+            ephemeral=True,
+        )
 
     @app_commands.command(name="edit", description="기존 instruction 본문 수정")
     @app_commands.describe(identifier="수정할 ID", text="새 보조 지침")
