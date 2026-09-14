@@ -3,8 +3,9 @@
 import re
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
-from .freshness import FreshnessMode
+from .freshness import FreshnessMode, is_live_domain
 from .information_evidence import search_mode
+from .information_plan import InformationPlan
 from .information_routing import (
     InformationRoute,
     classify_information_request,
@@ -13,6 +14,7 @@ from .information_routing import (
 )
 from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
+from .rp_output_policy import provenance_mode
 from .self_profile_lore import fallback_references
 
 _IN_WORLD_PRESENT_STATE_QUERY = re.compile(
@@ -30,7 +32,7 @@ _EXTERNAL_PRESENT_STATE_MARKER = re.compile(
 
 
 class InformationPipeline(RequestAssembler):
-    """Apply information/evidence routing before final request assembly."""
+    """Resolve information/evidence decisions before final request assembly."""
 
     def __init__(self, settings, client=None):
         super().__init__(settings, client=client)
@@ -90,6 +92,26 @@ class InformationPipeline(RequestAssembler):
                 return "required" if self.settings.chat_web_search else "none"
         return mode
 
+    def build_information_plan(self, routing: RoutingPlan) -> InformationPlan:
+        """Resolve retrieval/search decisions once, before request assembly begins."""
+        query = routing.routing_query
+        request = classify_information_request(query)
+        references = self.lore_references(query)
+        freshness = request.freshness
+        fact_question = self._looks_like_world_fact_question(query) and not (
+            freshness == FreshnessMode.REQUIRED and is_live_domain(query)
+        )
+        web_mode = self._web_search_mode(query, references, freshness)
+        return InformationPlan(
+            routing=routing,
+            route=request.route,
+            references=tuple(references),
+            freshness=freshness,
+            fact_question=fact_question,
+            search_mode=web_mode,
+            provenance=provenance_mode(query, web_search=web_mode == "required"),
+        )
+
     async def answer(
         self,
         store,
@@ -102,10 +124,10 @@ class InformationPipeline(RequestAssembler):
         use_memory: bool = True,
         routing_plan: RoutingPlan | None = None,
     ) -> str:
-        plan = routing_plan or RoutingPlan(content, content)
-        request = classify_information_request(plan.routing_query)
+        routing = routing_plan or RoutingPlan(content, content)
+        information = self.build_information_plan(routing)
         weather = None
-        if request.route == InformationRoute.GENERAL:
+        if information.route == InformationRoute.GENERAL:
             weather = await self.ambient_weather.current(self.settings)
         token = CURRENT_AMBIENT_WEATHER.set(weather)
         try:
@@ -118,7 +140,8 @@ class InformationPipeline(RequestAssembler):
                 channel_context=channel_context,
                 emoji_catalog=emoji_catalog,
                 use_memory=use_memory,
-                routing_plan=plan,
+                routing_plan=routing,
+                information_plan=information,
             )
         finally:
             CURRENT_AMBIENT_WEATHER.reset(token)
