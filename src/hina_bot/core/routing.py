@@ -1,6 +1,8 @@
 import re
 from dataclasses import dataclass
 
+_CALL_PUNCTUATION = ",，:：!！?？~"
+
 
 @dataclass(frozen=True)
 class Scope:
@@ -26,6 +28,22 @@ class Scope:
         return f"{self.realm}:user:{self.user_id}"
 
 
+def _matched_prefix(text: str, prefixes: tuple[str, ...]) -> str | None:
+    return max((prefix for prefix in prefixes if text.startswith(prefix)), key=len, default=None)
+
+
+def _strip_boundary_bot_mentions(text: str, bot_id: int) -> str:
+    mention = rf"<@!?{bot_id}>"
+    punctuation = re.escape(_CALL_PUNCTUATION)
+    text = re.sub(rf"^(?:{mention}\s*[{punctuation}]*\s*)+", "", text)
+    text = re.sub(
+        rf"(?:\s*[{punctuation}]*\s*{mention}\s*[{punctuation}]*)+$",
+        "",
+        text,
+    )
+    return text.strip()
+
+
 def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
                  prefixes: tuple[str, ...] = ("히나야",)) -> str | None:
     if message.author.bot or message.webhook_id is not None:
@@ -34,22 +52,25 @@ def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
     # Discord includes the replied-to author in mentions only when reply ping is enabled.
     # Do not infer a ping merely from message.reference.
     ping = any(user.id == bot_id for user in message.mentions)
-    matched = max((prefix for prefix in prefixes if raw.startswith(prefix)),
-                  key=len, default=None)
+    matched = _matched_prefix(raw, prefixes)
     keyword = matched is not None
     implicit_dm = message.guild is None and dm_always_reply
     if not (ping or keyword or implicit_dm):
         return None
-    raw = re.sub(rf"<@!?{bot_id}>", "", raw).lstrip()
-    # In always-reply DMs, configured call prefixes are ordinary user content rather than
-    # trigger syntax, so preserve them when forwarding the message to the model.
-    if not implicit_dm:
-        # Re-check after removing a leading mention, so `<@bot> <call-prefix> ...` is normalized too.
-        matched = max((prefix for prefix in prefixes if raw.startswith(prefix)),
-                      key=len, default=None)
-        if matched is not None:
-            raw = raw[len(matched):].lstrip(" \t\n,:：!！?？~")
-    return raw.strip()
+
+    # A Discord mention at the start or end is call syntax. Mentions in the middle may be
+    # meaningful sentence content, so leave them intact for the model.
+    text = _strip_boundary_bot_mentions(raw, bot_id)
+
+    # Natural-language call prefixes are also part of what the user actually said. Preserve
+    # them for the model, except when the message contains only the prefix (plus call punctuation),
+    # which keeps the existing bare-call fast path.
+    matched = _matched_prefix(text, prefixes)
+    if matched is not None:
+        remainder = text[len(matched):]
+        if not remainder.strip(f" \t\n{_CALL_PUNCTUATION}"):
+            return ""
+    return text
 
 
 def chunks(text: str, limit: int = 1900):

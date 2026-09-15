@@ -15,15 +15,17 @@ def message(text="", *, mentions=(), bot=False, webhook=None, dm=False, referenc
 
 class RoutingTests(unittest.TestCase):
     def test_keyword_only_at_start(self):
-        self.assertEqual(trigger_text(message("  히나야, 안녕"), 99), "안녕")
+        self.assertEqual(trigger_text(message("  히나야, 안녕"), 99), "히나야, 안녕")
         self.assertIsNone(trigger_text(message("안녕 히나야"), 99))
-        self.assertEqual(trigger_text(message("히나야안녕"), 99), "안녕")
+        self.assertEqual(trigger_text(message("히나야안녕"), 99), "히나야안녕")
+        self.assertEqual(trigger_text(message("히나야"), 99), "")
+        self.assertEqual(trigger_text(message("히나야!"), 99), "")
 
     def test_configurable_prefixes_and_overlapping_match(self):
         prefixes = parse_call_prefixes("히나, 히나야, 히나쨩, 히나")
         self.assertEqual(prefixes, ("히나", "히나야", "히나쨩"))
-        self.assertEqual(trigger_text(message("히나쨩! 안녕"), 99, prefixes=prefixes), "안녕")
-        self.assertEqual(trigger_text(message("히나야안녕"), 99, prefixes=prefixes), "안녕")
+        self.assertEqual(trigger_text(message("히나쨩! 안녕"), 99, prefixes=prefixes), "히나쨩! 안녕")
+        self.assertEqual(trigger_text(message("히나야안녕"), 99, prefixes=prefixes), "히나야안녕")
         self.assertIsNone(trigger_text(message("안녕 히나쨩"), 99, prefixes=prefixes))
 
     def test_invalid_prefix_configuration(self):
@@ -35,6 +37,14 @@ class RoutingTests(unittest.TestCase):
     def test_direct_mentions(self):
         self.assertEqual(trigger_text(message("안녕 <@99>", mentions=[99]), 99), "안녕")
         self.assertEqual(trigger_text(message("<@!99> 안녕", mentions=[99]), 99), "안녕")
+        self.assertEqual(
+            trigger_text(message("<@99>, 안녕, <@!99>!", mentions=[99]), 99),
+            "안녕",
+        )
+        self.assertEqual(
+            trigger_text(message("아코랑 <@99> 중에 누가 더 바빠?", mentions=[99]), 99),
+            "아코랑 <@99> 중에 누가 더 바빠?",
+        )
         self.assertIsNone(trigger_text(message("@everyone 안녕"), 99))
         self.assertIsNone(trigger_text(message("<@77>", mentions=[77]), 99))
 
@@ -49,14 +59,15 @@ class RoutingTests(unittest.TestCase):
     def test_dm_config(self):
         self.assertIsNone(trigger_text(message("안녕", dm=True), 99))
         self.assertEqual(trigger_text(message("안녕", dm=True), 99, True), "안녕")
-        self.assertEqual(trigger_text(message("히나야 안녕", dm=True), 99), "안녕")
+        self.assertEqual(trigger_text(message("히나야 안녕", dm=True), 99), "히나야 안녕")
 
-    def test_always_reply_dm_preserves_configured_prefix_content(self):
+    def test_configured_prefixes_are_preserved_except_for_bare_calls(self):
         prefixes = ("assistant", "assistant-bot")
-        self.assertEqual(
-            trigger_text(message("assistant-bot, hello", dm=True), 99, True, prefixes),
-            "assistant-bot, hello",
-        )
+        for dm, always_reply in ((True, True), (True, False), (False, True)):
+            self.assertEqual(
+                trigger_text(message("assistant-bot, hello", dm=dm), 99, always_reply, prefixes),
+                "assistant-bot, hello",
+            )
         self.assertEqual(
             trigger_text(
                 message("<@99> assistant, hello", mentions=[99], dm=True),
@@ -66,13 +77,10 @@ class RoutingTests(unittest.TestCase):
             ),
             "assistant, hello",
         )
+        self.assertEqual(trigger_text(message("assistant-bot"), 99, prefixes=prefixes), "")
         self.assertEqual(
-            trigger_text(message("assistant-bot, hello", dm=True), 99, False, prefixes),
-            "hello",
-        )
-        self.assertEqual(
-            trigger_text(message("assistant-bot, hello"), 99, True, prefixes),
-            "hello",
+            trigger_text(message("<@99> assistant!", mentions=[99]), 99, prefixes=prefixes),
+            "",
         )
 
     def test_ping_only(self):
