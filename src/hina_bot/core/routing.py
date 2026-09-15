@@ -27,7 +27,7 @@ class Scope:
 
 
 def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
-                 prefixes: tuple[str, ...] = ()) -> str | None:
+                 prefixes: tuple[str, ...] = ("히나야",)) -> str | None:
     if message.author.bot or message.webhook_id is not None:
         return None
     raw = message.content.lstrip()
