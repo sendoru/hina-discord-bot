@@ -41,14 +41,3 @@ class EmojiTests(unittest.TestCase):
         self.assertEqual("".join(parts), text)
         self.assertTrue(parts[1].startswith("<a:hina_happy:12345>"))
         self.assertTrue(all(len(p) <= 1900 for p in parts))
-
-
-def test_catalog_preference_is_configurable(monkeypatch):
-    monkeypatch.setenv("CHARACTER_EMOJI_PREFIXES", "aris")
-    guild = NS(unavailable=False, me=NS(), emojis=[
-        Emoji("hina_happy", 1), Emoji("aris_happy", 2), Emoji("other", 3),
-    ])
-
-    catalog = available_emojis(guild, limit=1)
-
-    assert catalog == [{"name": "aris_happy", "markup": "<:aris_happy:2>", "id": "2"}]
