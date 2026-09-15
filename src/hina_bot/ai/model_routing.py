@@ -22,7 +22,6 @@ _LONG_ANSWER_REQUEST = re.compile(
 )
 _LISTED_REQUIREMENT = re.compile(r"(?:^|\n)\s*(?:[-*]|\d+[.)])\s+", re.MULTILINE)
 _SURROUNDING_CONTEXT_KINDS = frozenset({"speaker_thread", "prior_reply_source"})
-_SMART_SCORE_THRESHOLD = 2.0
 
 
 def _linear_ramp(value: int, *, start: int, full: int, maximum: float) -> float:
@@ -54,12 +53,14 @@ class ModelPlan:
     max_output_tokens: int
     thinking_level: str
     score: float
+    smart_threshold: float
     reasons: tuple[str, ...]
 
     def telemetry(self) -> dict:
         return {
             "model_tier": self.tier.value,
             "model_route_score": self.score,
+            "model_route_threshold": self.smart_threshold,
             "model_route_reasons": list(self.reasons),
             "requested_max_output_tokens": self.max_output_tokens,
             "requested_thinking_level": self.thinking_level,
@@ -73,6 +74,7 @@ def fixed_model_plan(settings) -> ModelPlan:
         max_output_tokens=settings.output_tokens,
         thinking_level=settings.gemini_thinking_level,
         score=0.0,
+        smart_threshold=settings.model_routing_smart_threshold,
         reasons=("fixed_mode",),
     )
 
@@ -188,7 +190,8 @@ def build_model_plan(
     )
 
     score = round(score, 3)
-    smart = score >= _SMART_SCORE_THRESHOLD
+    smart_threshold = settings.model_routing_smart_threshold
+    smart = score >= smart_threshold
     if not reasons:
         reasons.append("routine_request")
     return ModelPlan(
@@ -202,6 +205,7 @@ def build_model_plan(
             if smart else settings.gemini_fast_thinking_level
         ),
         score=score,
+        smart_threshold=smart_threshold,
         reasons=tuple(reasons),
     )
 
