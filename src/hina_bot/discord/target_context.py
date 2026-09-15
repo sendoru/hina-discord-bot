@@ -58,7 +58,7 @@ async def collect(
     text,
     *,
     visibility_mode: str = "all",
-    call_prefixes: tuple[str, ...] = (),
+    call_prefixes: tuple[str, ...] = ("히나야",),
 ):
     if visibility_mode not in {"all", "direct", "off"}:
         raise ValueError("visibility_mode must be all, direct, or off")
