@@ -1,8 +1,6 @@
 import re
 from dataclasses import dataclass
 
-from .character import get_character_config
-
 
 @dataclass(frozen=True)
 class Scope:
@@ -29,10 +27,9 @@ class Scope:
 
 
 def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
-                 prefixes: tuple[str, ...] | None = None) -> str | None:
+                 prefixes: tuple[str, ...] = ()) -> str | None:
     if message.author.bot or message.webhook_id is not None:
         return None
-    prefixes = prefixes or get_character_config().call_prefixes
     raw = message.content.lstrip()
     # Discord includes the replied-to author in mentions only when reply ping is enabled.
     # Do not infer a ping merely from message.reference.
