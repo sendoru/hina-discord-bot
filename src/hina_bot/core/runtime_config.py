@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from math import isfinite
 from typing import Any
 
 from .config import Settings, parse_call_prefixes, parse_external_context_policy
@@ -103,12 +104,12 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             value = float(text)
         except ValueError as exc:
             raise ValueError("숫자 값을 입력해 주세요.") from exc
+        if not isfinite(value):
+            raise ValueError("유한한 숫자 값을 입력해 주세요.")
         if spec.minimum is not None and value < spec.minimum:
             raise ValueError(f"{spec.env_name}는 {spec.minimum} 이상이어야 해요.")
         if spec.maximum is not None and value > spec.maximum:
             raise ValueError(f"{spec.env_name}는 {spec.maximum} 이하여야 해요.")
-        if value != value:
-            raise ValueError("유한한 숫자 값을 입력해 주세요.")
         return value
 
     if spec.kind == "prefixes":
