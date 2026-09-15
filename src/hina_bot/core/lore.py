@@ -26,6 +26,7 @@ FACT_TYPE_TO_KIND = {
 REFERENCE_ONLY_FACT_TYPES = {"adaptation", "fandom"}
 _TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
 _STOPWORDS = {"뭐야", "알려줘", "어떻게"}
+_WORD_CHAR = r"0-9A-Za-z가-힣"
 
 
 class LoreValidationError(ValueError):
@@ -107,14 +108,31 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
                             for row in rows), encoding="utf-8")
 
 
+def _contains_subject(text: str, subject: str) -> bool:
+    """Match a subject as a complete name/phrase, not as part of a longer Korean token."""
+    return bool(re.search(
+        rf"(?<![{_WORD_CHAR}]){re.escape(subject)}(?![{_WORD_CHAR}])",
+        text,
+        re.IGNORECASE,
+    ))
+
+
 @dataclass
 class LoreIndex:
     records: list[dict]
 
     @classmethod
     def load(cls, path: str = "") -> "LoreIndex":
-        target = Path(path) if path else files("hina_bot").joinpath("data/lore.jsonl")
-        records = [validate_record(row, accepted=True) for row in read_jsonl(Path(target))]
+        if path:
+            sources = [Path(path)]
+        else:
+            data = files("hina_bot").joinpath("data")
+            sources = [Path(data.joinpath("lore.jsonl")), Path(data.joinpath("profile_lore.jsonl"))]
+        records = [
+            validate_record(row, accepted=True)
+            for source in sources
+            for row in read_jsonl(source)
+        ]
         ids = [row["id"] for row in records]
         if len(ids) != len(set(ids)):
             raise LoreValidationError("runtime lore contains duplicate ids")
@@ -141,7 +159,7 @@ class LoreIndex:
             score = 0
             for value in record["subjects"]:
                 value = value.casefold()
-                if value not in _STOPWORDS and value in folded:
+                if value not in _STOPWORDS and _contains_subject(folded, value):
                     score += 8 + min(len(value), 8)
             for value in record["keywords"]:
                 value = value.casefold()
