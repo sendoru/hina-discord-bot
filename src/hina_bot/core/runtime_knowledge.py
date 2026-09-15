@@ -5,6 +5,7 @@ import re
 from datetime import UTC, datetime
 
 from .admin_db import AdminDatabase
+from .character import get_character_config
 
 KNOWLEDGE_LEVELS = {
     "self", "direct_experience", "reported", "public_knowledge", "inference",
@@ -15,7 +16,11 @@ MAX_CONTENT_CHARS = 1800
 MAX_VALUES = 20
 MAX_VALUE_CHARS = 60
 _TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
-_STOPWORDS = {"히나", "히나야", "소라사키", "블루", "아카이브", "뭐야", "알려줘", "어떻게"}
+_BASE_STOPWORDS = {"뭐야", "알려줘", "어떻게"}
+
+
+def _stopwords() -> set[str]:
+    return _BASE_STOPWORDS | set(get_character_config().search_stopwords)
 
 
 def _split_values(value: str) -> list[str]:
@@ -28,8 +33,9 @@ def _split_values(value: str) -> list[str]:
 
 
 def _terms(text: str) -> set[str]:
+    stopwords = _stopwords()
     return {token.casefold() for token in _TOKEN.findall(text)
-            if token.casefold() not in _STOPWORDS}
+            if token.casefold() not in stopwords}
 
 
 class RuntimeKnowledgeRegistry:
@@ -164,8 +170,8 @@ class RuntimeKnowledgeRegistry:
             if count >= MAX_ITEMS:
                 raise ValueError(f"항목은 최대 {MAX_ITEMS}개까지 저장할 수 있습니다.")
             database.db.execute(
-                "INSERT INTO runtime_knowledge(" 
-                "id,kind,content,keywords,subjects,awareness,timeline,enabled,created_at,updated_at" 
+                "INSERT INTO runtime_knowledge("
+                "id,kind,content,keywords,subjects,awareness,timeline,enabled,created_at,updated_at"
                 ") VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     identifier, self.kind, content,
@@ -269,8 +275,8 @@ class RuntimeKnowledgeRegistry:
                 if count >= MAX_ITEMS:
                     raise ValueError(f"항목은 최대 {MAX_ITEMS}개까지 저장할 수 있습니다.")
             database.db.execute(
-                "INSERT OR REPLACE INTO runtime_knowledge(" 
-                "id,kind,content,keywords,subjects,awareness,timeline,enabled,created_at,updated_at" 
+                "INSERT OR REPLACE INTO runtime_knowledge("
+                "id,kind,content,keywords,subjects,awareness,timeline,enabled,created_at,updated_at"
                 ") VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     identifier, self.kind, content,
@@ -286,6 +292,7 @@ class RuntimeKnowledgeRegistry:
             return []
         folded = query.casefold()
         terms = _terms(query)
+        stopwords = _stopwords()
         ranked = []
         for order, row in enumerate(self.list()):
             if not row["enabled"]:
@@ -293,7 +300,7 @@ class RuntimeKnowledgeRegistry:
             score = 0
             for value in row["subjects"]:
                 folded_value = value.casefold()
-                if folded_value not in _STOPWORDS and folded_value in folded:
+                if folded_value not in stopwords and folded_value in folded:
                     score += 8 + min(len(folded_value), 8)
             for value in row["keywords"]:
                 folded_value = value.casefold()
