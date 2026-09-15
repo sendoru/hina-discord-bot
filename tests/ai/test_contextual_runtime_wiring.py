@@ -1,4 +1,4 @@
-from hina_bot.ai.chat_llm import LLM as ChatLLM
+from hina_bot.ai.information_pipeline import LLM as ChatLLM
 from hina_bot.ai.runtime_llm import LLM as RuntimeLLM
 from hina_bot.discord.runtime_entry import LLM as EntryLLM
 

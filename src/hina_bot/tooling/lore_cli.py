@@ -4,8 +4,7 @@ from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 
-from . import lore_pipeline
-from .lore import (
+from hina_bot.core.lore import (
     CONFIDENCE_LEVELS,
     FACT_TYPES,
     REFERENCE_ONLY_FACT_TYPES,
@@ -15,6 +14,8 @@ from .lore import (
     validate_record,
     write_jsonl,
 )
+
+from . import lore_pipeline
 from .lore_web import verify_candidate
 
 _PRIMARY_SOURCE_TYPES = {"official_game", "official_site", "official_video", "official_profile"}

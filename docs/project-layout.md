@@ -35,6 +35,5 @@ per-turn fast/smart model plan. It selects the model, answer limit, and Gemini t
 without making another provider request. The final request and content-free usage telemetry consume that same
 immutable plan.
 
-The console entry points use the new package paths. A small compatibility layer in `hina_bot.__init__`
-keeps the previous flat imports (for example `hina_bot.config`) working for existing local scripts/tests;
-new code should prefer the feature package paths such as `hina_bot.core.config`.
+The console entry points and repository code use feature package paths directly, such as
+`hina_bot.core.config`, instead of the pre-split flat module paths.

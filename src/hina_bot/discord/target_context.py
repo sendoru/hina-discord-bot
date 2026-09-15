@@ -5,7 +5,7 @@ from datetime import timedelta
 
 import discord
 
-from .routing import trigger_text
+from hina_bot.core.routing import trigger_text
 
 log = logging.getLogger("hina")
 TARGET_CONTEXT = ContextVar("target_context", default=())

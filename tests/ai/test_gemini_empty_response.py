@@ -3,7 +3,8 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
 import pytest
-from hina_bot.usage import EmptyProviderResponseError, UsageLogger
+
+from hina_bot.ai.usage import EmptyProviderResponseError, UsageLogger
 
 
 def _response(text: str, *, input_tokens: int, output_tokens: int, reasoning_tokens: int = 0):

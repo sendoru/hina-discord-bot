@@ -9,12 +9,12 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
-import hina_bot.llm as llm_module
-from hina_bot.config import Settings
-from hina_bot.llm import LLM
-from hina_bot.output_safety import DISCORD_MENTION, neutralize_mentions
-from hina_bot.routing import Scope
-from hina_bot.store import Store
+import hina_bot.ai.llm as llm_module
+from hina_bot.ai.information_pipeline import LLM
+from hina_bot.core.config import Settings
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
+from hina_bot.discord.output_safety import DISCORD_MENTION, neutralize_mentions
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ROOT / "evals" / "prompt_injection_cases.jsonl"

@@ -5,7 +5,7 @@ import asyncio
 import discord
 from discord import app_commands
 
-from .routing import Scope
+from hina_bot.core.routing import Scope
 
 _SCOPE_CHOICES = [
     app_commands.Choice(name="내 메모", value="me"),

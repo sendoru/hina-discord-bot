@@ -3,9 +3,8 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace as NS
 
-from hina_bot.routing import Scope
-from hina_bot.store import Store
-
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
 from hina_bot.discord.chatlog_capture import (
     capture_mode,
     capture_mode_chain,

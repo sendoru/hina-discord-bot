@@ -6,14 +6,14 @@ from datetime import timedelta
 import discord
 
 from hina_bot.ai.egress_policy import strict_policy
+from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
+from hina_bot.core.config import Settings
+from hina_bot.core.routing import Scope, trigger_text
 
 from .bot import HinaClient as BaseHinaClient
-from .chat_llm import LLM
 from .chatlog_capture import capture_mode
-from .config import Settings
 from .reply_context import REPLY_CONTEXT, collect_reply_context
-from .routing import Scope, trigger_text
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
 from .target_recent import CURRENT_DIRECT_TRIGGER, TargetAwareRecentMessages

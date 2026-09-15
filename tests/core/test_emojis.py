@@ -1,8 +1,8 @@
 import unittest
 from types import SimpleNamespace as NS
 
-from hina_bot.emojis import available_emojis, render_emojis
-from hina_bot.routing import chunks
+from hina_bot.core.emojis import available_emojis, render_emojis
+from hina_bot.core.routing import chunks
 
 
 class Emoji:
