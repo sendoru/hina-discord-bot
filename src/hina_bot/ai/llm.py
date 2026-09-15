@@ -229,8 +229,9 @@ class LLM:
             {"at": t["created_at"], "user": t["content"],
              **({"hina": t["reply"]} if scope.guild_id is None else {})} for t in pending]}
         response = await self.usage.request(self.client, "summarize",
-            model=self.settings.memory_model, instructions=SUMMARY_POLICY,
-            input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")), max_output_tokens=900, store=False)
+            model=self.settings.model, instructions=SUMMARY_POLICY,
+            input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            max_output_tokens=self.settings.memory_output_tokens, store=False)
         if response.status == "completed" and response.output_text.strip():
             store.save_summary(scope, response.output_text.strip()[:1500], pending[-1]["id"])
 
@@ -242,11 +243,12 @@ class LLM:
                    "speaker_id": str(scope.user_id), "direct_calls": [
                        {"at": t["created_at"], "user": t["content"]} for t in pending]}
         response = await self.usage.request(self.client, "summarize_shared",
-            model=self.settings.memory_model,
+            model=self.settings.model,
             instructions=SUMMARY_POLICY + "\n직접 호출한 발화만 요약하세요. 앞선 발언을 가리키는 "
             "대명사나 인용의 빈 맥락을 보충하지 마세요. 화자 자신의 명시적 사실·선호·약속만 "
             "기억하세요. 제3자의 발언이나 사실은 저장하지 마세요.",
-            input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")), max_output_tokens=900, store=False)
+            input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            max_output_tokens=self.settings.memory_output_tokens, store=False)
         if response.status == "completed" and response.output_text.strip():
             store.save_shared_summary(scope, pending[-1]["name"], response.output_text.strip(),
                                       pending[-1]["id"])

@@ -29,6 +29,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "MAX_OUTPUT_TOKENS",
         "MODEL_ROUTING_MODE",
         "MODEL_ROUTING_SMART_THRESHOLD",
+        "MEMORY_ROUTING_SMART_THRESHOLD",
         "LLM_FAST_MODEL",
         "LLM_SMART_MODEL",
         "FAST_MAX_OUTPUT_TOKENS",
@@ -52,6 +53,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.output_tokens == 1000
     assert settings.model_routing_mode == "fixed"
     assert settings.model_routing_smart_threshold == pytest.approx(2.0)
+    assert settings.memory_routing_smart_threshold == pytest.approx(2.0)
     assert settings.fast_model == settings.model
     assert settings.smart_model == settings.model
     assert settings.fast_output_tokens == 4096
@@ -71,6 +73,7 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("LLM_MODEL", "fallback")
     monkeypatch.setenv("MODEL_ROUTING_MODE", "adaptive")
     monkeypatch.setenv("MODEL_ROUTING_SMART_THRESHOLD", "1.75")
+    monkeypatch.setenv("MEMORY_ROUTING_SMART_THRESHOLD", "2.25")
     monkeypatch.setenv("LLM_FAST_MODEL", "gemini-fast")
     monkeypatch.setenv("LLM_SMART_MODEL", "gemini-smart")
     monkeypatch.setenv("FAST_MAX_OUTPUT_TOKENS", "4096")
@@ -81,6 +84,7 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     value = Settings.load()
     assert value.model_routing_mode == "adaptive"
     assert value.model_routing_smart_threshold == pytest.approx(1.75)
+    assert value.memory_routing_smart_threshold == pytest.approx(2.25)
     assert value.fast_model == "gemini-fast"
     assert value.smart_model == "gemini-smart"
     assert value.fast_output_tokens == 4096
@@ -92,11 +96,17 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
 
 
 @pytest.mark.parametrize("threshold", ["0", "10.1", "nan", "inf", "not-a-number"])
-def test_settings_load_rejects_invalid_smart_threshold(monkeypatch, tmp_path: Path, threshold: str):
+@pytest.mark.parametrize(
+    "variable",
+    ["MODEL_ROUTING_SMART_THRESHOLD", "MEMORY_ROUTING_SMART_THRESHOLD"],
+)
+def test_settings_load_rejects_invalid_smart_threshold(
+    monkeypatch, tmp_path: Path, threshold: str, variable: str
+):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DISCORD_TOKEN", "token")
     monkeypatch.setenv("OPENAI_API_KEY", "key")
-    monkeypatch.setenv("MODEL_ROUTING_SMART_THRESHOLD", threshold)
+    monkeypatch.setenv(variable, threshold)
 
     with pytest.raises(ValueError):
         Settings.load()
@@ -113,6 +123,7 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
         assert settings.community_lore is True
         assert settings.output_tokens == 1000
         assert settings.model_routing_smart_threshold == pytest.approx(2.0)
+        assert settings.memory_routing_smart_threshold == pytest.approx(2.0)
         assert settings.channel_context_chars == 6000
         assert settings.history_max_chars == 12000
         assert settings.lore_max_items == 6
@@ -128,6 +139,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         channel_context_chars=5000,
         chat_web_search=True,
         model_routing_smart_threshold=2.0,
+        memory_routing_smart_threshold=2.0,
     )
 
     store = Store(str(db))
@@ -136,6 +148,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
     assert settings.set_text("chat_web_search", "off") is False
     assert settings.set_text("CALL_PREFIXES", "히나야, 히나") == ("히나야", "히나")
     assert settings.set_text("MODEL_ROUTING_SMART_THRESHOLD", "1.8") == pytest.approx(1.8)
+    assert settings.set_text("MEMORY_ROUTING_SMART_THRESHOLD", "2.3") == pytest.approx(2.3)
     store.close()
 
     store = Store(str(db))
@@ -145,8 +158,10 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         assert reloaded.chat_web_search is False
         assert reloaded.call_prefixes == ("히나야", "히나")
         assert reloaded.model_routing_smart_threshold == pytest.approx(1.8)
+        assert reloaded.memory_routing_smart_threshold == pytest.approx(2.3)
         assert reloaded.source("CHANNEL_CONTEXT_CHARS") == "db"
         assert reloaded.source("MODEL_ROUTING_SMART_THRESHOLD") == "db"
+        assert reloaded.source("MEMORY_ROUTING_SMART_THRESHOLD") == "db"
     finally:
         store.close()
 
@@ -155,18 +170,28 @@ def test_reset_removes_db_override_and_restores_startup_value():
     store = Store(":memory:")
     try:
         settings = RuntimeSettings(
-            _base(lore_max_items=9, model_routing_smart_threshold=2.3), store
+            _base(
+                lore_max_items=9,
+                model_routing_smart_threshold=2.3,
+                memory_routing_smart_threshold=2.4,
+            ),
+            store,
         )
         settings.set_text("LORE_MAX_ITEMS", "3")
         settings.set_text("MODEL_ROUTING_SMART_THRESHOLD", "1.6")
+        settings.set_text("MEMORY_ROUTING_SMART_THRESHOLD", "1.7")
         assert settings.lore_max_items == 3
         assert settings.model_routing_smart_threshold == pytest.approx(1.6)
+        assert settings.memory_routing_smart_threshold == pytest.approx(1.7)
         assert settings.reset("LORE_MAX_ITEMS") == 9
         assert settings.reset("MODEL_ROUTING_SMART_THRESHOLD") == pytest.approx(2.3)
+        assert settings.reset("MEMORY_ROUTING_SMART_THRESHOLD") == pytest.approx(2.4)
         assert settings.lore_max_items == 9
         assert settings.model_routing_smart_threshold == pytest.approx(2.3)
+        assert settings.memory_routing_smart_threshold == pytest.approx(2.4)
         assert settings.source("LORE_MAX_ITEMS") == "startup"
         assert settings.source("MODEL_ROUTING_SMART_THRESHOLD") == "startup"
+        assert settings.source("MEMORY_ROUTING_SMART_THRESHOLD") == "startup"
     finally:
         store.close()
 
@@ -192,6 +217,10 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
         ("MODEL_ROUTING_SMART_THRESHOLD", "10.1"),
         ("MODEL_ROUTING_SMART_THRESHOLD", "nan"),
         ("MODEL_ROUTING_SMART_THRESHOLD", "not-a-number"),
+        ("MEMORY_ROUTING_SMART_THRESHOLD", "0"),
+        ("MEMORY_ROUTING_SMART_THRESHOLD", "10.1"),
+        ("MEMORY_ROUTING_SMART_THRESHOLD", "nan"),
+        ("MEMORY_ROUTING_SMART_THRESHOLD", "not-a-number"),
         ("CHANNEL_CONTEXT_CHARS", "12001"),
         ("HISTORY_MAX_CHARS", "-1"),
         ("LORE_MAX_ITEMS", "21"),
