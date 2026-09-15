@@ -91,5 +91,59 @@ class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["error"], "")
 
 
+def test_tone_cases_include_valid_speaker_switches():
+    cases = read_cases(Path("evals/tone_cases.jsonl"))
+    case = next(row for row in cases if row["id"] == "speaker_switch_does_not_transfer_anger")
+    assert len(case_turns(case)) == 4
+
+
+def test_invalid_speaker_turns_are_rejected(tmp_path):
+    import pytest
+
+    path = tmp_path / "cases.jsonl"
+    for mode, turn in [
+        ("dm", {"input": "안녕", "speaker": "A", "user_id": 1}),
+        ("server", {"input": "안녕", "speaker": "A", "user_id": True}),
+        ("server", {"input": "안녕", "speaker": "A", "user_id": -1}),
+        ("server", {"input": "안녕", "speaker": "A"}),
+    ]:
+        path.write_text(json.dumps({"id": "bad", "mode": mode, "turns": [turn],
+                                    "expected": "test"}), encoding="utf-8")
+        with pytest.raises(ValueError):
+            read_cases(path)
+
+
+class SpeakerSwitchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_generated_channel_context_follows_speakers_and_keeps_memory_isolated(self):
+        class FakeLLM:
+            settings = SimpleNamespace(history_turns=12, provider="test", model="fake")
+
+            def __init__(self):
+                self.calls = []
+
+            async def answer(self, store, scope, name, content, **kwargs):
+                self.calls.append((scope.user_id, name, kwargs["channel_context"],
+                                   [row["content"] for row in store.history(scope)]))
+                return f"reply {name}"
+
+        case = {"id": "switch", "mode": "server", "expected": "화자 격리", "turns": [
+            {"user_id": 101, "speaker": "A", "input": "장난"},
+            {"user_id": 102, "speaker": "B", "input": "안녕"},
+            {"user_id": 101, "speaker": "A", "input": "질문"},
+        ]}
+        llm = FakeLLM()
+        result = await run_case(llm, case)
+        self.assertEqual(result["error"], "")
+        self.assertEqual(llm.calls[0][2], [])
+        self.assertEqual(llm.calls[1][0:2], (102, "B"))
+        self.assertEqual(llm.calls[1][3], [])
+        self.assertEqual(llm.calls[1][2][0]["user_id"], "101")
+        self.assertEqual(llm.calls[1][2][1]["reply_target_user_id"], "101")
+        self.assertEqual(llm.calls[1][2][1]["content"], "reply A")
+        self.assertEqual(llm.calls[2][3], ["장난"])
+        self.assertEqual(result["speakers"][1], {"user_id": 102, "speaker": "B"})
+        self.assertNotIn("channel_context", case)
+
+
 if __name__ == "__main__":
     unittest.main()
