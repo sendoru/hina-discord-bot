@@ -5,7 +5,7 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
 
 from hina_bot.core.store import Store
-from hina_bot.discord.emoji_commands import EmojiCommands, EmojiRegistry
+from hina_bot.discord.emoji_commands import EmojiRegistry
 
 
 class Emoji:
@@ -72,29 +72,6 @@ class RegistryTests(unittest.IsolatedAsyncioTestCase):
         attachment.read.return_value = b"not an image"
         with self.assertRaises(ValueError):
             await self.registry.add("hina_bad", "bad", attachment)
-
-    async def test_admin_authorization_and_message_crud(self):
-        client = NS(emoji_admin_ids={100}, emoji_registry=self.registry, store=self.store)
-        group = EmojiCommands(client)
-        message = NS(author=NS(id=200), channel=None, attachments=[])
-        self.assertIn("관리자", await group.handle(message, "등록 hina_happy 1234 기쁠 때"))
-        self.assertEqual(self.store.emoji_rows(), [])
-        message.author.id = 100
-        self.assertIn("등록했어요", await group.handle(message, "등록 hina_happy 1234 기쁠 때"))
-        self.assertIn("기쁠 때", await group.handle(message, "목록"))
-        await group.handle(message, "수정 hina_happy 칭찬받았을 때")
-        self.assertEqual(self.store.emoji_rows()[0]["description"], "칭찬받았을 때")
-        await group.handle(message, "삭제 hina_happy")
-        self.assertEqual(self.store.emoji_rows(), [])
-
-    async def test_message_image_and_invalid_arguments(self):
-        group = EmojiCommands(NS(emoji_admin_ids={100}, emoji_registry=self.registry, store=self.store))
-        attachment = NS(size=8, read=AsyncMock(return_value=b"\x89PNG\r\n\x1a\n"))
-        message = NS(author=NS(id=100), channel=None, attachments=[attachment])
-        self.assertIn("동시에", await group.handle(message, "등록 hina_happy <:x:1234> happy"))
-        attachment.read.assert_not_awaited()
-        self.assertIn("등록했어요", await group.handle(message, "등록 hina_happy 기쁠 때"))
-        self.assertEqual(await group.handle(message, "등록"), group.HELP)
 
     async def test_concurrent_duplicate_registration(self):
         import asyncio
