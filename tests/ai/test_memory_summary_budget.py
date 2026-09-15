@@ -128,3 +128,49 @@ def test_removed_memory_provider_and_model_env_are_ignored(monkeypatch, tmp_path
     value = _load_settings(monkeypatch, tmp_path, None)
     assert not hasattr(value, "memory_provider")
     assert not hasattr(value, "memory_model")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shared", [False, True])
+@pytest.mark.parametrize("output,status,clears", [
+    ("  <NO_MEMORY>\n", "completed", True),
+    ("", "completed", False),
+    ("   ", "completed", False),
+    ("<NO_MEMORY>", "incomplete", False),
+])
+async def test_empty_memory_advances_cursor_only_for_explicit_completed_result(
+    shared, output, status, clears,
+):
+    from hina_bot.core.routing import Scope
+    from hina_bot.core.store import Store
+
+    llm = _summary_llm(output)
+    llm.usage.request.return_value.status = status
+    store = Store(":memory:")
+    scope = Scope(1 if shared else None, 2, 100, public_at_capture=shared)
+    try:
+        if shared:
+            store.add_shared_call(scope, 10, "A", "안녕")
+            store.save_shared_summary(scope, "A", "이전 기억", 0)
+            await llm.summarize_shared(store, scope)
+            saved = store.shared_summary(scope)
+            pending = store.pending_shared(scope)
+        else:
+            store.add(scope, 10, "안녕", "반가워")
+            store.save_summary(scope, "이전 기억", 0)
+            await llm.summarize(store, scope)
+            saved = store.summary(scope)
+            pending = store.pending(scope)
+        assert saved == (("", 1) if clears else ("이전 기억", 0))
+        assert len(pending) == (0 if clears else 1)
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_marker_inside_real_memory_is_not_treated_as_empty():
+    text = "사용자는 <NO_MEMORY>라는 문자열을 처리하는 프로그램을 개발 중이다."
+    llm = _summary_llm(text)
+    store = FakeStore()
+    await llm.summarize(store, NS(guild_id=None, user_id=100))
+    assert store.saved_summary == (text, 1)
