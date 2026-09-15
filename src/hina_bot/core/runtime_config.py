@@ -31,7 +31,7 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "chat_web_search": RuntimeSettingSpec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
     "community_lore": RuntimeSettingSpec("community_lore", "COMMUNITY_LORE", "bool"),
     "output_tokens": RuntimeSettingSpec(
-        "output_tokens", "MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=4096
+        "output_tokens", "MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
     ),
     "channel_context_chars": RuntimeSettingSpec(
         "channel_context_chars", "CHANNEL_CONTEXT_CHARS", "int", minimum=0, maximum=12000
@@ -89,15 +89,6 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             raise ValueError(f"{spec.env_name}는 {spec.minimum} 이상이어야 해요.")
         if spec.maximum is not None and value > spec.maximum:
             raise ValueError(f"{spec.env_name}는 {spec.maximum} 이하여야 해요.")
-        if (
-            spec.attr == "output_tokens"
-            and settings is not None
-            and getattr(settings, "provider", "") == "gemini"
-            and value > getattr(settings, "gemini_total_output_tokens", value)
-        ):
-            raise ValueError(
-                "Gemini에서는 MAX_OUTPUT_TOKENS가 GEMINI_TOTAL_OUTPUT_TOKENS보다 클 수 없어요."
-            )
         return value
 
     if spec.kind == "prefixes":
