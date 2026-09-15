@@ -88,6 +88,31 @@ def test_one_weak_signal_stays_fast_but_combined_signals_escalate():
     assert combined.tier == ModelTier.SMART
 
 
+def test_explicit_reply_length_participates_in_model_routing():
+    short = [{"context_kind": "replied_message", "content": "x" * 200}]
+    substantial = [{"context_kind": "replied_message", "content": "x" * 700}]
+    long = [{"context_kind": "replied_message", "content": "x" * 2000}]
+
+    short_plan = build_model_plan(
+        settings(), information("이거 읽어봐"), channel_context=short,
+    )
+    substantial_plan = build_model_plan(
+        settings(), information("이거 읽어봐"), channel_context=substantial,
+    )
+    long_plan = build_model_plan(
+        settings(), information("이거 읽어봐"), channel_context=long,
+    )
+
+    assert short_plan.tier == ModelTier.FAST
+    assert short_plan.reasons == ("routine_request",)
+    assert substantial_plan.tier == ModelTier.FAST
+    assert substantial_plan.score == 1
+    assert "substantial_explicit_reply" in substantial_plan.reasons
+    assert long_plan.tier == ModelTier.SMART
+    assert long_plan.score == 2
+    assert "long_explicit_reply" in long_plan.reasons
+
+
 def test_lore_synthesis_and_large_relevant_context_can_escalate():
     lore = build_model_plan(
         settings(),
