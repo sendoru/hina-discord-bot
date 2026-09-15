@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hina_bot.ai.information_pipeline import InformationPipeline
-from hina_bot.ai.memory_summary import MemorySummaryMixin, SUMMARY_POLICY
+from hina_bot.ai.memory_summary import SUMMARY_POLICY, MemorySummaryMixin
 
 
 class FakeStore:
