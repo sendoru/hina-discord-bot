@@ -99,6 +99,16 @@ def build_model_plan(
     if len(information.references) >= 4:
         add(1, "many_references")
 
+    reply_chars = sum(
+        len(str(row.get("content", "")))
+        for row in channel_context
+        if row.get("context_kind") == "replied_message"
+    )
+    if reply_chars >= 1500:
+        add(2, "long_explicit_reply")
+    elif reply_chars >= 500:
+        add(1, "substantial_explicit_reply")
+
     target_rows = [
         row for row in channel_context
         if row.get("context_kind") == "target_user_history"
