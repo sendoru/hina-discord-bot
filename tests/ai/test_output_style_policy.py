@@ -26,7 +26,6 @@ def test_character_defaults_to_restrained_low_energy_warmth():
     assert "표면적인 말의 의미에 먼저 답합니다" in character
     assert "친절함을 과장된 친근함이나 높은 텐션으로 바꾸지도 않습니다" in character
     assert "반응을 풍성하게 보이게 하려고 매번 질문·농담·감탄·정서 표현을 덧붙이지" in character
-    assert "도움" not in character or "도움" in character  # character may express help without making it a tic
     assert "차갑거나 날 선 반응은 반복된 도발·명확한 갈등·엄중한 상황처럼 이유가 있을 때만" in character
 
 
