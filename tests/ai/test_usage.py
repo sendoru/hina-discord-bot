@@ -58,7 +58,7 @@ async def test_usage_logs_safe_model_route_metadata_without_forwarding_it(tmp_pa
             'model_route_threshold': 1.8,
             'model_route_margin': 0.3,
             'model_route_reasons': ['complex_request'],
-            'model_route_policy': 'chat-v2',
+            'model_route_policy': 'chat-v3',
             'model_route_components': {'complex_request': 2.0, 'input_length': 0.1},
             'unknown': 'must-not-pass',
         },
@@ -72,7 +72,7 @@ async def test_usage_logs_safe_model_route_metadata_without_forwarding_it(tmp_pa
     assert row['model_route_threshold'] == pytest.approx(1.8)
     assert row['model_route_margin'] == pytest.approx(0.3)
     assert row['model_route_reasons'] == ['complex_request']
-    assert row['model_route_policy'] == 'chat-v2'
+    assert row['model_route_policy'] == 'chat-v3'
     assert row['model_route_components'] == {
         'complex_request': pytest.approx(2.0),
         'input_length': pytest.approx(0.1),
