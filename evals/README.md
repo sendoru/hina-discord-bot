@@ -3,7 +3,7 @@
 ## 일상 화법 평가
 
 `hina-eval --cases evals/tone_cases.jsonl --provider <provider> --model <model>`로
-24개 화법 사례를 실행할 수 있어요. 모델 API 키와 비용이 필요하며 기본 단위 테스트에서는
+26개 화법 사례를 실행할 수 있어요. 모델 API 키와 비용이 필요하며 기본 단위 테스트에서는
 실행하지 않아요. `--id <case-id>`로 일부만 실행할 수도 있어요.
 결과 JSONL과 Markdown의 실제 응답을 `expected`와 비교해서 수동 평가해요.
 이 러너의 정상 종료는 화법 PASS를 의미하지 않아요.
