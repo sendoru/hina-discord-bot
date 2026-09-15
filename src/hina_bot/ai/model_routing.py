@@ -88,8 +88,8 @@ def build_model_plan(
     if settings.model_routing_mode != "adaptive":
         return fixed_model_plan(settings)
 
-    routing_text = information.routing.routing_query.strip()
     visible_text = information.routing.visible_content.strip()
+    anchor_text = information.routing.anchor.strip()
     score = 0.0
     reasons = []
 
@@ -100,17 +100,20 @@ def build_model_plan(
         score += points
         reasons.append(reason)
 
-    # Semantic signals remain categorical: these requests are intrinsically harder even when short.
-    if _COMPLEX_REQUEST.search(routing_text):
+    # Strong semantic signals come from the user's literal request. A quoted/anchored source may be
+    # technically complex, but source wording such as "분석" must not be mistaken for an instruction.
+    if _COMPLEX_REQUEST.search(visible_text):
         add(2.0, "complex_request")
-    # Only the user's literal request can ask for a long answer. Quoted/replied text is reference data.
+    elif anchor_text and _COMPLEX_REQUEST.search(anchor_text):
+        add(0.5, "complex_reference")
+
     if _LONG_ANSWER_REQUEST.search(visible_text):
         add(2.0, "long_answer_requested")
 
-    # Quantitative signals are soft. Use visible text here so an anchor copied into routing_query does
-    # not get counted again when the same text is also present as an explicit reply/context row.
+    # Very long literal requests can justify the smart tier on their own, but the ramp is deliberately
+    # broad so ordinary medium-sized prompts do not jump tiers near an arbitrary boundary.
     add(
-        _linear_ramp(len(visible_text), start=300, full=1500, maximum=2.0),
+        _linear_ramp(len(visible_text), start=500, full=2500, maximum=2.0),
         "input_length",
     )
 
@@ -120,28 +123,27 @@ def build_model_plan(
     )
     add(
         _saturating_count(
-            max(0, requirement_count - 1), maximum=1.25, half=1.5
+            max(0, requirement_count - 1), maximum=1.0, half=1.5
         ),
         "multiple_requirements",
     )
 
-    if visual_count > 0:
-        # Preserve one visual as a meaningful weak signal, then add diminishing weight for more.
-        visual_weight = 1.0 + _saturating_count(
-            visual_count - 1, maximum=0.5, half=3.0
-        )
-        add(visual_weight, "visual_input")
+    # One visual or one web lookup is useful context, not a reason by itself to pay for the smart tier.
+    add(
+        _saturating_count(visual_count, maximum=1.25, half=1.5),
+        "visual_input",
+    )
 
     if information.search_mode == "required":
-        add(1.0, "required_web_search")
+        add(0.5, "required_web_search")
     if information.route == InformationRoute.LOCAL_THEN_WEB:
-        add(1.0, "multi_source_lore")
+        add(0.75, "multi_source_lore")
 
-    # One reference is ordinary grounding. Additional references increase synthesis burden but
-    # saturate so retrieval volume alone cannot force the smart tier.
+    # One reference is ordinary grounding. Additional references add synthesis work with diminishing
+    # returns so retrieval volume cannot dominate the decision by itself.
     add(
         _saturating_count(
-            max(0, len(information.references) - 1), maximum=1.0, half=3.0
+            max(0, len(information.references) - 1), maximum=0.8, half=3.0
         ),
         "reference_volume",
     )
@@ -151,8 +153,10 @@ def build_model_plan(
         for row in channel_context
         if row.get("context_kind") == "replied_message"
     )
+    # Explicit replies are stronger than ambient history because the user deliberately selected the
+    # source. Several thousand characters of quoted material can therefore reach smart by itself.
     add(
-        _linear_ramp(reply_chars, start=300, full=1500, maximum=2.0),
+        _linear_ramp(reply_chars, start=300, full=2000, maximum=2.0),
         "explicit_reply_length",
     )
 
@@ -161,9 +165,9 @@ def build_model_plan(
         if row.get("context_kind") == "target_user_history"
     ]
     if any(row.get("target_retrieval_mode") == "deep" for row in target_rows):
-        add(2.0, "deep_target_history")
+        add(1.6, "deep_target_history")
     elif target_rows:
-        add(0.75, "basic_target_history")
+        add(0.4, "basic_target_history")
 
     target_chars = sum(len(str(row.get("content", ""))) for row in target_rows)
     add(
@@ -171,15 +175,15 @@ def build_model_plan(
         "target_history_volume",
     )
 
-    # Do not include replied_message or target_user_history here: each has its own stronger signal
-    # above. This avoids counting the same text twice merely because it is also relevant context.
+    # Keep explicit replies and target history out of ambient-context scoring so the same text is not
+    # counted twice. Ambient context should influence routing, but only as a modest supporting signal.
     surrounding_chars = sum(
         len(str(row.get("content", "")))
         for row in channel_context
         if row.get("context_kind") in _SURROUNDING_CONTEXT_KINDS
     )
     add(
-        _linear_ramp(surrounding_chars, start=1000, full=3000, maximum=1.0),
+        _linear_ramp(surrounding_chars, start=1500, full=5000, maximum=0.75),
         "surrounding_context_length",
     )
 
