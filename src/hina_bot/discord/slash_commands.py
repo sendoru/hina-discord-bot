@@ -1,8 +1,4 @@
-"""Discord slash-command surface for runtime user/admin controls.
-
-The legacy prefix+slash parser still exists in the lower-level BaseHinaClient for old unit-test
-fixtures, but the production web_bot entrypoint installs this surface and disables that parser.
-"""
+"""Discord slash-command surface for runtime user/admin controls."""
 
 import logging
 import re
@@ -215,8 +211,7 @@ class EmojiSlashCommands(app_commands.Group):
             markup = await self.client.emoji_registry.add(
                 alias, description, attachment=image, source=source)
         except ValueError as exc:
-            text = str(exc).replace("히나야 /이모지 수정", "/emoji edit")
-            await interaction.followup.send(text, ephemeral=True)
+            await interaction.followup.send(str(exc), ephemeral=True)
             return
         await interaction.followup.send(f"등록했어요: {markup} `:{alias}:`", ephemeral=True)
 
@@ -257,7 +252,7 @@ class EmojiSlashCommands(app_commands.Group):
                 markup = await self.client.emoji_registry.add(
                     alias, description, source=str(emoji.id))
             except ValueError as exc:
-                reason = str(exc).replace("히나야 /이모지 수정", "/emoji edit")
+                reason = str(exc)
                 lines.append(f"`:{alias}:` ❌ {reason}")
                 continue
             success += 1
