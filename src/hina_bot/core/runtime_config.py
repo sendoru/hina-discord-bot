@@ -41,6 +41,13 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         minimum=0.1,
         maximum=10.0,
     ),
+    "memory_routing_smart_threshold": RuntimeSettingSpec(
+        "memory_routing_smart_threshold",
+        "MEMORY_ROUTING_SMART_THRESHOLD",
+        "float",
+        minimum=0.1,
+        maximum=10.0,
+    ),
     "channel_context_chars": RuntimeSettingSpec(
         "channel_context_chars", "CHANNEL_CONTEXT_CHARS", "int", minimum=0, maximum=12000
     ),
