@@ -34,13 +34,18 @@ def information(
     text: str,
     *,
     routing_query: str | None = None,
+    anchor: str = "",
     route=InformationRoute.GENERAL,
     search_mode="none",
     fact_question=False,
     references=(),
 ):
     return InformationPlan(
-        routing=RoutingPlan(text, routing_query if routing_query is not None else text),
+        routing=RoutingPlan(
+            text,
+            routing_query if routing_query is not None else text,
+            anchor=anchor,
+        ),
         route=route,
         references=tuple(references),
         freshness=FreshnessMode.STATIC,
@@ -61,7 +66,7 @@ def test_routine_chat_uses_fast_tier_and_common_generation_budget():
     assert plan.reasons == ("routine_request",)
 
 
-def test_semantically_complex_or_explicitly_long_request_uses_smart_tier():
+def test_strong_semantic_requests_still_select_smart_directly():
     complex_plan = build_model_plan(
         settings(), information("이 알고리즘의 시간 복잡도를 증명해 줘")
     )
@@ -75,30 +80,37 @@ def test_semantically_complex_or_explicitly_long_request_uses_smart_tier():
         assert plan.score >= 2.0
 
 
-def test_one_weak_signal_stays_fast_but_combined_signals_escalate():
-    weather = build_model_plan(
+def test_single_operational_signals_are_weak_and_need_support_to_escalate():
+    web = build_model_plan(
         settings(), information("서울 날씨 어때?", search_mode="required")
     )
     visual = build_model_plan(settings(), information("이거 뭐야?"), visual_count=1)
-    combined = build_model_plan(
+    web_and_visual = build_model_plan(
         settings(),
         information("이 설정이 맞아?", search_mode="required"),
         visual_count=1,
     )
+    several_signals = build_model_plan(
+        settings(),
+        information("a? b? c? d? e?", search_mode="required"),
+        visual_count=4,
+    )
 
-    assert weather.tier == ModelTier.FAST
-    assert weather.score == 1.0
+    assert web.tier == ModelTier.FAST
+    assert web.score == pytest.approx(0.5)
     assert visual.tier == ModelTier.FAST
-    assert visual.score == 1.0
-    assert combined.tier == ModelTier.SMART
-    assert combined.score == 2.0
+    assert visual.score == pytest.approx(0.5)
+    assert web_and_visual.tier == ModelTier.FAST
+    assert web_and_visual.score == pytest.approx(1.0)
+    assert several_signals.tier == ModelTier.SMART
+    assert several_signals.score == pytest.approx(2.136)
 
 
-def test_visible_input_length_uses_soft_weight_and_saturates():
-    short = build_model_plan(settings(), information("x" * 300))
-    medium = build_model_plan(settings(), information("x" * 900))
-    long = build_model_plan(settings(), information("x" * 1500))
-    very_long = build_model_plan(settings(), information("x" * 4000))
+def test_visible_input_length_uses_broad_soft_ramp_and_saturates():
+    short = build_model_plan(settings(), information("x" * 500))
+    medium = build_model_plan(settings(), information("x" * 1500))
+    long = build_model_plan(settings(), information("x" * 2500))
+    very_long = build_model_plan(settings(), information("x" * 5000))
 
     assert short.score == 0.0
     assert medium.score == pytest.approx(1.0)
@@ -108,15 +120,22 @@ def test_visible_input_length_uses_soft_weight_and_saturates():
     assert very_long.score == pytest.approx(2.0)
 
 
-def test_routing_anchor_length_is_not_double_counted_as_user_input():
+def test_quoted_complex_wording_is_not_treated_as_a_direct_complex_request():
+    anchor = "이 알고리즘을 분석하면 시간 복잡도가 달라진다는 설명"
     plan = build_model_plan(
         settings(),
-        information("왜?", routing_query=("x" * 800) + "\n왜?"),
+        information(
+            "왜?",
+            routing_query=anchor + "\n왜?",
+            anchor=anchor,
+        ),
         channel_context=[{"context_kind": "replied_message", "content": "x" * 200}],
     )
 
     assert plan.tier == ModelTier.FAST
-    assert plan.score == 0.0
+    assert plan.score == pytest.approx(0.5)
+    assert plan.reasons == ("complex_reference",)
+    assert "complex_request" not in plan.reasons
     assert "input_length" not in plan.reasons
 
 
@@ -141,24 +160,24 @@ def test_explicit_reply_length_uses_soft_weight_and_long_reply_selects_smart():
 
     assert short_plan.tier == ModelTier.FAST
     assert short_plan.score == 0.0
-    assert medium_plan.score == pytest.approx(0.667)
+    assert medium_plan.score == pytest.approx(0.471)
     assert medium_plan.tier == ModelTier.FAST
-    assert substantial_plan.score == pytest.approx(1.5)
+    assert substantial_plan.score == pytest.approx(1.059)
     assert substantial_plan.tier == ModelTier.FAST
     assert long_plan.score == pytest.approx(2.0)
     assert long_plan.tier == ModelTier.SMART
     assert "explicit_reply_length" in long_plan.reasons
 
 
-def test_visual_and_reference_counts_gain_diminishing_soft_weight():
+def test_visual_and_reference_counts_gain_bounded_diminishing_weight():
     one_visual = build_model_plan(settings(), information("봐줘"), visual_count=1)
     four_visuals = build_model_plan(settings(), information("봐줘"), visual_count=4)
     eight_visuals = build_model_plan(settings(), information("봐줘"), visual_count=8)
 
-    assert one_visual.score == pytest.approx(1.0)
-    assert four_visuals.score == pytest.approx(1.25)
-    assert eight_visuals.score == pytest.approx(1.35)
-    assert one_visual.score < four_visuals.score < eight_visuals.score < 1.5
+    assert one_visual.score == pytest.approx(0.5)
+    assert four_visuals.score == pytest.approx(0.909)
+    assert eight_visuals.score == pytest.approx(1.053)
+    assert one_visual.score < four_visuals.score < eight_visuals.score < 1.25
 
     two_refs = build_model_plan(
         settings(), information("설정 알려줘", references=({}, {}))
@@ -167,42 +186,62 @@ def test_visual_and_reference_counts_gain_diminishing_soft_weight():
         settings(), information("설정 알려줘", references=tuple({} for _ in range(8)))
     )
 
-    assert two_refs.score == pytest.approx(0.25)
-    assert eight_refs.score == pytest.approx(0.7)
-    assert two_refs.score < eight_refs.score < 1.0
+    assert two_refs.score == pytest.approx(0.2)
+    assert eight_refs.score == pytest.approx(0.56)
+    assert two_refs.score < eight_refs.score < 0.8
     assert eight_refs.tier == ModelTier.FAST
 
 
-def test_multiple_requirements_gain_diminishing_soft_weight():
+def test_multiple_requirements_gain_bounded_diminishing_weight():
     two = build_model_plan(settings(), information("a? b?"))
     five = build_model_plan(settings(), information("a? b? c? d? e?"))
 
-    assert two.score == pytest.approx(0.5)
-    assert five.score == pytest.approx(0.909)
-    assert two.score < five.score < 1.25
+    assert two.score == pytest.approx(0.4)
+    assert five.score == pytest.approx(0.727)
+    assert two.score < five.score < 1.0
     assert five.tier == ModelTier.FAST
 
 
-def test_lore_and_surrounding_context_signals_still_combine_to_smart():
-    lore = build_model_plan(
+def test_multi_source_and_ambient_context_need_enough_combined_load_for_smart():
+    lore_only = build_model_plan(
         settings(),
         information(
             "둘이 만난 적 있어?",
             route=InformationRoute.LOCAL_THEN_WEB,
             search_mode="required",
             fact_question=True,
+            references=tuple({} for _ in range(4)),
         ),
     )
-    context = [{"context_kind": "speaker_thread", "content": "x" * 3000}]
-    context_plan = build_model_plan(
-        settings(), information("이어서 말해 줘", search_mode="required"),
-        channel_context=context,
+    with_medium_context = build_model_plan(
+        settings(),
+        information(
+            "둘이 만난 적 있어?",
+            route=InformationRoute.LOCAL_THEN_WEB,
+            search_mode="required",
+            fact_question=True,
+            references=tuple({} for _ in range(4)),
+        ),
+        channel_context=[{"context_kind": "speaker_thread", "content": "x" * 3000}],
+    )
+    with_large_context = build_model_plan(
+        settings(),
+        information(
+            "둘이 만난 적 있어?",
+            route=InformationRoute.LOCAL_THEN_WEB,
+            search_mode="required",
+            fact_question=True,
+            references=tuple({} for _ in range(4)),
+        ),
+        channel_context=[{"context_kind": "speaker_thread", "content": "x" * 5000}],
     )
 
-    assert lore.tier == ModelTier.SMART
-    assert lore.score >= 2.0
-    assert context_plan.tier == ModelTier.SMART
-    assert context_plan.score == pytest.approx(2.0)
+    assert lore_only.score == pytest.approx(1.65)
+    assert lore_only.tier == ModelTier.FAST
+    assert with_medium_context.score == pytest.approx(1.971)
+    assert with_medium_context.tier == ModelTier.FAST
+    assert with_large_context.score == pytest.approx(2.4)
+    assert with_large_context.tier == ModelTier.SMART
 
 
 def test_reply_and_target_history_are_not_counted_as_generic_surrounding_context():
@@ -221,19 +260,24 @@ def test_reply_and_target_history_are_not_counted_as_generic_surrounding_context
         }],
     )
 
-    assert reply_only.score == pytest.approx(1.5)
+    assert reply_only.score == pytest.approx(1.059)
     assert "surrounding_context_length" not in reply_only.reasons
-    assert basic_history.score == pytest.approx(0.964)
+    assert basic_history.score == pytest.approx(0.614)
     assert "surrounding_context_length" not in basic_history.reasons
 
 
-def test_target_history_depth_and_volume_participate_in_model_routing():
+def test_target_history_depth_and_volume_combine_without_overweighting_basic_history():
     basic = [{
         "context_kind": "target_user_history",
         "target_retrieval_mode": "basic",
         "content": "방금 한 말",
     }]
-    deep = [{
+    deep_short = [{
+        "context_kind": "target_user_history",
+        "target_retrieval_mode": "deep",
+        "content": "짧은 발언",
+    }]
+    deep_full = [{
         "context_kind": "target_user_history",
         "target_retrieval_mode": "deep",
         "content": "x" * 2400,
@@ -242,15 +286,20 @@ def test_target_history_depth_and_volume_participate_in_model_routing():
     basic_plan = build_model_plan(
         settings(), information("방금 뭐라고 했어?"), channel_context=basic,
     )
-    deep_plan = build_model_plan(
-        settings(), information("어떤 사람 같아?"), channel_context=deep,
+    deep_short_plan = build_model_plan(
+        settings(), information("어떤 사람 같아?"), channel_context=deep_short,
+    )
+    deep_full_plan = build_model_plan(
+        settings(), information("어떤 사람 같아?"), channel_context=deep_full,
     )
 
     assert basic_plan.tier == ModelTier.FAST
-    assert basic_plan.score == pytest.approx(0.75)
-    assert deep_plan.tier == ModelTier.SMART
-    assert deep_plan.score == pytest.approx(2.5)
-    assert "target_history_volume" in deep_plan.reasons
+    assert basic_plan.score == pytest.approx(0.4)
+    assert deep_short_plan.tier == ModelTier.FAST
+    assert deep_short_plan.score == pytest.approx(1.6)
+    assert deep_full_plan.tier == ModelTier.SMART
+    assert deep_full_plan.score == pytest.approx(2.1)
+    assert "target_history_volume" in deep_full_plan.reasons
 
 
 def test_fixed_mode_uses_common_generation_budget():
@@ -278,7 +327,7 @@ def test_routing_telemetry_contains_no_prompt_text_and_accepts_float_score():
 
     assert secret not in str(telemetry)
     assert telemetry["model_tier"] == "fast"
-    assert telemetry["model_route_score"] == pytest.approx(1.25)
+    assert telemetry["model_route_score"] == pytest.approx(0.909)
     assert telemetry["requested_max_output_tokens"] == 4096
     assert "requested_total_output_tokens" not in telemetry
 
