@@ -14,8 +14,8 @@ class RuntimeSettingSpec:
     attr: str
     env_name: str
     kind: str
-    minimum: int | None = None
-    maximum: int | None = None
+    minimum: int | float | None = None
+    maximum: int | float | None = None
     empty_allowed: bool = False
 
 
@@ -32,6 +32,13 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "community_lore": RuntimeSettingSpec("community_lore", "COMMUNITY_LORE", "bool"),
     "output_tokens": RuntimeSettingSpec(
         "output_tokens", "MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
+    ),
+    "model_routing_smart_threshold": RuntimeSettingSpec(
+        "model_routing_smart_threshold",
+        "MODEL_ROUTING_SMART_THRESHOLD",
+        "float",
+        minimum=0.1,
+        maximum=10.0,
     ),
     "channel_context_chars": RuntimeSettingSpec(
         "channel_context_chars", "CHANNEL_CONTEXT_CHARS", "int", minimum=0, maximum=12000
@@ -91,6 +98,19 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             raise ValueError(f"{spec.env_name}는 {spec.maximum} 이하여야 해요.")
         return value
 
+    if spec.kind == "float":
+        try:
+            value = float(text)
+        except ValueError as exc:
+            raise ValueError("숫자 값을 입력해 주세요.") from exc
+        if spec.minimum is not None and value < spec.minimum:
+            raise ValueError(f"{spec.env_name}는 {spec.minimum} 이상이어야 해요.")
+        if spec.maximum is not None and value > spec.maximum:
+            raise ValueError(f"{spec.env_name}는 {spec.maximum} 이하여야 해요.")
+        if value != value:
+            raise ValueError("유한한 숫자 값을 입력해 주세요.")
+        return value
+
     if spec.kind == "prefixes":
         return parse_call_prefixes(text)
 
@@ -125,6 +145,10 @@ def decode_runtime_value(spec: RuntimeSettingSpec, encoded: str, *, settings=Non
     if spec.kind == "int":
         if type(value) is not int:
             raise ValueError("stored value is not integer")
+        return parse_runtime_value(spec, str(value), settings=settings)
+    if spec.kind == "float":
+        if type(value) not in {int, float}:
+            raise ValueError("stored value is not numeric")
         return parse_runtime_value(spec, str(value), settings=settings)
     if spec.kind == "prefixes":
         if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
