@@ -269,6 +269,11 @@ production runtime의 관리·설정 기능은 Discord native slash command를 �
 `data/logs/discord-usage.jsonl`에 기록합니다. 메시지 원문, 사용자 ID, API key, 이미지 bytes/base64,
 Discord CDN URL을 usage 로그에 남기는 용도로 사용하지 않습니다.
 
+Discord 호출의 접수, 처리 제외 사유, 응답 생성·전송, 기억 후처리 결과는 기본적으로
+`data/logs/events.jsonl`에 기록합니다. 각 호출에는 Discord 식별자와 무관한 임의의 `turn_id`가
+부여되며 같은 값이 usage 로그에도 기록됩니다. `EVENT_LOG_PATH`를 비우면 이벤트 파일 로깅을
+끌 수 있습니다. 이벤트 로그에도 메시지·응답 원문, 사용자/서버/채널 ID, URL을 기록하지 않습니다.
+
 `store=False`를 사용하더라도 provider의 모든 데이터 보관 정책에서 제외된다는 의미는 아닙니다.
 운영자는 사용하는 provider의 데이터 정책을 별도로 확인해야 합니다.
 

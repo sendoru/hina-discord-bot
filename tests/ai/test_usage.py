@@ -6,6 +6,7 @@ import pytest
 
 from hina_bot.ai.providers import ProviderAPIError
 from hina_bot.ai.usage import UsageLogger
+from hina_bot.core.observability import CURRENT_TURN_ID
 
 
 def response(input_tokens, output_tokens, *, cached=0, reasoning=0, output=None):
@@ -215,3 +216,23 @@ async def test_discord_exchange_records_failed_api_call_without_content(tmp_path
     assert row['failed_calls'] == 1
     assert row['usage_complete'] is False
     assert 'secret' not in json.dumps(row)
+
+
+@pytest.mark.asyncio
+async def test_turn_id_connects_detail_and_exchange_rows(tmp_path):
+    path = tmp_path / 'usage.jsonl'
+    logger = UsageLogger(str(path))
+    client = NS(responses=NS(create=AsyncMock(return_value=response(10, 5))))
+    token = CURRENT_TURN_ID.set('opaque-turn-id')
+    try:
+        with logger.exchange('guild'):
+            await logger.request(client, 'answer', model='test', input='secret')
+    finally:
+        CURRENT_TURN_ID.reset(token)
+        logger.close()
+
+    detail = json.loads(path.read_text())
+    exchange = json.loads((tmp_path / 'discord-usage.jsonl').read_text())
+    assert detail['turn_id'] == 'opaque-turn-id'
+    assert exchange['turn_id'] == 'opaque-turn-id'
+    assert 'secret' not in path.read_text()
