@@ -20,13 +20,21 @@ from .output_safety import neutralize_mentions
 
 log = logging.getLogger("hina")
 
-def _bare_call_reply(scope: Scope, special_dm_user_id: int | None) -> str:
+
+def _bare_call_reply(
+    scope: Scope,
+    special_dm_user_id: int | None,
+    empty_call_reply: str,
+    special_dm_empty_call_reply: str = "",
+) -> str:
     special_dm = (
         scope.guild_id is None
         and special_dm_user_id is not None
         and scope.user_id == special_dm_user_id
     )
-    return "응, 선생님. 무슨 일이야?" if special_dm else "응? 무슨 일이야?"
+    if special_dm and special_dm_empty_call_reply:
+        return special_dm_empty_call_reply
+    return empty_call_reply
 
 
 class HinaClient(discord.Client):
@@ -223,7 +231,12 @@ class HinaClient(discord.Client):
                 if not text:
                     await self.send_text(
                         message.channel,
-                        _bare_call_reply(scope, self.settings.special_dm_user_id),
+                        _bare_call_reply(
+                            scope,
+                            self.settings.special_dm_user_id,
+                            self.settings.empty_call_reply,
+                            self.settings.special_dm_empty_call_reply,
+                        ),
                     )
                     return
                 if guild_id is not None and use_chat_log:
@@ -248,13 +261,14 @@ class HinaClient(discord.Client):
                             answer = render_emojis(answer, [e for e in emoji_catalog if e["id"] in current])
                             answer = neutralize_mentions(answer)
                             if not answer:
-                                answer = "응, 선생님."
+                                answer = self.settings.empty_response_reply
                             sent = await message.channel.send(
                                 next(chunks(answer)), allowed_mentions=discord.AllowedMentions.none())
                             for part in list(chunks(answer))[1:]:
                                 await message.channel.send(part, allowed_mentions=discord.AllowedMentions.none())
                             if guild_id is not None and use_chat_log:
-                                self.recent.add(scope, sent.id, "히나", answer, role="assistant")
+                                assistant_name = getattr(self.user, "display_name", "assistant")[:100]
+                                self.recent.add(scope, sent.id, assistant_name, answer, role="assistant")
                         # Commit only after Discord delivery. Never memorize a failed model request.
                         if save_memory:
                             self.store.add(scope, message.id, text, answer)
