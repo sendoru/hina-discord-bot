@@ -17,7 +17,11 @@ def test_nonempty_or_nontrigger_messages_are_unchanged():
     assert _augment_empty_call("그냥 채팅", None, False) is None
 
 
-def test_bare_call_reply_is_neutral_except_special_dm():
-    assert _bare_call_reply(Scope(1, 10, 100), 100) == "응? 무슨 일이야?"
-    assert _bare_call_reply(Scope(None, 10, 101), 100) == "응? 무슨 일이야?"
-    assert _bare_call_reply(Scope(None, 10, 100), 100) == "응, 선생님. 무슨 일이야?"
+def test_bare_call_reply_uses_configured_values():
+    ordinary = "기본 빈 호출 응답"
+    special = "특수 DM 빈 호출 응답"
+
+    assert _bare_call_reply(Scope(1, 10, 100), 100, ordinary, special) == ordinary
+    assert _bare_call_reply(Scope(None, 10, 101), 100, ordinary, special) == ordinary
+    assert _bare_call_reply(Scope(None, 10, 100), 100, ordinary, special) == special
+    assert _bare_call_reply(Scope(None, 10, 100), 100, ordinary, "") == ordinary
