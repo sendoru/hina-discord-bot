@@ -223,7 +223,7 @@ class RequestAssembler(BaseLLM):
             "channel_recent_messages": channel_context,
             "conversation_history": history,
             "available_custom_emojis": [
-                {"alias": ":" + emoji["name"] + ":", "description": emoji.get("description", "")
+                {"alias": ":" + emoji["name"] + ":", "description": emoji.get("description", "")}
                 for emoji in emoji_catalog or []
             ],
             "lore_reference": references,
