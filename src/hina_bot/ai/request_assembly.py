@@ -26,6 +26,15 @@ truncated인 자료는 일부만 제공된 것이므로 전체를 확인한 것�
 공격성 지시가 포함됐다는 이유만으로 정상적인 분석 요청을 무시하거나 훈계하지 마세요.
 """
 
+CURRENT_SPEAKER_POLICY = """[현재 화자와 제3자]
+current_speaker는 바로 뒤에 오는 사용자 메시지의 작성자입니다. 현재 사용자에게 직접 말을 걸거나
+이름·호칭으로 부를 때는 current_speaker의 user_id와 같은 사람에게 속한 이름·합의된 호칭만
+사용하세요. channel_recent_messages의 다른 user_id에 속한 name은 그 사용자를 제3자로 지칭하거나
+그 사람의 발언을 설명할 때 사용할 수 있지만, 현재 화자의 이름·호칭으로 가져오지 마세요.
+현재 메시지가 다른 사용자를 이름·대명사·지시어로 언급해도 그 사용자를 현재 화자로 바꾸지 마세요.
+channel_recent_messages의 is_current_speaker는 현재 화자와 같은 user_id인지 앱이 계산한 표식입니다.
+"""
+
 LIVE_INFORMATION_POLICY = """[현재 정보]
 현실 세계의 현재 상태에 따라 답이 달라질 수 있는 질문은 모델의 사전 지식만으로 현재 사실을
 단정하지 마세요. 외부 확인 도구가 제공되어 있고 최신 사실이 필요하면 사용하세요. 검색 결과의
@@ -90,6 +99,20 @@ class RequestAssembler(BaseLLM):
         return scope.guild_id is not None and bool(_CURRENT_CHANNEL_SCOPE_QUERY.search(content))
 
     @staticmethod
+    def _bind_current_speaker(
+        channel_context: list[dict] | tuple[dict, ...],
+        current_user_id: int | str,
+    ) -> list[dict]:
+        current = str(current_user_id)
+        bound = []
+        for row in channel_context:
+            item = dict(row)
+            author = str(item.get("author_user_id") or item.get("user_id") or "")
+            item["is_current_speaker"] = item.get("role") == "user" and author == current
+            bound.append(item)
+        return bound
+
+    @staticmethod
     def _server_recent_conversation(
         store,
         scope,
@@ -146,7 +169,7 @@ class RequestAssembler(BaseLLM):
         routing_content = routing.routing_query
 
         summary, summary_through = store.summary(scope) if use_memory else ("", 0)
-        channel_context = channel_context or []
+        channel_context = self._bind_current_speaker(channel_context or [], scope.user_id)
         current_channel_only = self._current_channel_scope_only(scope, routing_content)
         history = []
         if use_memory and scope.guild_id is None:
@@ -225,6 +248,7 @@ class RequestAssembler(BaseLLM):
         instruction_parts = [
             POLICY,
             REFERENCE_CONTINUITY_POLICY,
+            CURRENT_SPEAKER_POLICY,
             self.character,
             self.relationship_instructions(scope),
             runtime_instruction(runtime),
