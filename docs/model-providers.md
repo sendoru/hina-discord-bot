@@ -8,6 +8,7 @@ Discord, SQLite 기억, lore 검색, 캐릭터 프롬프트 조립은 provider�
 
 `.env.local`에서 `LLM_PROVIDER`, `LLM_MODEL`과 선택한 provider의 키를 설정합니다.
 `MEMORY_PROVIDER`, `MEMORY_MODEL`을 비워 두면 일반 답변과 같은 provider/model을 사용합니다.
+장기 기억 요약의 생성 예산은 `MEMORY_MAX_OUTPUT_TOKENS`로 별도 설정하며 기본값은 `4096`입니다.
 
 ### OpenAI
 
@@ -18,6 +19,7 @@ OPENAI_API_KEY=...
 
 MEMORY_PROVIDER=
 MEMORY_MODEL=
+MEMORY_MAX_OUTPUT_TOKENS=4096
 ```
 
 기존 설치의 `OPENAI_MODEL`은 호환 alias로 계속 읽지만 새 설정에서는 `LLM_MODEL`을 권장합니다.
@@ -64,14 +66,30 @@ GEMINI_SMART_THINKING_LEVEL=medium
 
 `fixed`가 호환 기본값이며 `LLM_MODEL`, `MAX_OUTPUT_TOKENS`와 provider별 reasoning 설정을 사용합니다.
 adaptive에서도 비어 있는 fast/smart 모델명은 `LLM_MODEL`로 대체되므로, 모델은 같게 두고 예산만
-분리하는 운영도 가능합니다. 기억 요약은 이 라우터를 거치지 않고 기존 `MEMORY_MODEL` 하나를
-사용합니다.
+분리하는 운영도 가능합니다. 기억 요약은 아직 이 라우터를 거치지 않고 `MEMORY_MODEL` 하나와
+`MEMORY_MAX_OUTPUT_TOKENS` 하나를 사용합니다.
 
 선택 결과는 `usage.jsonl`의 `model_tier`, `model_route_score`, `model_route_threshold`,
 `model_route_reasons`, `requested_max_output_tokens`에 남습니다. threshold를 runtime에서 조정해도 각
 응답이 어떤 기준으로 라우팅됐는지 나중에 함께 확인할 수 있습니다. Gemini에서는 선택된 thinking
 level도 함께 기록합니다. 사유에는 사용자 메시지 원문이 기록되지 않습니다. 모델 이름과 thinking
 level의 실제 지원 범위는 provider별로 다르므로 운영 모델 조합을 바꿀 때 smoke test가 필요합니다.
+
+## 장기 기억 요약 크기와 생성 예산
+
+개인 대화 기억과 공개 shared memory는 같은 모델 호출 경로를 사용하지만 저장 목적과 크기는 분리합니다.
+
+- 개인 `conversation_memory`: 기존 기억과 새 턴을 rolling summary로 합치며 **1800자 이내**를 목표로
+  생성합니다. 모델이 지시보다 길게 출력하더라도 저장 시 **2000자**에서 잘라냅니다.
+- 공개 `shared_summary`: 공개 서버 채널에서 해당 사용자가 히나를 직접 호출한 발화만 요약합니다.
+  다른 대화에서 공개 참고 문맥으로 재사용될 수 있으므로 기존 **1200자 이내** 목표와 **1500자** 저장
+  상한을 유지합니다. 서버 전체를 하나로 합친 단일 요약이 아니라 사용자·채널 scope별 공개 기억입니다.
+- 두 요약 호출 모두 `MEMORY_MAX_OUTPUT_TOKENS`를 사용합니다. 기본값은 `4096`, 허용 범위는
+  `128`~`65536`입니다. 이 값은 기억 본문 길이가 아니라 provider에 전달되는 전체 생성 예산입니다.
+  Gemini에서는 내부 thought token도 이 예산을 소비할 수 있습니다.
+
+즉 `1800자`와 `1200자`는 저장할 정보량을 제어하는 정책이고, `4096 tokens`는 추론 때문에 요약 요청이
+중간에 잘리는 것을 방지하기 위한 생성 상한입니다.
 
 ### Gemini
 
@@ -86,6 +104,7 @@ GEMINI_THINKING_LEVEL=low
 
 MEMORY_PROVIDER=
 MEMORY_MODEL=
+MEMORY_MAX_OUTPUT_TOKENS=4096
 ```
 
 Gemini는 Interactions API를 직접 사용합니다. `CHAT_WEB_SEARCH=true`일 때 검색이 필요한 답변은
@@ -94,19 +113,20 @@ Gemini는 Interactions API를 직접 사용합니다. `CHAT_WEB_SEARCH=true`일 
 Gemini 3.x의 `max_output_tokens`에는 사용자에게 보이는 답변뿐 아니라 내부 thought token도 포함됩니다.
 이제 Gemini 전용 `GEMINI_TOTAL_OUTPUT_TOKENS`, `GEMINI_FAST_TOTAL_OUTPUT_TOKENS`,
 `GEMINI_SMART_TOTAL_OUTPUT_TOKENS`는 사용하지 않습니다. fixed 모드에서는 `MAX_OUTPUT_TOKENS`,
-adaptive 모드에서는 `FAST_MAX_OUTPUT_TOKENS`와 `SMART_MAX_OUTPUT_TOKENS`를 그대로 Gemini의
-`max_output_tokens`로 전달합니다.
+adaptive 모드에서는 `FAST_MAX_OUTPUT_TOKENS`와 `SMART_MAX_OUTPUT_TOKENS`, 기억 요약에서는
+`MEMORY_MAX_OUTPUT_TOKENS`를 그대로 Gemini의 `max_output_tokens`로 전달합니다.
 
 - `GEMINI_THINKING_LEVEL`: fixed 모드의 추론 강도입니다. `minimal`, `low`, `medium`, `high`를
   사용할 수 있습니다.
 - `GEMINI_FAST_THINKING_LEVEL`, `GEMINI_SMART_THINKING_LEVEL`: adaptive 모드의 fast/smart 추론
   강도입니다.
-- `MAX_OUTPUT_TOKENS`, `FAST_MAX_OUTPUT_TOKENS`, `SMART_MAX_OUTPUT_TOKENS`: provider 공통 전체 생성
-  예산입니다. Gemini에서는 thought token도 이 한도에서 소비됩니다.
+- `MAX_OUTPUT_TOKENS`, `FAST_MAX_OUTPUT_TOKENS`, `SMART_MAX_OUTPUT_TOKENS`,
+  `MEMORY_MAX_OUTPUT_TOKENS`: provider 공통 전체 생성 예산입니다. Gemini에서는 thought token도 각
+  한도에서 소비됩니다.
 
 Gemini에서 생성 예산이 너무 작으면 thought token이 예산을 대부분 소진해 `status=incomplete`와 빈
-출력이 발생할 수 있습니다. 그래서 Gemini adaptive 운영 예시는 fast 4096, smart 8192를 사용합니다.
-문제가 다시 발생하면 `data/logs/usage.jsonl`의 마지막 `answer` 행에서 `status`,
+출력이 발생할 수 있습니다. 그래서 Gemini adaptive 운영 예시는 fast 4096, smart 8192, 기억 요약
+4096을 사용합니다. 문제가 다시 발생하면 `data/logs/usage.jsonl`의 해당 행에서 `status`,
 `reasoning_tokens`, `response_error_codes`, `requested_max_output_tokens`를 확인하고, 필요하면 공통 생성
 예산을 늘리거나 Gemini thinking level을 낮추는 것이 좋습니다.
 
@@ -119,6 +139,7 @@ OPENROUTER_API_KEY=...
 
 MEMORY_PROVIDER=
 MEMORY_MODEL=
+MEMORY_MAX_OUTPUT_TOKENS=4096
 ```
 
 OpenRouter에서는 OpenAI-compatible Responses API를 사용하고, 검색이 필요한 경우 `web` plugin으로
@@ -153,6 +174,7 @@ GEMINI_API_KEY=...
 
 MEMORY_PROVIDER=openai
 MEMORY_MODEL=gpt-4.1-mini
+MEMORY_MAX_OUTPUT_TOKENS=4096
 OPENAI_API_KEY=...
 ```
 
