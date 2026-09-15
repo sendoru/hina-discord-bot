@@ -1,0 +1,37 @@
+name: Temporary safe lore merge
+
+on:
+  push:
+    branches:
+      - feature/character-config-flexibility
+
+permissions:
+  contents: write
+
+jobs:
+  merge-lore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/character-config-flexibility
+          fetch-depth: 0
+      - name: Merge profile lore into the main corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          extra='src/hina_bot/data/profile_lore.jsonl'
+          corpus='src/hina_bot/data/lore.jsonl'
+          if [[ ! -f "$extra" ]]; then
+            echo 'profile_lore.jsonl is already absent; nothing to do.'
+            exit 0
+          fi
+          if ! grep -q '"id": "canon.hina.birthday"' "$corpus"; then
+            cat "$extra" >> "$corpus"
+          fi
+          git rm "$extra"
+          git add "$corpus"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'data: merge birthday into main lore corpus'
+          git push origin HEAD:feature/character-config-flexibility
