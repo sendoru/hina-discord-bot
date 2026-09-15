@@ -159,7 +159,7 @@ async def collect_visual_inputs(
     downloader=_download,
     include_reply: bool = False,
     include_recent: bool = False,
-    allowed_context_author_id: int | None = None,
+    allowed_reply_author_id: int | None = None,
     recent_filter=None,
     recent_scan_limit: int = RECENT_VISUAL_SCAN_LIMIT,
     recent_message_limit: int = MAX_RECENT_VISUAL_MESSAGES,
@@ -261,8 +261,8 @@ async def collect_visual_inputs(
         if (
             target is not None
             and (
-                allowed_context_author_id is None
-                or target_author_id == allowed_context_author_id
+                allowed_reply_author_id is None
+                or target_author_id == allowed_reply_author_id
             )
         ):
             await collect_message(
@@ -285,12 +285,6 @@ async def collect_visual_inputs(
                 ):
                     old_id = str(getattr(old, "id", "") or "")
                     if old_id and old_id in seen_message_ids:
-                        continue
-                    author_id = getattr(getattr(old, "author", None), "id", None)
-                    if (
-                        allowed_context_author_id is not None
-                        and author_id != allowed_context_author_id
-                    ):
                         continue
                     if recent_filter is not None and not recent_filter(old):
                         continue
