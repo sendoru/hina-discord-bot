@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
@@ -27,6 +28,22 @@ class FakeStore:
 
     def save_summary(self, scope, text, through):
         self.saved = (text, through)
+
+
+class ReplyHeavyStore(FakeStore):
+    def pending(self, scope):
+        return [
+            {
+                "id": index + 1,
+                "created_at": "2026-09-15 00:00:00",
+                "content": "짧은 사용자 발화",
+                "reply": "긴 봇 답변 " * 100,
+            }
+            for index in range(8)
+        ]
+
+    def summary(self, scope):
+        return "기" * 1700, 0
 
 
 def _pipeline(output_text: str):
@@ -72,3 +89,19 @@ async def test_information_pipeline_memory_summary_uses_adaptive_smart_route():
     assert request["route_metadata"]["model_tier"] == "smart"
     assert "compaction_pressure" in request["route_metadata"]["model_route_reasons"]
     assert store.saved == ("z" * 2000, 8)
+
+
+@pytest.mark.asyncio
+async def test_server_personal_summary_routes_only_on_fields_sent_to_provider():
+    pipeline = _pipeline("갱신된 기억")
+    store = ReplyHeavyStore()
+    scope = NS(guild_id=10, user_id=100)
+
+    await pipeline.summarize(store, scope)
+
+    request = pipeline.usage.request.await_args.kwargs
+    payload = json.loads(request["input"])
+    assert request["model"] == "fast-model"
+    assert request["route_metadata"]["model_route_policy"] == "memory-v1"
+    assert "pending_input_volume" not in request["route_metadata"]["model_route_reasons"]
+    assert all("hina" not in turn for turn in payload["new_turns"])
