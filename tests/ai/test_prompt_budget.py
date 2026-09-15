@@ -13,6 +13,10 @@ def test_character_prompt_stays_lightweight_and_lore_agnostic():
     for duplicated_lore_subject in ("아코", "마코토", "호시노", "이부키", "세나", "이오리", "치나츠"):
         assert duplicated_lore_subject not in character
 
+    assert "첫 거절은 영구 경계로 굳히지" in character
+    assert "단순 반복 횟수만으로 양보하지" in character
+    assert "새 이유·조건이 판단을 바꾸는지" in character
+
 
 def test_relationship_prompts_stay_small():
     assert len(_prompt("ordinary_relationship.md").encode("utf-8")) <= 450
