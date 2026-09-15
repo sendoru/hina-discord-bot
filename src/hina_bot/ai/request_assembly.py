@@ -259,7 +259,6 @@ class RequestAssembler(BaseLLM):
         }
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
-            request["total_output_tokens"] = model_plan.total_output_tokens
         tools = tool_config(search_mode)
         if tools:
             request["tools"] = tools
@@ -269,7 +268,6 @@ class RequestAssembler(BaseLLM):
         route_metadata = model_plan.telemetry()
         if self.settings.provider != "gemini":
             route_metadata.pop("requested_thinking_level", None)
-            route_metadata.pop("requested_total_output_tokens", None)
         response = await self.usage.request(
             self.client,
             "answer",
