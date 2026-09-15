@@ -91,6 +91,17 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     assert not hasattr(value, "gemini_smart_total_output_tokens")
 
 
+@pytest.mark.parametrize("threshold", ["0", "10.1", "nan", "inf", "not-a-number"])
+def test_settings_load_rejects_invalid_smart_threshold(monkeypatch, tmp_path: Path, threshold: str):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("MODEL_ROUTING_SMART_THRESHOLD", threshold)
+
+    with pytest.raises(ValueError):
+        Settings.load()
+
+
 def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
     store = Store(":memory:")
     try:
