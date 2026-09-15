@@ -10,6 +10,7 @@ from .model_routing import ModelPlan, ModelTier
 _PERSONAL_TARGET_CHARS = 1800
 _SHARED_TARGET_CHARS = 1200
 _SHARED_SCORE_DISCOUNT = 0.35
+_MEMORY_POLICY = "memory-v1"
 _MEMORY_UPDATE_SIGNAL = re.compile(
     r"(?:앞으로(?:는|도)?|이제부터|정정|(?:설정|선호|호칭|말투).{0,12}(?:바꿔|바꿨|변경)|"
     r"(?:기억|메모).{0,12}(?:말고|지워|삭제|잊어)|더\s*이상.{0,16}(?:말고|하지|안\s*해)|"
@@ -51,6 +52,8 @@ def fixed_memory_model_plan(settings) -> ModelPlan:
         score=0.0,
         smart_threshold=settings.memory_routing_smart_threshold,
         reasons=("fixed_mode",),
+        policy="memory-fixed-v1",
+        components=(),
     )
 
 
@@ -59,6 +62,7 @@ def build_memory_model_plan(
     previous_memory: str,
     pending: Sequence,
     *,
+    include_replies: bool,
     shared: bool = False,
 ) -> ModelPlan:
     """Choose a fast/smart tier for memory compaction without an extra model call."""
@@ -71,19 +75,19 @@ def build_memory_model_plan(
     user_text_parts = []
     for turn in pending:
         content = _text_field(turn, "content")
-        reply = _text_field(turn, "reply")
+        reply = _text_field(turn, "reply") if include_replies else ""
         pending_chars += len(content) + len(reply)
         if content:
             user_text_parts.append(content)
 
-    score = 0.0
     reasons: list[str] = []
+    components: list[tuple[str, float]] = []
 
     def add(points: float, reason: str) -> None:
-        nonlocal score
+        points = round(points, 3)
         if points <= 0:
             return
-        score += points
+        components.append((reason, points))
         reasons.append(reason)
 
     add(
@@ -115,11 +119,13 @@ def build_memory_model_plan(
         "extra_pending_turns",
     )
 
-    if shared and score > 0:
-        score = max(0.0, score - _SHARED_SCORE_DISCOUNT)
+    subtotal = sum(points for _, points in components)
+    if shared and subtotal > 0:
+        discount = round(min(subtotal, _SHARED_SCORE_DISCOUNT), 3)
+        components.append(("shared_scope_discount", -discount))
         reasons.append("shared_scope_discount")
 
-    score = round(score, 3)
+    score = round(sum(points for _, points in components), 3)
     threshold = settings.memory_routing_smart_threshold
     smart = score >= threshold
     if not reasons:
@@ -137,6 +143,8 @@ def build_memory_model_plan(
         score=score,
         smart_threshold=threshold,
         reasons=tuple(reasons),
+        policy=_MEMORY_POLICY,
+        components=tuple(components),
     )
 
 

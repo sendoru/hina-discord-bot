@@ -47,9 +47,16 @@ GEMINI_SMART_THINKING_LEVEL=medium
 
 ### 채팅 라우팅
 
-채팅에서는 분석·설계·코드·증명·긴 답변 요청 같은 의미적 신호와 입력·답장 원문·주변 문맥 길이,
+채팅에서는 분석·설계·구현·증명처럼 **실제로 작업을 요청하는 표현**과 긴 답변 요청을 강한 의미적
+신호로 사용합니다. `코드`, `알고리즘`, `비교` 같은 단어가 단순히 등장하거나 "분석하지 말고"처럼
+명시적으로 부정된 표현만으로는 승격하지 않습니다. 그 밖에 입력·답장 원문·주변 문맥 길이,
 이미지·reference·요구사항 개수 등을 조합합니다. 한 개의 약한 신호만으로 smart를 선택하지 않고,
 여러 신호가 겹치거나 강한 신호가 있을 때 승격합니다.
+
+사용자 입력 길이는 500자 같은 hard dead zone을 두지 않습니다. 짧은 입력에는 아주 작은 점수부터
+부여하고, 중간 길이에서 완만하게 증가한 뒤 긴 입력에서는 추가 글자당 영향이 줄어드는 soft curve를
+사용합니다. 입력 길이만으로는 약 2500자까지 fast를 유지하며 4000자에서 최대 `2.0`에 도달합니다.
+답장 원문과 주변 문맥 등 다른 길이 신호는 서로 의미가 다르므로 같은 곡선을 일괄 적용하지 않습니다.
 
 `MODEL_ROUTING_SMART_THRESHOLD`는 채팅 score가 smart tier로 넘어가는 기준이며 기본값은 `2.0`,
 허용 범위는 `0.1`~`10.0`입니다.
@@ -67,6 +74,10 @@ GEMINI_SMART_THINKING_LEVEL=medium
 - `extra_pending_turns`: 정상 `SUMMARY_EVERY`보다 pending이 더 누적된 경우 완만하게 증가합니다.
 - `shared_scope_discount`: 공개 shared memory는 직접 호출 발화만 저장하고 정보 범위가 좁으므로 같은
   입력량에서도 개인 기억보다 smart 승격을 조금 보수적으로 합니다.
+
+`pending_input_volume`은 실제 요약 payload에 들어가는 필드만 셉니다. DM 개인 기억은 사용자 발화와
+히나 답변을 모두 포함하지만, 서버 개인 기억과 공개 shared memory는 사용자 발화만 포함하므로 히나
+답변 길이가 해당 라우팅 점수를 올리지 않습니다.
 
 `MEMORY_ROUTING_SMART_THRESHOLD`가 기억 score의 smart 기준이며 기본값은 `2.0`, 허용 범위는
 `0.1`~`10.0`입니다. 채팅 score와 기억 score의 의미가 다르므로 threshold를 분리했습니다.
@@ -92,9 +103,12 @@ reasoning 또는 thought token을 사용하는 provider에서는 숨은 추론 �
 있습니다. 따라서 이 값들은 사용자에게 보이는 텍스트 길이를 직접 뜻하지 않습니다.
 
 선택 결과는 `usage.jsonl`의 `model_tier`, `model_route_score`, `model_route_threshold`,
-`model_route_reasons`, `requested_max_output_tokens`에 남습니다. Gemini에서는 선택된 thinking level도
-함께 기록합니다. `operation=summarize`와 `operation=summarize_shared` 행에서도 같은 telemetry를
-확인할 수 있습니다.
+`model_route_margin`, `model_route_policy`, `model_route_components`, `model_route_reasons`,
+`requested_max_output_tokens`에 남습니다. `model_route_margin`은 score에서 threshold를 뺀 값이고,
+`model_route_components`는 콘텐츠 없이 각 신호가 더하거나 뺀 숫자만 기록합니다. 정책 버전은 현재
+채팅 `chat-v2`, 기억 `memory-v1`입니다. Gemini에서는 선택된 thinking level도 함께 기록합니다.
+`operation=summarize`와 `operation=summarize_shared` 행에서도 같은 telemetry를 확인할 수 있습니다.
+fixed 모드의 정책 값은 각각 `chat-fixed-v1`, `memory-fixed-v1`이며 컴포넌트는 비어 있습니다.
 
 ## 장기 기억 요약 크기
 
