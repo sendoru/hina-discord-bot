@@ -72,6 +72,9 @@ class Settings:
     db_path: str = "data/hina.sqlite3"
     prompt_path: str = ""
     call_prefixes: tuple[str, ...] = ("히나야",)
+    empty_call_reply: str = "무슨 일이야?"
+    special_dm_empty_call_reply: str = ""
+    empty_response_reply: str = "..."
     dm_always_reply: bool = False
     public_memory_in_dm: bool = True
     external_context_policy: str = "bot_interactions_only"
@@ -205,6 +208,19 @@ class Settings:
         if chat_web_search not in {"true", "false"}:
             raise ValueError("CHAT_WEB_SEARCH는 true 또는 false여야 합니다.")
 
+        empty_call_reply = os.getenv("EMPTY_CALL_REPLY", "무슨 일이야?").strip()
+        special_dm_empty_call_reply = os.getenv("SPECIAL_DM_EMPTY_CALL_REPLY", "").strip()
+        empty_response_reply = os.getenv("EMPTY_RESPONSE_REPLY", "...").strip()
+        if not empty_call_reply or not empty_response_reply:
+            raise ValueError("EMPTY_CALL_REPLY와 EMPTY_RESPONSE_REPLY는 비울 수 없습니다.")
+        for variable, value in (
+            ("EMPTY_CALL_REPLY", empty_call_reply),
+            ("SPECIAL_DM_EMPTY_CALL_REPLY", special_dm_empty_call_reply),
+            ("EMPTY_RESPONSE_REPLY", empty_response_reply),
+        ):
+            if len(value) > 200 or any(c in value for c in "\r\n\0"):
+                raise ValueError(f"{variable}는 줄바꿈 없이 200자 이하여야 합니다.")
+
         runtime_timezone = os.getenv("RUNTIME_TIMEZONE", "Asia/Seoul").strip() or "Asia/Seoul"
         try:
             ZoneInfo(runtime_timezone)
@@ -244,6 +260,9 @@ class Settings:
             db_path=os.getenv("DATABASE_PATH", "data/hina.sqlite3"),
             prompt_path=os.getenv("CHARACTER_PROMPT_PATH", ""),
             call_prefixes=parse_call_prefixes(os.getenv("CALL_PREFIXES", "히나야")),
+            empty_call_reply=empty_call_reply,
+            special_dm_empty_call_reply=special_dm_empty_call_reply,
+            empty_response_reply=empty_response_reply,
             dm_always_reply=dm == "true",
             public_memory_in_dm=public_memory == "true",
             external_context_policy=external_context_policy,
