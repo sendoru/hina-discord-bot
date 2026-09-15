@@ -36,9 +36,20 @@ def read_cases(path: Path) -> list[dict]:
             raise ValueError(f"{path}:{number}: expected가 필요합니다.")
         if "turns" in case:
             turns = case["turns"]
-            if (not isinstance(turns, list) or not turns
-                    or any(not isinstance(turn, str) or not turn.strip() for turn in turns)):
-                raise ValueError(f"{path}:{number}: turns는 비어 있지 않은 문자열 배열이어야 합니다.")
+            if not isinstance(turns, list) or not turns:
+                raise ValueError(f"{path}:{number}: turns는 비어 있지 않은 배열이어야 합니다.")
+            for turn in turns:
+                if isinstance(turn, str) and turn.strip():
+                    continue
+                if (isinstance(turn, dict) and case.get("mode") == "server"
+                        and isinstance(turn.get("input"), str) and turn["input"].strip()
+                        and type(turn.get("user_id")) is int and turn["user_id"] > 0
+                        and isinstance(turn.get("speaker"), str) and turn["speaker"].strip()):
+                    continue
+                raise ValueError(
+                    f"{path}:{number}: turn은 문자열 또는 server 모드의 "
+                    "{input, user_id(양의 정수), speaker} 객체여야 합니다."
+                )
         elif not isinstance(case.get("input"), str) or not case["input"].strip():
             raise ValueError(f"{path}:{number}: input 또는 turns가 필요합니다.")
         mode = case.get("mode", "dm")
@@ -117,8 +128,16 @@ def scope_for(mode: str) -> Scope:
 
 def case_turns(case: dict) -> list[str]:
     if "turns" in case:
-        return case["turns"]
+        return [turn if isinstance(turn, str) else turn["input"] for turn in case["turns"]]
     return [case["input"]]
+
+
+def case_speakers(case: dict) -> list[dict]:
+    default = {"user_id": scope_for(case.get("mode", "dm")).user_id,
+               "speaker": case.get("speaker", "테스트 사용자")}
+    return [dict(default) if isinstance(turn, str) else {
+        "user_id": turn["user_id"], "speaker": turn["speaker"],
+    } for turn in case.get("turns", [case.get("input", "")])]
 
 
 async def run_case(llm: LLM, case: dict) -> dict:
@@ -127,15 +146,30 @@ async def run_case(llm: LLM, case: dict) -> dict:
     store = Store(":memory:", history_turns=llm.settings.history_turns)
     responses = []
     error = ""
-    channel_context = case.get("channel_context", [])
+    channel_context = list(case.get("channel_context", []))
+    speakers = case_speakers(case)
     try:
         for index, turn in enumerate(case_turns(case), 1):
+            speaker = speakers[index - 1]
+            scope = replace(scope, user_id=speaker["user_id"])
             reply = await llm.answer(
-                store, scope, case.get("speaker", "테스트 사용자"), turn,
-                public_context=[], channel_context=channel_context, emoji_catalog=[], use_memory=True,
+                store, scope, speaker["speaker"], turn,
+                public_context=[], channel_context=list(channel_context),
+                emoji_catalog=[], use_memory=True,
             )
             responses.append(reply)
             store.add(scope, index, turn, reply)
+            if mode == "server":
+                # Keep actual generated replies visible when the next turn changes speaker.
+                channel_context.extend([
+                    {"message_id": str(index), "user_id": str(scope.user_id),
+                     "author_user_id": str(scope.user_id), "name": speaker["speaker"],
+                     "role": "user", "content": turn, "direct_trigger": True},
+                    {"message_id": f"eval-reply-{index}", "user_id": "",
+                     "author_user_id": None, "reply_target_user_id": str(scope.user_id),
+                     "name": "히나", "role": "assistant", "content": reply},
+                ])
+                channel_context = channel_context[-12:]
     except Exception as exc:  # noqa: BLE001 - keep the remaining eval batch running
         error = f"{type(exc).__name__}: {exc}"
     finally:
@@ -145,7 +179,8 @@ async def run_case(llm: LLM, case: dict) -> dict:
         "mode": mode,
         "input": case.get("input", ""),
         "turns": case_turns(case),
-        "channel_context": channel_context,
+        "channel_context": case.get("channel_context", []),
+        "speakers": speakers,
         "expected": case["expected"],
         "responses": responses,
         "error": error,
@@ -180,7 +215,9 @@ def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
         if row["error"]:
             lines += [f"**ERROR:** `{row['error']}`", ""]
         for index, (turn, response) in enumerate(zip(row["turns"], row["responses"]), 1):
-            lines += [f"**Turn {index} input**", "", f"> {turn}", "", "**Response**", "", response, ""]
+            speaker = row["speakers"][index - 1]
+            lines += [f"**Turn {index} input ({speaker['speaker']}, {speaker['user_id']})**",
+                      "", f"> {turn}", "", "**Response**", "", response, ""]
         lines += ["---", ""]
     report.write_text("\n".join(lines), encoding="utf-8")
     return output, report

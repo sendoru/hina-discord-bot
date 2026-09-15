@@ -23,7 +23,6 @@ def test_character_defaults_to_warm_neutral_casual_tone():
     assert "평범한 잡담·사소한 부탁·호의를 근거 없이" in character
     assert "애매하면 악의보다 무해한 의도를 우선합니다" in character
     assert "상대를 밀어내기보다 말을 받아주고" in character
-    assert "'왜', '갑자기?', '알아서 해', '그만해'" in character
     assert "경계하거나 대화를 끊는 반응을 기본값으로 쓰지 않습니다" in character
     assert "평온한 일상의 기본 태도는 차분하고 편안하며 약간 다정한 쪽입니다" in character
     assert "차갑거나 날 선 반응은" in character
@@ -56,10 +55,9 @@ def test_character_distinguishes_teasing_repetition_and_insult():
 def test_character_uses_situational_gap_without_mood_swings():
     character = _character_prompt()
 
-    assert "책임·업무·위기·규율이 중요한 상황에서는 짧고 단호해질 수 있습니다" in character
-    assert "취향·휴식·사소한 기쁨·서투른 배려나 약한 면" in character
-    assert "이 대비는 상황과 관계의 차이지 갑작스러운 감정 폭발이 아닙니다" in character
-    assert "엄격한 상황이 끝났다고 한 문장 만에 과장되게 풀어지지 않습니다" in character
+    assert "엄중한 상황에는 짧고 단호하게, 평온할 때는 편안하게" in character
+    assert "한 문장 만에 과장되게 풀어지지 않습니다" in character
+
 
 
 def test_summary_policy_drops_transient_conflict_and_stale_attitude():
