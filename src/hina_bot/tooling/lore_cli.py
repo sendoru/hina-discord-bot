@@ -20,7 +20,6 @@ from .lore_web import verify_candidate
 
 _PRIMARY_SOURCE_TYPES = {"official_game", "official_site", "official_video", "official_profile"}
 _SECONDARY_SOURCE_TYPES = {"official_secondary", "game_data_mirror", "official_data_mirror"}
-_PROFILE_RUNTIME_PATH = Path("src/hina_bot/data/profile_lore.jsonl")
 _RUNTIME_OMIT = {
     "source_id",
     "evidence",
@@ -28,38 +27,6 @@ _RUNTIME_OMIT = {
     "kr_release_evidence",
     "verification",
 }
-
-
-def _runtime_corpus(runtime: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
-    writable = read_jsonl(lore_pipeline.RUNTIME_PATH) if runtime is None else runtime
-    profile = read_jsonl(_PROFILE_RUNTIME_PATH)
-    return writable, profile
-
-
-def _validate_runtime_corpus(runtime: list[dict], profile: list[dict]) -> None:
-    combined = runtime + profile
-    for row in combined:
-        validate_record(row, accepted=True)
-    ids = [row["id"] for row in combined]
-    if len(ids) != len(set(ids)):
-        raise LoreValidationError("runtime lore files contain duplicate ids")
-
-
-def approve_one(args) -> None:
-    runtime, profile = _runtime_corpus()
-    _validate_runtime_corpus(runtime, profile)
-    existing_ids = {row["id"] for row in runtime + profile}
-    if args.id in existing_ids:
-        raise SystemExit("runtime lore에 같은 id가 이미 있습니다.")
-    lore_pipeline.decide(args, "accepted")
-    updated = read_jsonl(lore_pipeline.RUNTIME_PATH)
-    _validate_runtime_corpus(updated, profile)
-
-
-def validate_all(_args) -> None:
-    runtime, profile = _runtime_corpus()
-    _validate_runtime_corpus(runtime, profile)
-    print(f"valid: runtime={len(runtime)}, profile={len(profile)}")
 
 
 def _default_bulk_confidence(row: dict) -> str:
@@ -134,13 +101,12 @@ def approve_all(args) -> None:
         raise SystemExit("approve-all은 --source-type, --id-prefix, --title 중 하나 이상이 필요합니다.")
 
     queue = read_jsonl(lore_pipeline.QUEUE_PATH)
-    runtime, profile = _runtime_corpus()
-    _validate_runtime_corpus(runtime, profile)
+    runtime = read_jsonl(lore_pipeline.RUNTIME_PATH)
     scoped = [row for row in queue if _matches_scope(row, args)]
     candidates = [row for row in scoped if row.get("status") == "candidate"]
     suppressed = [row for row in scoped if row.get("status") != "candidate"]
 
-    runtime_ids = {row["id"] for row in runtime + profile}
+    runtime_ids = {row["id"] for row in runtime}
     duplicates = [row for row in candidates if row["id"] in runtime_ids]
     duplicate_ids = {row["id"] for row in duplicates}
     conflicts = [row for row in candidates if _has_web_conflict(row)]
@@ -160,7 +126,11 @@ def approve_all(args) -> None:
         ))
 
     final_runtime = runtime + [clean for _, clean in prepared]
-    _validate_runtime_corpus(final_runtime, profile)
+    ids = [row["id"] for row in final_runtime]
+    if len(ids) != len(set(ids)):
+        raise LoreValidationError("bulk approval 결과에 duplicate runtime ids가 있습니다.")
+    for row in final_runtime:
+        validate_record(row, accepted=True)
 
     _print_bulk_plan(
         scoped=scoped,
@@ -333,8 +303,6 @@ def parser() -> argparse.ArgumentParser:
     )
 
     subparsers.choices["list"].set_defaults(run=list_queue)
-    subparsers.choices["approve"].set_defaults(run=approve_one)
-    subparsers.choices["validate"].set_defaults(run=validate_all)
 
     command = subparsers.add_parser("approve-all", help="검수 후보를 필터링해 일괄 승인합니다.")
     command.add_argument("--source-type")
