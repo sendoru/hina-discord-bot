@@ -1,6 +1,7 @@
 import json
 import re
 
+from .character import get_character_config
 from .runtime_knowledge import KNOWLEDGE_LEVELS, RuntimeKnowledgeRegistry
 
 MAX_INGEST_CHARS = 6000
@@ -8,7 +9,12 @@ MAX_EXTRACTED_ITEMS = 20
 MAX_DYNAMIC_CANDIDATES = 12
 MAX_CANON_CANDIDATES = 6
 _TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
-_COMMON_TERMS = {"히나", "소라사키", "선생", "선생님", "게임", "인게임", "설정", "이름"}
+_BASE_COMMON_TERMS = {"게임", "인게임", "설정", "이름"}
+
+
+def _common_terms() -> set[str]:
+    return _BASE_COMMON_TERMS | set(get_character_config().knowledge_common_terms)
+
 
 INGEST_INSTRUCTIONS = """당신은 소라사키 히나 역할극 봇의 관리자용 지식 구조화기입니다.
 관리자가 입력한 한국어 조사 메모를 외부 사실 검증하지 말고, 입력이 주장하는 내용을 보존하면서
@@ -105,16 +111,17 @@ def _similar(left: str, right: str) -> float:
 
 def _row_score(query: str, row: dict) -> int:
     folded = query.casefold()
-    query_terms = _terms(query) - _COMMON_TERMS
-    row_terms = _terms(row.get("content", "")) - _COMMON_TERMS
+    common_terms = _common_terms()
+    query_terms = _terms(query) - common_terms
+    row_terms = _terms(row.get("content", "")) - common_terms
     score = 3 * len(query_terms & row_terms)
     for value in row.get("keywords", []):
         token = value.casefold().strip()
-        if token and token not in _COMMON_TERMS and token in folded:
+        if token and token not in common_terms and token in folded:
             score += 8
     for value in row.get("subjects", []):
         token = value.casefold().strip()
-        if token and token not in _COMMON_TERMS and token in folded:
+        if token and token not in common_terms and token in folded:
             score += 10
     return score
 
