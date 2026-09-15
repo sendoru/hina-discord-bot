@@ -15,50 +15,42 @@ def fact(reference, content, awareness="direct_experience"):
 
 
 def test_self_profile_uses_local_lore_without_web():
-    request = classify_information_request("히나야 생일 언제야?")
+    request = classify_information_request("생일 언제야?")
     assert request.route == InformationRoute.LOCAL_LORE
-    assert request.lore_query == "소라사키 히나 생일"
+    assert request.lore_query == "생일"
     assert request.world_fact_question
     assert search_mode(request, [], enabled=True) == "none"
 
 
-def test_character_identity_is_configurable(monkeypatch):
-    monkeypatch.setenv("CHARACTER_NAME", "텐도 아리스")
-    monkeypatch.setenv("CHARACTER_ALIASES", "아리스,텐도 아리스")
-    monkeypatch.setenv("CALL_PREFIXES", "아리스야")
-
-    request = classify_information_request("아리스야 생일 언제야?")
-
-    assert request.route == InformationRoute.LOCAL_LORE
-    assert request.lore_query == "텐도 아리스 생일"
-    assert request.world_fact_question
-
-
-def test_runtime_call_prefix_override_is_respected(monkeypatch):
-    monkeypatch.setenv("CHARACTER_NAME", "텐도 아리스")
-    monkeypatch.setenv("CHARACTER_ALIASES", "아리스,텐도 아리스")
-    monkeypatch.setenv("CALL_PREFIXES", "히나야")
-
+def test_call_prefix_is_configurable_without_character_identity():
     request = classify_information_request(
         "아리스야 생일 언제야?",
         call_prefixes=("아리스야",),
     )
 
     assert request.route == InformationRoute.LOCAL_LORE
-    assert request.lore_query == "텐도 아리스 생일"
+    assert request.lore_query == "생일"
+    assert request.world_fact_question
 
 
 def test_omitted_self_subject_is_canonicalized():
     request = classify_information_request("오늘 키 몇이야?")
     assert request.route == InformationRoute.LOCAL_LORE
-    assert request.lore_query == "소라사키 히나 키"
+    assert request.lore_query == "키"
 
 
-def test_named_character_profile_can_fall_back_to_web():
+def test_named_character_profile_uses_name_as_normal_lore_query():
     request = classify_information_request("나기사 생일 언제야?")
     assert request.route == InformationRoute.LOCAL_THEN_WEB
     assert request.lore_query == "나기사 생일 언제야?"
     assert search_mode(request, [], enabled=True) == "required"
+
+
+def test_named_character_profile_stays_local_when_lore_matches():
+    request = classify_information_request("히나 생일 언제야?")
+    refs = [fact("canon.hina.basic.profile", "히나의 생일은 2월 19일이다.", "self")]
+    assert request.route == InformationRoute.LOCAL_THEN_WEB
+    assert search_mode(request, refs, enabled=True) == "none"
 
 
 def test_personal_memory_has_priority_over_profile_words():
