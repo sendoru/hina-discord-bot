@@ -61,6 +61,7 @@ class Settings:
     fast_output_tokens: int = 4096
     smart_output_tokens: int = 8192
     memory_model: str = "gpt-4.1-mini"
+    memory_output_tokens: int = 4096
     provider: str = "openai"
     memory_provider: str = ""
     openai_api_key: str = ""
@@ -160,6 +161,7 @@ class Settings:
         if memory_provider != provider and not memory_model_env:
             raise ValueError("MEMORY_PROVIDER가 다르면 MEMORY_MODEL도 설정해 주세요.")
         memory_model = memory_model_env or model
+        memory_output_tokens = int(os.getenv("MEMORY_MAX_OUTPUT_TOKENS", "4096"))
 
         keys = {
             "openai": os.getenv("OPENAI_API_KEY", "").strip(),
@@ -240,6 +242,7 @@ class Settings:
                                    os.getenv("BOT_ADMIN_IDS", "").split(",") if x.strip()),
             model=model,
             memory_model=memory_model,
+            memory_output_tokens=memory_output_tokens,
             db_path=os.getenv("DATABASE_PATH", "data/hina.sqlite3"),
             prompt_path=os.getenv("CHARACTER_PROMPT_PATH", ""),
             instruction_path=os.getenv("INSTRUCTION_PATH", "data/instructions.json"),
@@ -277,6 +280,7 @@ class Settings:
         if not (0 <= s.cooldown <= 3600 and 1 <= s.concurrency <= 20
                 and 128 <= s.output_tokens <= 65536
                 and 128 <= s.fast_output_tokens <= s.smart_output_tokens <= 65536
+                and 128 <= s.memory_output_tokens <= 65536
                 and 0.1 <= s.model_routing_smart_threshold <= 10.0
                 and 0 <= s.history_max_chars <= 120000
                 and 0 <= s.channel_context_chars <= 12000
@@ -288,6 +292,7 @@ class Settings:
                 and vision_total <= 32):
             raise ValueError("설정 범위 오류: cooldown 0~3600, concurrency 1~20, "
                              "output_tokens 128~65536, fast output <= smart output, "
+                             "memory output tokens 128~65536, "
                              "model routing smart threshold 0.1~10.0, "
                              "2 <= summary_every <= history_turns <= 30, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
