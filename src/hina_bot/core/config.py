@@ -1,3 +1,4 @@
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -145,8 +146,9 @@ class Settings:
             )
         except ValueError as exc:
             raise ValueError("MODEL_ROUTING_SMART_THRESHOLD는 숫자여야 합니다.") from exc
-        if not 0.1 <= model_routing_smart_threshold <= 10.0:
-            raise ValueError("MODEL_ROUTING_SMART_THRESHOLD는 0.1~10.0 사이여야 합니다.")
+        if (not math.isfinite(model_routing_smart_threshold)
+                or not 0.1 <= model_routing_smart_threshold <= 10.0):
+            raise ValueError("MODEL_ROUTING_SMART_THRESHOLD는 0.1~10.0 사이의 유한한 숫자여야 합니다.")
 
         fast_model = os.getenv("LLM_FAST_MODEL", "").strip() or model
         smart_model = os.getenv("LLM_SMART_MODEL", "").strip() or model
