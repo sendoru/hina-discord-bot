@@ -9,19 +9,43 @@ from enum import StrEnum
 from .information_plan import InformationPlan
 from .information_routing import InformationRoute
 
-_COMPLEX_REQUEST = re.compile(
-    r"(?:분석|비교|검토|평가|설계|구현|리팩터|디버깅|증명|유도|알고리즘|"
-    r"시간\s*복잡도|공간\s*복잡도|아키텍처|코드|원인.{0,12}(?:찾|분석)|"
-    r"trade[ -]?off|장단점)",
+_COMPLEX_TASK_REQUEST = re.compile(
+    r"(?:"
+    r"(?:분석|비교|검토|평가|설계|구현|리팩터링?|디버깅|증명|유도)"
+    r"(?:해|하(?:고|기|는|면|여|자|죠|세요|십시오)|해\s*(?:줘|주세요|줄래))|"
+    r"(?:고쳐|수정해|개선해|해결해|최적화해)|"
+    r"(?:코드|함수|클래스|테스트|쿼리|SQL|정규식).{0,12}"
+    r"(?:작성해|짜\s*줘|구현해)|"
+    r"(?:원인|문제점|개선(?:할\s*)?(?:점|부분)|병목|취약점|오류|버그)"
+    r".{0,24}(?:찾아|찾아봐|분석해|검토해|고쳐|수정해|개선해|해결해)|"
+    r"(?:analy[sz]e|compare|review|design|implement|refactor|debug|prove|fix|improve)"
+    r"(?:\s+(?:this|it|the|my|our|please)|\b)"
+    r")",
+    re.IGNORECASE,
+)
+_NEGATED_COMPLEX_TASK = re.compile(
+    r"(?:분석|비교|검토|평가|설계|구현|리팩터링?|디버깅|증명|유도|"
+    r"수정|개선|해결|최적화).{0,8}(?:하지\s*말|하지는\s*말|말고|빼고)",
     re.IGNORECASE,
 )
 _LONG_ANSWER_REQUEST = re.compile(
-    r"(?:자세히|구체적으로|깊이\s*있게|차근차근|단계별|빠짐없이|"
-    r"긴\s*(?:답변|글)|보고서|튜토리얼|가이드|전체(?:적으로)?\s*정리)",
+    r"(?:"
+    r"(?:자세히|구체적으로|깊이\s*있게|차근차근|단계별(?:로)?|빠짐없이)"
+    r".{0,20}(?:설명|알려|정리|써|작성|답해)|"
+    r"(?:긴\s*(?:답변|글)|보고서|튜토리얼|가이드).{0,16}(?:써|작성|만들|정리)|"
+    r"전체(?:적으로)?\s*.{0,12}정리"
+    r")",
+    re.IGNORECASE,
+)
+_NEGATED_LONG_ANSWER = re.compile(
+    r"(?:자세히|구체적으로|깊이\s*있게|차근차근|단계별(?:로)?|빠짐없이|"
+    r"긴\s*(?:답변|글)|보고서|튜토리얼|가이드).{0,10}"
+    r"(?:말하지\s*말|설명하지\s*말|하지\s*말|말고|빼고)",
     re.IGNORECASE,
 )
 _LISTED_REQUIREMENT = re.compile(r"(?:^|\n)\s*(?:[-*]|\d+[.)])\s+", re.MULTILINE)
 _SURROUNDING_CONTEXT_KINDS = frozenset({"speaker_thread", "prior_reply_source"})
+_CHAT_POLICY = "chat-v2"
 
 
 def _linear_ramp(value: int, *, start: int, full: int, maximum: float) -> float:
@@ -40,6 +64,27 @@ def _saturating_count(value: int, *, maximum: float, half: float) -> float:
     return maximum * value / (value + half)
 
 
+def _soft_length_score(
+    value: int,
+    *,
+    midpoint: int = 1500,
+    full: int = 4000,
+    maximum: float = 2.0,
+) -> float:
+    """Grow smoothly from zero, then give diminishing weight to very long input."""
+    value = min(max(value, 0), full)
+    if value == 0:
+        return 0.0
+    raw = value ** 2 / (value ** 2 + midpoint ** 2)
+    full_raw = full ** 2 / (full ** 2 + midpoint ** 2)
+    return maximum * raw / full_raw
+
+
+def _affirmative_match(text: str, pattern: re.Pattern, negated: re.Pattern) -> bool:
+    """Match a requested action after removing nearby explicit negative instructions."""
+    return bool(pattern.search(negated.sub("", text)))
+
+
 class ModelTier(StrEnum):
     FIXED = "fixed"
     FAST = "fast"
@@ -55,13 +100,18 @@ class ModelPlan:
     score: float
     smart_threshold: float
     reasons: tuple[str, ...]
+    policy: str
+    components: tuple[tuple[str, float], ...]
 
     def telemetry(self) -> dict:
         return {
             "model_tier": self.tier.value,
             "model_route_score": self.score,
             "model_route_threshold": self.smart_threshold,
+            "model_route_margin": round(self.score - self.smart_threshold, 3),
             "model_route_reasons": list(self.reasons),
+            "model_route_policy": self.policy,
+            "model_route_components": dict(self.components),
             "requested_max_output_tokens": self.max_output_tokens,
             "requested_thinking_level": self.thinking_level,
         }
@@ -76,6 +126,8 @@ def fixed_model_plan(settings) -> ModelPlan:
         score=0.0,
         smart_threshold=settings.model_routing_smart_threshold,
         reasons=("fixed_mode",),
+        policy="chat-fixed-v1",
+        components=(),
     )
 
 
@@ -92,31 +144,39 @@ def build_model_plan(
 
     visible_text = information.routing.visible_content.strip()
     anchor_text = information.routing.anchor.strip()
-    score = 0.0
-    reasons = []
+    reasons: list[str] = []
+    components: list[tuple[str, float]] = []
 
-    def add(points: float, reason: str) -> None:
-        nonlocal score
+    def add(points: float, reason: str, *, minimum_reason: float = 0.0) -> None:
+        points = round(points, 3)
         if points <= 0:
             return
-        score += points
-        reasons.append(reason)
+        components.append((reason, points))
+        if points >= minimum_reason:
+            reasons.append(reason)
 
     # Strong semantic signals come from the user's literal request. A quoted/anchored source may be
     # technically complex, but source wording such as "분석" must not be mistaken for an instruction.
-    if _COMPLEX_REQUEST.search(visible_text):
+    if _affirmative_match(
+        visible_text, _COMPLEX_TASK_REQUEST, _NEGATED_COMPLEX_TASK
+    ):
         add(2.0, "complex_request")
-    elif anchor_text and _COMPLEX_REQUEST.search(anchor_text):
+    elif anchor_text and _affirmative_match(
+        anchor_text, _COMPLEX_TASK_REQUEST, _NEGATED_COMPLEX_TASK
+    ):
         add(0.5, "complex_reference")
 
-    if _LONG_ANSWER_REQUEST.search(visible_text):
+    if _affirmative_match(
+        visible_text, _LONG_ANSWER_REQUEST, _NEGATED_LONG_ANSWER
+    ):
         add(2.0, "long_answer_requested")
 
-    # Very long literal requests can justify the smart tier on their own, but the ramp is deliberately
-    # broad so ordinary medium-sized prompts do not jump tiers near an arbitrary boundary.
+    # Length is a weak signal for short input, becomes useful in the middle, and has diminishing
+    # marginal weight for very long input. There is no hard boundary around an ordinary message size.
     add(
-        _linear_ramp(len(visible_text), start=500, full=2500, maximum=2.0),
+        _soft_length_score(len(visible_text)),
         "input_length",
+        minimum_reason=0.05,
     )
 
     requirement_count = max(
@@ -189,7 +249,7 @@ def build_model_plan(
         "surrounding_context_length",
     )
 
-    score = round(score, 3)
+    score = round(sum(points for _, points in components), 3)
     smart_threshold = settings.model_routing_smart_threshold
     smart = score >= smart_threshold
     if not reasons:
@@ -207,6 +267,8 @@ def build_model_plan(
         score=score,
         smart_threshold=smart_threshold,
         reasons=tuple(reasons),
+        policy=_CHAT_POLICY,
+        components=tuple(components),
     )
 
 
