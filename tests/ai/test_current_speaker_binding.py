@@ -42,20 +42,28 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
     llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     scope = Scope(1, 10, 222, True)
+    channel_context = [{
+        "message_id": "100",
+        "user_id": "111",
+        "author_user_id": "111",
+        "name": "sendol",
+        "content": "과거 메시지",
+        "role": "user",
+    }, {
+        "message_id": "101",
+        "user_id": "222",
+        "author_user_id": "222",
+        "name": "titn",
+        "content": "현재 화자의 이전 메시지",
+        "role": "user",
+    }]
     try:
         await llm.answer(
             store,
             scope,
             "titn",
             "안녕",
-            channel_context=[{
-                "message_id": "100",
-                "user_id": "111",
-                "author_user_id": "111",
-                "name": "sendol",
-                "content": "과거 메시지",
-                "role": "user",
-            }],
+            channel_context=channel_context,
         )
 
         payload = calls[-1]
@@ -66,8 +74,16 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
             "name": "titn",
             "relation": "author_of_following_user_message",
         }
-        assert reference["channel_recent_messages"][0]["user_id"] == "111"
-        assert reference["channel_recent_messages"][0]["name"] == "sendol"
+        other, current = reference["channel_recent_messages"]
+        assert other["user_id"] == "111"
+        assert other["name"] == "sendol"
+        assert other["is_current_speaker"] is False
+        assert current["user_id"] == "222"
+        assert current["name"] == "titn"
+        assert current["is_current_speaker"] is True
+        assert "is_current_speaker" not in channel_context[0]
+        assert "현재 사용자에게 직접 말을 걸거나" in payload["instructions"]
+        assert "제3자로 지칭" in payload["instructions"]
         assert payload["input"][1] == {"role": "user", "content": "안녕"}
         assert "speaker_name" not in reference
         assert "speaker_id" not in reference
