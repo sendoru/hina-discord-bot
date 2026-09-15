@@ -99,6 +99,8 @@ reasoning 또는 thought token을 사용하는 provider에서는 숨은 추론 �
 ## 장기 기억 요약 크기
 
 개인 대화 기억과 공개 shared memory는 같은 모델 호출 경로를 사용하지만 저장 목적과 크기는 분리합니다.
+요약 정책, adaptive 라우팅, provider 요청 조립은 공통 `MemorySummaryMixin`에 모아 실제 runtime과
+`InformationPipeline` 직접 사용 경로가 동일한 구현을 사용합니다.
 
 - 개인 `conversation_memory`: 기존 기억과 새 턴을 rolling summary로 합치며 **1800자 이내**를 목표로
   생성합니다. 모델이 지시보다 길게 출력하더라도 저장 시 **2000자**에서 잘라냅니다.
