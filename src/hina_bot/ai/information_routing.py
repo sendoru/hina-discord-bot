@@ -40,17 +40,23 @@ def classify_information_request(
     content: str,
     *,
     freshness: FreshnessMode | None = None,
+    call_prefixes: tuple[str, ...] | None = None,
 ) -> InformationRequest:
     text = content.strip()
     freshness = freshness or classify_freshness(text)
     personal = personal_context(text)
     identity = self_identity(text)
-    profile = self_profile(text)
+    profile = self_profile(text, call_prefixes=call_prefixes)
     relation = relation_or_event(text)
     simple_fact = simple_world_fact(text)
-    fact_question = world_fact(text)
+    fact_question = world_fact(text, call_prefixes=call_prefixes)
     explicit_source = bool(SOURCE_REQUEST_QUERY.search(text))
-    query = lore_query(text, profile=profile, relation=relation)
+    query = lore_query(
+        text,
+        profile=profile,
+        relation=relation,
+        call_prefixes=call_prefixes,
+    )
 
     if personal:
         route = InformationRoute.MEMORY
@@ -87,5 +93,9 @@ def looks_like_relation_or_event_question(content: str) -> bool:
     return relation_or_event(content)
 
 
-def looks_like_world_fact_question(content: str) -> bool:
-    return world_fact(content)
+def looks_like_world_fact_question(
+    content: str,
+    *,
+    call_prefixes: tuple[str, ...] | None = None,
+) -> bool:
+    return world_fact(content, call_prefixes=call_prefixes)
