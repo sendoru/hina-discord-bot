@@ -53,7 +53,8 @@ async def test_usage_logs_safe_model_route_metadata_without_forwarding_it(tmp_pa
         input='secret',
         route_metadata={
             'model_tier': 'smart',
-            'model_route_score': 2,
+            'model_route_score': 2.1,
+            'model_route_threshold': 1.8,
             'model_route_reasons': ['complex_request'],
             'unknown': 'must-not-pass',
         },
@@ -63,7 +64,8 @@ async def test_usage_logs_safe_model_route_metadata_without_forwarding_it(tmp_pa
     assert 'route_metadata' not in create.await_args.kwargs
     row = json.loads(path.read_text())
     assert row['model_tier'] == 'smart'
-    assert row['model_route_score'] == 2
+    assert row['model_route_score'] == pytest.approx(2.1)
+    assert row['model_route_threshold'] == pytest.approx(1.8)
     assert row['model_route_reasons'] == ['complex_request']
     assert 'unknown' not in row
     assert 'secret' not in path.read_text()
