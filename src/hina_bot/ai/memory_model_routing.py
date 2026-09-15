@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 from .model_routing import ModelPlan, ModelTier
 
@@ -32,6 +33,15 @@ def _saturating_count(value: int, *, maximum: float, half: float) -> float:
     return maximum * value / (value + half)
 
 
+def _text_field(row, key: str) -> str:
+    """Read dict/sqlite3.Row-like values without requiring a .get() method."""
+    try:
+        value = row[key]
+    except (IndexError, KeyError, TypeError):
+        return ""
+    return "" if value is None else str(value)
+
+
 def fixed_memory_model_plan(settings) -> ModelPlan:
     return ModelPlan(
         tier=ModelTier.FIXED,
@@ -47,7 +57,7 @@ def fixed_memory_model_plan(settings) -> ModelPlan:
 def build_memory_model_plan(
     settings,
     previous_memory: str,
-    pending: list[dict] | tuple[dict, ...],
+    pending: Sequence,
     *,
     shared: bool = False,
 ) -> ModelPlan:
@@ -60,8 +70,8 @@ def build_memory_model_plan(
     pending_chars = 0
     user_text_parts = []
     for turn in pending:
-        content = str(turn.get("content", ""))
-        reply = str(turn.get("reply", ""))
+        content = _text_field(turn, "content")
+        reply = _text_field(turn, "reply")
         pending_chars += len(content) + len(reply)
         if content:
             user_text_parts.append(content)
