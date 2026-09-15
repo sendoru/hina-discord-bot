@@ -49,7 +49,7 @@ _BROAD_SERVER_MEMORY_QUERY = re.compile(
 
 
 def _augment_empty_call(content: str, text: str | None, has_visuals: bool) -> str | None:
-    """Only add intent when a bare trigger actually carries a visual attachment."""
+    """Only add image intent when a bare trigger has strong visual context."""
     if text is None or text or not has_visuals:
         return None
     return (content + " 이 이미지나 스티커를 봐줘.").strip()
@@ -268,8 +268,42 @@ class HinaClient(BaseHinaClient):
             if text is not None
             else []
         )
+
+        visual_capture_mode = capture_mode(self.store, scope)
+
+        def recent_visual_allowed(candidate) -> bool:
+            if getattr(candidate, "webhook_id", None) is not None:
+                return False
+            author = getattr(candidate, "author", None)
+            author_id = getattr(author, "id", None)
+            if author is None or author_id is None:
+                return False
+            own_visual = author_id == self.user.id
+            if own_visual:
+                return True
+            if getattr(author, "bot", False):
+                return False
+            direct = trigger_text(
+                candidate,
+                self.user.id,
+                self.settings.dm_always_reply,
+                self.settings.call_prefixes,
+            ) is not None
+            if strict_egress:
+                return direct
+            if visual_capture_mode == "direct":
+                return direct
+            return True
+
         visuals = (
-            await collect_visual_inputs(message, limits=self.vision_limits)
+            await collect_visual_inputs(
+                message,
+                limits=self.vision_limits,
+                include_reply=True,
+                include_recent=self.store.chat_log_enabled(scope),
+                allowed_reply_author_id=scope.user_id if strict_egress else None,
+                recent_filter=recent_visual_allowed,
+            )
             if text is not None else []
         )
         third_party_mention = any(
@@ -298,10 +332,14 @@ class HinaClient(BaseHinaClient):
         direct_token = CURRENT_DIRECT_TRIGGER.set(text is not None)
 
         # A text-only bare call stays a bare call and uses the base client's relationship-aware
-        # fixed reply. Only a visual-only call gets an explicit visual request so vision reaches
-        # the LLM without inventing an unrelated user intent such as "look at something".
+        # fixed reply. Current-message or explicit-reply visuals are strong enough to infer an
+        # image request; passive recent images alone must not turn a bare call into one.
         original_content = None
-        augmented_content = _augment_empty_call(message.content, text, bool(visuals))
+        strong_visuals = any(
+            visual.reference_strength in {"current_message", "explicit_reply"}
+            for visual in visuals
+        )
+        augmented_content = _augment_empty_call(message.content, text, strong_visuals)
         if augmented_content is not None:
             original_content = message.content
             message.content = augmented_content
