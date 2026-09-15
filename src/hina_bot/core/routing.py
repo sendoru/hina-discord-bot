@@ -37,14 +37,18 @@ def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
     matched = max((prefix for prefix in prefixes if raw.startswith(prefix)),
                   key=len, default=None)
     keyword = matched is not None
-    if not (ping or keyword or (message.guild is None and dm_always_reply)):
+    implicit_dm = message.guild is None and dm_always_reply
+    if not (ping or keyword or implicit_dm):
         return None
     raw = re.sub(rf"<@!?{bot_id}>", "", raw).lstrip()
-    # Re-check after removing a leading mention, so `<@bot> <call-prefix> ...` is normalized too.
-    matched = max((prefix for prefix in prefixes if raw.startswith(prefix)),
-                  key=len, default=None)
-    if matched is not None:
-        raw = raw[len(matched):].lstrip(" \t\n,:：!！?？~")
+    # In always-reply DMs, configured call prefixes are ordinary user content rather than
+    # trigger syntax, so preserve them when forwarding the message to the model.
+    if not implicit_dm:
+        # Re-check after removing a leading mention, so `<@bot> <call-prefix> ...` is normalized too.
+        matched = max((prefix for prefix in prefixes if raw.startswith(prefix)),
+                      key=len, default=None)
+        if matched is not None:
+            raw = raw[len(matched):].lstrip(" \t\n,:：!！?？~")
     return raw.strip()
 
 
