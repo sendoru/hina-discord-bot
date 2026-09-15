@@ -113,11 +113,13 @@ MIME type을 전달합니다.
 OpenAI-compatible Responses 요청의 `input_image` 형식을 사용합니다.
 
 중요한 점은 **adapter가 이미지 형식을 지원하는 것과 선택한 모델 자체가 vision을 지원하는 것은 별개**라는
-것입니다. `LLM_MODEL`에는 이미지 입력을 받을 수 있는 모델을 사용해야 합니다. 모델별 실제 지원 범위와
-과금은 해당 provider의 문서를 확인합니다.
+것입니다. `LLM_MODEL`에는 이미지 입력을 받을 수 있는 모델을 사용해야 합니다. adaptive 모드라면
+`LLM_FAST_MODEL`과 `LLM_SMART_MODEL`도 실제 채팅에서 이미지 입력을 받을 수 있어야 합니다. 모델별
+실제 지원 범위와 과금은 해당 provider의 문서를 확인합니다.
 
-장기 기억용 `MEMORY_MODEL`은 비전 지원이 필요하지 않습니다. 현재 이미지는 일반 답변 요청에만 붙고
-`summarize`/`summarize_shared` 요청에는 전달되지 않습니다.
+장기 기억 요약도 채팅과 같은 모델 pool을 공유하지만 현재 이미지는 일반 `answer` 요청에만 붙고
+`summarize`/`summarize_shared` 요청에는 전달되지 않습니다. 따라서 기억 라우팅에서 같은 모델이
+선택되더라도 요약 요청 자체가 vision input을 요구하지는 않습니다.
 
 ## Prompt / trust boundary
 
