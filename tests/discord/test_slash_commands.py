@@ -122,12 +122,6 @@ async def test_emoji_bulk_import_reports_missing_source_without_aborting_batch()
 
 
 @pytest.mark.asyncio
-async def test_production_client_disables_prefix_slash_parser(slash_bot):
-    assert slash_bot._management_text("/메모 old-style") is False
-    assert await slash_bot.command(None, None, "/메모 old-style") is None
-
-
-@pytest.mark.asyncio
 async def test_memory_group_keeps_only_admin_memory_commands_admin_only(slash_bot):
     memory = slash_bot.tree.get_command("memory")
 

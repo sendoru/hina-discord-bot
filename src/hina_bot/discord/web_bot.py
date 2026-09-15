@@ -102,13 +102,6 @@ class HinaClient(BaseHinaClient):
         self.vision_limits = VisionLimits.from_settings(settings)
         install_slash_commands(self)
 
-    @staticmethod
-    def _management_text(text):
-        return False
-
-    async def command(self, message, scope, text):
-        return None
-
     async def public_sources(self, user_id: int, guild_id: int | None = None):
         enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
         if not enabled:
@@ -187,7 +180,7 @@ class HinaClient(BaseHinaClient):
                 )
                 if policy == "direct" and not own_bot and historical_text is None:
                     continue
-                if self._management_text(historical_text) or not old.content:
+                if not old.content:
                     continue
                 historical_scope = Scope(
                     scope.guild_id,

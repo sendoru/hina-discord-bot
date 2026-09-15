@@ -14,28 +14,11 @@ from hina_bot.core.recent import RecentMessages
 from hina_bot.core.routing import Scope, chunks, trigger_text
 from hina_bot.core.store import Store
 
-from .emoji_commands import EmojiCommands, EmojiRegistry
+from .emoji_commands import EmojiRegistry
 from .memory_commands import MemoryCommands, MemoryMode
 from .output_safety import neutralize_mentions
 
 log = logging.getLogger("hina")
-HELP = """호출: @봇 멘션, 핑을 켠 답장, 또는 메시지 맨 앞의 `히나야`
-관리는 호출 뒤에 아래 문구를 붙여 주세요. Discord 슬래시 명령은 아닙니다.
-`/기억` — 현재 채널의 내 요약과 개인 메모 확인
-`/메모 내용` — 같은 서버 내 채널에서 공유할 내 메모 교체 (DM은 분리)
-`/메모삭제` — 개인 메모만 삭제
-`/기억삭제 확인` — 서버에서는 봇/서버 관리자만 내 기록 삭제·서버 단기 문맥 초기화; DM에서는 누구나 내 기억 삭제
-`/서버기억` — 서버 공통 메모 확인
-`/서버메모 내용` / `/서버메모삭제` — 서버 관리 권한으로 공통 메모 관리
-공개 서버에서 같은 사용자가 나눈 대화는 DM에서 참고할 수 있어요. DM 기억은 서버로 넘어가지 않아요.
-같은 채널의 일반 대화는 최근 문맥으로 잠시 보관할 수 있고, 호출 시 OpenAI에 함께 보내요.
-장기 기억과 최근 채널 로그 읽기는 서로 독립적으로 켜고 끌 수 있어요.
-최근 로그 읽기를 다시 켠 뒤 첫 호출에서는 현재 TTL 안의 Discord 최근 기록만 다시 채워요.
-공개 채널에서 직접 호출한 발화만 같은 서버의 다른 사용자·채널에서 장기 기억으로 참고해요.
-`/이모지 등록·목록·수정·삭제` — 봇 관리자 전용 (이미지 등록은 파일 첨부 가능)
-일반 대화에서는 첨부파일·이미지·답장 원문을 읽지 못해요.
-봇 관리자는 실제 슬래시 명령 /memory mode, /memory chatlog, /memory status로 설정을 제어할 수 있어요."""
-
 
 def _bare_call_reply(scope: Scope, special_dm_user_id: int | None) -> str:
     special_dm = (
@@ -59,7 +42,6 @@ class HinaClient(discord.Client):
         self.emoji_registry = EmojiRegistry(self, self.store)
         self.emoji_admin_ids = set(settings.bot_admin_ids)
         self.tree = discord.app_commands.CommandTree(self)
-        self.emoji_commands = EmojiCommands(self)
         self.tree.add_command(MemoryCommands(self))
         self.locks = weakref.WeakValueDictionary()
         self.cooldowns = {}
@@ -109,11 +91,6 @@ class HinaClient(discord.Client):
         for part in chunks(neutralize_mentions(text)):
             await channel.send(part, allowed_mentions=discord.AllowedMentions.none())
 
-    @staticmethod
-    def _management_text(text):
-        return text is not None and text.startswith((
-            "/이모지", "/도움말", "/기억", "/메모", "/서버기억", "/서버메모"))
-
     async def hydrate_recent_history(self, message, scope):
         """Backfill only the bounded recent window after restart or chat-log re-enable."""
         if scope.guild_id is None or not self.recent.needs_hydration(scope):
@@ -138,9 +115,7 @@ class HinaClient(discord.Client):
                 own_bot = self.user is not None and old.author.id == self.user.id
                 if old.author.bot and not own_bot:
                     continue
-                historical_text = trigger_text(
-                    old, self.user.id, self.settings.dm_always_reply, self.settings.call_prefixes)
-                if self._management_text(historical_text) or not old.content:
+                if not old.content:
                     continue
                 historical_scope = Scope(
                     scope.guild_id, scope.channel_id, old.author.id, scope.public_at_capture)
@@ -157,54 +132,6 @@ class HinaClient(discord.Client):
             log.warning("Recent channel history backfill failed (%s)", type(exc).__name__)
             return
         self.recent.mark_hydrated(scope)
-
-    async def command(self, message, scope, text):
-        cmd, _, arg = text.partition(" ")
-        arg = arg.strip()
-        if cmd == "/이모지":
-            return await self.emoji_commands.handle(message, arg)
-        if cmd == "/도움말":
-            return HELP
-        if cmd == "/기억":
-            summary, _ = self.store.summary(scope)
-            return ("이 채널에서의 기억:\n" + (summary or "아직 요약된 기억이 없어요.") +
-                    "\n\n개인 메모:\n" + (self.store.note(scope.user_note) or "없어요."))
-        if cmd in {"/메모", "/서버메모"} and not MemoryMode(self.store.memory_mode(scope)).writes:
-            return "현재 모드는 새 기억 저장이 꺼져 있어요. /memory mode로 변경해 주세요."
-        if cmd == "/메모":
-            if not arg or len(arg) > 1500:
-                return "`히나야 /메모 내용` 형식으로 1~1500자를 입력해 주세요. 기존 메모를 교체해요."
-            self.store.set_note(scope.user_note, arg)
-            return "개인 메모를 저장했어요. 서버에서는 같은 서버의 다른 채널에서도 참고해요."
-        if cmd == "/메모삭제":
-            self.store.set_note(scope.user_note, "")
-            return "개인 메모를 삭제했어요."
-        if cmd == "/기억삭제":
-            if (scope.guild_id is not None
-                    and message.author.id not in self.emoji_admin_ids
-                    and not message.author.guild_permissions.manage_guild):
-                return "서버 단기 문맥 전체가 초기화되므로 봇 관리자 또는 서버 관리 권한이 필요해요."
-            if arg != "확인":
-                return ("내 기억을 삭제하려면 `히나야 /기억삭제 확인`을 보내 주세요."
-                        + (" 현재 서버 전체의 단기 문맥도 초기화돼요." if scope.guild_id is not None else ""))
-            self.store.forget(scope)
-            self.recent.forget(scope)
-            return "이 서버 또는 DM에서의 대화 기록, 자동 요약, 개인 메모를 삭제했어요."
-        if cmd in {"/서버기억", "/서버메모", "/서버메모삭제"}:
-            if scope.guild_id is None:
-                return "서버에서만 사용할 수 있는 명령이에요."
-            if cmd == "/서버기억":
-                return self.store.note(scope.realm) or "서버 공통 메모가 없어요."
-            if not message.author.guild_permissions.manage_guild:
-                return "서버 관리 권한이 필요해요."
-            if cmd == "/서버메모":
-                if not arg or len(arg) > 1500:
-                    return "1~1500자의 서버 공통 메모를 입력해 주세요. 서버 전체에서 참고해요."
-                self.store.set_note(scope.realm, arg)
-                return "서버 공통 메모를 교체했어요."
-            self.store.set_note(scope.realm, "")
-            return "서버 공통 메모를 삭제했어요."
-        return None
 
     async def public_sources(self, user_id: int, guild_id: int | None = None):
         """Fail closed; only ordinary public text channels, with live membership checks."""
@@ -261,14 +188,13 @@ class HinaClient(discord.Client):
             return
         received_mode = MemoryMode(self.store.memory_mode(scope))
         received_chat_log = self.store.chat_log_enabled(scope)
-        management = self._management_text(text)
         # Recent chat context is independent from persistent memory and has its own switch.
-        if guild_id is not None and received_chat_log and not management:
+        if guild_id is not None and received_chat_log:
             self.recent.add(scope, message.id, message.author.display_name, message.content)
         if text is None:
             return
         channel_lock = self.channel_lock(scope)
-        # One lock per realm+user, including all channels, so /기억삭제 cannot race a response.
+        # One lock per realm+user serializes persistent-memory updates across channels.
         key = scope.user_note
         lock = self.locks.get(key)
         if lock is None:
@@ -287,10 +213,6 @@ class HinaClient(discord.Client):
                     return
                 if len(text) > 4000:
                     await self.send_text(message.channel, "한 번에 4000자 이내로 이야기해 주세요.")
-                    return
-                command_reply = await self.command(message, scope, text)
-                if command_reply is not None:
-                    await self.send_text(message.channel, command_reply)
                     return
                 now = time.monotonic()
                 self.cooldowns = {k: v for k, v in self.cooldowns.items()
