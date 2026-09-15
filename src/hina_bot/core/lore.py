@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 
+from .character import get_character_config
+
 LANES = {"canon", "community_meme"}
 KNOWLEDGE_LEVELS = {
     "self", "direct_experience", "reported", "public_knowledge", "inference",
@@ -25,7 +27,11 @@ FACT_TYPE_TO_KIND = {
 }
 REFERENCE_ONLY_FACT_TYPES = {"adaptation", "fandom"}
 _TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
-_STOPWORDS = {"히나", "히나야", "소라사키", "블루", "아카이브", "뭐야", "알려줘", "어떻게"}
+_BASE_STOPWORDS = {"뭐야", "알려줘", "어떻게"}
+
+
+def _stopwords() -> set[str]:
+    return _BASE_STOPWORDS | set(get_character_config().search_stopwords)
 
 
 class LoreValidationError(ValueError):
@@ -122,7 +128,8 @@ class LoreIndex:
 
     @staticmethod
     def _terms(text: str) -> set[str]:
-        return {token.casefold() for token in _TOKEN.findall(text) if token.casefold() not in _STOPWORDS}
+        stopwords = _stopwords()
+        return {token.casefold() for token in _TOKEN.findall(text) if token.casefold() not in stopwords}
 
     def search(self, query: str, *, limit: int = 6, chars: int = 3200,
                include_community: bool = True, include_reference_only: bool = False) -> list[dict]:
@@ -130,6 +137,7 @@ class LoreIndex:
             return []
         folded = query.casefold()
         terms = self._terms(query)
+        stopwords = _stopwords()
         ranked = []
         for order, record in enumerate(self.records):
             if record["lane"] == "community_meme" and not include_community:
@@ -141,7 +149,7 @@ class LoreIndex:
             score = 0
             for value in record["subjects"]:
                 value = value.casefold()
-                if value not in _STOPWORDS and value in folded:
+                if value not in stopwords and value in folded:
                     score += 8 + min(len(value), 8)
             for value in record["keywords"]:
                 value = value.casefold()
