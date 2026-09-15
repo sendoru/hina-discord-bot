@@ -1,6 +1,8 @@
 import re
 from dataclasses import dataclass
 
+from .character import get_character_config
+
 
 @dataclass(frozen=True)
 class Scope:
@@ -27,9 +29,10 @@ class Scope:
 
 
 def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
-                 prefixes: tuple[str, ...] = ("히나야",)) -> str | None:
+                 prefixes: tuple[str, ...] | None = None) -> str | None:
     if message.author.bot or message.webhook_id is not None:
         return None
+    prefixes = prefixes or get_character_config().call_prefixes
     raw = message.content.lstrip()
     # Discord includes the replied-to author in mentions only when reply ping is enabled.
     # Do not infer a ping merely from message.reference.
@@ -40,7 +43,7 @@ def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
     if not (ping or keyword or (message.guild is None and dm_always_reply)):
         return None
     raw = re.sub(rf"<@!?{bot_id}>", "", raw).lstrip()
-    # Re-check after removing a leading mention, so `<@bot> 히나야 ...` is normalized too.
+    # Re-check after removing a leading mention, so `<@bot> <call-prefix> ...` is normalized too.
     matched = max((prefix for prefix in prefixes if raw.startswith(prefix)),
                   key=len, default=None)
     if matched is not None:
