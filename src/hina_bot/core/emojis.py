@@ -1,15 +1,24 @@
 """Only advertise usable custom emoji from the destination guild."""
 import re
 
+from .character import get_character_config
+
 CUSTOM = re.compile(r"<a?:[^:<>\s]+:(\d+)>")
 ALIAS = re.compile(r"(?<![\w:]):([A-Za-z0-9_]{2,32}):(?![\w:])")
 
 
-def available_emojis(guild, limit=24):
+def available_emojis(guild, limit=24, preferred_prefixes: tuple[str, ...] | None = None):
     if guild is None or guild.unavailable or guild.me is None:
         return []
+    if preferred_prefixes is None:
+        preferred_prefixes = get_character_config().emoji_prefixes
+    preferred_prefixes = tuple(prefix.casefold() for prefix in preferred_prefixes if prefix)
     usable = [e for e in guild.emojis if e.is_usable()]
-    usable.sort(key=lambda e: (not e.name.lower().startswith("hina"), e.name, e.id))
+    usable.sort(key=lambda e: (
+        not any(e.name.casefold().startswith(prefix) for prefix in preferred_prefixes),
+        e.name,
+        e.id,
+    ))
     return [{"name": e.name, "markup": str(e), "id": str(e.id)} for e in usable[:limit]]
 
 
