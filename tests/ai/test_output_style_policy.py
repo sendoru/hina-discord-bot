@@ -21,10 +21,10 @@ def test_character_defaults_to_warm_neutral_casual_tone():
     character = _character_prompt()
 
     assert "평범한 잡담·사소한 부탁·호의를 근거 없이" in character
-    assert "애매하면 악의보다 무해한 의도를 우선합니다" in character
-    assert "상대를 밀어내기보다 말을 받아주고" in character
+    assert "애매하면 무해한" in character
+    assert "의도를 우선하고 평상시에는 말을 받아줍니다" in character
     assert "'왜', '갑자기?', '알아서 해', '그만해'" in character
-    assert "경계하거나 대화를 끊는 반응을 기본값으로 쓰지 않습니다" in character
+    assert "경계하거나 끊는 반응을 기본값으로 쓰지 않습니다" in character
     assert "평온한 일상의 기본 태도는 차분하고 편안하며 약간 다정한 쪽입니다" in character
     assert "차갑거나 날 선 반응은" in character
     assert "반복된 도발·명확한 갈등·엄중한 상황처럼 이유가 있을 때만" in character
@@ -34,9 +34,10 @@ def test_character_scopes_attitude_and_recovers_gradually():
     character = _character_prompt()
 
     assert "원인을 만든\n상대에게 우선 귀속하고 다른 사람에게 옮기지 않습니다" in character
-    assert "한 번의 가벼운\n농담으로 오래 앙금을 품거나" in character
-    assert "다른 사람의 장난이나 자신의 이전 답변은\n현재 화자를 나쁘게 평가하는 근거가 아닙니다" in character
-    assert "장기 기억의 예전 티격태격·말다툼·말투 지적도" in character
+    assert "한 번의 가벼운 농담으로 오래 앙금을" in character
+    assert "다른 사람의 장난이나 자신의 이전 답변만으로 현재 화자를 차갑게" in character
+    assert "연속된 부탁은 새 이유·조건이 판단을 바꾸는지 봅니다" in character
+    assert "이전 거절을\n관성적으로 반복하지 않고" in character
     assert "단 한 번의 사과·칭찬·애정 표현으로 크게 사라지지 않습니다" in character
     assert "새 태도가\n일관되게 이어지고 대화가 안정되어야 서서히 누그러집니다" in character
     assert "단순한 화제 전환으로 리셋하지도" in character
@@ -45,10 +46,12 @@ def test_character_scopes_attitude_and_recovers_gradually():
 def test_character_distinguishes_teasing_repetition_and_insult():
     character = _character_prompt()
 
-    assert "가벼운 농담·친근한 놀림, 반복되어 거슬리는 놀림, 실제 모욕·비하를 구분합니다" in character
-    assert "애매하면 가벼운\n농담으로 해석합니다" in character
-    assert "한두 번의 장난은 짧게 받아치거나 조금 툴툴대되 관계 전체를 차갑게" in character
-    assert "같은 소재를 계속 반복하거나 싫다는 신호 뒤에도 이어가면 점차 단호해질 수" in character
+    assert "농담·친근한 놀림, 반복되어 거슬리는 놀림, 모욕·비하를 구분합니다" in character
+    assert "애매하면 가벼운 농담으로" in character
+    assert "장난은 짧게 받아치거나 툴툴대되 관계를 차갑게 바꾸지 않습니다" in character
+    assert "같은 놀림을 반복하거나" in character
+    assert "불쾌함·중단 의사가 분명한데도 이어가면 점차 단호해질 수 있습니다" in character
+    assert "첫 거절은 곧바로 경계로 보지 않습니다" in character
     assert "인격·능력·외모 비하, 욕설·멸칭" in character
     assert "티키타카로 넘기지 않고 짧고 분명하게 선을 긋습니다" in character
 
