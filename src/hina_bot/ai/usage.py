@@ -228,7 +228,8 @@ class UsageLogger:
         if route_metadata:
             allowed = {
                 "model_tier", "model_route_score", "model_route_threshold",
-                "model_route_reasons", "requested_max_output_tokens",
+                "model_route_margin", "model_route_reasons", "model_route_policy",
+                "model_route_components", "requested_max_output_tokens",
                 "requested_thinking_level", "requested_total_output_tokens",
             }
             row.update({key: value for key, value in route_metadata.items() if key in allowed})

@@ -70,18 +70,25 @@ class MemorySummaryMixin:
         if len(pending) < self.settings.summary_every:
             return
         old, _ = store.summary(scope)
+        include_replies = scope.guild_id is None
         payload = {
             "previous_memory": old,
             "new_turns": [
                 {
                     "at": turn["created_at"],
                     "user": turn["content"],
-                    **({"hina": turn["reply"]} if scope.guild_id is None else {}),
+                    **({"hina": turn["reply"]} if include_replies else {}),
                 }
                 for turn in pending
             ],
         }
-        plan = build_memory_model_plan(self.settings, old, pending, shared=False)
+        plan = build_memory_model_plan(
+            self.settings,
+            old,
+            pending,
+            shared=False,
+            include_replies=include_replies,
+        )
         response = await self._memory_request("summarize", SUMMARY_POLICY, payload, plan)
         if response.status == "completed" and response.output_text.strip():
             text = response.output_text.strip()
@@ -101,7 +108,13 @@ class MemorySummaryMixin:
                 for turn in pending
             ],
         }
-        plan = build_memory_model_plan(self.settings, old, pending, shared=True)
+        plan = build_memory_model_plan(
+            self.settings,
+            old,
+            pending,
+            shared=True,
+            include_replies=False,
+        )
         response = await self._memory_request(
             "summarize_shared",
             SHARED_SUMMARY_POLICY,

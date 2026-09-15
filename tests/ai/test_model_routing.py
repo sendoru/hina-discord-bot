@@ -1,3 +1,4 @@
+from itertools import pairwise
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
@@ -129,18 +130,71 @@ def test_single_operational_signals_are_weak_and_need_support_to_escalate():
     assert several_signals.score == pytest.approx(2.136)
 
 
-def test_visible_input_length_uses_broad_soft_ramp_and_saturates():
-    short = build_model_plan(settings(), information("x" * 500))
+def test_visible_input_length_uses_soft_curve_without_a_dead_zone():
+    tiny = build_model_plan(settings(), information("x" * 100))
+    below_old_boundary = build_model_plan(settings(), information("x" * 499))
+    above_old_boundary = build_model_plan(settings(), information("x" * 501))
     medium = build_model_plan(settings(), information("x" * 1500))
     long = build_model_plan(settings(), information("x" * 2500))
-    very_long = build_model_plan(settings(), information("x" * 5000))
+    full = build_model_plan(settings(), information("x" * 4000))
+    saturated = build_model_plan(settings(), information("x" * 5000))
 
-    assert short.score == 0.0
-    assert medium.score == pytest.approx(1.0)
+    assert tiny.score == pytest.approx(0.01)
+    assert below_old_boundary.score == pytest.approx(0.227)
+    assert above_old_boundary.score == pytest.approx(0.229)
+    assert medium.score == pytest.approx(1.141)
     assert medium.tier == ModelTier.FAST
-    assert long.score == pytest.approx(2.0)
-    assert long.tier == ModelTier.SMART
-    assert very_long.score == pytest.approx(2.0)
+    assert long.score == pytest.approx(1.677)
+    assert long.tier == ModelTier.FAST
+    assert full.score == pytest.approx(2.0)
+    assert full.tier == ModelTier.SMART
+    assert saturated.score == pytest.approx(2.0)
+
+
+def test_visible_input_length_has_diminishing_gains_after_the_curve_knee():
+    scores = [
+        build_model_plan(settings(), information("x" * length)).score
+        for length in (1500, 2000, 2500, 3000, 3500)
+    ]
+    gains = [right - left for left, right in pairwise(scores)]
+
+    assert scores == sorted(scores)
+    assert gains == sorted(gains, reverse=True)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "비교적 괜찮아?",
+        "코드가 뭐야?",
+        "'알고리즘'을 영어로 뭐라고 해?",
+        "분석하지 말고 결론만 말해줘",
+        "자세히 말하지 말고 한 줄로 답해줘",
+        "추천 20개만 한 줄씩 적어줘",
+    ],
+)
+def test_keywords_without_an_affirmative_task_stay_fast(text):
+    plan = build_model_plan(settings(), information(text))
+
+    assert plan.tier == ModelTier.FAST
+    assert "complex_request" not in plan.reasons
+    assert "long_answer_requested" not in plan.reasons
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "adaptive model routing 로직을 살펴보고 개선할 점이 있는지 찾아봐 줘",
+        "오류가 나는데 원인을 찾아서 고쳐줘",
+        "이 알고리즘의 시간 복잡도를 증명해 줘",
+        "이 구현의 장단점을 비교하고 병목을 분석해 줘",
+    ],
+)
+def test_affirmative_complex_tasks_use_smart_tier(text):
+    plan = build_model_plan(settings(), information(text))
+
+    assert plan.tier == ModelTier.SMART
+    assert "complex_request" in plan.reasons
 
 
 def test_quoted_complex_wording_is_not_treated_as_a_direct_complex_request():
@@ -353,6 +407,11 @@ def test_routing_telemetry_contains_no_prompt_text_and_accepts_float_score():
     assert telemetry["model_tier"] == "fast"
     assert telemetry["model_route_score"] == pytest.approx(0.909)
     assert telemetry["model_route_threshold"] == pytest.approx(2.0)
+    assert telemetry["model_route_margin"] == pytest.approx(-1.091)
+    assert telemetry["model_route_policy"] == "chat-v2"
+    assert sum(telemetry["model_route_components"].values()) == pytest.approx(
+        telemetry["model_route_score"]
+    )
     assert telemetry["requested_max_output_tokens"] == 4096
     assert "requested_total_output_tokens" not in telemetry
 
