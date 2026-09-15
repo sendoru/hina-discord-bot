@@ -56,14 +56,13 @@ class Settings:
     model: str = "gpt-4.1-mini"
     model_routing_mode: str = "fixed"
     model_routing_smart_threshold: float = 2.0
+    memory_routing_smart_threshold: float = 2.0
     fast_model: str = "gpt-4.1-mini"
     smart_model: str = "gpt-4.1-mini"
     fast_output_tokens: int = 4096
     smart_output_tokens: int = 8192
-    memory_model: str = "gpt-4.1-mini"
     memory_output_tokens: int = 4096
     provider: str = "openai"
-    memory_provider: str = ""
     openai_api_key: str = ""
     gemini_api_key: str = ""
     openrouter_api_key: str = ""
@@ -127,8 +126,6 @@ class Settings:
             raise ValueError(".env.local에 DISCORD_TOKEN을 설정해 주세요.")
 
         provider = _provider(os.getenv("LLM_PROVIDER", "openai"), "LLM_PROVIDER")
-        memory_provider = _provider(
-            os.getenv("MEMORY_PROVIDER", "").strip() or provider, "MEMORY_PROVIDER")
 
         # OPENAI_MODEL remains a backwards-compatible alias for existing deployments.
         model = (os.getenv("LLM_MODEL", "").strip()
@@ -141,15 +138,24 @@ class Settings:
         if model_routing_mode not in MODEL_ROUTING_MODES:
             allowed = ", ".join(sorted(MODEL_ROUTING_MODES))
             raise ValueError(f"MODEL_ROUTING_MODE은 {allowed} 중 하나여야 합니다.")
+
         try:
             model_routing_smart_threshold = float(
                 os.getenv("MODEL_ROUTING_SMART_THRESHOLD", "2.0")
             )
+            memory_routing_smart_threshold = float(
+                os.getenv("MEMORY_ROUTING_SMART_THRESHOLD", "2.0")
+            )
         except ValueError as exc:
-            raise ValueError("MODEL_ROUTING_SMART_THRESHOLD는 숫자여야 합니다.") from exc
-        if (not math.isfinite(model_routing_smart_threshold)
-                or not 0.1 <= model_routing_smart_threshold <= 10.0):
-            raise ValueError("MODEL_ROUTING_SMART_THRESHOLD는 0.1~10.0 사이의 유한한 숫자여야 합니다.")
+            raise ValueError(
+                "MODEL_ROUTING_SMART_THRESHOLD와 MEMORY_ROUTING_SMART_THRESHOLD는 숫자여야 합니다."
+            ) from exc
+        for variable, threshold in (
+            ("MODEL_ROUTING_SMART_THRESHOLD", model_routing_smart_threshold),
+            ("MEMORY_ROUTING_SMART_THRESHOLD", memory_routing_smart_threshold),
+        ):
+            if not math.isfinite(threshold) or not 0.1 <= threshold <= 10.0:
+                raise ValueError(f"{variable}는 0.1~10.0 사이의 유한한 숫자여야 합니다.")
 
         fast_model = os.getenv("LLM_FAST_MODEL", "").strip() or model
         smart_model = os.getenv("LLM_SMART_MODEL", "").strip() or model
@@ -157,10 +163,6 @@ class Settings:
                for value in (fast_model, smart_model)):
             raise ValueError("LLM_FAST_MODEL과 LLM_SMART_MODEL은 줄바꿈 없이 200자 이하여야 합니다.")
 
-        memory_model_env = os.getenv("MEMORY_MODEL", "").strip()
-        if memory_provider != provider and not memory_model_env:
-            raise ValueError("MEMORY_PROVIDER가 다르면 MEMORY_MODEL도 설정해 주세요.")
-        memory_model = memory_model_env or model
         memory_output_tokens = int(os.getenv("MEMORY_MAX_OUTPUT_TOKENS", "4096"))
 
         keys = {
@@ -168,9 +170,8 @@ class Settings:
             "gemini": os.getenv("GEMINI_API_KEY", "").strip(),
             "openrouter": os.getenv("OPENROUTER_API_KEY", "").strip(),
         }
-        for selected in {provider, memory_provider}:
-            if not keys[selected]:
-                raise ValueError(f"{_env_key(selected)}를 설정해 주세요.")
+        if not keys[provider]:
+            raise ValueError(f"{_env_key(provider)}를 설정해 주세요.")
 
         output_tokens = int(os.getenv("MAX_OUTPUT_TOKENS", "1000"))
         fast_output_tokens = int(os.getenv("FAST_MAX_OUTPUT_TOKENS", "4096"))
@@ -225,9 +226,10 @@ class Settings:
 
         s = cls(
             api_key=keys[provider], discord_token=token,
-            provider=provider, memory_provider=memory_provider,
+            provider=provider,
             model_routing_mode=model_routing_mode,
             model_routing_smart_threshold=model_routing_smart_threshold,
+            memory_routing_smart_threshold=memory_routing_smart_threshold,
             fast_model=fast_model, smart_model=smart_model,
             fast_output_tokens=fast_output_tokens,
             smart_output_tokens=smart_output_tokens,
@@ -241,7 +243,6 @@ class Settings:
             bot_admin_ids=frozenset(int(x.strip()) for x in
                                    os.getenv("BOT_ADMIN_IDS", "").split(",") if x.strip()),
             model=model,
-            memory_model=memory_model,
             memory_output_tokens=memory_output_tokens,
             db_path=os.getenv("DATABASE_PATH", "data/hina.sqlite3"),
             prompt_path=os.getenv("CHARACTER_PROMPT_PATH", ""),
@@ -282,6 +283,7 @@ class Settings:
                 and 128 <= s.fast_output_tokens <= s.smart_output_tokens <= 65536
                 and 128 <= s.memory_output_tokens <= 65536
                 and 0.1 <= s.model_routing_smart_threshold <= 10.0
+                and 0.1 <= s.memory_routing_smart_threshold <= 10.0
                 and 0 <= s.history_max_chars <= 120000
                 and 0 <= s.channel_context_chars <= 12000
                 and 2 <= s.summary_every <= s.history_turns <= 30
@@ -293,7 +295,7 @@ class Settings:
             raise ValueError("설정 범위 오류: cooldown 0~3600, concurrency 1~20, "
                              "output_tokens 128~65536, fast output <= smart output, "
                              "memory output tokens 128~65536, "
-                             "model routing smart threshold 0.1~10.0, "
+                             "model/memory routing smart threshold 0.1~10.0, "
                              "2 <= summary_every <= history_turns <= 30, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하")
