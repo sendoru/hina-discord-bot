@@ -37,22 +37,26 @@ MODEL_ROUTING_MODE=adaptive
 LLM_FAST_MODEL=gemini-3.5-flash-lite
 LLM_SMART_MODEL=gemini-3.8-flash
 
-FAST_MAX_OUTPUT_TOKENS=700
-SMART_MAX_OUTPUT_TOKENS=1600
+FAST_MAX_OUTPUT_TOKENS=4096
+SMART_MAX_OUTPUT_TOKENS=8192
 GEMINI_FAST_THINKING_LEVEL=minimal
 GEMINI_SMART_THINKING_LEVEL=medium
-GEMINI_FAST_TOTAL_OUTPUT_TOKENS=4096
-GEMINI_SMART_TOTAL_OUTPUT_TOKENS=8192
 ```
 
-`fixed`가 호환 기본값이며 기존 `LLM_MODEL`, `MAX_OUTPUT_TOKENS`, `GEMINI_THINKING_LEVEL`,
-`GEMINI_TOTAL_OUTPUT_TOKENS`를 그대로 사용합니다. adaptive에서도 비어 있는 fast/smart 모델명은
-`LLM_MODEL`로 대체되므로, 모델은 같게 두고 예산만 분리하는 운영도 가능합니다. 기억 요약은 이
-라우터를 거치지 않고 기존 `MEMORY_MODEL` 하나를 사용합니다.
+`FAST_MAX_OUTPUT_TOKENS`와 `SMART_MAX_OUTPUT_TOKENS`는 provider 공통 전체 생성 예산입니다. reasoning
+또는 thought token을 사용하는 모델에서는 숨은 추론 토큰도 이 예산에 포함될 수 있습니다. 따라서
+이 값은 "사용자에게 보이는 답변 길이"를 직접 뜻하지 않습니다. Discord에 실제로 내보내는 텍스트는
+별도의 출력 정책과 메시지 길이 제한을 따릅니다.
 
-선택 결과는 `usage.jsonl`의 `model_tier`, `model_route_score`, `model_route_reasons`와 요청 예산
-필드에 남습니다. 사유에는 사용자 메시지 원문이 기록되지 않습니다. 모델 이름과 thinking level의
-실제 지원 범위는 provider별로 다르므로 운영 모델 조합을 바꿀 때 smoke test가 필요합니다.
+`fixed`가 호환 기본값이며 `LLM_MODEL`, `MAX_OUTPUT_TOKENS`와 provider별 reasoning 설정을 사용합니다.
+adaptive에서도 비어 있는 fast/smart 모델명은 `LLM_MODEL`로 대체되므로, 모델은 같게 두고 예산만
+분리하는 운영도 가능합니다. 기억 요약은 이 라우터를 거치지 않고 기존 `MEMORY_MODEL` 하나를
+사용합니다.
+
+선택 결과는 `usage.jsonl`의 `model_tier`, `model_route_score`, `model_route_reasons`,
+`requested_max_output_tokens`에 남습니다. Gemini에서는 선택된 thinking level도 함께 기록합니다.
+사유에는 사용자 메시지 원문이 기록되지 않습니다. 모델 이름과 thinking level의 실제 지원 범위는
+provider별로 다르므로 운영 모델 조합을 바꿀 때 smoke test가 필요합니다.
 
 ### Gemini
 
@@ -61,8 +65,9 @@ LLM_PROVIDER=gemini
 LLM_MODEL=gemini-3.5-flash
 GEMINI_API_KEY=...
 
+# fixed 모드의 전체 생성 예산
+MAX_OUTPUT_TOKENS=4096
 GEMINI_THINKING_LEVEL=low
-GEMINI_TOTAL_OUTPUT_TOKENS=4096
 
 MEMORY_PROVIDER=
 MEMORY_MODEL=
@@ -72,22 +77,23 @@ Gemini는 Interactions API를 직접 사용합니다. `CHAT_WEB_SEARCH=true`일 
 기존 내부 `web_search` 요청을 Google Search 도구로 변환합니다.
 
 Gemini 3.x의 `max_output_tokens`에는 사용자에게 보이는 답변뿐 아니라 내부 thought token도 포함됩니다.
-따라서 공통 설정인 `MAX_OUTPUT_TOKENS=1000`을 그대로 Gemini의 총 생성 한도로 사용하면, 요청에 따라
-모델이 생각에 토큰을 많이 쓰는 순간 `status=incomplete`와 빈 출력이 간헐적으로 발생할 수 있습니다.
-어댑터는 이를 피하기 위해 Gemini에 별도의 총 생성 예산을 적용합니다.
+이제 Gemini 전용 `GEMINI_TOTAL_OUTPUT_TOKENS`, `GEMINI_FAST_TOTAL_OUTPUT_TOKENS`,
+`GEMINI_SMART_TOTAL_OUTPUT_TOKENS`는 사용하지 않습니다. fixed 모드에서는 `MAX_OUTPUT_TOKENS`,
+adaptive 모드에서는 `FAST_MAX_OUTPUT_TOKENS`와 `SMART_MAX_OUTPUT_TOKENS`를 그대로 Gemini의
+`max_output_tokens`로 전달합니다.
 
-- `GEMINI_THINKING_LEVEL`: `minimal`, `low`, `medium`, `high`. 짧은 Discord RP에는 `low`가 기본입니다.
-- `GEMINI_TOTAL_OUTPUT_TOKENS`: thought token을 포함한 Gemini의 총 생성 상한입니다. 기본값은
-  `max(4096, MAX_OUTPUT_TOKENS)`입니다.
-- `MAX_OUTPUT_TOKENS`: 앱의 일반 출력 크기 기준으로 계속 사용하며, Gemini 요청에서는 위 총 생성
-  예산보다 작을 경우 총 예산을 줄이지 않습니다.
-- adaptive 모드에서는 위 두 고정 설정 대신 `GEMINI_FAST_*`, `GEMINI_SMART_*` 설정을 턴별로
-  전달합니다. 기본값은 각각 `minimal`/4096과 `medium`/8192입니다.
+- `GEMINI_THINKING_LEVEL`: fixed 모드의 추론 강도입니다. `minimal`, `low`, `medium`, `high`를
+  사용할 수 있습니다.
+- `GEMINI_FAST_THINKING_LEVEL`, `GEMINI_SMART_THINKING_LEVEL`: adaptive 모드의 fast/smart 추론
+  강도입니다.
+- `MAX_OUTPUT_TOKENS`, `FAST_MAX_OUTPUT_TOKENS`, `SMART_MAX_OUTPUT_TOKENS`: provider 공통 전체 생성
+  예산입니다. Gemini에서는 thought token도 이 한도에서 소비됩니다.
 
+Gemini에서 생성 예산이 너무 작으면 thought token이 예산을 대부분 소진해 `status=incomplete`와 빈
+출력이 발생할 수 있습니다. 그래서 Gemini adaptive 운영 예시는 fast 4096, smart 8192를 사용합니다.
 문제가 다시 발생하면 `data/logs/usage.jsonl`의 마지막 `answer` 행에서 `status`,
-`reasoning_tokens`, `response_error_codes`를 확인하세요. `status`가 `incomplete`이고
-`reasoning_tokens`가 총 생성 예산에 가까우면 `GEMINI_TOTAL_OUTPUT_TOKENS`를 늘리거나
-`GEMINI_THINKING_LEVEL=minimal`로 낮추는 것이 좋습니다.
+`reasoning_tokens`, `response_error_codes`, `requested_max_output_tokens`를 확인하고, 필요하면 공통 생성
+예산을 늘리거나 Gemini thinking level을 낮추는 것이 좋습니다.
 
 ### OpenRouter
 
