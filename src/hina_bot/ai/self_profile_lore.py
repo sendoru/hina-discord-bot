@@ -1,12 +1,6 @@
 """Small authoritative self-profile facts that must not depend on public web lookup."""
 
-_BIRTHDAY_REFERENCE = {
-    "reference": "local_profile.hina.birthday",
-    "kind": "world_fact",
-    "content": "소라사키 히나의 생일은 2월 19일이다.",
-    "awareness": "self",
-    "time": "프로필 상시 설정",
-}
+from hina_bot.core.character import get_character_config
 
 
 def fallback_references(query: str) -> list[dict]:
@@ -15,6 +9,13 @@ def fallback_references(query: str) -> list[dict]:
     This is intentionally tiny. The normal curated lore index remains the primary source; this
     fallback only prevents a stable self fact from silently becoming a web-search dependency.
     """
-    if "생일" in query:
-        return [dict(_BIRTHDAY_REFERENCE)]
-    return []
+    character = get_character_config()
+    if "생일" not in query or not character.birthday:
+        return []
+    return [{
+        "reference": "local_profile.character.birthday",
+        "kind": "world_fact",
+        "content": f"{character.name}의 생일은 {character.birthday}이다.",
+        "awareness": "self",
+        "time": "프로필 상시 설정",
+    }]
