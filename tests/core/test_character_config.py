@@ -30,10 +30,10 @@ def test_knowledge_candidate_scoring_ignores_character_only_match(monkeypatch):
     monkeypatch.setenv("CHARACTER_WORLD_TERMS", "밀레니엄")
 
     row = {
-        "content": "아리스는 밀레니엄 소속이며 게임을 좋아한다.",
-        "keywords": ["아리스", "게임"],
+        "content": "아리스는 밀레니엄 소속이며 레일건을 사용한다.",
+        "keywords": ["아리스", "레일건"],
         "subjects": ["아리스"],
     }
 
     assert _row_score("아리스", row) == 0
-    assert _row_score("게임 좋아해?", row) > 0
+    assert _row_score("레일건 뭐 써?", row) > 0
