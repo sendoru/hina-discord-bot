@@ -1,4 +1,7 @@
 import re
+from functools import lru_cache
+
+from hina_bot.core.character import get_character_config
 
 _PERSONAL_CONTEXT_QUERY = re.compile(
     r"(?:내\s*(?:생일|이름|취향|정보|기억)|나에\s*대해|내가\s*(?:말한|얘기한)|"
@@ -21,14 +24,6 @@ _SIMPLE_WORLD_FACT_QUERY = re.compile(
     r"(?:누구야|누구지|누구인지)",
     re.IGNORECASE,
 )
-_SELF_PROFILE_QUERY = re.compile(
-    r"^\s*(?:히나야[,!~\s]*)?(?:(?:지금|오늘|현재)\s*)?"
-    r"(?:(?:(?:소라사키\s*)?히나|너|넌|너는|너의|네|니)(?:은|는|이|가|의)?\s*)?"
-    r"(?:(?:지금|오늘|현재)\s*)?"
-    r"(?:생일|나이|몇\s*살|키|학년|소속|직책|취미|고유\s*무기|무기|"
-    r"(?:기관)?총\s*이름|무슨\s*총|학교|부서|헤일로|날개|뿔)",
-    re.IGNORECASE,
-)
 
 _PROFILE_FIELDS = (
     (r"생일", "생일"),
@@ -42,6 +37,32 @@ _PROFILE_FIELDS = (
     (r"날개", "날개"),
     (r"뿔", "뿔"),
 )
+_PROFILE_FIELD_PATTERN = (
+    r"(?:생일|나이|몇\s*살|키|학년|소속|직책|취미|고유\s*무기|무기|"
+    r"(?:기관)?총\s*이름|무슨\s*총|학교|부서|헤일로|날개|뿔)"
+)
+
+
+def _flexible_literal(value: str) -> str:
+    return re.escape(value).replace(r"\ ", r"\s*")
+
+
+@lru_cache(maxsize=32)
+def _self_profile_query(aliases: tuple[str, ...], call_prefixes: tuple[str, ...]):
+    alias_pattern = "|".join(
+        _flexible_literal(value) for value in sorted(aliases, key=len, reverse=True)
+    )
+    prefix_pattern = "|".join(
+        re.escape(value) for value in sorted(call_prefixes, key=len, reverse=True)
+    )
+    prefix = rf"(?:(?:{prefix_pattern})[,!~\s]*)?" if prefix_pattern else ""
+    subject = rf"(?:(?:{alias_pattern})|너|넌|너는|너의|네|니)" if alias_pattern else r"(?:너|넌|너는|너의|네|니)"
+    return re.compile(
+        rf"^\s*{prefix}(?:(?:지금|오늘|현재)\s*)?"
+        rf"(?:{subject}(?:은|는|이|가|의)?\s*)?"
+        rf"(?:(?:지금|오늘|현재)\s*)?{_PROFILE_FIELD_PATTERN}",
+        re.IGNORECASE,
+    )
 
 
 def personal_context(content: str) -> bool:
@@ -56,28 +77,36 @@ def relation_or_event(content: str) -> bool:
     return bool(_RELATION_EVENT_QUERY.search(content))
 
 
-def self_profile(content: str) -> bool:
-    return bool(_SELF_PROFILE_QUERY.search(content))
+def self_profile(content: str, *, call_prefixes: tuple[str, ...] | None = None) -> bool:
+    character = get_character_config(call_prefixes=call_prefixes)
+    return bool(_self_profile_query(character.aliases, character.call_prefixes).search(content))
 
 
 def simple_world_fact(content: str) -> bool:
     return bool(_SIMPLE_WORLD_FACT_QUERY.search(content))
 
 
-def world_fact(content: str) -> bool:
+def world_fact(content: str, *, call_prefixes: tuple[str, ...] | None = None) -> bool:
     if personal_context(content) or self_identity(content):
         return False
-    return self_profile(content) or relation_or_event(content) or simple_world_fact(content)
+    return self_profile(content, call_prefixes=call_prefixes) or relation_or_event(content) or simple_world_fact(content)
 
 
-def lore_query(content: str, *, profile: bool, relation: bool) -> str:
+def lore_query(
+    content: str,
+    *,
+    profile: bool,
+    relation: bool,
+    call_prefixes: tuple[str, ...] | None = None,
+) -> str:
     if profile:
         fields = []
         for pattern, canonical in _PROFILE_FIELDS:
             if re.search(pattern, content, re.IGNORECASE):
                 fields.extend(canonical.split())
         suffix = " ".join(dict.fromkeys(fields)) or content.strip()
-        return f"소라사키 히나 {suffix}".strip()
+        character = get_character_config(call_prefixes=call_prefixes)
+        return f"{character.name} {suffix}".strip()
     if relation:
         hints = []
         if re.search(r"만나|마주|대면|대화|친분|접점|서로\s*알", content):
