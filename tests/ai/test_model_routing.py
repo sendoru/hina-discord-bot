@@ -49,14 +49,13 @@ def information(
     )
 
 
-def test_routine_chat_uses_fast_tier_and_small_gemini_budget():
+def test_routine_chat_uses_fast_tier_and_common_generation_budget():
     plan = build_model_plan(settings(), information("오늘 뭐 먹지?"))
 
     assert plan.tier == ModelTier.FAST
     assert plan.model == "gemini-fast"
-    assert plan.max_output_tokens == 700
+    assert plan.max_output_tokens == 4096
     assert plan.thinking_level == "minimal"
-    assert plan.total_output_tokens == 4096
     assert plan.reasons == ("routine_request",)
 
 
@@ -69,9 +68,8 @@ def test_complex_or_explicitly_long_request_uses_smart_tier():
     for plan in (complex_plan, long_plan):
         assert plan.tier == ModelTier.SMART
         assert plan.model == "gemini-smart"
-        assert plan.max_output_tokens == 1600
+        assert plan.max_output_tokens == 8192
         assert plan.thinking_level == "medium"
-        assert plan.total_output_tokens == 8192
 
 
 def test_one_weak_signal_stays_fast_but_combined_signals_escalate():
@@ -130,23 +128,21 @@ def test_target_history_depth_participates_in_model_routing():
     ).tier == ModelTier.SMART
 
 
-def test_fixed_mode_preserves_legacy_request_settings():
+def test_fixed_mode_uses_common_generation_budget():
     plan = build_model_plan(
         settings(
             model_routing_mode="fixed",
             model="single-model",
-            output_tokens=900,
+            output_tokens=4096,
             gemini_thinking_level="low",
-            gemini_total_output_tokens=5000,
         ),
         information("자세히 분석해 줘"),
     )
 
     assert plan.tier == ModelTier.FIXED
     assert plan.model == "single-model"
-    assert plan.max_output_tokens == 900
+    assert plan.max_output_tokens == 4096
     assert plan.thinking_level == "low"
-    assert plan.total_output_tokens == 5000
 
 
 def test_routing_telemetry_contains_no_prompt_text():
@@ -155,10 +151,12 @@ def test_routing_telemetry_contains_no_prompt_text():
 
     assert secret not in str(plan.telemetry())
     assert plan.telemetry()["model_tier"] == "fast"
+    assert plan.telemetry()["requested_max_output_tokens"] == 4096
+    assert "requested_total_output_tokens" not in plan.telemetry()
 
 
 @pytest.mark.asyncio
-async def test_runtime_forwards_each_tiers_complete_gemini_plan():
+async def test_runtime_forwards_each_tiers_common_gemini_budget():
     response = NS(status="completed", output_text="응.", output=[], usage=None)
     raw = NS(
         provider_name="gemini",
@@ -172,18 +170,18 @@ async def test_runtime_forwards_each_tiers_complete_gemini_plan():
         await llm.answer(store, Scope(None, 10, 100), "사용자", "안녕")
         fast = raw.responses.create.await_args.kwargs
         assert fast["model"] == "gemini-fast"
-        assert fast["max_output_tokens"] == 700
+        assert fast["max_output_tokens"] == 4096
         assert fast["thinking_level"] == "minimal"
-        assert fast["total_output_tokens"] == 4096
+        assert "total_output_tokens" not in fast
 
         await llm.answer(
             store, Scope(None, 10, 100), "사용자", "이 알고리즘을 단계별로 분석해 줘"
         )
         smart = raw.responses.create.await_args.kwargs
         assert smart["model"] == "gemini-smart"
-        assert smart["max_output_tokens"] == 1600
+        assert smart["max_output_tokens"] == 8192
         assert smart["thinking_level"] == "medium"
-        assert smart["total_output_tokens"] == 8192
+        assert "total_output_tokens" not in smart
     finally:
         await llm.close()
         store.close()

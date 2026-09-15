@@ -78,7 +78,7 @@ async def test_gemini_translates_search_and_normalizes_response():
     assert payload["tools"] == [{"type": "google_search", "search_types": ["web_search"]}]
     assert payload["generation_config"]["tool_choice"] == "auto"
     assert payload["generation_config"]["thinking_level"] == "low"
-    assert payload["generation_config"]["max_output_tokens"] == 4096
+    assert payload["generation_config"]["max_output_tokens"] == 200
     assert response.status == "completed"
     assert "example.com/source" in response.output_text
     assert response.usage.total_tokens == 17
@@ -131,7 +131,7 @@ async def test_gemini_retries_tool_call_overflow_once():
 
 
 @pytest.mark.asyncio
-async def test_gemini_custom_reasoning_budget_is_forwarded():
+async def test_gemini_common_generation_budget_is_forwarded():
     seen = {}
 
     async def handler(request: httpx.Request):
@@ -146,8 +146,8 @@ async def test_gemini_custom_reasoning_budget_is_forwarded():
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
         response = await _GeminiResponses(
-            http, thinking_level="minimal", total_output_tokens=2048,
-        ).create(model="gemini-test", input="hello", max_output_tokens=200, store=False)
+            http, thinking_level="minimal",
+        ).create(model="gemini-test", input="hello", max_output_tokens=2048, store=False)
     finally:
         await http.aclose()
 
@@ -161,7 +161,7 @@ async def test_gemini_custom_reasoning_budget_is_forwarded():
 
 
 @pytest.mark.asyncio
-async def test_gemini_per_request_routing_overrides_client_defaults():
+async def test_gemini_per_request_routing_overrides_thinking_level():
     seen = {}
 
     async def handler(request: httpx.Request):
@@ -170,12 +170,11 @@ async def test_gemini_per_request_routing_overrides_client_defaults():
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
-        await _GeminiResponses(http, thinking_level="low", total_output_tokens=4096).create(
+        await _GeminiResponses(http, thinking_level="low").create(
             model="gemini-smart",
             input="question",
-            max_output_tokens=1600,
+            max_output_tokens=8192,
             thinking_level="medium",
-            total_output_tokens=8192,
         )
     finally:
         await http.aclose()

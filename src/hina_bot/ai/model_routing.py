@@ -38,7 +38,6 @@ class ModelPlan:
     model: str
     max_output_tokens: int
     thinking_level: str
-    total_output_tokens: int
     score: int
     reasons: tuple[str, ...]
 
@@ -49,7 +48,6 @@ class ModelPlan:
             "model_route_reasons": list(self.reasons),
             "requested_max_output_tokens": self.max_output_tokens,
             "requested_thinking_level": self.thinking_level,
-            "requested_total_output_tokens": self.total_output_tokens,
         }
 
 
@@ -59,7 +57,6 @@ def fixed_model_plan(settings) -> ModelPlan:
         model=settings.model,
         max_output_tokens=settings.output_tokens,
         thinking_level=settings.gemini_thinking_level,
-        total_output_tokens=settings.gemini_total_output_tokens,
         score=0,
         reasons=("fixed_mode",),
     )
@@ -131,10 +128,6 @@ def build_model_plan(
         thinking_level=(
             settings.gemini_smart_thinking_level
             if smart else settings.gemini_fast_thinking_level
-        ),
-        total_output_tokens=(
-            settings.gemini_smart_total_output_tokens
-            if smart else settings.gemini_fast_total_output_tokens
         ),
         score=score,
         reasons=tuple(reasons),

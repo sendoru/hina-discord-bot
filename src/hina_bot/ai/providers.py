@@ -202,11 +202,9 @@ def _gemini_output(data: dict):
 
 
 class _GeminiResponses:
-    def __init__(self, http: httpx.AsyncClient, *, thinking_level: str = "low",
-                 total_output_tokens: int = 4096):
+    def __init__(self, http: httpx.AsyncClient, *, thinking_level: str = "low"):
         self.http = http
         self.thinking_level = thinking_level
-        self.total_output_tokens = total_output_tokens
 
     async def create(self, **kwargs):
         payload = {
@@ -221,16 +219,10 @@ class _GeminiResponses:
         thinking_level = kwargs.get("thinking_level", self.thinking_level)
         if thinking_level not in {"minimal", "low", "medium", "high"}:
             raise ValueError("Gemini thinking_level 값이 잘못되었습니다.")
-        total_output_tokens = kwargs.get("total_output_tokens", self.total_output_tokens)
-        if not isinstance(total_output_tokens, int) or total_output_tokens <= 0:
-            raise ValueError("Gemini total_output_tokens 값이 잘못되었습니다.")
         generation_config = {"thinking_level": thinking_level}
         max_output_tokens = kwargs.get("max_output_tokens")
         if isinstance(max_output_tokens, int):
-            # Gemini counts hidden thought tokens against max_output_tokens. Keep a separate
-            # provider budget so a short visible-answer limit does not cut reasoning off first.
-            generation_config["max_output_tokens"] = max(
-                max_output_tokens, total_output_tokens)
+            generation_config["max_output_tokens"] = max_output_tokens
 
         tools = kwargs.get("tools") or []
         unknown_tools = [tool for tool in tools if tool.get("type") != "web_search"]
@@ -297,7 +289,7 @@ class GeminiClient:
     provider_name = "gemini"
 
     def __init__(self, credential: str, *, timeout: float = 45,
-                 thinking_level: str = "low", total_output_tokens: int = 4096):
+                 thinking_level: str = "low"):
         self._http = httpx.AsyncClient(
             timeout=timeout,
             headers={"x-goog-api-key": credential, "Content-Type": "application/json"},
@@ -305,7 +297,6 @@ class GeminiClient:
         self.responses = _GeminiResponses(
             self._http,
             thinking_level=thinking_level,
-            total_output_tokens=total_output_tokens,
         )
 
     async def close(self):
@@ -357,7 +348,6 @@ def create_provider_client(settings, provider: str):
         return GeminiClient(
             credential,
             thinking_level=settings.gemini_thinking_level,
-            total_output_tokens=settings.gemini_total_output_tokens,
         )
     if provider == "openrouter":
         return OpenRouterClient(credential)
