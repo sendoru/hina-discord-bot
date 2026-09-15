@@ -25,15 +25,19 @@ MEMORY_MODEL=
 ## 질문 복잡도에 따른 모델 라우팅
 
 `MODEL_ROUTING_MODE=adaptive`로 설정하면 별도의 분류용 모델 호출 없이 기존 정보 routing 결과와
-질문의 명시적 특성을 조합해 답변 모델을 선택합니다. 분석·설계·코드·증명·긴 답변 요청은 smart,
-짧은 잡담·단순 번역·명확한 후속 질문은 fast가 기본입니다. 웹 검색이나 이미지 같은 약한 신호 하나만
-있을 때는 fast를 유지하고, 여러 신호가 겹치면 smart로 승격합니다. 대상 사용자의 basic history
-확인은 약한 신호로, deep history 분석은 그 자체로 smart 신호로 취급합니다.
+질문의 명시적 특성을 조합해 답변 모델을 선택합니다. 분석·설계·코드·증명·긴 답변 요청처럼 의미적으로
+강한 신호는 바로 smart 쪽으로 기울고, 입력·답장 원문·주변 문맥의 길이, 이미지·reference·요구사항
+개수처럼 연속적인 신호는 크기에 따라 점진적으로 가중됩니다. 웹 검색 1회나 이미지 1장 같은 약한 신호
+하나만으로는 보통 fast를 유지하고, 여러 약한 신호나 충분히 큰 문맥이 겹치면 smart로 승격합니다.
+대상 사용자의 basic history는 작은 보조 신호이고, deep history는 강한 신호지만 실제 조회량과 다른
+요인까지 함께 반영해 최종 tier를 정합니다. 직접 답장한 원문은 일반 주변 문맥보다 강하게 보되,
+인용문 속 `분석` 같은 단어를 사용자의 명령으로 오인하지 않도록 별도로 취급합니다.
 
 ```dotenv
 LLM_PROVIDER=gemini
 LLM_MODEL=gemini-3.5-flash
 MODEL_ROUTING_MODE=adaptive
+MODEL_ROUTING_SMART_THRESHOLD=2.0
 LLM_FAST_MODEL=gemini-3.5-flash-lite
 LLM_SMART_MODEL=gemini-3.8-flash
 
@@ -41,6 +45,16 @@ FAST_MAX_OUTPUT_TOKENS=4096
 SMART_MAX_OUTPUT_TOKENS=8192
 GEMINI_FAST_THINKING_LEVEL=minimal
 GEMINI_SMART_THINKING_LEVEL=medium
+```
+
+`MODEL_ROUTING_SMART_THRESHOLD`는 adaptive score가 smart tier로 넘어가는 기준이며 기본값은 `2.0`,
+허용 범위는 `0.1`~`10.0`입니다. 가중치 공식은 코드에 유지하고 이 threshold만 외부 설정으로 노출해
+전체 라우팅 민감도를 조절합니다. 값을 낮추면 smart 사용 빈도가 높아지고, 높이면 fast를 더 오래
+유지합니다. 이 값은 runtime 설정이므로 재시작 없이 관리자 명령으로도 바꿀 수 있습니다.
+
+```text
+/config set MODEL_ROUTING_SMART_THRESHOLD 1.8
+/config reset MODEL_ROUTING_SMART_THRESHOLD
 ```
 
 `FAST_MAX_OUTPUT_TOKENS`와 `SMART_MAX_OUTPUT_TOKENS`는 provider 공통 전체 생성 예산입니다. reasoning
@@ -53,10 +67,11 @@ adaptive에서도 비어 있는 fast/smart 모델명은 `LLM_MODEL`로 대체되
 분리하는 운영도 가능합니다. 기억 요약은 이 라우터를 거치지 않고 기존 `MEMORY_MODEL` 하나를
 사용합니다.
 
-선택 결과는 `usage.jsonl`의 `model_tier`, `model_route_score`, `model_route_reasons`,
-`requested_max_output_tokens`에 남습니다. Gemini에서는 선택된 thinking level도 함께 기록합니다.
-사유에는 사용자 메시지 원문이 기록되지 않습니다. 모델 이름과 thinking level의 실제 지원 범위는
-provider별로 다르므로 운영 모델 조합을 바꿀 때 smoke test가 필요합니다.
+선택 결과는 `usage.jsonl`의 `model_tier`, `model_route_score`, `model_route_threshold`,
+`model_route_reasons`, `requested_max_output_tokens`에 남습니다. threshold를 runtime에서 조정해도 각
+응답이 어떤 기준으로 라우팅됐는지 나중에 함께 확인할 수 있습니다. Gemini에서는 선택된 thinking
+level도 함께 기록합니다. 사유에는 사용자 메시지 원문이 기록되지 않습니다. 모델 이름과 thinking
+level의 실제 지원 범위는 provider별로 다르므로 운영 모델 조합을 바꿀 때 smoke test가 필요합니다.
 
 ### Gemini
 

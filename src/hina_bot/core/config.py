@@ -1,3 +1,4 @@
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,6 +55,7 @@ class Settings:
     discord_token: str
     model: str = "gpt-4.1-mini"
     model_routing_mode: str = "fixed"
+    model_routing_smart_threshold: float = 2.0
     fast_model: str = "gpt-4.1-mini"
     smart_model: str = "gpt-4.1-mini"
     fast_output_tokens: int = 4096
@@ -138,6 +140,16 @@ class Settings:
         if model_routing_mode not in MODEL_ROUTING_MODES:
             allowed = ", ".join(sorted(MODEL_ROUTING_MODES))
             raise ValueError(f"MODEL_ROUTING_MODE은 {allowed} 중 하나여야 합니다.")
+        try:
+            model_routing_smart_threshold = float(
+                os.getenv("MODEL_ROUTING_SMART_THRESHOLD", "2.0")
+            )
+        except ValueError as exc:
+            raise ValueError("MODEL_ROUTING_SMART_THRESHOLD는 숫자여야 합니다.") from exc
+        if (not math.isfinite(model_routing_smart_threshold)
+                or not 0.1 <= model_routing_smart_threshold <= 10.0):
+            raise ValueError("MODEL_ROUTING_SMART_THRESHOLD는 0.1~10.0 사이의 유한한 숫자여야 합니다.")
+
         fast_model = os.getenv("LLM_FAST_MODEL", "").strip() or model
         smart_model = os.getenv("LLM_SMART_MODEL", "").strip() or model
         if any(len(value) > 200 or any(c in value for c in "\r\n\0")
@@ -213,6 +225,7 @@ class Settings:
             api_key=keys[provider], discord_token=token,
             provider=provider, memory_provider=memory_provider,
             model_routing_mode=model_routing_mode,
+            model_routing_smart_threshold=model_routing_smart_threshold,
             fast_model=fast_model, smart_model=smart_model,
             fast_output_tokens=fast_output_tokens,
             smart_output_tokens=smart_output_tokens,
@@ -264,6 +277,7 @@ class Settings:
         if not (0 <= s.cooldown <= 3600 and 1 <= s.concurrency <= 20
                 and 128 <= s.output_tokens <= 65536
                 and 128 <= s.fast_output_tokens <= s.smart_output_tokens <= 65536
+                and 0.1 <= s.model_routing_smart_threshold <= 10.0
                 and 0 <= s.history_max_chars <= 120000
                 and 0 <= s.channel_context_chars <= 12000
                 and 2 <= s.summary_every <= s.history_turns <= 30
@@ -274,6 +288,7 @@ class Settings:
                 and vision_total <= 32):
             raise ValueError("설정 범위 오류: cooldown 0~3600, concurrency 1~20, "
                              "output_tokens 128~65536, fast output <= smart output, "
+                             "model routing smart threshold 0.1~10.0, "
                              "2 <= summary_every <= history_turns <= 30, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하")
