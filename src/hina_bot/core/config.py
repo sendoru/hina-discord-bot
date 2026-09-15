@@ -86,6 +86,7 @@ class Settings:
     history_turns: int = 12
     history_max_chars: int = 12000
     usage_log_path: str = "data/logs/usage.jsonl"
+    event_log_path: str = "data/logs/events.jsonl"
     channel_context_chars: int = 6000
     special_dm_user_id: int | None = None
     bot_admin_ids: frozenset[int] = frozenset()
@@ -276,6 +277,7 @@ class Settings:
             history_turns=int(os.getenv("HISTORY_TURNS", "12")),
             history_max_chars=int(os.getenv("HISTORY_MAX_CHARS", "12000")),
             usage_log_path=os.getenv("USAGE_LOG_PATH", "data/logs/usage.jsonl"),
+            event_log_path=os.getenv("EVENT_LOG_PATH", "data/logs/events.jsonl"),
             lore_path=os.getenv("LORE_PATH", ""),
             lore_max_items=int(os.getenv("LORE_MAX_ITEMS", "6")),
             lore_max_chars=int(os.getenv("LORE_MAX_CHARS", "3200")),

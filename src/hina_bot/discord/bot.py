@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 import time
 import weakref
 from contextlib import nullcontext
@@ -10,6 +11,13 @@ import discord
 from hina_bot.ai.information_pipeline import LLM
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
+from hina_bot.core.observability import (
+    CURRENT_TURN_ID,
+    EventLogger,
+    current_turn_id,
+    new_turn_id,
+    safe_exception_fields,
+)
 from hina_bot.core.recent import RecentMessages
 from hina_bot.core.routing import Scope, chunks, trigger_text
 from hina_bot.core.store import Store
@@ -59,6 +67,7 @@ class HinaClient(discord.Client):
         self.pending_count = 0
         self.active_tasks = set()
         self.stopping = False
+        self.events = EventLogger(getattr(settings, "event_log_path", ""))
 
     def channel_lock(self, scope):
         key = (scope.realm, scope.channel_id)
@@ -80,7 +89,20 @@ class HinaClient(discord.Client):
 
     async def on_error(self, event, *args, **kwargs):
         # Discord's default handler prints message arguments and full tracebacks.
-        log.error("Discord event failed: %s", event)
+        exc = sys.exception()
+        if exc is None:
+            log.error("Discord event failed: %s", event)
+            return
+        error = safe_exception_fields(exc, f"discord_event_{event}")
+        self.events.emit(
+            "discord.event_failed",
+            level="error",
+            discord_event=str(event)[:100],
+            **error,
+        )
+        log.error(
+            "Discord event failed (%s, event=%s, fingerprint=%s)",
+            type(exc).__name__, event, error["error_fingerprint"])
 
     async def close(self):
         self.stopping = True
@@ -93,6 +115,7 @@ class HinaClient(discord.Client):
         finally:
             await self.llm.close()
             self.store.close()
+            self.events.close()
             await super().close()
 
     async def send_text(self, channel, text):
@@ -185,8 +208,6 @@ class HinaClient(discord.Client):
             return
         text = trigger_text(message, self.user.id, self.settings.dm_always_reply,
                             self.settings.call_prefixes)
-        if self.pending_count >= 100:
-            return
         public_at_capture = False
         if guild_id is not None and isinstance(message.channel, discord.TextChannel):
             permissions = message.channel.permissions_for(message.guild.default_role)
@@ -201,6 +222,27 @@ class HinaClient(discord.Client):
             self.recent.add(scope, message.id, message.author.display_name, message.content)
         if text is None:
             return
+        turn_token = CURRENT_TURN_ID.set(new_turn_id())
+        turn_started = time.perf_counter()
+        scope_kind = "guild" if guild_id is not None else "dm"
+        self.events.emit(
+            "turn.received",
+            scope=scope_kind,
+            pending_count=self.pending_count,
+            content_chars=len(text),
+            attachment_count=len(getattr(message, "attachments", ()) or ()),
+        )
+        if self.pending_count >= 100:
+            self.events.emit(
+                "turn.dropped",
+                level="warning",
+                scope=scope_kind,
+                reason="queue_full",
+                pending_count=self.pending_count,
+                elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+            )
+            CURRENT_TURN_ID.reset(turn_token)
+            return
         channel_lock = self.channel_lock(scope)
         # One lock per realm+user serializes persistent-memory updates across channels.
         key = scope.user_note
@@ -211,24 +253,55 @@ class HinaClient(discord.Client):
         self.pending_count += 1
         task = asyncio.current_task()
         self.active_tasks.add(task)
+        stage = "lock_wait"
+        reply_delivered = False
+        terminal_emitted = False
+        timings = {}
         try:
             async with channel_lock, lock:
+                timings["lock_wait_ms"] = round((time.perf_counter() - turn_started) * 1000)
                 mode = MemoryMode(self.store.memory_mode(scope))
                 use_memory = received_mode.reads and mode.reads
                 save_memory = received_mode.writes and mode.writes
                 use_chat_log = received_chat_log and self.store.chat_log_enabled(scope)
                 if self.store.seen(message.id):
+                    self.events.emit(
+                        "turn.dropped",
+                        scope=scope_kind,
+                        reason="duplicate",
+                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                    )
+                    terminal_emitted = True
                     return
                 if len(text) > 4000:
+                    stage = "delivery"
                     await self.send_text(message.channel, "한 번에 4000자 이내로 이야기해 주세요.")
+                    reply_delivered = True
+                    self.events.emit(
+                        "turn.dropped",
+                        scope=scope_kind,
+                        reason="input_too_long",
+                        reply_delivered=True,
+                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                    )
+                    terminal_emitted = True
                     return
                 now = time.monotonic()
                 self.cooldowns = {k: v for k, v in self.cooldowns.items()
                                   if now - v < self.settings.cooldown}
                 if key in self.cooldowns:
+                    self.events.emit(
+                        "turn.dropped",
+                        scope=scope_kind,
+                        reason="cooldown",
+                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                    )
+                    terminal_emitted = True
                     return
                 self.cooldowns[key] = now
                 if not text:
+                    stage = "delivery"
+                    delivery_started = time.perf_counter()
                     await self.send_text(
                         message.channel,
                         _bare_call_reply(
@@ -238,18 +311,43 @@ class HinaClient(discord.Client):
                             self.settings.special_dm_empty_call_reply,
                         ),
                     )
+                    reply_delivered = True
+                    timings["delivery_ms"] = round(
+                        (time.perf_counter() - delivery_started) * 1000
+                    )
+                    self.events.emit(
+                        "turn.completed",
+                        scope=scope_kind,
+                        status="completed",
+                        reply_delivered=True,
+                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                        **timings,
+                    )
+                    terminal_emitted = True
                     return
                 if guild_id is not None and use_chat_log:
+                    stage = "recent_history"
                     await self.hydrate_recent_history(message, scope)
                 usage = getattr(self.llm, "usage", None)
                 exchange = (usage.exchange("guild" if guild_id is not None else "dm")
                             if usage is not None and hasattr(usage, "exchange") else nullcontext())
                 with exchange:
+                    slot_started = time.perf_counter()
                     async with self.slots:
+                        timings["slot_wait_ms"] = round(
+                            (time.perf_counter() - slot_started) * 1000
+                        )
                         async with message.channel.typing():
+                            stage = "context"
+                            context_started = time.perf_counter()
                             sources = await self.public_sources(scope.user_id, guild_id) if use_memory else []
                             context = self.store.public_context(sources) if use_memory else []
                             emoji_catalog = await self.emoji_registry.catalog(message.channel)
+                            timings["context_ms"] = round(
+                                (time.perf_counter() - context_started) * 1000
+                            )
+                            stage = "generation"
+                            generation_started = time.perf_counter()
                             answer = await self.llm.answer(
                                 self.store, scope, message.author.display_name, text,
                                 public_context=context,
@@ -257,38 +355,137 @@ class HinaClient(discord.Client):
                                                  if guild_id is not None and use_chat_log else []),
                                 use_memory=use_memory,
                                 emoji_catalog=emoji_catalog)
+                            timings["generation_ms"] = round(
+                                (time.perf_counter() - generation_started) * 1000
+                            )
                             current = {e["id"] for e in await self.emoji_registry.catalog(message.channel)}
                             answer = render_emojis(answer, [e for e in emoji_catalog if e["id"] in current])
                             answer = neutralize_mentions(answer)
                             if not answer:
                                 answer = self.settings.empty_response_reply
+                            parts = list(chunks(answer))
+                            stage = "delivery"
+                            delivery_started = time.perf_counter()
                             sent = await message.channel.send(
-                                next(chunks(answer)), allowed_mentions=discord.AllowedMentions.none())
-                            for part in list(chunks(answer))[1:]:
+                                parts[0], allowed_mentions=discord.AllowedMentions.none())
+                            for part in parts[1:]:
                                 await message.channel.send(part, allowed_mentions=discord.AllowedMentions.none())
+                            reply_delivered = True
+                            timings["delivery_ms"] = round(
+                                (time.perf_counter() - delivery_started) * 1000
+                            )
                             if guild_id is not None and use_chat_log:
                                 assistant_name = getattr(self.user, "display_name", "assistant")[:100]
                                 self.recent.add(scope, sent.id, assistant_name, answer, role="assistant")
                         # Commit only after Discord delivery. Never memorize a failed model request.
+                        memory_failures = 0
                         if save_memory:
+                            stage = "memory"
+                            memory_started = time.perf_counter()
                             self.store.add(scope, message.id, text, answer)
                             self.store.add_shared_call(scope, message.id, message.author.display_name, text)
-                            for summarize in (self.llm.summarize, self.llm.summarize_shared):
+                            for memory_kind, summarize in (
+                                ("personal", self.llm.summarize),
+                                ("shared", self.llm.summarize_shared),
+                            ):
                                 try:
                                     await summarize(self.store, scope)
                                 except Exception as exc:  # noqa: BLE001 - isolate summary failures; redact logs
-                                    log.warning("Memory summary deferred (%s)", type(exc).__name__)
+                                    memory_failures += 1
+                                    error = safe_exception_fields(exc, f"memory_{memory_kind}")
+                                    self.events.emit(
+                                        "memory.summary_failed",
+                                        level="warning",
+                                        scope=scope_kind,
+                                        memory_kind=memory_kind,
+                                        **error,
+                                    )
+                                    log.warning(
+                                        "Memory summary deferred (%s, turn_id=%s, fingerprint=%s)",
+                                        type(exc).__name__,
+                                        current_turn_id(),
+                                        error["error_fingerprint"],
+                                    )
+                            timings["memory_ms"] = round(
+                                (time.perf_counter() - memory_started) * 1000
+                            )
+                        self.events.emit(
+                            "turn.completed",
+                            scope=scope_kind,
+                            status="partial_success" if memory_failures else "completed",
+                            reply_delivered=reply_delivered,
+                            memory_failures=memory_failures,
+                            answer_chars=len(answer),
+                            delivery_chunks=len(parts),
+                            elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                            **timings,
+                        )
+                        terminal_emitted = True
+        except asyncio.CancelledError as exc:
+            error = safe_exception_fields(exc, stage)
+            self.events.emit(
+                "turn.failed",
+                level="warning",
+                scope=scope_kind,
+                status="cancelled",
+                stage=stage,
+                reply_delivered=reply_delivered,
+                elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                **error,
+            )
+            terminal_emitted = True
+            raise
         except discord.HTTPException as exc:
-            log.warning("Discord delivery failed (%s)", type(exc).__name__)
+            error = safe_exception_fields(exc, stage)
+            self.events.emit(
+                "turn.failed",
+                level="error",
+                scope=scope_kind,
+                status="delivery_failed" if stage == "delivery" else "failed",
+                stage=stage,
+                reply_delivered=reply_delivered,
+                elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                **error,
+            )
+            terminal_emitted = True
+            log.warning(
+                "Discord request failed (%s, stage=%s, turn_id=%s, fingerprint=%s)",
+                type(exc).__name__, stage, current_turn_id(), error["error_fingerprint"])
         except Exception as exc:  # noqa: BLE001 - isolate event/summary failures; redact logs
-            log.warning("Conversation failed (%s)", type(exc).__name__)
+            error = safe_exception_fields(exc, stage)
+            status = "generation_failed" if stage == "generation" else "failed"
+            self.events.emit(
+                "turn.failed",
+                level="error",
+                scope=scope_kind,
+                status=status,
+                stage=stage,
+                reply_delivered=reply_delivered,
+                elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                **error,
+            )
+            terminal_emitted = True
+            log.warning(
+                "Conversation failed (%s, stage=%s, turn_id=%s, fingerprint=%s)",
+                type(exc).__name__, stage, current_turn_id(), error["error_fingerprint"])
             try:
                 await self.send_text(message.channel, "지금은 답변을 이어가기 어렵네요. 잠시 후 다시 불러 주세요.")
             except discord.HTTPException:
                 pass
         finally:
+            if not terminal_emitted:
+                self.events.emit(
+                    "turn.failed",
+                    level="error",
+                    scope=scope_kind,
+                    status="aborted",
+                    stage=stage,
+                    reply_delivered=reply_delivered,
+                    elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                )
             self.active_tasks.discard(task)
             self.pending_count -= 1
+            CURRENT_TURN_ID.reset(turn_token)
 
 
 def main():

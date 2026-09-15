@@ -1,6 +1,8 @@
 """SDK/adapter contract tests; no Discord login or paid API requests."""
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
 
@@ -191,7 +193,13 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.store = Store(":memory:")
         self.llm = NS(answer=AsyncMock(return_value="안녕"), summarize=AsyncMock(), summarize_shared=AsyncMock(), close=AsyncMock())
-        self.bot = HinaClient(Settings("test", "test", cooldown=0), store=self.store, llm=self.llm)
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.event_path = Path(self.tempdir.name) / "events.jsonl"
+        self.bot = HinaClient(
+            Settings("test", "test", cooldown=0, event_log_path=str(self.event_path)),
+            store=self.store,
+            llm=self.llm,
+        )
         self.bot._connection.user = NS(id=99)
         self.channel = MagicMock(spec=discord.TextChannel)
         self.channel.id = 10
@@ -205,6 +213,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.bot.close()
+        self.tempdir.cleanup()
 
     def message(self, text="히나야 안녕", id=1):
         return NS(id=id, content=text, author=self.author, guild=self.guild,
@@ -219,6 +228,64 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         mentions = kwargs["allowed_mentions"].to_dict()
         self.assertEqual(mentions["parse"], [])
         self.assertFalse(mentions.get("replied_user", False))
+        rows = [json.loads(line) for line in self.event_path.read_text().splitlines()]
+        completed = next(row for row in rows if row["event"] == "turn.completed")
+        duplicate = next(
+            row for row in rows
+            if row["event"] == "turn.dropped" and row["reason"] == "duplicate"
+        )
+        self.assertEqual(completed["status"], "completed")
+        self.assertTrue(completed["reply_delivered"])
+        self.assertNotEqual(completed["turn_id"], duplicate["turn_id"])
+
+    async def test_generation_failure_event_excludes_exception_and_message_content(self):
+        secret = "private-message-marker"
+        self.llm.answer.side_effect = ValueError(secret)
+
+        await self.bot.on_message(self.message(f"히나야 {secret}"))
+
+        raw = self.event_path.read_text()
+        self.assertNotIn(secret, raw)
+        failed = next(
+            json.loads(line) for line in raw.splitlines()
+            if json.loads(line)["event"] == "turn.failed"
+        )
+        self.assertEqual(failed["status"], "generation_failed")
+        self.assertEqual(failed["stage"], "generation")
+        self.assertEqual(failed["error_type"], "ValueError")
+        self.assertIn("error_fingerprint", failed)
+
+    async def test_memory_failure_is_partial_success_and_does_not_block_shared_summary(self):
+        secret = "private-memory-error-marker"
+        self.llm.summarize.side_effect = ValueError(secret)
+
+        await self.bot.on_message(self.message())
+
+        raw = self.event_path.read_text()
+        self.assertNotIn(secret, raw)
+        rows = [json.loads(line) for line in raw.splitlines()]
+        failed = next(row for row in rows if row["event"] == "memory.summary_failed")
+        completed = next(row for row in rows if row["event"] == "turn.completed")
+        self.assertEqual(failed["memory_kind"], "personal")
+        self.assertEqual(completed["status"], "partial_success")
+        self.assertEqual(completed["memory_failures"], 1)
+        self.assertTrue(completed["reply_delivered"])
+        self.llm.summarize_shared.assert_awaited_once()
+
+    async def test_unhandled_discord_event_records_safe_exception_location(self):
+        secret = "private-discord-event-marker"
+        try:
+            raise RuntimeError(secret)
+        except RuntimeError:
+            await self.bot.on_error("on_test_event")
+
+        raw = self.event_path.read_text()
+        self.assertNotIn(secret, raw)
+        row = json.loads(raw)
+        self.assertEqual(row["event"], "discord.event_failed")
+        self.assertEqual(row["discord_event"], "on_test_event")
+        self.assertEqual(row["error_type"], "RuntimeError")
+        self.assertIn("error_location", row)
 
     async def test_model_mentions_are_neutralized_before_delivery_and_memory(self):
         self.llm.answer.return_value = "@everyone <@123> <@!456> <@&789> 안녕"
@@ -326,4 +393,3 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.store.seen(1))
         self.assertEqual(len(self.store.pending_shared(scope)), 1)
         self.llm.summarize.assert_awaited_once()
-
