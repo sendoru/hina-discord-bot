@@ -1,8 +1,6 @@
 import re
 from functools import lru_cache
 
-from hina_bot.core.character import get_character_config
-
 _PERSONAL_CONTEXT_QUERY = re.compile(
     r"(?:내\s*(?:생일|이름|취향|정보|기억)|나에\s*대해|내가\s*(?:말한|얘기한)|"
     r"기억해|기억하고|방금|아까|저번에|전에\s*말한|우리\s*(?:대화|얘기))",
@@ -43,23 +41,15 @@ _PROFILE_FIELD_PATTERN = (
 )
 
 
-def _flexible_literal(value: str) -> str:
-    return re.escape(value).replace(r"\ ", r"\s*")
-
-
 @lru_cache(maxsize=32)
-def _self_profile_query(aliases: tuple[str, ...], call_prefixes: tuple[str, ...]):
-    alias_pattern = "|".join(
-        _flexible_literal(value) for value in sorted(aliases, key=len, reverse=True)
-    )
+def _self_profile_query(call_prefixes: tuple[str, ...]):
     prefix_pattern = "|".join(
         re.escape(value) for value in sorted(call_prefixes, key=len, reverse=True)
     )
     prefix = rf"(?:(?:{prefix_pattern})[,!~\s]*)?" if prefix_pattern else ""
-    subject = rf"(?:(?:{alias_pattern})|너|넌|너는|너의|네|니)" if alias_pattern else r"(?:너|넌|너는|너의|네|니)"
     return re.compile(
         rf"^\s*{prefix}(?:(?:지금|오늘|현재)\s*)?"
-        rf"(?:{subject}(?:은|는|이|가|의)?\s*)?"
+        rf"(?:(?:너|넌|너는|너의|네|니)(?:은|는|이|가|의)?\s*)?"
         rf"(?:(?:지금|오늘|현재)\s*)?{_PROFILE_FIELD_PATTERN}",
         re.IGNORECASE,
     )
@@ -78,8 +68,7 @@ def relation_or_event(content: str) -> bool:
 
 
 def self_profile(content: str, *, call_prefixes: tuple[str, ...] | None = None) -> bool:
-    character = get_character_config(call_prefixes=call_prefixes)
-    return bool(_self_profile_query(character.aliases, character.call_prefixes).search(content))
+    return bool(_self_profile_query(call_prefixes or ()).search(content))
 
 
 def simple_world_fact(content: str) -> bool:
@@ -104,9 +93,7 @@ def lore_query(
         for pattern, canonical in _PROFILE_FIELDS:
             if re.search(pattern, content, re.IGNORECASE):
                 fields.extend(canonical.split())
-        suffix = " ".join(dict.fromkeys(fields)) or content.strip()
-        character = get_character_config(call_prefixes=call_prefixes)
-        return f"{character.name} {suffix}".strip()
+        return " ".join(dict.fromkeys(fields)) or content.strip()
     if relation:
         hints = []
         if re.search(r"만나|마주|대면|대화|친분|접점|서로\s*알", content):
