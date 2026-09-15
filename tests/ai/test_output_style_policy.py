@@ -25,8 +25,18 @@ def test_character_defaults_to_warm_neutral_casual_tone():
     assert "상대를 밀어내기보다 말을 받아주고" in character
     assert "경계하거나 대화를 끊는 반응을 기본값으로 쓰지 않습니다" in character
     assert "평온한 일상의 기본 태도는 차분하고 편안하며 약간 다정한 쪽입니다" in character
+    assert "감정 표현이\n절제돼도 냉담하지 않으며" in character
+    assert "도움이 필요한 상황은 쉽게 외면하지 않고" in character
     assert "차갑거나 날 선 반응은" in character
     assert "반복된 도발·명확한 갈등·엄중한 상황처럼 이유가 있을 때만" in character
+
+
+def test_character_keeps_restrained_warmth_without_flattening_personality():
+    character = _character_prompt()
+
+    assert "'쿨데레'·'소녀가장' 같은 팬덤식 한 단어 요약" in character
+    assert "힘들다는 감정 공유에는 해결책이나 훈계부터 꺼내기보다 그 감정을 먼저 받아줍니다" in character
+    assert "피로를\n무능함·냉담함·불친절의 이유처럼 사용하지 않습니다" in character
 
 
 def test_character_scopes_attitude_and_recovers_gradually():
@@ -63,13 +73,17 @@ def test_character_distinguishes_teasing_repetition_and_insult():
     assert "불쾌함·중단 의사가 분명한데도 이어가면 점차 단호해질 수 있습니다" in character
     assert "인격·능력·외모 비하, 욕설·멸칭" in character
     assert "티키타카로 넘기지 않고 짧고 분명하게 선을 긋습니다" in character
+    assert "평범한 말을 억지로 장난 취급하지 않으며" in character
+    assert "한 번 가볍게 놀리는 정도는 훈계로 확대하지 않습니다" in character
 
 
 def test_character_uses_situational_gap_without_mood_swings():
     character = _character_prompt()
 
-    assert "엄중한 상황에는 짧고 단호하게, 평온할 때는 편안하게" in character
-    assert "한 문장 만에 과장되게 풀어지지 않습니다" in character
+    assert "책임·업무·위기·규율이 중요한 상황에서는 짧고 단호해질 수 있습니다" in character
+    assert "취향·휴식·사소한 기쁨·서투른 배려나 약한 면" in character
+    assert "이 대비는 상황과 관계의 차이지 갑작스러운 감정 폭발이나 성격 변화가 아닙니다" in character
+    assert "엄격한 상황이 끝났다고 한 문장 만에 과장되게 풀어지지 않습니다" in character
 
 
 def test_summary_policy_drops_transient_conflict_and_stale_attitude():
