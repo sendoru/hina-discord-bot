@@ -55,6 +55,18 @@ def _self_profile_query(call_prefixes: tuple[str, ...]):
     )
 
 
+def _without_call_prefix(content: str, call_prefixes: tuple[str, ...] | None) -> str:
+    text = content.lstrip()
+    matched = max(
+        (prefix for prefix in (call_prefixes or ()) if text.startswith(prefix)),
+        key=len,
+        default=None,
+    )
+    if matched is not None:
+        text = text[len(matched):].lstrip(" \t\n,:：!！?？~")
+    return text
+
+
 def personal_context(content: str) -> bool:
     return bool(_PERSONAL_CONTEXT_QUERY.search(content))
 
@@ -88,20 +100,21 @@ def lore_query(
     relation: bool,
     call_prefixes: tuple[str, ...] | None = None,
 ) -> str:
+    query = _without_call_prefix(content, call_prefixes)
     if profile:
         fields = []
         for pattern, canonical in _PROFILE_FIELDS:
-            if re.search(pattern, content, re.IGNORECASE):
+            if re.search(pattern, query, re.IGNORECASE):
                 fields.extend(canonical.split())
-        return " ".join(dict.fromkeys(fields)) or content.strip()
+        return " ".join(dict.fromkeys(fields)) or query.strip()
     if relation:
         hints = []
-        if re.search(r"만나|마주|대면|대화|친분|접점|서로\s*알", content):
+        if re.search(r"만나|마주|대면|대화|친분|접점|서로\s*알", query):
             hints += ["직접", "만남", "대면", "대화", "관계", "접점"]
-        if re.search(r"들어가|방문|의장실|찾아가|출입", content):
+        if re.search(r"들어가|방문|의장실|찾아가|출입", query):
             hints += ["방문", "출입", "직접"]
-        if re.search(r"사건|그때|당시|참여|스토리|에피소드|전투|대치", content):
+        if re.search(r"사건|그때|당시|참여|스토리|에피소드|전투|대치", query):
             hints += ["사건", "참여", "행적", "직접", "경험"]
         if hints:
-            return content + " " + " ".join(dict.fromkeys(hints))
-    return content
+            return query + " " + " ".join(dict.fromkeys(hints))
+    return query
