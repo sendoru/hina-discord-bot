@@ -123,16 +123,8 @@ class LoreIndex:
 
     @classmethod
     def load(cls, path: str = "") -> "LoreIndex":
-        if path:
-            sources = [Path(path)]
-        else:
-            data = files("hina_bot").joinpath("data")
-            sources = [Path(data.joinpath("lore.jsonl")), Path(data.joinpath("profile_lore.jsonl"))]
-        records = [
-            validate_record(row, accepted=True)
-            for source in sources
-            for row in read_jsonl(source)
-        ]
+        target = Path(path) if path else files("hina_bot").joinpath("data/lore.jsonl")
+        records = [validate_record(row, accepted=True) for row in read_jsonl(Path(target))]
         ids = [row["id"] for row in records]
         if len(ids) != len(set(ids)):
             raise LoreValidationError("runtime lore contains duplicate ids")
