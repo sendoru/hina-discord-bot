@@ -63,7 +63,30 @@ def test_routine_chat_uses_fast_tier_and_common_generation_budget():
     assert plan.max_output_tokens == 4096
     assert plan.thinking_level == "minimal"
     assert plan.score == 0.0
+    assert plan.smart_threshold == 2.0
     assert plan.reasons == ("routine_request",)
+
+
+def test_smart_threshold_can_change_tier_without_reweighting_signals():
+    baseline = build_model_plan(settings(), information("봐줘"), visual_count=4)
+    lowered = build_model_plan(
+        settings(model_routing_smart_threshold=0.9),
+        information("봐줘"),
+        visual_count=4,
+    )
+    raised = build_model_plan(
+        settings(model_routing_smart_threshold=2.5),
+        information("이 알고리즘을 분석해 줘"),
+    )
+
+    assert baseline.score == pytest.approx(0.909)
+    assert baseline.tier == ModelTier.FAST
+    assert lowered.score == baseline.score
+    assert lowered.smart_threshold == pytest.approx(0.9)
+    assert lowered.tier == ModelTier.SMART
+    assert raised.score == pytest.approx(2.0)
+    assert raised.smart_threshold == pytest.approx(2.5)
+    assert raised.tier == ModelTier.FAST
 
 
 def test_strong_semantic_requests_still_select_smart_directly():
@@ -318,6 +341,7 @@ def test_fixed_mode_uses_common_generation_budget():
     assert plan.max_output_tokens == 4096
     assert plan.thinking_level == "low"
     assert plan.score == 0.0
+    assert plan.smart_threshold == 2.0
 
 
 def test_routing_telemetry_contains_no_prompt_text_and_accepts_float_score():
@@ -328,6 +352,7 @@ def test_routing_telemetry_contains_no_prompt_text_and_accepts_float_score():
     assert secret not in str(telemetry)
     assert telemetry["model_tier"] == "fast"
     assert telemetry["model_route_score"] == pytest.approx(0.909)
+    assert telemetry["model_route_threshold"] == pytest.approx(2.0)
     assert telemetry["requested_max_output_tokens"] == 4096
     assert "requested_total_output_tokens" not in telemetry
 
