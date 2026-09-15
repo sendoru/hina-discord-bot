@@ -2,7 +2,12 @@
 
 from dataclasses import dataclass
 
-from .contextual_routing import build_query, find_anchor, is_followup
+from .contextual_routing import (
+    build_query,
+    find_anchor,
+    find_prior_user_request,
+    is_followup,
+)
 
 
 @dataclass(frozen=True)
@@ -12,6 +17,8 @@ class RoutingPlan:
     visible_content: str
     routing_query: str
     anchor: str = ""
+    anchor_source: str = ""
+    prior_user_request: str = ""
 
     @property
     def expanded(self) -> bool:
@@ -27,15 +34,33 @@ def build_routing_plan(
     use_memory: bool = True,
 ) -> RoutingPlan:
     rows = channel_context or []
+    followup = is_followup(content)
     anchor = (
         find_anchor(store, scope, rows, use_memory=use_memory)
-        if is_followup(content)
+        if followup
+        else None
+    )
+    prior_user_request = (
+        find_prior_user_request(store, scope, rows, use_memory=use_memory)
+        if followup
         else ""
     )
+    if (
+        anchor
+        and anchor.source == "explicit_reply"
+        and anchor.role != "assistant"
+        and anchor.author_user_id != str(scope.user_id)
+    ):
+        # An explicit reply to another person's message changes the topic. Do not carry an older
+        # request's complexity into that new thread merely because it was the caller's latest turn.
+        prior_user_request = ""
+    anchor_text = anchor.text if anchor else ""
     return RoutingPlan(
         visible_content=content,
-        routing_query=build_query(content, anchor),
-        anchor=anchor,
+        routing_query=build_query(content, anchor_text),
+        anchor=anchor_text,
+        anchor_source=anchor.source if anchor else "",
+        prior_user_request=prior_user_request,
     )
 
 

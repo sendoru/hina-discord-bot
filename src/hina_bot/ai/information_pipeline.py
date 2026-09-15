@@ -131,7 +131,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             self.settings,
             information,
             channel_context=channel_context or (),
-            visual_count=len(CURRENT_VISUAL_INPUTS.get()),
+            visual_inputs=CURRENT_VISUAL_INPUTS.get(),
         )
         weather = None
         if information.route == InformationRoute.GENERAL:
