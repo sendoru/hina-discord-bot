@@ -38,13 +38,12 @@ class CharacterConfig:
     name: str
     aliases: tuple[str, ...]
     call_prefixes: tuple[str, ...]
-    world_terms: tuple[str, ...]
     emoji_prefixes: tuple[str, ...]
     birthday: str
 
     @property
     def search_stopwords(self) -> frozenset[str]:
-        values = (*self.aliases, *self.call_prefixes, *self.world_terms)
+        values = (*self.aliases, *self.call_prefixes)
         stopwords = {value.casefold() for value in values if value}
         for value in values:
             stopwords.update(token.casefold() for token in _TOKEN.findall(value))
@@ -73,10 +72,6 @@ def get_character_config(*, call_prefixes: tuple[str, ...] | None = None) -> Cha
         name=name,
         aliases=aliases,
         call_prefixes=prefixes,
-        world_terms=_env_csv(
-            "CHARACTER_WORLD_TERMS",
-            "블루,아카이브,선생,선생님" if hina_defaults else "",
-        ),
         emoji_prefixes=tuple(
             value.casefold()
             for value in _env_csv("CHARACTER_EMOJI_PREFIXES", "hina" if hina_defaults else "")
