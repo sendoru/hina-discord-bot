@@ -1,4 +1,4 @@
-from hina_bot.admin_list import clip_display, display_width, fit_table, sort_rows
+from hina_bot.core.admin_list import clip_display, display_width, fit_table, sort_rows
 
 
 def test_display_width_handles_korean_and_ascii():

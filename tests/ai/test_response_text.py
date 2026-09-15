@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from hina_bot.web_search_text import response_text, strip_internal_control_prefix
+from hina_bot.ai.web_search_text import response_text, strip_internal_control_prefix
 
 
 def test_strips_concatenated_internal_control_objects():

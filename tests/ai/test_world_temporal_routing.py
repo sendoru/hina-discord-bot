@@ -1,7 +1,7 @@
 from types import SimpleNamespace as NS
 
-from hina_bot.chat_llm import LLM
-from hina_bot.freshness import FreshnessMode, classify_freshness
+from hina_bot.ai.freshness import FreshnessMode, classify_freshness
+from hina_bot.ai.information_pipeline import LLM
 
 
 def _llm():

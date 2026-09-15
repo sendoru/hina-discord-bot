@@ -4,8 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 
-from hina_bot import lore_cli, lore_pipeline
-from hina_bot.lore import read_jsonl, validate_record, write_jsonl
+from hina_bot.core.lore import read_jsonl, validate_record, write_jsonl
+from hina_bot.tooling import lore_cli, lore_pipeline
 
 
 def candidate(identifier: str, *, fact_type: str = "fact_direct",

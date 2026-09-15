@@ -5,13 +5,14 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
-from .admin_db import AdminDatabase
-from .config import Settings
-from .instructions import InstructionRegistry
-from .lore import LoreIndex
-from .routing import Scope
-from .runtime_knowledge import RuntimeKnowledgeRegistry
-from .store import Store
+from hina_bot.core.admin_db import AdminDatabase
+from hina_bot.core.config import Settings
+from hina_bot.core.instructions import InstructionRegistry
+from hina_bot.core.lore import LoreIndex
+from hina_bot.core.routing import Scope
+from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
+from hina_bot.core.store import Store
+
 from .usage import UsageLogger
 
 log = logging.getLogger("hina")

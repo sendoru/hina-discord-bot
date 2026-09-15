@@ -3,10 +3,11 @@ import logging
 import discord
 from discord import app_commands
 
+from hina_bot.core.admin_list import sort_rows
+from hina_bot.core.knowledge_ingest import KnowledgeIngestor
+from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
+
 from .admin_export import export_timestamp, text_attachment
-from .admin_list import sort_rows
-from .knowledge_ingest import KnowledgeIngestor
-from .runtime_knowledge import RuntimeKnowledgeRegistry
 
 log = logging.getLogger("hina")
 

@@ -1,6 +1,6 @@
 import unittest
 
-from hina_bot.output_safety import DISCORD_MENTION, neutralize_mentions
+from hina_bot.discord.output_safety import DISCORD_MENTION, neutralize_mentions
 
 
 class OutputSafetyTests(unittest.TestCase):

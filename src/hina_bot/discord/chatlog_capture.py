@@ -1,6 +1,6 @@
 """Scope-aware policy for which channel messages enter recent context."""
 
-from .routing import Scope
+from hina_bot.core.routing import Scope
 
 _PREFIX = "config:chatlog_capture:"
 

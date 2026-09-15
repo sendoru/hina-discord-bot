@@ -12,14 +12,14 @@ try:
 except ModuleNotFoundError:
     AVAILABLE = False
 
-from hina_bot.routing import Scope
-from hina_bot.store import Store
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
 
 if AVAILABLE:
-    from hina_bot.bot import HinaClient
-    from hina_bot.config import Settings
-    from hina_bot.llm import LLM
-    from hina_bot.lore import LoreIndex
+    from hina_bot.ai.information_pipeline import LLM
+    from hina_bot.core.config import Settings
+    from hina_bot.core.lore import LoreIndex
+    from hina_bot.discord.bot import HinaClient
 
 
 @unittest.skipUnless(AVAILABLE, "Install project dev dependencies to test SDK/Discord adapters")

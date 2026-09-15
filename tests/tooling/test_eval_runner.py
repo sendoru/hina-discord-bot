@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from hina_bot.eval_runner import case_turns, read_cases, run_case, scope_for
+from hina_bot.tooling.eval_runner import case_turns, read_cases, run_case, scope_for
 
 
 class EvalRunnerTests(unittest.TestCase):
