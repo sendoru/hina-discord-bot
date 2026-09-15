@@ -18,7 +18,6 @@ from .note_context import NoteContextStore
 from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
-from .self_profile_lore import fallback_references
 from .vision import CURRENT_VISUAL_INPUTS
 
 _IN_WORLD_PRESENT_STATE_QUERY = re.compile(
@@ -68,15 +67,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
 
     def lore_references(self, content: str) -> list[dict]:
         request = classify_information_request(content, call_prefixes=self._call_prefixes())
-        references = super().lore_references(request.lore_query)
-        if not request.self_profile:
-            return references
-        existing = {str(row.get("reference", "")) for row in references}
-        return [
-            row
-            for row in fallback_references(request.lore_query)
-            if str(row.get("reference", "")) not in existing
-        ] + references
+        return super().lore_references(request.lore_query)
 
     def _web_search_mode(self, content, references, freshness=None) -> str:
         request = classify_information_request(
