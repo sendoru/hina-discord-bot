@@ -2,10 +2,10 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from hina_bot.config import Settings
-from hina_bot.store import Store
 
+from hina_bot.core.config import Settings
 from hina_bot.core.runtime_config import RuntimeSettings
+from hina_bot.core.store import Store
 from hina_bot.discord.config_commands import ConfigCommands
 
 

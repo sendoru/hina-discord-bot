@@ -5,10 +5,11 @@ from enum import Enum
 import discord
 from discord import app_commands
 
-from .admin_list import MAX_DISCORD_TEXT, table_row
+from hina_bot.core.admin_list import MAX_DISCORD_TEXT, table_row
+from hina_bot.core.routing import Scope
+
 from .instruction_commands import InstructionCommands
 from .knowledge_commands import KnowledgeCommands
-from .routing import Scope
 
 log = logging.getLogger("hina")
 

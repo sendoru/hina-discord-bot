@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-from hina_bot.config import parse_call_prefixes
-from hina_bot.routing import Scope, chunks, trigger_text
-from hina_bot.store import Store
+from hina_bot.core.config import parse_call_prefixes
+from hina_bot.core.routing import Scope, chunks, trigger_text
+from hina_bot.core.store import Store
 
 
 def message(text="", *, mentions=(), bot=False, webhook=None, dm=False, reference=None):
@@ -157,7 +157,7 @@ if __name__ == "__main__":
 
 class SharedContextTests(unittest.TestCase):
     def test_recent_context_budget_order_and_channel_isolation(self):
-        from hina_bot.recent import RecentMessages
+        from hina_bot.core.recent import RecentMessages
         recent = RecentMessages(budget=8)
         a, b = Scope(1, 10, 100), Scope(1, 10, 200)
         recent.add(a, 1, "A", "12345")
@@ -175,13 +175,13 @@ class SharedContextTests(unittest.TestCase):
     def test_recent_ttl_and_capacity(self):
         from unittest.mock import patch
 
-        from hina_bot.recent import RecentMessages
+        from hina_bot.core.recent import RecentMessages
         recent = RecentMessages(ttl=5, channels=1)
-        with patch("hina_bot.recent.time.monotonic", return_value=10):
+        with patch("hina_bot.core.recent.time.monotonic", return_value=10):
             recent.add(Scope(1, 10, 100), 1, "A", "old")
             recent.add(Scope(1, 20, 100), 2, "A", "new")
         self.assertEqual(len(recent.buffers), 1)
-        with patch("hina_bot.recent.time.monotonic", return_value=16):
+        with patch("hina_bot.core.recent.time.monotonic", return_value=16):
             self.assertEqual(recent.context(Scope(1, 20, 100), 3), [])
 
     def test_shared_calls_cross_users_but_not_guilds_or_private(self):

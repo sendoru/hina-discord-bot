@@ -7,15 +7,16 @@ from datetime import timedelta
 
 import discord
 
-from .config import Settings
+from hina_bot.ai.information_pipeline import LLM
+from hina_bot.core.config import Settings
+from hina_bot.core.emojis import render_emojis
+from hina_bot.core.recent import RecentMessages
+from hina_bot.core.routing import Scope, chunks, trigger_text
+from hina_bot.core.store import Store
+
 from .emoji_commands import EmojiCommands, EmojiRegistry
-from .emojis import render_emojis
-from .llm import LLM
 from .memory_commands import MemoryCommands, MemoryMode
 from .output_safety import neutralize_mentions
-from .recent import RecentMessages
-from .routing import Scope, chunks, trigger_text
-from .store import Store
 
 log = logging.getLogger("hina")
 HELP = """호출: @봇 멘션, 핑을 켠 답장, 또는 메시지 맨 앞의 `히나야`

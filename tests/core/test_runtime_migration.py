@@ -4,10 +4,10 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-from hina_bot.admin_db import AdminDatabase
-from hina_bot.instructions import InstructionRegistry
-from hina_bot.runtime_knowledge import RuntimeKnowledgeRegistry
-from hina_bot.runtime_migration import migrate
+from hina_bot.core.admin_db import AdminDatabase
+from hina_bot.core.instructions import InstructionRegistry
+from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
+from hina_bot.core.runtime_migration import migrate
 
 
 class RuntimeMigrationTests(unittest.TestCase):

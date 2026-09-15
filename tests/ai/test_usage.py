@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hina_bot.ai.providers import ProviderAPIError
-from hina_bot.usage import UsageLogger
+from hina_bot.ai.usage import UsageLogger
 
 
 def response(input_tokens, output_tokens, *, cached=0, reasoning=0, output=None):

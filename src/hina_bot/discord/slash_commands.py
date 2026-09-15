@@ -10,9 +10,10 @@ import re
 import discord
 from discord import app_commands
 
+from hina_bot.core.routing import Scope
+
 from .chatlog_commands import ChatLogCommands
 from .note_commands import NoteCommands
-from .routing import Scope
 
 log = logging.getLogger("hina")
 

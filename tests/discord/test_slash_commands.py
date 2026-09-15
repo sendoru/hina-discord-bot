@@ -3,11 +3,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hina_bot.config import Settings
-from hina_bot.routing import Scope
-from hina_bot.slash_commands import EmojiSlashCommands, _parse_emoji_import_items
-from hina_bot.store import Store
-from hina_bot.web_bot import HinaClient
+from hina_bot.core.config import Settings
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
+from hina_bot.discord.slash_commands import EmojiSlashCommands, _parse_emoji_import_items
+from hina_bot.discord.web_bot import HinaClient
 
 
 @pytest.fixture

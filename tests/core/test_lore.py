@@ -5,9 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 
-from hina_bot import lore_pipeline
-from hina_bot.lore import LoreIndex, LoreValidationError, validate_record
-from hina_bot.lore_pipeline import _source_rows, _typed_source_rows
+from hina_bot.core.lore import LoreIndex, LoreValidationError, validate_record
+from hina_bot.tooling import lore_pipeline
+from hina_bot.tooling.lore_pipeline import _source_rows, _typed_source_rows
 
 
 def record(identifier="canon.test", lane="canon", **overrides):

@@ -3,10 +3,9 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
-from hina_bot.config import Settings
-from hina_bot.routing import Scope
-from hina_bot.store import Store
-
+from hina_bot.core.config import Settings
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
 from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.target_context import TARGET_CONTEXT
 from hina_bot.discord.target_recent import TargetAwareRecentMessages

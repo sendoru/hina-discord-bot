@@ -1,8 +1,9 @@
 from contextvars import ContextVar
 
+from hina_bot.core.recent import RecentMessages
+
 from ..ai.egress_policy import filter_channel_context
 from .chatlog_capture import capture_mode
-from .recent import RecentMessages
 from .reply_context import REPLY_CONTEXT
 from .target_context import TARGET_CONTEXT
 

@@ -3,9 +3,10 @@ import logging
 import discord
 from discord import app_commands
 
+from hina_bot.core.admin_list import sort_rows
+from hina_bot.core.instructions import InstructionRegistry
+
 from .admin_export import export_timestamp, text_attachment
-from .admin_list import sort_rows
-from .instructions import InstructionRegistry
 
 log = logging.getLogger("hina")
 
