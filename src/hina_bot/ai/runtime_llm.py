@@ -3,6 +3,7 @@ import json
 from .egress_policy import filter_channel_context, filter_public_context
 from .information_pipeline import InformationPipeline
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
+from .memory_model_routing import build_memory_model_plan
 from .providers import create_provider_client
 from .routing_plan import build_routing_plan
 from .vision import VISION_REQUEST_ACTIVE, wrap_vision_client
@@ -57,19 +58,11 @@ Discord 최종 답변에는 사용자가 실제로 읽을 대사와 필요한 �
 class LLM(InformationPipeline):
     """Production LLM orchestrating routing, vision, memory, and RP policy."""
 
-    def __init__(self, settings, client=None, memory_client=None):
+    def __init__(self, settings, client=None):
         primary_client = wrap_vision_client(
             client or create_provider_client(settings, settings.provider)
         )
         super().__init__(settings, client=primary_client)
-
-        memory_provider = settings.memory_provider or settings.provider
-        if memory_client is not None:
-            self.memory_client = memory_client
-        elif memory_provider == settings.provider:
-            self.memory_client = self.client
-        else:
-            self.memory_client = create_provider_client(settings, memory_provider)
         self.character = self.character.rstrip() + "\n\n" + GENERAL_RP_OUTPUT_POLICY
 
     async def answer(
@@ -109,12 +102,25 @@ class LLM(InformationPipeline):
         finally:
             VISION_REQUEST_ACTIVE.reset(vision_token)
 
-    async def close(self):
-        try:
-            if self.memory_client is not self.client:
-                await self.memory_client.close()
-        finally:
-            await super().close()
+    async def _memory_request(self, operation: str, instructions: str, payload: dict, plan):
+        request = {
+            "model": plan.model,
+            "instructions": instructions,
+            "input": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            "max_output_tokens": plan.max_output_tokens,
+            "store": False,
+        }
+        route_metadata = plan.telemetry()
+        if self.settings.provider == "gemini":
+            request["thinking_level"] = plan.thinking_level
+        else:
+            route_metadata.pop("requested_thinking_level", None)
+        return await self.usage.request(
+            self.client,
+            operation,
+            route_metadata=route_metadata,
+            **request,
+        )
 
     async def summarize(self, store, scope):
         pending = store.pending(scope)
@@ -132,15 +138,8 @@ class LLM(InformationPipeline):
                 for turn in pending
             ],
         }
-        response = await self.usage.request(
-            self.memory_client,
-            "summarize",
-            model=self.settings.memory_model,
-            instructions=SUMMARY_POLICY,
-            input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-            max_output_tokens=self.settings.memory_output_tokens,
-            store=False,
-        )
+        plan = build_memory_model_plan(self.settings, old, pending, shared=False)
+        response = await self._memory_request("summarize", SUMMARY_POLICY, payload, plan)
         if response.status == "completed" and response.output_text.strip():
             store.save_summary(scope, response.output_text.strip()[:2000], pending[-1]["id"])
 
@@ -148,22 +147,21 @@ class LLM(InformationPipeline):
         pending = store.pending_shared(scope)
         if len(pending) < self.settings.summary_every:
             return
+        old = store.shared_summary(scope)[0]
         payload = {
-            "previous_memory": store.shared_summary(scope)[0],
+            "previous_memory": old,
             "speaker_id": str(scope.user_id),
             "direct_calls": [
                 {"at": turn["created_at"], "user": turn["content"]}
                 for turn in pending
             ],
         }
-        response = await self.usage.request(
-            self.memory_client,
+        plan = build_memory_model_plan(self.settings, old, pending, shared=True)
+        response = await self._memory_request(
             "summarize_shared",
-            model=self.settings.memory_model,
-            instructions=SHARED_SUMMARY_POLICY,
-            input=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-            max_output_tokens=self.settings.memory_output_tokens,
-            store=False,
+            SHARED_SUMMARY_POLICY,
+            payload,
+            plan,
         )
         if response.status == "completed" and response.output_text.strip():
             store.save_shared_summary(
