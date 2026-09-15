@@ -42,13 +42,15 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         super().__init__(settings, client=client)
         self.ambient_weather = AmbientWeatherCache()
 
+    def _call_prefixes(self) -> tuple[str, ...] | None:
+        return getattr(self.settings, "call_prefixes", None)
+
     @staticmethod
     def _looks_like_relation_or_event_question(content: str) -> bool:
         return looks_like_relation_or_event_question(content)
 
-    @classmethod
-    def _looks_like_world_fact_question(cls, content: str) -> bool:
-        return looks_like_world_fact_question(content)
+    def _looks_like_world_fact_question(self, content: str) -> bool:
+        return looks_like_world_fact_question(content, call_prefixes=self._call_prefixes())
 
     @staticmethod
     def _looks_like_in_world_present_state(
@@ -65,7 +67,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         return any(row.get("kind") == "world_fact" for row in references)
 
     def lore_references(self, content: str) -> list[dict]:
-        request = classify_information_request(content)
+        request = classify_information_request(content, call_prefixes=self._call_prefixes())
         references = super().lore_references(request.lore_query)
         if not request.self_profile:
             return references
@@ -77,7 +79,11 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         ] + references
 
     def _web_search_mode(self, content, references, freshness=None) -> str:
-        request = classify_information_request(content, freshness=freshness)
+        request = classify_information_request(
+            content,
+            freshness=freshness,
+            call_prefixes=self._call_prefixes(),
+        )
         if self._looks_like_in_world_present_state(content, references, request.freshness):
             return "none"
         mode = search_mode(
@@ -99,7 +105,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     def build_information_plan(self, routing: RoutingPlan) -> InformationPlan:
         """Resolve retrieval/search decisions once, before request assembly begins."""
         query = routing.routing_query
-        request = classify_information_request(query)
+        request = classify_information_request(query, call_prefixes=self._call_prefixes())
         references = self.lore_references(query)
         freshness = request.freshness
         fact_question = self._looks_like_world_fact_question(query) and not (
