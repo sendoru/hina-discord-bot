@@ -278,16 +278,21 @@ class HinaClient(BaseHinaClient):
             author_id = getattr(author, "id", None)
             if author is None or author_id is None:
                 return False
-            if strict_egress and author_id != scope.user_id:
-                return False
             own_visual = author_id == self.user.id
-            if visual_capture_mode == "direct" and not own_visual:
-                return trigger_text(
-                    candidate,
-                    self.user.id,
-                    self.settings.dm_always_reply,
-                    self.settings.call_prefixes,
-                ) is not None
+            if own_visual:
+                return True
+            if getattr(author, "bot", False):
+                return False
+            direct = trigger_text(
+                candidate,
+                self.user.id,
+                self.settings.dm_always_reply,
+                self.settings.call_prefixes,
+            ) is not None
+            if strict_egress:
+                return direct
+            if visual_capture_mode == "direct":
+                return direct
             return True
 
         visuals = (
@@ -296,7 +301,7 @@ class HinaClient(BaseHinaClient):
                 limits=self.vision_limits,
                 include_reply=True,
                 include_recent=self.store.chat_log_enabled(scope),
-                allowed_context_author_id=scope.user_id if strict_egress else None,
+                allowed_reply_author_id=scope.user_id if strict_egress else None,
                 recent_filter=recent_visual_allowed,
             )
             if text is not None else []
