@@ -15,6 +15,7 @@ MAX_CONTENT_CHARS = 1800
 MAX_VALUES = 20
 MAX_VALUE_CHARS = 60
 _TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
+_LEXEME = re.compile(r"[0-9A-Za-z가-힣]+")
 _STOPWORDS = {"뭐야", "알려줘", "어떻게"}
 
 
@@ -29,6 +30,11 @@ def _split_values(value: str) -> list[str]:
 
 def _terms(text: str) -> set[str]:
     return {token.casefold() for token in _TOKEN.findall(text)
+            if token.casefold() not in _STOPWORDS}
+
+
+def _lexemes(text: str) -> set[str]:
+    return {token.casefold() for token in _LEXEME.findall(text)
             if token.casefold() not in _STOPWORDS}
 
 
@@ -286,6 +292,7 @@ class RuntimeKnowledgeRegistry:
             return []
         folded = query.casefold()
         terms = _terms(query)
+        lexemes = _lexemes(query)
         ranked = []
         for order, row in enumerate(self.list()):
             if not row["enabled"]:
@@ -299,6 +306,8 @@ class RuntimeKnowledgeRegistry:
                 folded_value = value.casefold()
                 if folded_value in folded:
                     score += 5 + min(len(folded_value), 8)
+                else:
+                    score += 3 * len(lexemes & _lexemes(value))
             score += 2 * len(terms & _terms(row["content"]))
             if score:
                 ranked.append((score, -order, row))
