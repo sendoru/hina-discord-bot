@@ -1,6 +1,6 @@
 """Character-specific runtime knobs used by generic bot logic.
 
-The roleplay prompt and lore remain the source of character behavior and facts.  This module only
+The roleplay prompt and lore remain the source of character behavior and facts. This module only
 centralizes identifiers that generic routing/retrieval code needs so forks do not have to patch
 Python source for a different character.
 """
@@ -8,7 +8,11 @@ Python source for a different character.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
+
+_DEFAULT_NAME = "소라사키 히나"
+_TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
 
 
 def _csv(value: str) -> tuple[str, ...]:
@@ -40,11 +44,11 @@ class CharacterConfig:
 
     @property
     def search_stopwords(self) -> frozenset[str]:
-        return frozenset(
-            value.casefold()
-            for value in (*self.aliases, *self.call_prefixes, *self.world_terms)
-            if value
-        )
+        values = (*self.aliases, *self.call_prefixes, *self.world_terms)
+        stopwords = {value.casefold() for value in values if value}
+        for value in values:
+            stopwords.update(token.casefold() for token in _TOKEN.findall(value))
+        return frozenset(stopwords)
 
     @property
     def knowledge_common_terms(self) -> frozenset[str]:
@@ -57,17 +61,25 @@ def get_character_config(*, call_prefixes: tuple[str, ...] | None = None) -> Cha
     ``call_prefixes`` may be supplied from ``Settings`` so runtime overrides made through the bot's
     config command stay authoritative. Other values are process-level fork/deployment settings.
     """
-    name = _env_text("CHARACTER_NAME", "소라사키 히나") or "소라사키 히나"
-    aliases = _env_csv("CHARACTER_ALIASES", "히나,소라사키 히나")
+    name = _env_text("CHARACTER_NAME", _DEFAULT_NAME) or _DEFAULT_NAME
+    hina_defaults = name == _DEFAULT_NAME
+    aliases = _env_csv(
+        "CHARACTER_ALIASES",
+        "히나,소라사키 히나" if hina_defaults else name,
+    )
     aliases = tuple(dict.fromkeys((*aliases, name)))
     prefixes = call_prefixes or _env_csv("CALL_PREFIXES", "히나야") or ("히나야",)
     return CharacterConfig(
         name=name,
         aliases=aliases,
         call_prefixes=prefixes,
-        world_terms=_env_csv("CHARACTER_WORLD_TERMS", "블루,아카이브,선생,선생님"),
-        emoji_prefixes=tuple(
-            value.casefold() for value in _env_csv("CHARACTER_EMOJI_PREFIXES", "hina")
+        world_terms=_env_csv(
+            "CHARACTER_WORLD_TERMS",
+            "블루,아카이브,선생,선생님" if hina_defaults else "",
         ),
-        birthday=_env_text("CHARACTER_BIRTHDAY", "2월 19일"),
+        emoji_prefixes=tuple(
+            value.casefold()
+            for value in _env_csv("CHARACTER_EMOJI_PREFIXES", "hina" if hina_defaults else "")
+        ),
+        birthday=_env_text("CHARACTER_BIRTHDAY", "2월 19일" if hina_defaults else ""),
     )
