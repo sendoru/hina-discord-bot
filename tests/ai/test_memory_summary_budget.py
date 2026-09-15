@@ -45,10 +45,14 @@ def _summary_llm(output_text: str):
     llm = object.__new__(LLM)
     llm.settings = NS(
         summary_every=1,
-        memory_model="memory-model",
+        model="chat-model",
+        model_routing_mode="fixed",
+        memory_routing_smart_threshold=2.0,
         memory_output_tokens=4096,
+        gemini_thinking_level="low",
+        provider="openai",
     )
-    llm.memory_client = object()
+    llm.client = object()
     llm.usage = NS(request=AsyncMock(return_value=NS(
         status="completed",
         output_text=output_text,
@@ -63,7 +67,7 @@ def test_memory_summary_policies_keep_personal_and_shared_limits_separate():
 
 
 @pytest.mark.asyncio
-async def test_personal_summary_uses_memory_generation_budget_and_2000_char_storage_cap():
+async def test_personal_summary_uses_shared_fixed_model_and_memory_generation_budget():
     llm = _summary_llm("x" * 2500)
     store = FakeStore()
     scope = NS(guild_id=None, user_id=100)
@@ -71,14 +75,15 @@ async def test_personal_summary_uses_memory_generation_budget_and_2000_char_stor
     await llm.summarize(store, scope)
 
     request = llm.usage.request.await_args.kwargs
-    assert request["model"] == "memory-model"
+    assert request["model"] == "chat-model"
     assert request["max_output_tokens"] == 4096
     assert request["instructions"] == SUMMARY_POLICY
+    assert request["route_metadata"]["model_tier"] == "fixed"
     assert store.saved_summary == ("x" * 2000, 1)
 
 
 @pytest.mark.asyncio
-async def test_shared_summary_uses_same_generation_budget_but_shared_policy():
+async def test_shared_summary_uses_same_model_pool_and_shared_policy():
     llm = _summary_llm("y" * 1800)
     store = FakeStore()
     scope = NS(guild_id=1, user_id=100)
@@ -86,9 +91,10 @@ async def test_shared_summary_uses_same_generation_budget_but_shared_policy():
     await llm.summarize_shared(store, scope)
 
     request = llm.usage.request.await_args.kwargs
-    assert request["model"] == "memory-model"
+    assert request["model"] == "chat-model"
     assert request["max_output_tokens"] == 4096
     assert request["instructions"] == SHARED_SUMMARY_POLICY
+    assert request["route_metadata"]["model_tier"] == "fixed"
     assert store.saved_shared == ("사용자", "y" * 1500, 2)
 
 
@@ -98,8 +104,6 @@ def _load_settings(monkeypatch, tmp_path, memory_tokens: str | None):
     monkeypatch.setenv("OPENAI_API_KEY", "key")
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.setenv("LLM_MODEL", "gpt-4.1-mini")
-    monkeypatch.setenv("MEMORY_PROVIDER", "")
-    monkeypatch.setenv("MEMORY_MODEL", "")
     if memory_tokens is None:
         monkeypatch.delenv("MEMORY_MAX_OUTPUT_TOKENS", raising=False)
     else:
@@ -116,3 +120,11 @@ def test_memory_generation_budget_defaults_to_4096_and_can_be_overridden(monkeyp
 def test_memory_generation_budget_rejects_out_of_range_values(monkeypatch, tmp_path, value):
     with pytest.raises(ValueError):
         _load_settings(monkeypatch, tmp_path, value)
+
+
+def test_removed_memory_provider_and_model_env_are_ignored(monkeypatch, tmp_path):
+    monkeypatch.setenv("MEMORY_PROVIDER", "gemini")
+    monkeypatch.setenv("MEMORY_MODEL", "legacy-memory-model")
+    value = _load_settings(monkeypatch, tmp_path, None)
+    assert not hasattr(value, "memory_provider")
+    assert not hasattr(value, "memory_model")

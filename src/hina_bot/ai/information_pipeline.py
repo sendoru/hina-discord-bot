@@ -12,6 +12,7 @@ from .information_routing import (
     looks_like_relation_or_event_question,
     looks_like_world_fact_question,
 )
+from .memory_summary import MemorySummaryMixin
 from .model_routing import build_model_plan
 from .note_context import NoteContextStore
 from .request_assembly import RequestAssembler
@@ -34,7 +35,7 @@ _EXTERNAL_PRESENT_STATE_MARKER = re.compile(
 )
 
 
-class InformationPipeline(RequestAssembler):
+class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     """Resolve information/evidence decisions before final request assembly."""
 
     def __init__(self, settings, client=None):
