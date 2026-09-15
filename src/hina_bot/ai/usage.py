@@ -10,6 +10,8 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from time import perf_counter
 
+from hina_bot.core.observability import current_turn_id
+
 _TOKEN_FIELDS = ("input_tokens", "output_tokens", "total_tokens", "cached_tokens", "reasoning_tokens")
 
 # Kept temporarily for backwards-compatible imports; runtime search policy now lives in LLM.
@@ -189,6 +191,9 @@ class UsageLogger:
             "operations": {},
             "models": set(),
         })
+        turn_id = current_turn_id()
+        if turn_id:
+            state["turn_id"] = turn_id
         started = perf_counter()
         token = self._exchange.set(state)
         error_type = None
@@ -217,6 +222,9 @@ class UsageLogger:
         started = perf_counter()
         row = {"at": datetime.now(UTC).isoformat(), "operation": operation,
                "model": kwargs["model"]}
+        turn_id = current_turn_id()
+        if turn_id:
+            row["turn_id"] = turn_id
         if route_metadata:
             allowed = {
                 "model_tier", "model_route_score", "model_route_threshold",
