@@ -13,6 +13,14 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 16
 GIF = b"GIF89a" + b"x" * 16
 
 
+def _history(messages):
+    async def rows():
+        for message in messages:
+            yield message
+
+    return rows()
+
+
 @pytest.mark.asyncio
 async def test_collects_image_attachment_and_ignores_non_image_attachment():
     image = NS(
@@ -35,6 +43,8 @@ async def test_collects_image_attachment_and_ignores_non_image_attachment():
     assert visuals[0].source == "attachment"
     assert visuals[0].name == "screen.png"
     assert visuals[0].mime_type == "image/png"
+    assert visuals[0].context_kind == "current_message"
+    assert visuals[0].reference_strength == "current_message"
     text.read.assert_not_awaited()
 
 
@@ -66,6 +76,51 @@ async def test_collects_custom_emoji_once_and_raster_sticker():
     assert len([url for url in urls if "/emojis/123." in url]) == 1
     assert visuals[0].mime_type == "image/gif"
     assert visuals[1].mime_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_source_quotas_are_shared_across_message_contexts():
+    current_attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="current.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    reply_attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="reply.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    channel = NS(id=10)
+    target = NS(
+        id=40,
+        content="",
+        author=NS(id=200, display_name="대상", name="대상"),
+        channel=channel,
+        attachments=[reply_attachment],
+        stickers=[],
+    )
+    message = NS(
+        id=41,
+        content="히나야 이거 봐",
+        author=NS(id=100, display_name="사용자", name="사용자"),
+        channel=channel,
+        reference=NS(message_id=40, channel_id=10, resolved=target),
+        attachments=[current_attachment],
+        stickers=[],
+    )
+
+    visuals = await collect_visual_inputs(
+        message,
+        limits=VisionLimits(attachments=1, emojis=0, stickers=0),
+        include_reply=True,
+    )
+
+    assert [(v.name, v.context_kind) for v in visuals] == [
+        ("current.png", "current_message")
+    ]
+    reply_attachment.read.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -145,6 +200,204 @@ async def test_lottie_sticker_is_not_sent_as_image():
 
 
 @pytest.mark.asyncio
+async def test_collects_explicit_reply_visual_with_provenance():
+    attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="older.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    channel = NS(id=10)
+    target = NS(
+        id=70,
+        content="이거",
+        author=NS(id=200, display_name="민수", name="민수"),
+        channel=channel,
+        attachments=[attachment],
+        stickers=[],
+    )
+    message = NS(
+        id=71,
+        content="히나야 이건 뭐야?",
+        author=NS(id=100, display_name="사용자", name="사용자"),
+        channel=channel,
+        reference=NS(message_id=70, channel_id=10, resolved=target),
+        attachments=[],
+        stickers=[],
+    )
+
+    visuals = await collect_visual_inputs(message, include_reply=True)
+
+    assert len(visuals) == 1
+    visual = visuals[0]
+    assert visual.context_kind == "replied_message"
+    assert visual.reference_strength == "explicit_reply"
+    assert visual.message_id == "70"
+    assert visual.author_name == "민수"
+    assert "명시적 답장 대상 메시지" in visual.label(1)
+    assert "강한 참조" in visual.label(1)
+
+
+@pytest.mark.asyncio
+async def test_strict_author_filter_blocks_other_users_reply_visual():
+    attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="other.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    channel = NS(id=10)
+    target = NS(
+        id=80,
+        content="",
+        author=NS(id=200, display_name="다른 사용자", name="다른 사용자"),
+        channel=channel,
+        attachments=[attachment],
+        stickers=[],
+    )
+    message = NS(
+        id=81,
+        content="히나야",
+        author=NS(id=100, display_name="사용자", name="사용자"),
+        channel=channel,
+        reference=NS(message_id=80, channel_id=10, resolved=target),
+        attachments=[],
+        stickers=[],
+    )
+
+    visuals = await collect_visual_inputs(
+        message,
+        include_reply=True,
+        allowed_context_author_id=100,
+    )
+
+    assert visuals == []
+    attachment.read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_collects_bounded_recent_image_messages_and_ignores_passive_emojis():
+    newest_attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="newest.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    older_attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="older.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    author = NS(id=100, display_name="사용자", name="사용자", bot=False)
+    newest = NS(
+        id=95,
+        content="사진",
+        author=author,
+        webhook_id=None,
+        attachments=[newest_attachment],
+        stickers=[],
+    )
+    emoji_only = NS(
+        id=94,
+        content="<:old_emoji:123>",
+        author=author,
+        webhook_id=None,
+        attachments=[],
+        stickers=[],
+    )
+    older = NS(
+        id=93,
+        content="예전 사진",
+        author=author,
+        webhook_id=None,
+        attachments=[older_attachment],
+        stickers=[],
+    )
+    channel = NS(id=10, history=lambda **kwargs: _history([newest, emoji_only, older]))
+    message = NS(
+        id=100,
+        content="히나야 아까 거 뭐야?",
+        author=author,
+        channel=channel,
+        attachments=[],
+        stickers=[],
+    )
+    downloader = AsyncMock(return_value=PNG)
+
+    visuals = await collect_visual_inputs(
+        message,
+        include_recent=True,
+        recent_message_limit=1,
+        downloader=downloader,
+    )
+
+    assert [(v.name, v.context_kind, v.reference_strength) for v in visuals] == [
+        ("newest.png", "recent_channel_message", "passive_recent")
+    ]
+    older_attachment.read.assert_not_awaited()
+    downloader.assert_not_awaited()
+    assert "약한 최근 문맥" in visuals[0].label(1)
+
+
+@pytest.mark.asyncio
+async def test_reply_visual_is_not_duplicated_when_it_also_appears_in_recent_history():
+    reply_attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="reply.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    older_attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="older.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    channel = NS(id=10)
+    reply_target = NS(
+        id=110,
+        content="",
+        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
+        channel=channel,
+        webhook_id=None,
+        attachments=[reply_attachment],
+        stickers=[],
+    )
+    older = NS(
+        id=109,
+        content="",
+        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
+        channel=channel,
+        webhook_id=None,
+        attachments=[older_attachment],
+        stickers=[],
+    )
+    channel.history = lambda **kwargs: _history([reply_target, older])
+    message = NS(
+        id=111,
+        content="히나야 이 사진",
+        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
+        channel=channel,
+        reference=NS(message_id=110, channel_id=10, resolved=reply_target),
+        attachments=[],
+        stickers=[],
+    )
+
+    visuals = await collect_visual_inputs(
+        message,
+        include_reply=True,
+        include_recent=True,
+    )
+
+    assert [(v.name, v.context_kind) for v in visuals] == [
+        ("reply.png", "replied_message"),
+        ("older.png", "recent_channel_message"),
+    ]
+    assert reply_attachment.read.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
     observed = []
 
@@ -166,6 +419,7 @@ async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
     channel.send = AsyncMock(return_value=NS(id=1000))
     channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
     channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
+    channel.history.side_effect = lambda **kwargs: _history([])
     author = NS(
         id=100,
         bot=False,
@@ -186,6 +440,7 @@ async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
         channel=channel,
         mentions=[],
         webhook_id=None,
+        reference=None,
         attachments=[attachment],
         stickers=[],
     )
@@ -196,6 +451,69 @@ async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
         assert len(observed) == 1
         assert observed[0].source == "attachment"
         assert observed[0].name == "photo.png"
+        assert observed[0].reference_strength == "current_message"
+        assert message.content == "히나야"
+    finally:
+        await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_passive_recent_visual_alone_does_not_turn_bare_call_into_image_request():
+    llm = NS(
+        answer=AsyncMock(return_value="이미지 답변"),
+        summarize=AsyncMock(),
+        summarize_shared=AsyncMock(),
+        close=AsyncMock(),
+    )
+    store = Store(":memory:")
+    bot = HinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
+    bot._connection.user = NS(id=99)
+    attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="old.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    author = NS(
+        id=100,
+        bot=False,
+        display_name="사용자",
+        guild_permissions=NS(manage_guild=False),
+    )
+    old = NS(
+        id=1,
+        content="히나야 이 사진 봐",
+        author=author,
+        webhook_id=None,
+        attachments=[attachment],
+        stickers=[],
+        mentions=[],
+        guild=None,
+    )
+    channel = MagicMock()
+    channel.id = 10
+    channel.send = AsyncMock(return_value=NS(id=1000))
+    channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
+    channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
+    channel.history.side_effect = lambda **kwargs: _history([old])
+    old.channel = channel
+    message = NS(
+        id=2,
+        content="히나야",
+        author=author,
+        guild=None,
+        channel=channel,
+        mentions=[],
+        webhook_id=None,
+        reference=None,
+        attachments=[],
+        stickers=[],
+    )
+
+    try:
+        await bot.on_message(message)
+        llm.answer.assert_not_awaited()
+        assert channel.send.await_args.args[0] == bot.settings.empty_call_reply
         assert message.content == "히나야"
     finally:
         await bot.close()
