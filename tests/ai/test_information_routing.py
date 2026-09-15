@@ -22,6 +22,32 @@ def test_self_profile_uses_local_lore_without_web():
     assert search_mode(request, [], enabled=True) == "none"
 
 
+def test_character_identity_is_configurable(monkeypatch):
+    monkeypatch.setenv("CHARACTER_NAME", "텐도 아리스")
+    monkeypatch.setenv("CHARACTER_ALIASES", "아리스,텐도 아리스")
+    monkeypatch.setenv("CALL_PREFIXES", "아리스야")
+
+    request = classify_information_request("아리스야 생일 언제야?")
+
+    assert request.route == InformationRoute.LOCAL_LORE
+    assert request.lore_query == "텐도 아리스 생일"
+    assert request.world_fact_question
+
+
+def test_runtime_call_prefix_override_is_respected(monkeypatch):
+    monkeypatch.setenv("CHARACTER_NAME", "텐도 아리스")
+    monkeypatch.setenv("CHARACTER_ALIASES", "아리스,텐도 아리스")
+    monkeypatch.setenv("CALL_PREFIXES", "히나야")
+
+    request = classify_information_request(
+        "아리스야 생일 언제야?",
+        call_prefixes=("아리스야",),
+    )
+
+    assert request.route == InformationRoute.LOCAL_LORE
+    assert request.lore_query == "텐도 아리스 생일"
+
+
 def test_omitted_self_subject_is_canonicalized():
     request = classify_information_request("오늘 키 몇이야?")
     assert request.route == InformationRoute.LOCAL_LORE
