@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from hina_bot.ai.chat_llm import LLM
+from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.information_routing import InformationRoute, classify_information_request
 from hina_bot.core.lore import LoreIndex
 

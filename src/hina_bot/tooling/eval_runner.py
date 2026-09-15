@@ -9,10 +9,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from hina_bot.ai.runtime_llm import LLM
-
-from .config import SUPPORTED_MODEL_PROVIDERS, Settings
-from .routing import Scope
-from .store import Store
+from hina_bot.core.config import SUPPORTED_MODEL_PROVIDERS, Settings
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
 
 DEFAULT_CASES = Path("evals/character_lore_cases.jsonl")
 DEFAULT_RESULTS_DIR = Path("data/evals")

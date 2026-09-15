@@ -2,13 +2,13 @@ import json
 
 import httpx
 import pytest
-from hina_bot.config import Settings
-from hina_bot.lore import LoreIndex
-from hina_bot.routing import Scope
-from hina_bot.store import Store
 from openai import AsyncOpenAI
 
 from hina_bot.ai.runtime_llm import LLM
+from hina_bot.core.config import Settings
+from hina_bot.core.lore import LoreIndex
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
 
 
 @pytest.mark.asyncio

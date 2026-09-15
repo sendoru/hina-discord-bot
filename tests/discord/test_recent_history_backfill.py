@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock
 
 AVAILABLE = find_spec("discord") is not None
 
-from hina_bot.recent import RecentMessages
-from hina_bot.routing import Scope
+from hina_bot.core.recent import RecentMessages
+from hina_bot.core.routing import Scope
 
 if AVAILABLE:
-    from hina_bot.bot import HinaClient
-    from hina_bot.config import Settings
-    from hina_bot.store import Store
+    from hina_bot.core.config import Settings
+    from hina_bot.core.store import Store
+    from hina_bot.discord.bot import HinaClient
 
 
 class RecentBufferTests(unittest.TestCase):

@@ -1,6 +1,5 @@
-from hina_bot.routing import Scope
-
 from hina_bot.ai.egress_policy import filter_channel_context
+from hina_bot.core.routing import Scope
 from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.target_recent import TargetAwareRecentMessages
 

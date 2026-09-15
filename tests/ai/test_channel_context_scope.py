@@ -2,11 +2,12 @@ import json
 
 import httpx
 import pytest
-from hina_bot.chat_llm import LLM
-from hina_bot.config import Settings
-from hina_bot.routing import Scope
-from hina_bot.store import Store
 from openai import AsyncOpenAI
+
+from hina_bot.ai.information_pipeline import LLM
+from hina_bot.core.config import Settings
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
 
 
 def _response():

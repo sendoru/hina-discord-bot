@@ -10,7 +10,7 @@ import urllib.robotparser
 from html.parser import HTMLParser
 from pathlib import Path
 
-from .lore import (
+from hina_bot.core.lore import (
     CONFIDENCE_LEVELS,
     FACT_TYPES,
     KNOWLEDGE_LEVELS,

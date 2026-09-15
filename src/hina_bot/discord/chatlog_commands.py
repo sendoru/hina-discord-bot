@@ -4,9 +4,10 @@ import logging
 import discord
 from discord import app_commands
 
-from .admin_list import MAX_DISCORD_TEXT, table_row
+from hina_bot.core.admin_list import MAX_DISCORD_TEXT, table_row
+from hina_bot.core.routing import Scope
+
 from .chatlog_capture import capture_mode_overrides, set_capture_mode_override
-from .routing import Scope
 
 log = logging.getLogger("hina")
 _TARGET_CHOICES = [

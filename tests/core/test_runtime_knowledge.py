@@ -5,10 +5,10 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
-from hina_bot.admin_db import AdminDatabase
-from hina_bot.knowledge_commands import KnowledgeCommands
-from hina_bot.knowledge_ingest import KnowledgeIngestor
-from hina_bot.runtime_knowledge import RuntimeKnowledgeRegistry
+from hina_bot.core.admin_db import AdminDatabase
+from hina_bot.core.knowledge_ingest import KnowledgeIngestor
+from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
+from hina_bot.discord.knowledge_commands import KnowledgeCommands
 
 
 class RuntimeKnowledgeRegistryTests(unittest.TestCase):

@@ -1,6 +1,6 @@
-from hina_bot.chat_llm import LLM
-from hina_bot.routing import Scope
-from hina_bot.store import Store
+from hina_bot.ai.information_pipeline import LLM
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
 
 
 def test_uses_unsummarized_turns_not_already_in_channel_context():

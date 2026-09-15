@@ -4,8 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
 
-from hina_bot.emoji_commands import EmojiCommands, EmojiRegistry
-from hina_bot.store import Store
+from hina_bot.core.store import Store
+from hina_bot.discord.emoji_commands import EmojiCommands, EmojiRegistry
 
 
 class Emoji:

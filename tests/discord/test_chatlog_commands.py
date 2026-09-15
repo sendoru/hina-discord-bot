@@ -3,10 +3,9 @@ import unittest
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
-from hina_bot.recent import RecentMessages
-from hina_bot.routing import Scope
-from hina_bot.store import Store
-
+from hina_bot.core.recent import RecentMessages
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
 from hina_bot.discord.chatlog_capture import set_capture_mode_override
 from hina_bot.discord.chatlog_commands import ChatLogCommands, _set_mode_override
 
