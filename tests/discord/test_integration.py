@@ -241,33 +241,13 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.store.seen(1))
         self.llm.summarize.assert_not_awaited()
 
-    async def test_forget_permission_blocks_all_mutations(self):
+    async def test_retired_text_command_syntax_is_normal_conversation(self):
         scope = Scope(1, 10, 100)
-        self.store.add(scope, 900, "keep", "reply")
-        self.bot.recent.add(scope, 901, "A", "keep recent")
-        result = await self.bot.command(self.message(), scope, "/기억삭제 확인")
-        self.assertIn("권한", result)
-        self.assertTrue(self.store.history(scope))
-        self.assertTrue(self.bot.recent.context(scope, 999))
-
-    async def test_forget_allowed_for_bot_or_server_admin_and_dm_owner(self):
-        for kind in ("bot", "server", "dm"):
-            scope = Scope(None if kind == "dm" else 1, 10, 100)
-            other = Scope(scope.guild_id, 10, 200)
-            self.bot.emoji_admin_ids = {100} if kind == "bot" else set()
-            self.author.guild_permissions.manage_guild = kind == "server"
-            self.store.add(scope, 910, "delete", "reply")
-            self.store.set_note(other.user_note, "other stays")
-            self.bot.recent.add(scope, 911, "A", "recent")
-            await self.bot.command(self.message(), scope, "/기억삭제 확인")
-            self.assertEqual(self.store.history(scope), [])
-            self.assertEqual(self.bot.recent.context(scope, 999), [])
-            self.assertEqual(self.store.note(other.user_note), "other stays")
-
-    async def test_non_admin_cannot_write_server_note(self):
         await self.bot.on_message(self.message("히나야 /서버메모 override"))
-        self.assertEqual(self.store.note("guild:1"), "")
-        self.llm.answer.assert_not_awaited()
+        self.assertEqual(self.store.note(scope.realm), "")
+        self.llm.answer.assert_awaited_once()
+        recent = self.bot.recent.context(scope, 999)
+        self.assertTrue(any(row["content"] == "히나야 /서버메모 override" for row in recent))
 
     async def test_current_visibility_and_membership_rechecked(self):
         self.store.add_shared_call(Scope(1, 10, 100, True), 500, "speaker", "공개")
@@ -301,19 +281,6 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         calls = self.store.pending_shared(Scope(1, 10, 200))
         self.assertEqual(len(calls), 1)
         self.assertNotIn("A의 일반 발언", str(dict(calls[0])))
-
-    async def test_emoji_message_bypasses_llm_and_memory_and_slash_tree(self):
-        self.bot.emoji_admin_ids.add(self.author.id)
-        await self.bot.on_message(self.message("히나야 /이모지 목록"))
-        self.llm.answer.assert_not_awaited()
-        self.assertFalse(self.store.seen(1))
-        self.assertEqual(self.bot.recent.context(Scope(1, 10, 100), 2), [])
-        self.assertIsNone(self.bot.tree.get_command("emoji"))
-        self.assertIsNotNone(self.bot.tree.get_command("memory"))
-
-    async def test_management_commands_do_not_enter_recent_context(self):
-        await self.bot.on_message(self.message("히나야 /메모 비밀처럼보이는메모", id=1))
-        self.assertEqual(self.bot.recent.context(Scope(1, 10, 100), 2), [])
 
     async def test_other_speakers_public_sources_available_in_server(self):
         self.store.add_shared_call(Scope(1, 10, 200, True), 500, "B", "나는 커피를 좋아해")
@@ -360,11 +327,3 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.store.pending_shared(scope)), 1)
         self.llm.summarize.assert_awaited_once()
 
-    async def test_disabled_writes_reject_manual_notes_but_allow_deletion(self):
-        scope = Scope(1, 10, 100)
-        self.store.set_note(scope.user_note, "old")
-        self.store.set_memory_mode(scope, "off")
-        await self.bot.on_message(self.message("히나야 /메모 new", id=1))
-        self.assertEqual(self.store.note(scope.user_note), "old")
-        await self.bot.on_message(self.message("히나야 /메모삭제", id=2))
-        self.assertEqual(self.store.note(scope.user_note), "")

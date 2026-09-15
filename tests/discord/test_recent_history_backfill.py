@@ -76,7 +76,7 @@ class HistoryBackfillTests(unittest.IsolatedAsyncioTestCase):
             guild=NS(id=1),
         )
 
-    async def test_backfill_recovers_recent_off_period_without_old_or_management_messages(self):
+    async def test_backfill_recovers_recent_off_period_without_old_messages(self):
         now = datetime.now(UTC)
         messages = [
             self.old_message(1, "너무 오래된 대화", now - timedelta(minutes=20)),
@@ -95,8 +95,8 @@ class HistoryBackfillTests(unittest.IsolatedAsyncioTestCase):
         await self.bot.hydrate_recent_history(current, scope)
 
         rows = self.bot.recent.context(scope, current.id)
-        self.assertEqual([row["content"] for row in rows], ["최근 일반 대화", "이전 히나 답변"])
-        self.assertEqual([row["role"] for row in rows], ["user", "assistant"])
+        self.assertEqual([row["content"] for row in rows], ["최근 일반 대화", "히나야 /메모 숨길 내용", "이전 히나 답변"])
+        self.assertEqual([row["role"] for row in rows], ["user", "user", "assistant"])
         self.assertFalse(self.bot.recent.needs_hydration(scope))
         self.assertEqual(channel.kwargs["before"], current)
         self.assertEqual(channel.kwargs["limit"], self.bot.recent.limit)
