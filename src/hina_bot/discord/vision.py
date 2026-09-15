@@ -160,11 +160,14 @@ async def collect_visual_inputs(
     include_reply: bool = False,
     include_recent: bool = False,
     allowed_reply_author_id: int | None = None,
+    allowed_context_author_id: int | None = None,
     recent_filter=None,
     recent_scan_limit: int = RECENT_VISUAL_SCAN_LIMIT,
     recent_message_limit: int = MAX_RECENT_VISUAL_MESSAGES,
 ) -> list[VisualInput]:
     """Return bounded request-scoped visual context without retaining image bytes."""
+    if allowed_reply_author_id is None:
+        allowed_reply_author_id = allowed_context_author_id
     limits = limits or VisionLimits()
     result: list[VisualInput] = []
     counts = {"attachment": 0, "emoji": 0, "sticker": 0}
