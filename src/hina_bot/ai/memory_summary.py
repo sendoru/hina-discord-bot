@@ -102,7 +102,7 @@ class MemorySummaryMixin:
 
 
 __all__ = [
-    "MemorySummaryMixin",
     "SHARED_SUMMARY_POLICY",
     "SUMMARY_POLICY",
+    "MemorySummaryMixin",
 ]
