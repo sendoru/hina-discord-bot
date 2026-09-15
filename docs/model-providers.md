@@ -37,6 +37,7 @@ MEMORY_MODEL=
 LLM_PROVIDER=gemini
 LLM_MODEL=gemini-3.5-flash
 MODEL_ROUTING_MODE=adaptive
+MODEL_ROUTING_SMART_THRESHOLD=2.0
 LLM_FAST_MODEL=gemini-3.5-flash-lite
 LLM_SMART_MODEL=gemini-3.8-flash
 
@@ -44,6 +45,16 @@ FAST_MAX_OUTPUT_TOKENS=4096
 SMART_MAX_OUTPUT_TOKENS=8192
 GEMINI_FAST_THINKING_LEVEL=minimal
 GEMINI_SMART_THINKING_LEVEL=medium
+```
+
+`MODEL_ROUTING_SMART_THRESHOLD`는 adaptive score가 smart tier로 넘어가는 기준이며 기본값은 `2.0`,
+허용 범위는 `0.1`~`10.0`입니다. 가중치 공식은 코드에 유지하고 이 threshold만 외부 설정으로 노출해
+전체 라우팅 민감도를 조절합니다. 값을 낮추면 smart 사용 빈도가 높아지고, 높이면 fast를 더 오래
+유지합니다. 이 값은 runtime 설정이므로 재시작 없이 관리자 명령으로도 바꿀 수 있습니다.
+
+```text
+/config set MODEL_ROUTING_SMART_THRESHOLD 1.8
+/config reset MODEL_ROUTING_SMART_THRESHOLD
 ```
 
 `FAST_MAX_OUTPUT_TOKENS`와 `SMART_MAX_OUTPUT_TOKENS`는 provider 공통 전체 생성 예산입니다. reasoning
@@ -56,10 +67,11 @@ adaptive에서도 비어 있는 fast/smart 모델명은 `LLM_MODEL`로 대체되
 분리하는 운영도 가능합니다. 기억 요약은 이 라우터를 거치지 않고 기존 `MEMORY_MODEL` 하나를
 사용합니다.
 
-선택 결과는 `usage.jsonl`의 `model_tier`, `model_route_score`, `model_route_reasons`,
-`requested_max_output_tokens`에 남습니다. Gemini에서는 선택된 thinking level도 함께 기록합니다.
-사유에는 사용자 메시지 원문이 기록되지 않습니다. 모델 이름과 thinking level의 실제 지원 범위는
-provider별로 다르므로 운영 모델 조합을 바꿀 때 smoke test가 필요합니다.
+선택 결과는 `usage.jsonl`의 `model_tier`, `model_route_score`, `model_route_threshold`,
+`model_route_reasons`, `requested_max_output_tokens`에 남습니다. threshold를 runtime에서 조정해도 각
+응답이 어떤 기준으로 라우팅됐는지 나중에 함께 확인할 수 있습니다. Gemini에서는 선택된 thinking
+level도 함께 기록합니다. 사유에는 사용자 메시지 원문이 기록되지 않습니다. 모델 이름과 thinking
+level의 실제 지원 범위는 provider별로 다르므로 운영 모델 조합을 바꿀 때 smoke test가 필요합니다.
 
 ### Gemini
 
