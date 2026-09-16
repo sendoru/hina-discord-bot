@@ -1,4 +1,21 @@
-# 프롬프트 인젝션 평가
+# 평가 데이터와 실행 방법
+
+## 모델 라우팅 분류기 평가
+
+`model_routing_cases.jsonl`은 짧지만 어려운 요청, 길게 답해 달라는 단순 요청, 디버깅·설계·증명,
+일반 대화와 사용자 소유 follow-up을 포함합니다. 라이브 classifier만 호출하고 최종 답변은 생성하지
+않습니다.
+
+```bash
+uv run hina-routing-eval --provider openai --model gpt-4.1-mini
+uv run hina-routing-eval --limit 10 --fail-on-mismatch
+```
+
+`ROUTING_CLASSIFIER_API_KEY`가 있으면 우선 사용하고, 없으면 선택한 provider의 일반 key를 사용합니다.
+결과는 `data/evals/model-routing-*.json`에 저장하며 semantic level 일치율, 최종 tier 일치율,
+classifier 실패, smart 누락·과잉 선택 수를 집계합니다. 고정밀 rule이나 객관적 부하로 운영 중 호출을
+생략할 사례도 classifier 자체의 회귀를 보기 위해 평가에서는 한 번 분류합니다. 이 평가는 유료 API
+호출이므로 일반 테스트에는 포함되지 않습니다.
 
 ## 일상 화법 평가
 

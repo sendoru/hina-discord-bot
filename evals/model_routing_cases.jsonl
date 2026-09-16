@@ -1,0 +1,36 @@
+{"id":"low-greeting","input":"안녕, 오늘도 잘 지냈어?","expected_level":"low"}
+{"id":"low-small-talk","input":"오늘은 왠지 좀 졸리네","expected_level":"low"}
+{"id":"low-definition","input":"TCP가 뭐야?","expected_level":"low"}
+{"id":"low-single-fact","input":"파이썬에서 리스트 길이는 어떻게 구해?","expected_level":"low"}
+{"id":"low-translation","input":"'좋은 아침'을 영어로 번역해 줘","expected_level":"low"}
+{"id":"low-format","input":"apple, banana, cherry를 줄바꿈 목록으로 바꿔 줘","expected_level":"low"}
+{"id":"low-spelling","input":"'됬어'와 '됐어' 중 뭐가 맞아?","expected_level":"low"}
+{"id":"low-unit-conversion","input":"2시간은 몇 분이야?","expected_level":"low"}
+{"id":"low-direct-command","input":"이 문장을 소문자로 바꿔 줘: HELLO WORLD","expected_level":"low"}
+{"id":"low-simple-summary","input":"다음 문장을 한 문장으로 줄여 줘: 회의는 오후 세 시에 시작하고 장소는 2층 회의실이다.","expected_level":"low"}
+{"id":"low-long-answer-wording","input":"아주 자세하고 단계별로 길게 설명해 줘. 대한민국의 수도는 어디야?","expected_level":"low"}
+{"id":"low-code-reading","input":"len([1, 2, 3])의 결과만 알려 줘","expected_level":"low"}
+{"id":"medium-two-options","input":"작은 개인 프로젝트에서 SQLite와 PostgreSQL 중 무엇을 고를지 장단점을 비교해 줘","expected_level":"medium"}
+{"id":"medium-bounded-review","input":"이 함수 이름 process_data가 하는 일에 비해 모호한지 검토해 줘","expected_level":"medium"}
+{"id":"medium-api-choice","input":"내부 관리 도구라면 REST와 GraphQL 중 어느 쪽이 유지보수하기 편할까?","expected_level":"medium"}
+{"id":"medium-test-cases","input":"로그인 폼을 테스트할 때 반드시 확인할 경계 사례를 정리해 줘","expected_level":"medium"}
+{"id":"medium-refactor-plan","input":"한 파일에 모인 Discord 명령 처리 코드를 나누는 순서를 제안해 줘","expected_level":"medium"}
+{"id":"medium-security-review","input":"사용자 입력을 SQL 쿼리에 붙이는 코드가 왜 위험한지 설명하고 기본 수정 방향을 알려 줘","expected_level":"medium"}
+{"id":"medium-performance","input":"매 요청마다 설정 파일을 읽는 방식의 성능 문제와 간단한 개선책을 알려 줘","expected_level":"medium"}
+{"id":"medium-deployment","input":"개인 봇을 systemd와 Docker 중 무엇으로 배포할지 비교해 줘","expected_level":"medium"}
+{"id":"medium-schema","input":"사용자와 여러 프로젝트를 저장하는 간단한 DB 테이블 관계를 잡아 줘","expected_level":"medium"}
+{"id":"medium-concurrency","input":"동시에 세 요청만 처리하도록 semaphore를 쓰는 방법과 주의점을 설명해 줘","expected_level":"medium"}
+{"id":"medium-followup","input":"그 조건을 추가하면 결론이 어떻게 달라져?","prior_user_request":"캐시를 둘 때 메모리 사용량과 응답 시간을 비교해 줘","expected_level":"medium"}
+{"id":"medium-ambiguous-bounds","input":"이 설정이 운영 환경에서도 괜찮을지 확인할 항목을 알려 줘","expected_level":"medium"}
+{"id":"high-short-proof","input":"무한히 많은 소수가 존재함을 증명해 줘","expected_level":"high"}
+{"id":"high-debug-race","input":"두 coroutine이 같은 dict를 갱신할 때 가끔 값이 사라져. 재현 조건과 원인을 추론해 줘","expected_level":"high"}
+{"id":"high-design-tradeoff","input":"멀티 테넌트 서비스에서 tenant별 암호화 키 격리와 rotation 구조를 설계해 줘","expected_level":"high"}
+{"id":"high-algorithm","input":"동적 간선 추가와 연결성 질의를 모두 처리하면서 rollback도 필요한 자료구조를 설계해 줘","expected_level":"high"}
+{"id":"high-distributed","input":"at-least-once 메시지 처리에서 중복 결제를 막되 장애 복구도 가능한 흐름을 설계해 줘","expected_level":"high"}
+{"id":"high-root-cause","input":"배포 직후 일부 인스턴스에서만 이전 schema를 참조하는데 로그와 migration 순서로 가능한 원인을 좁혀 줘","expected_level":"high"}
+{"id":"high-proof-complexity","input":"P=NP라면 polynomial hierarchy가 collapse하는 과정을 전제부터 유도해 줘","expected_level":"high"}
+{"id":"high-constraints","input":"메모리 64MB, 입력 10만 개, 온라인 질의라는 세 제약을 동시에 만족하는 접근을 찾아 줘","expected_level":"high"}
+{"id":"high-security-model","input":"서로 신뢰하지 않는 플러그인을 한 프로세스에서 실행해야 할 때 위협 모델과 격리 한계를 분석해 줘","expected_level":"high"}
+{"id":"high-database-consistency","input":"두 리전에 쓰기를 허용하면서 사용자별 순서를 보장하려면 어떤 일관성 모델과 충돌 정책이 필요한지 설계해 줘","expected_level":"high"}
+{"id":"high-followup","input":"반례까지 고려하면 그 증명이 여전히 성립해?","prior_user_request":"이 greedy 알고리즘이 항상 최적해를 만든다는 주장을 증명해 줘","expected_level":"high"}
+{"id":"high-debug-evidence","input":"메모리는 계속 증가하지만 객체 수는 일정하고 GC 시간만 늘어난다. 이 관측으로 가능한 누수 원인과 검증 실험을 세워 줘","expected_level":"high"}
