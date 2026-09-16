@@ -326,12 +326,12 @@ class _OpenRouterResponses:
 class OpenRouterClient:
     provider_name = "openrouter"
 
-    def __init__(self, credential: str, *, timeout: float = 45):
+    def __init__(self, credential: str, *, timeout: float = 45, max_retries: int = 2):
         self._client = AsyncOpenAI(
             api_key=credential,
             base_url=OPENROUTER_BASE_URL,
             timeout=timeout,
-            max_retries=2,
+            max_retries=max_retries,
         )
         self.responses = _OpenRouterResponses(self._client.responses)
 
@@ -339,16 +339,25 @@ class OpenRouterClient:
         await self._client.close()
 
 
-def create_provider_client(settings, provider: str):
+def create_provider_client(
+    settings,
+    provider: str,
+    *,
+    credential: str | None = None,
+    timeout: float = 45,
+    max_retries: int = 2,
+    thinking_level: str | None = None,
+):
     provider = normalize_provider(provider)
-    credential = settings.api_key_for(provider)
+    credential = credential if credential is not None else settings.api_key_for(provider)
     if not credential:
         raise ValueError(f"{provider} provider API key가 설정되지 않았습니다.")
     if provider == "gemini":
         return GeminiClient(
             credential,
-            thinking_level=settings.gemini_thinking_level,
+            timeout=timeout,
+            thinking_level=thinking_level or settings.gemini_thinking_level,
         )
     if provider == "openrouter":
-        return OpenRouterClient(credential)
-    return AsyncOpenAI(api_key=credential, timeout=45, max_retries=2)
+        return OpenRouterClient(credential, timeout=timeout, max_retries=max_retries)
+    return AsyncOpenAI(api_key=credential, timeout=timeout, max_retries=max_retries)

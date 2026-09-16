@@ -218,10 +218,21 @@ class UsageLogger:
             state["models"] = sorted(state["models"])
             self._emit(self.exchange_handler, state)
 
-    async def request(self, client, operation: str, *, route_metadata=None, **kwargs):
+    async def request(
+        self,
+        client,
+        operation: str,
+        *,
+        route_metadata=None,
+        accumulate: bool = True,
+        **kwargs,
+    ):
         started = perf_counter()
         row = {"at": datetime.now(UTC).isoformat(), "operation": operation,
                "model": kwargs["model"]}
+        provider = getattr(client, "provider_name", "")
+        if isinstance(provider, str) and provider:
+            row["provider"] = provider
         turn_id = current_turn_id()
         if turn_id:
             row["turn_id"] = turn_id
@@ -231,6 +242,10 @@ class UsageLogger:
                 "model_route_margin", "model_route_reasons", "model_route_policy",
                 "model_route_components", "requested_max_output_tokens",
                 "requested_thinking_level", "requested_total_output_tokens",
+                "model_route_objective_axes", "model_route_objective_bands",
+                "semantic_route_mode", "semantic_route_status", "semantic_route_level",
+                "semantic_route_codes", "model_route_decision_source",
+                "model_route_baseline_tier", "routing_classifier_provider",
             }
             row.update({key: value for key, value in route_metadata.items() if key in allowed})
         responses = []
@@ -278,5 +293,26 @@ class UsageLogger:
             raise
         finally:
             row["elapsed_ms"] = round((perf_counter() - started) * 1000)
-            self._accumulate(row)
+            if accumulate:
+                self._accumulate(row)
             self._emit(self.handler, row)
+
+    def routing_event(self, operation: str, **metadata):
+        """Write a content-free routing decision that is not a second API usage row."""
+        allowed = {
+            "status", "semantic_route_mode", "semantic_route_status",
+            "semantic_route_level", "semantic_route_codes",
+            "model_route_decision_source", "model_route_baseline_tier",
+            "model_route_proposed_tier", "model_route_objective_axes",
+            "model_route_objective_bands", "routing_classifier_provider",
+            "model_route_policy",
+        }
+        row = {
+            "at": datetime.now(UTC).isoformat(),
+            "operation": operation,
+        }
+        turn_id = current_turn_id()
+        if turn_id:
+            row["turn_id"] = turn_id
+        row.update({key: value for key, value in metadata.items() if key in allowed})
+        self._emit(self.handler, row)

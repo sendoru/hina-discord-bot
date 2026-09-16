@@ -34,6 +34,12 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "LLM_SMART_MODEL",
         "FAST_MAX_OUTPUT_TOKENS",
         "SMART_MAX_OUTPUT_TOKENS",
+        "ROUTING_CLASSIFIER_MODE",
+        "ROUTING_CLASSIFIER_PROVIDER",
+        "ROUTING_CLASSIFIER_MODEL",
+        "ROUTING_CLASSIFIER_API_KEY",
+        "ROUTING_CLASSIFIER_TIMEOUT_SECONDS",
+        "ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS",
         "GEMINI_FAST_THINKING_LEVEL",
         "GEMINI_SMART_THINKING_LEVEL",
         "CHANNEL_CONTEXT_CHARS",
@@ -59,6 +65,11 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.smart_model == settings.model
     assert settings.fast_output_tokens == 4096
     assert settings.smart_output_tokens == 8192
+    assert settings.routing_classifier_mode == "off"
+    assert settings.routing_classifier_provider == "openai"
+    assert settings.routing_classifier_model == settings.fast_model
+    assert settings.routing_classifier_timeout_seconds == pytest.approx(4.0)
+    assert settings.routing_classifier_max_output_tokens == 256
     assert settings.channel_context_chars == 6000
     assert settings.history_max_chars == 12000
     assert settings.lore_max_items == 6
@@ -95,6 +106,47 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     assert value.gemini_smart_thinking_level == "high"
     assert not hasattr(value, "gemini_fast_total_output_tokens")
     assert not hasattr(value, "gemini_smart_total_output_tokens")
+
+
+def test_settings_loads_separate_routing_classifier_provider_and_key(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("GEMINI_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("LLM_MODEL", "gemini-main")
+    monkeypatch.setenv("LLM_FAST_MODEL", "gemini-fast")
+    monkeypatch.setenv("ROUTING_CLASSIFIER_MODE", "shadow")
+    monkeypatch.setenv("ROUTING_CLASSIFIER_PROVIDER", "openai")
+    monkeypatch.setenv("ROUTING_CLASSIFIER_MODEL", "gpt-classifier")
+    monkeypatch.setenv("ROUTING_CLASSIFIER_API_KEY", "separate-key")
+    monkeypatch.setenv("ROUTING_CLASSIFIER_TIMEOUT_SECONDS", "3.5")
+    monkeypatch.setenv("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "128")
+
+    value = Settings.load()
+
+    assert value.routing_classifier_mode == "shadow"
+    assert value.routing_classifier_provider == "openai"
+    assert value.routing_classifier_model == "gpt-classifier"
+    assert value.routing_classifier_key() == "separate-key"
+    assert value.routing_classifier_timeout_seconds == pytest.approx(3.5)
+    assert value.routing_classifier_max_output_tokens == 128
+
+
+def test_cross_provider_classifier_requires_explicit_model_when_enabled(
+    monkeypatch, tmp_path
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("GEMINI_API_KEY", "primary-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "classifier-key")
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("LLM_MODEL", "gemini-main")
+    monkeypatch.setenv("ROUTING_CLASSIFIER_MODE", "active")
+    monkeypatch.setenv("ROUTING_CLASSIFIER_PROVIDER", "openai")
+    monkeypatch.delenv("ROUTING_CLASSIFIER_MODEL", raising=False)
+
+    with pytest.raises(ValueError, match="ROUTING_CLASSIFIER_MODEL"):
+        Settings.load()
 
 
 @pytest.mark.parametrize("threshold", ["0", "10.1", "nan", "inf", "not-a-number"])
