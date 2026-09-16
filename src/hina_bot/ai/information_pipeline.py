@@ -3,10 +3,11 @@
 import asyncio
 import logging
 import re
+from dataclasses import replace
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
 from .freshness import FreshnessMode, is_live_domain
-from .information_evidence import search_mode
+from .information_evidence import SearchDecision, search_decision
 from .information_plan import InformationPlan
 from .information_routing import (
     InformationRoute,
@@ -20,7 +21,12 @@ from .note_context import NoteContextStore
 from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
-from .semantic_model_routing import SemanticModelRouter
+from .semantic_model_routing import (
+    SemanticModelRouter,
+    apply_classification,
+    apply_web_classification,
+    prepare_hybrid_plan,
+)
 from .vision import CURRENT_VISUAL_INPUTS
 
 _IN_WORLD_PRESENT_STATE_QUERY = re.compile(
@@ -75,9 +81,21 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         finally:
             await super().close()
 
-    def _start_shadow_classification(self, information, baseline) -> None:
+    def _start_shadow_classification(
+        self,
+        information,
+        baseline,
+        *,
+        channel_context,
+        visual_inputs,
+    ) -> None:
         task = asyncio.create_task(
-            self.semantic_model_router.observe_shadow(information, baseline)
+            self.semantic_model_router.observe_shadow(
+                information,
+                baseline,
+                channel_context=channel_context,
+                visual_inputs=visual_inputs,
+            )
         )
         self._routing_shadow_tasks.add(task)
         task.add_done_callback(self._finish_shadow_classification)
@@ -119,32 +137,44 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         request = classify_information_request(content, call_prefixes=self._call_prefixes())
         return super().lore_references(request.lore_query)
 
-    def _web_search_mode(self, content, references, freshness=None) -> str:
+    def _web_search_decision(
+        self,
+        content,
+        references,
+        freshness=None,
+    ) -> SearchDecision:
         request = classify_information_request(
             content,
             freshness=freshness,
             call_prefixes=self._call_prefixes(),
         )
         if self._looks_like_in_world_present_state(content, references, request.freshness):
-            return "none"
-        mode = search_mode(
+            return SearchDecision("none", True, "in_world_present_state")
+        return search_decision(
             request,
             references,
             enabled=self.settings.chat_web_search,
             default_location=getattr(self.settings, "runtime_default_location", ""),
         )
-        if request.relation_or_event and mode == "none":
-            trusted = any(
-                str(row.get("reference", "")).startswith(("canon.", "runtime_lore."))
-                for row in references
-                if row.get("kind") == "world_fact"
-            )
-            if not trusted:
-                return "required" if self.settings.chat_web_search else "none"
-        return mode
+
+    def _web_search_mode(self, content, references, freshness=None) -> str:
+        """Compatibility helper for focused routing tests."""
+
+        return self._web_search_decision(content, references, freshness).mode
+
+    @staticmethod
+    def _with_search_provenance(information: InformationPlan) -> InformationPlan:
+        return replace(
+            information,
+            provenance=provenance_mode(
+                information.routing.routing_query,
+                web_search=information.search_mode == "required",
+            ),
+        )
 
     def build_information_plan(self, routing: RoutingPlan) -> InformationPlan:
-        """Resolve retrieval/search decisions once, before request assembly begins."""
+        """Resolve deterministic retrieval/search decisions before semantic refinement."""
+
         query = routing.routing_query
         request = classify_information_request(query, call_prefixes=self._call_prefixes())
         references = self.lore_references(query)
@@ -152,15 +182,18 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         fact_question = self._looks_like_world_fact_question(query) and not (
             freshness == FreshnessMode.REQUIRED and is_live_domain(query)
         )
-        web_mode = self._web_search_mode(query, references, freshness)
+        web = self._web_search_decision(query, references, freshness)
         return InformationPlan(
             routing=routing,
             route=request.route,
             references=tuple(references),
             freshness=freshness,
             fact_question=fact_question,
-            search_mode=web_mode,
-            provenance=provenance_mode(query, web_search=web_mode == "required"),
+            search_mode=web.mode,
+            provenance=provenance_mode(query, web_search=web.mode == "required"),
+            search_baseline_mode=web.mode,
+            search_locked=web.locked,
+            search_reason=web.reason,
         )
 
     async def answer(
@@ -177,19 +210,62 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     ) -> str:
         routing = routing_plan or RoutingPlan(content, content)
         information = self.build_information_plan(routing)
+        channel_rows = channel_context or ()
+        visual_inputs = CURRENT_VISUAL_INPUTS.get()
         model_plan = build_model_plan(
             self.settings,
             information,
-            channel_context=channel_context or (),
-            visual_inputs=CURRENT_VISUAL_INPUTS.get(),
+            channel_context=channel_rows,
+            visual_inputs=visual_inputs,
         )
         if self.semantic_model_router is not None and self.settings.model_routing_mode == "adaptive":
             if self.settings.routing_classifier_mode == "active":
-                model_plan = await self.semantic_model_router.active_plan(
-                    information, model_plan
+                prepared, bypass = prepare_hybrid_plan(
+                    self.settings,
+                    model_plan,
+                    "active",
                 )
+                # One combined call is enough whenever either reasoning or web routing remains open.
+                if not bypass or not information.search_locked:
+                    outcome = await self.semantic_model_router.classify(
+                        information,
+                        prepared,
+                    )
+                    previous_search_mode = information.search_mode
+                    information = self._with_search_provenance(
+                        apply_web_classification(information, outcome)
+                    )
+                    final_baseline = model_plan
+                    if information.search_mode != previous_search_mode:
+                        final_baseline = build_model_plan(
+                            self.settings,
+                            information,
+                            channel_context=channel_rows,
+                            visual_inputs=visual_inputs,
+                        )
+                    final_prepared, final_bypass = prepare_hybrid_plan(
+                        self.settings,
+                        final_baseline,
+                        "active",
+                    )
+                    model_plan = (
+                        final_prepared
+                        if final_bypass
+                        else apply_classification(
+                            self.settings,
+                            final_prepared,
+                            outcome,
+                        )
+                    )
+                else:
+                    model_plan = prepared
             elif self.settings.routing_classifier_mode == "shadow":
-                self._start_shadow_classification(information, model_plan)
+                self._start_shadow_classification(
+                    information,
+                    model_plan,
+                    channel_context=channel_rows,
+                    visual_inputs=visual_inputs,
+                )
         weather = None
         if information.route == InformationRoute.GENERAL:
             weather = await self.ambient_weather.current(self.settings)
