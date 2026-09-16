@@ -65,6 +65,7 @@ class LLM(InformationPipeline):
             content,
             safe_channel_context,
             use_memory=use_memory,
+            classifier_context_policy=policy,
         )
         vision_token = VISION_REQUEST_ACTIVE.set(True)
         try:
