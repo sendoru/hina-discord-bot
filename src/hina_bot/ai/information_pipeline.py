@@ -6,6 +6,7 @@ import re
 from dataclasses import replace
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
+from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode, is_live_domain
 from .information_evidence import SearchDecision, search_decision
 from .information_plan import InformationPlan
@@ -16,16 +17,15 @@ from .information_routing import (
     looks_like_world_fact_question,
 )
 from .memory_summary import MemorySummaryMixin
-from .model_routing import build_model_plan
+from .model_routing import baseline_route_state, build_model_plan
 from .note_context import NoteContextStore
 from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
 from .semantic_model_routing import (
     SemanticModelRouter,
-    apply_classification,
     apply_web_classification,
-    prepare_hybrid_plan,
+    semantic_result,
 )
 from .vision import CURRENT_VISUAL_INPUTS
 
@@ -42,6 +42,16 @@ _EXTERNAL_PRESENT_STATE_MARKER = re.compile(
     re.IGNORECASE,
 )
 log = logging.getLogger("hina")
+
+
+def _text_size(value) -> int:
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, dict):
+        return sum(_text_size(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return sum(_text_size(item) for item in value)
+    return 0
 
 
 class InformationPipeline(MemorySummaryMixin, RequestAssembler):
@@ -86,14 +96,14 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         information,
         baseline,
         *,
-        channel_context,
+        context_chars,
         visual_inputs,
     ) -> None:
         task = asyncio.create_task(
             self.semantic_model_router.observe_shadow(
                 information,
                 baseline,
-                channel_context=channel_context,
+                context_chars=context_chars,
                 visual_inputs=visual_inputs,
             )
         )
@@ -159,7 +169,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
 
     def _web_search_mode(self, content, references, freshness=None) -> str:
         """Compatibility helper for focused routing tests."""
-
         return self._web_search_decision(content, references, freshness).mode
 
     @staticmethod
@@ -173,8 +182,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         )
 
     def build_information_plan(self, routing: RoutingPlan) -> InformationPlan:
-        """Resolve deterministic retrieval/search decisions before semantic refinement."""
-
         query = routing.routing_query
         request = classify_information_request(query, call_prefixes=self._call_prefixes())
         references = self.lore_references(query)
@@ -196,6 +203,67 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             search_reason=web.reason,
         )
 
+    def _routing_context_chars(
+        self,
+        store,
+        scope,
+        routing_content: str,
+        *,
+        public_context,
+        channel_context,
+        use_memory: bool,
+    ) -> int:
+        """Measure the dynamic text admitted by the same memory/context policies as assembly."""
+        summary, summary_through = store.summary(scope) if use_memory else ("", 0)
+        channel_rows = self._bind_current_speaker(channel_context or [], scope.user_id)
+        current_channel_only = self._current_channel_scope_only(scope, routing_content)
+
+        history = []
+        if use_memory and scope.guild_id is None:
+            used = 0
+            turns = []
+            for turn in reversed(store.history(scope)):
+                size = len(turn["content"]) + len(turn["reply"])
+                if used + size > self.settings.history_max_chars:
+                    break
+                turns.append(turn)
+                used += size
+            for turn in reversed(turns):
+                history.extend((
+                    {"role": "user", "content": turn["content"]},
+                    {"role": "assistant", "content": turn["reply"]},
+                ))
+
+        server_recent = (
+            self._server_recent_conversation(store, scope, summary_through, channel_rows)
+            if use_memory
+            else []
+        )
+        cross_channel_memory = use_memory and not current_channel_only
+        context = {
+            "server_note": (
+                store.note(scope.realm)
+                if cross_channel_memory and scope.guild_id is not None
+                else ""
+            ),
+            "user_note": store.note(scope.user_note) if cross_channel_memory else "",
+            "conversation_memory": summary,
+            "personal_recent_conversation": server_recent,
+            "public_server_context": (
+                self.authorized_context(scope, public_context or [])
+                if cross_channel_memory
+                else []
+            ),
+            "channel_recent_messages": channel_rows,
+            "conversation_history": history,
+        }
+        context = apply_context_policy(
+            context,
+            scope.user_id,
+            self.settings.external_context_policy,
+        )
+        return _text_size(context)
+
     async def answer(
         self,
         store,
@@ -210,75 +278,92 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     ) -> str:
         routing = routing_plan or RoutingPlan(content, content)
         information = self.build_information_plan(routing)
+
+        assembly_store = store
+        assembly_public_context = public_context
+        assembly_use_memory = use_memory
+        memory_mode = store.memory_mode(scope) if hasattr(store, "memory_mode") else "normal"
+        if not use_memory and memory_mode in {"off", "write_only"}:
+            assembly_store = NoteContextStore(store)
+            assembly_public_context = []
+            assembly_use_memory = True
+
         channel_rows = channel_context or ()
         visual_inputs = CURRENT_VISUAL_INPUTS.get()
-        model_plan = build_model_plan(
+        context_chars = self._routing_context_chars(
+            assembly_store,
+            scope,
+            routing.routing_query,
+            public_context=assembly_public_context,
+            channel_context=channel_rows,
+            use_memory=assembly_use_memory,
+        )
+        baseline_score, baseline_tier, local_level = baseline_route_state(
             self.settings,
             information,
-            channel_context=channel_rows,
+            context_chars=context_chars,
             visual_inputs=visual_inputs,
         )
+
+        model_plan = None
         if self.semantic_model_router is not None and self.settings.model_routing_mode == "adaptive":
             if self.settings.routing_classifier_mode == "active":
-                prepared, bypass = prepare_hybrid_plan(
-                    self.settings,
-                    model_plan,
-                    "active",
-                )
-                # One combined call is enough whenever either reasoning or web routing remains open.
-                if not bypass or not information.search_locked:
+                reasoning_open = baseline_score < self.settings.model_routing_smart_threshold
+                classifier_needed = reasoning_open or not information.search_locked
+                level = ""
+                codes = ()
+                status = "skipped_baseline_smart"
+                source = "rule_shortcut" if local_level else "objective"
+                if classifier_needed:
                     outcome = await self.semantic_model_router.classify(
                         information,
-                        prepared,
+                        baseline_tier=baseline_tier,
                     )
-                    previous_search_mode = information.search_mode
                     information = self._with_search_provenance(
                         apply_web_classification(information, outcome)
                     )
-                    final_baseline = model_plan
-                    if information.search_mode != previous_search_mode:
-                        final_baseline = build_model_plan(
-                            self.settings,
-                            information,
-                            channel_context=channel_rows,
-                            visual_inputs=visual_inputs,
-                        )
-                    final_prepared, final_bypass = prepare_hybrid_plan(
-                        self.settings,
-                        final_baseline,
-                        "active",
-                    )
-                    model_plan = (
-                        final_prepared
-                        if final_bypass
-                        else apply_classification(
-                            self.settings,
-                            final_prepared,
-                            outcome,
-                        )
-                    )
-                else:
-                    model_plan = prepared
+                    if reasoning_open:
+                        level, codes, status = semantic_result(outcome)
+                        source = "semantic" if status == "completed" else "rules_fallback"
+                model_plan = build_model_plan(
+                    self.settings,
+                    information,
+                    context_chars=context_chars,
+                    visual_inputs=visual_inputs,
+                    semantic_level=level,
+                    semantic_codes=codes,
+                    semantic_route_mode="active",
+                    semantic_route_status=status,
+                    model_route_decision_source=source,
+                    model_route_baseline_tier=baseline_tier,
+                )
             elif self.settings.routing_classifier_mode == "shadow":
+                model_plan = build_model_plan(
+                    self.settings,
+                    information,
+                    context_chars=context_chars,
+                    visual_inputs=visual_inputs,
+                )
                 self._start_shadow_classification(
                     information,
                     model_plan,
-                    channel_context=channel_rows,
+                    context_chars=context_chars,
                     visual_inputs=visual_inputs,
                 )
+
+        if model_plan is None:
+            model_plan = build_model_plan(
+                self.settings,
+                information,
+                context_chars=context_chars,
+                visual_inputs=visual_inputs,
+            )
+
         weather = None
         if information.route == InformationRoute.GENERAL:
             weather = await self.ambient_weather.current(self.settings)
         token = CURRENT_AMBIENT_WEATHER.set(weather)
         try:
-            assembly_store = store
-            assembly_public_context = public_context
-            assembly_use_memory = use_memory
-            memory_mode = store.memory_mode(scope) if hasattr(store, "memory_mode") else "normal"
-            if not use_memory and memory_mode in {"off", "write_only"}:
-                assembly_store = NoteContextStore(store)
-                assembly_public_context = []
-                assembly_use_memory = True
             return await super().answer(
                 assembly_store,
                 scope,
