@@ -19,6 +19,7 @@ class RoutingPlan:
     anchor: str = ""
     anchor_source: str = ""
     prior_user_request: str = ""
+    classifier_anchor: str = ""
 
     @property
     def expanded(self) -> bool:
@@ -55,12 +56,28 @@ def build_routing_plan(
         # request's complexity into that new thread merely because it was the caller's latest turn.
         prior_user_request = ""
     anchor_text = anchor.text if anchor else ""
+    classifier_anchor = ""
+    if (
+        anchor
+        and anchor.source == "explicit_reply"
+        and (
+            anchor.role == "assistant"
+            or (
+                anchor.role == "user"
+                and anchor.author_user_id == str(scope.user_id)
+            )
+        )
+    ):
+        # The semantic classifier may use a deliberately selected reply for follow-up grounding, but
+        # never forward another user's reply text to a separately configured classifier provider.
+        classifier_anchor = anchor_text
     return RoutingPlan(
         visible_content=content,
         routing_query=build_query(content, anchor_text),
         anchor=anchor_text,
         anchor_source=anchor.source if anchor else "",
         prior_user_request=prior_user_request,
+        classifier_anchor=classifier_anchor,
     )
 
 

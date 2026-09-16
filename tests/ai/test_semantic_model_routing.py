@@ -160,7 +160,7 @@ def test_uncertain_or_failed_classifier_uses_exact_baseline_tier():
 
 
 @pytest.mark.asyncio
-async def test_classifier_input_excludes_anchor_and_uses_only_owned_prior_request():
+async def test_classifier_input_withholds_unowned_anchor_and_uses_only_owned_prior_request():
     config = settings()
     classifier_client = client(response(
         '{"level":"medium","codes":["constraint_interaction"],"uncertain":false}'
@@ -182,8 +182,21 @@ async def test_classifier_input_excludes_anchor_and_uses_only_owned_prior_reques
     payload = json.loads(request["input"])
     assert payload["current_request"] == "그 조건까지 고려하면?"
     assert payload["prior_user_request"] == "내가 앞서 요청한 내용"
+    assert payload["anchor"] == {"source": "external_reply", "text": ""}
+    assert payload["context_signals"] == {
+        "anchor_present": True,
+        "anchor_included": False,
+        "reference_count": 0,
+        "web_search_required": False,
+    }
     assert "third-party-secret" not in request["input"]
-    assert set(payload) == {"current_request", "prior_user_request", "objective_load"}
+    assert set(payload) == {
+        "current_request",
+        "prior_user_request",
+        "anchor",
+        "context_signals",
+        "objective_load",
+    }
     assert request["store"] is False
     assert "tools" not in request
 
