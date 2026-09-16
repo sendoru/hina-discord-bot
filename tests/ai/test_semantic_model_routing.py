@@ -102,11 +102,15 @@ def test_classifier_parser_accepts_only_current_bounded_schema():
     fenced = parse_classification("```json\n" + classification() + "\n```")
     assert fenced.level == "low"
 
+    invalid_level = (
+        '{"level":"critical","codes":["debugging"],"uncertain":false,'
+        '"web_need":"none","web_codes":["stable_or_contextual"],'
+        '"web_uncertain":false}'
+    )
     for invalid in (
         "not-json",
         '{"level":"high","codes":["debugging"],"uncertain":false}',
-        '{"level":"critical","codes":["debugging"],"uncertain":false,'
-        '"web_need":"none","web_codes":["stable_or_contextual"],"web_uncertain":false}',
+        invalid_level,
     ):
         with pytest.raises(InvalidClassifierResponse):
             parse_classification(invalid)
