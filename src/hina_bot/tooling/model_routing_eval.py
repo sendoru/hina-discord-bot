@@ -18,13 +18,7 @@ from hina_bot.ai.model_routing import build_model_plan
 from hina_bot.ai.providers import create_provider_client, normalize_provider
 from hina_bot.ai.routing_plan import RoutingPlan
 from hina_bot.ai.rp_output_policy import ProvenanceMode
-from hina_bot.ai.semantic_model_routing import (
-    ClassificationOutcome,
-    SemanticClassification,
-    SemanticModelRouter,
-    apply_classification,
-    prepare_hybrid_plan,
-)
+from hina_bot.ai.semantic_model_routing import SemanticModelRouter, semantic_result
 from hina_bot.ai.usage import UsageLogger
 from hina_bot.core.config import Settings
 
@@ -139,26 +133,30 @@ async def run(args) -> tuple[list[dict], dict]:
         for case in cases:
             information = _information(case)
             baseline = build_model_plan(settings, information)
-            prepared, bypass = prepare_hybrid_plan(settings, baseline, "active")
-            outcome = await router.classify(information, prepared)
-            actual = prepared if bypass else apply_classification(settings, prepared, outcome)
-            expected_result = SemanticClassification(
-                case["expected_level"],
-                ("ambiguous",),
-                False,
-            )
-            expected = prepared if bypass else apply_classification(
+            outcome = await router.classify(information, baseline_tier=baseline.tier.value)
+            predicted_level, predicted_codes, status = semantic_result(outcome)
+            actual = build_model_plan(
                 settings,
-                prepared,
-                ClassificationOutcome("completed", expected_result),
+                information,
+                semantic_level=predicted_level,
+                semantic_codes=predicted_codes,
+                semantic_route_mode="active",
+                semantic_route_status=status,
+                model_route_baseline_tier=baseline.tier.value,
             )
-            predicted_level = outcome.result.level if outcome.result else None
+            expected = build_model_plan(
+                settings,
+                information,
+                semantic_level=case["expected_level"],
+                semantic_route_mode="active",
+                semantic_route_status="expected",
+                model_route_baseline_tier=baseline.tier.value,
+            )
             row = {
                 "id": case["id"],
                 "expected_level": case["expected_level"],
-                "predicted_level": predicted_level,
+                "predicted_level": predicted_level or None,
                 "classifier_status": outcome.status,
-                "production_bypass": bypass or None,
                 "baseline_tier": baseline.tier.value,
                 "expected_tier": expected.tier.value,
                 "predicted_tier": actual.tier.value,
@@ -187,7 +185,6 @@ async def run(args) -> tuple[list[dict], dict]:
             row["expected_tier"] != "smart" and row["predicted_tier"] == "smart"
             for row in results
         ),
-        "production_bypasses": sum(bool(row["production_bypass"]) for row in results),
     }
     return results, summary
 
