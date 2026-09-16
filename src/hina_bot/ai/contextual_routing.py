@@ -1,6 +1,7 @@
 """Helpers for short follow-up routing without changing the visible user message."""
 
 import re
+from dataclasses import dataclass
 
 from .rp_output_policy import SOURCE_REQUEST_QUERY
 
@@ -21,6 +22,14 @@ _TOPIC_PARTICLE = re.compile(
 )
 
 
+@dataclass(frozen=True)
+class RoutingAnchor:
+    text: str = ""
+    source: str = ""
+    role: str = ""
+    author_user_id: str = ""
+
+
 def is_followup(text: str) -> bool:
     value = text.strip()
     return bool(
@@ -31,12 +40,18 @@ def is_followup(text: str) -> bool:
     )
 
 
-def find_anchor(store, scope, rows: list[dict], *, use_memory: bool) -> str:
+def find_anchor(store, scope, rows: list[dict], *, use_memory: bool) -> RoutingAnchor:
     for row in reversed(rows):
         if row.get("context_kind") == "replied_message":
             value = str(row.get("content", "")).strip()
             if value:
-                return value[:800]
+                author = row.get("author_user_id") or row.get("user_id")
+                return RoutingAnchor(
+                    value[:800],
+                    "explicit_reply",
+                    str(row.get("role", "")),
+                    str(author or ""),
+                )
 
     speaker = str(scope.user_id)
     for row in reversed(rows):
@@ -46,7 +61,39 @@ def find_anchor(store, scope, rows: list[dict], *, use_memory: bool) -> str:
         if str(author or "") == speaker:
             value = str(row.get("content", "")).strip()
             if value:
-                return value[:800]
+                return RoutingAnchor(
+                    value[:800], "own_prior_turn", "user", speaker
+                )
+
+    if use_memory:
+        turns = store.history(scope)
+        if turns:
+            value = str(turns[-1]["content"]).strip()
+            if value:
+                return RoutingAnchor(
+                    value[:800], "conversation_history", "user", speaker
+                )
+    return RoutingAnchor()
+
+
+def find_prior_user_request(
+    store,
+    scope,
+    rows: list[dict],
+    *,
+    use_memory: bool,
+) -> str:
+    """Return the caller's latest request independently from an explicit topic anchor."""
+    speaker = str(scope.user_id)
+    for row in reversed(rows):
+        if row.get("role") != "user" or row.get("context_kind") == "target_user_history":
+            continue
+        author = row.get("author_user_id") or row.get("user_id")
+        if str(author or "") != speaker:
+            continue
+        value = str(row.get("content", "")).strip()
+        if value:
+            return value[:800]
 
     if use_memory:
         turns = store.history(scope)

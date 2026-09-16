@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -45,7 +46,13 @@ _NEGATED_LONG_ANSWER = re.compile(
 )
 _LISTED_REQUIREMENT = re.compile(r"(?:^|\n)\s*(?:[-*]|\d+[.)])\s+", re.MULTILINE)
 _SURROUNDING_CONTEXT_KINDS = frozenset({"speaker_thread", "prior_reply_source"})
-_CHAT_POLICY = "chat-v2"
+_CHAT_POLICY = "chat-v3"
+_VISUAL_SOURCE_UNITS = {
+    "attachment": 1.0,
+    "sticker": 0.5,
+    "emoji": 0.25,
+}
+_STRONG_VISUAL_REFERENCES = frozenset({"current_message", "explicit_reply"})
 
 
 def _linear_ramp(value: int, *, start: int, full: int, maximum: float) -> float:
@@ -57,7 +64,7 @@ def _linear_ramp(value: int, *, start: int, full: int, maximum: float) -> float:
     return maximum * (value - start) / (full - start)
 
 
-def _saturating_count(value: int, *, maximum: float, half: float) -> float:
+def _saturating_count(value: float, *, maximum: float, half: float) -> float:
     """Give early items more weight while keeping large counts bounded."""
     if value <= 0:
         return 0.0
@@ -136,7 +143,7 @@ def build_model_plan(
     information: InformationPlan,
     *,
     channel_context: list[dict] | tuple[dict, ...] = (),
-    visual_count: int = 0,
+    visual_inputs: Sequence[object] = (),
 ) -> ModelPlan:
     """Choose a tier without an additional model call or inspecting hidden model output."""
     if settings.model_routing_mode != "adaptive":
@@ -144,6 +151,7 @@ def build_model_plan(
 
     visible_text = information.routing.visible_content.strip()
     anchor_text = information.routing.anchor.strip()
+    prior_user_request = information.routing.prior_user_request.strip()
     reasons: list[str] = []
     components: list[tuple[str, float]] = []
 
@@ -161,6 +169,10 @@ def build_model_plan(
         visible_text, _COMPLEX_TASK_REQUEST, _NEGATED_COMPLEX_TASK
     ):
         add(2.0, "complex_request")
+    elif prior_user_request and _affirmative_match(
+        prior_user_request, _COMPLEX_TASK_REQUEST, _NEGATED_COMPLEX_TASK
+    ):
+        add(2.0, "complex_followup")
     elif anchor_text and _affirmative_match(
         anchor_text, _COMPLEX_TASK_REQUEST, _NEGATED_COMPLEX_TASK
     ):
@@ -190,10 +202,25 @@ def build_model_plan(
         "multiple_requirements",
     )
 
-    # One visual or one web lookup is useful context, not a reason by itself to pay for the smart tier.
+    strong_visual_units = sum(
+        _VISUAL_SOURCE_UNITS.get(str(getattr(visual, "source", "")), 0.0)
+        for visual in visual_inputs
+        if getattr(visual, "reference_strength", "") in _STRONG_VISUAL_REFERENCES
+    )
+    passive_visual_units = sum(
+        _VISUAL_SOURCE_UNITS.get(str(getattr(visual, "source", "")), 0.0)
+        for visual in visual_inputs
+        if getattr(visual, "reference_strength", "") == "passive_recent"
+    )
+    # Current-message and explicit-reply visuals are deliberate input. Passive recent images are
+    # only weak continuity context and stay bounded well below a tier decision by themselves.
     add(
-        _saturating_count(visual_count, maximum=1.25, half=1.5),
-        "visual_input",
+        _saturating_count(strong_visual_units, maximum=1.25, half=1.5),
+        "strong_visual_input",
+    )
+    add(
+        _saturating_count(passive_visual_units, maximum=0.3, half=2.0),
+        "passive_visual_context",
     )
 
     if information.search_mode == "required":

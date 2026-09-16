@@ -58,6 +58,19 @@ GEMINI_SMART_THINKING_LEVEL=medium
 사용합니다. 입력 길이만으로는 약 2500자까지 fast를 유지하며 4000자에서 최대 `2.0`에 도달합니다.
 답장 원문과 주변 문맥 등 다른 길이 신호는 서로 의미가 다르므로 같은 곡선을 일괄 적용하지 않습니다.
 
+`왜?` 같은 짧은 후속 질문에서는 검색용 topic anchor와 현재 사용자가 직전에 직접 한 요청을 분리합니다.
+직전 사용자 요청이 분석·증명 같은 복잡한 작업이었다면 `complex_followup`으로 smart tier를 유지하지만,
+제3자의 복잡한 문장을 인용하거나 reply한 경우에는 `complex_reference`의 약한 보조 점수만 줍니다.
+히나의 직전 답변에 reply한 경우에도 같은 사용자의 원래 요청을 별도로 찾아 후속 작업의 난이도를
+유지합니다. 다른 사용자의 메시지에 명시적으로 reply하면 이전 요청의 복잡도는 새 주제로 넘기지
+않습니다.
+
+시각 입력은 단순 개수 대신 출처와 종류를 함께 봅니다. 현재 메시지와 명시적 reply 이미지는 강한
+입력이고, 최근 채널에서 수동적으로 수집한 이미지는 최대 `0.3`의 약한 문맥입니다. 첨부 이미지는
+`1.0`, 스티커는 `0.5`, 커스텀 이모지는 `0.25` 단위로 환산한 뒤 각각 포화 곡선을 적용합니다.
+따라서 현재 첨부 이미지 1장은 `0.5`, 4장은 약 `0.909`이지만 최근 이미지 1장은 `0.1`입니다.
+이미지 파일명, message ID, 작성자와 실제 이미지 내용은 라우팅 telemetry에 기록하지 않습니다.
+
 `MODEL_ROUTING_SMART_THRESHOLD`는 채팅 score가 smart tier로 넘어가는 기준이며 기본값은 `2.0`,
 허용 범위는 `0.1`~`10.0`입니다.
 
@@ -106,7 +119,7 @@ reasoning 또는 thought token을 사용하는 provider에서는 숨은 추론 �
 `model_route_margin`, `model_route_policy`, `model_route_components`, `model_route_reasons`,
 `requested_max_output_tokens`에 남습니다. `model_route_margin`은 score에서 threshold를 뺀 값이고,
 `model_route_components`는 콘텐츠 없이 각 신호가 더하거나 뺀 숫자만 기록합니다. 정책 버전은 현재
-채팅 `chat-v2`, 기억 `memory-v1`입니다. Gemini에서는 선택된 thinking level도 함께 기록합니다.
+채팅 `chat-v3`, 기억 `memory-v1`입니다. Gemini에서는 선택된 thinking level도 함께 기록합니다.
 `operation=summarize`와 `operation=summarize_shared` 행에서도 같은 telemetry를 확인할 수 있습니다.
 fixed 모드의 정책 값은 각각 `chat-fixed-v1`, `memory-fixed-v1`이며 컴포넌트는 비어 있습니다.
 
