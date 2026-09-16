@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
 from .information_plan import InformationPlan
-from .information_routing import InformationRoute
 
 _COMPLEX_TASK_REQUEST = re.compile(
     r"(?:"
@@ -44,31 +43,17 @@ _NEGATED_LONG_ANSWER = re.compile(
     r"(?:말하지\s*말|설명하지\s*말|하지\s*말|말고|빼고)",
     re.IGNORECASE,
 )
-_LISTED_REQUIREMENT = re.compile(r"(?:^|\n)\s*(?:[-*]|\d+[.)])\s+", re.MULTILINE)
-_SURROUNDING_CONTEXT_KINDS = frozenset({"speaker_thread", "prior_reply_source"})
-_CHAT_POLICY = "chat-v3"
-_VISUAL_SOURCE_UNITS = {
-    "attachment": 1.0,
-    "sticker": 0.5,
-    "emoji": 0.25,
-}
-_STRONG_VISUAL_REFERENCES = frozenset({"current_message", "explicit_reply"})
+_CHAT_POLICY = "chat-v4"
+_HYBRID_POLICY = "chat-hybrid-v4"
+_SEMANTIC_VALUES = {"": 0.0, "low": 0.0, "medium": 1.0, "high": 2.0}
 
 
 def _linear_ramp(value: int, *, start: int, full: int, maximum: float) -> float:
-    """Grow linearly after start and saturate at maximum once full is reached."""
     if value <= start:
         return 0.0
     if value >= full:
         return maximum
     return maximum * (value - start) / (full - start)
-
-
-def _saturating_count(value: float, *, maximum: float, half: float) -> float:
-    """Give early items more weight while keeping large counts bounded."""
-    if value <= 0:
-        return 0.0
-    return maximum * value / (value + half)
 
 
 def _soft_length_score(
@@ -88,8 +73,94 @@ def _soft_length_score(
 
 
 def _affirmative_match(text: str, pattern: re.Pattern, negated: re.Pattern) -> bool:
-    """Match a requested action after removing nearby explicit negative instructions."""
     return bool(pattern.search(negated.sub("", text)))
+
+
+def _reference_chars(references: Sequence[object]) -> int:
+    total = 0
+    for row in references:
+        if isinstance(row, Mapping):
+            total += len(str(row.get("content", "")))
+        else:
+            total += len(str(row))
+    return total
+
+
+def semantic_value(level: str) -> float:
+    return _SEMANTIC_VALUES.get(level, 0.0)
+
+
+def local_semantic_level(information: InformationPlan) -> str:
+    """Return only high-confidence local semantic hints used for cheap fallback/bypass."""
+    visible = information.routing.visible_content.strip()
+    prior = information.routing.prior_user_request.strip()
+    if _affirmative_match(visible, _COMPLEX_TASK_REQUEST, _NEGATED_COMPLEX_TASK):
+        return "high"
+    if prior and _affirmative_match(prior, _COMPLEX_TASK_REQUEST, _NEGATED_COMPLEX_TASK):
+        return "high"
+    return ""
+
+
+def wants_expanded_output(information: InformationPlan) -> bool:
+    return _affirmative_match(
+        information.routing.visible_content.strip(),
+        _LONG_ANSWER_REQUEST,
+        _NEGATED_LONG_ANSWER,
+    )
+
+
+def chat_objective_components(
+    information: InformationPlan,
+    *,
+    context_chars: int = 0,
+    visual_inputs: Sequence[object] = (),
+) -> tuple[tuple[str, float], ...]:
+    """Measure four physical loads without interpreting the request's semantic difficulty."""
+    request_load = _soft_length_score(len(information.routing.visible_content.strip()))
+    context_load = _linear_ramp(
+        max(0, context_chars),
+        start=1000,
+        full=8000,
+        maximum=2.0,
+    )
+    evidence_load = _linear_ramp(
+        _reference_chars(information.references),
+        start=500,
+        full=5000,
+        maximum=1.0,
+    )
+    if information.search_mode == "required":
+        evidence_load += 0.5
+    evidence_load = min(evidence_load, 1.5)
+    visual_load = min(len(tuple(visual_inputs)) / 4.0, 1.0)
+    return tuple(
+        (name, round(value, 3))
+        for name, value in (
+            ("request_load", request_load),
+            ("context_load", context_load),
+            ("evidence_load", evidence_load),
+            ("visual_load", visual_load),
+        )
+    )
+
+
+def baseline_route_state(
+    settings,
+    information: InformationPlan,
+    *,
+    context_chars: int = 0,
+    visual_inputs: Sequence[object] = (),
+) -> tuple[float, str, str]:
+    """Return deterministic score/tier plus the local semantic hint without making a ModelPlan."""
+    objective = chat_objective_components(
+        information,
+        context_chars=context_chars,
+        visual_inputs=visual_inputs,
+    )
+    local_level = local_semantic_level(information)
+    score = round(sum(value for _, value in objective) + semantic_value(local_level), 3)
+    tier = ModelTier.SMART.value if score >= settings.model_routing_smart_threshold else ModelTier.FAST.value
+    return score, tier, local_level
 
 
 class ModelTier(StrEnum):
@@ -109,8 +180,6 @@ class ModelPlan:
     reasons: tuple[str, ...]
     policy: str
     components: tuple[tuple[str, float], ...]
-    objective_axes: tuple[tuple[str, float], ...] = ()
-    objective_bands: tuple[tuple[str, str], ...] = ()
     semantic_route_mode: str = "off"
     semantic_route_status: str = "not_used"
     semantic_route_level: str = ""
@@ -130,9 +199,6 @@ class ModelPlan:
             "requested_max_output_tokens": self.max_output_tokens,
             "requested_thinking_level": self.thinking_level,
         }
-        if self.objective_axes:
-            telemetry["model_route_objective_axes"] = dict(self.objective_axes)
-            telemetry["model_route_objective_bands"] = dict(self.objective_bands)
         if self.semantic_route_mode != "off":
             telemetry.update({
                 "semantic_route_mode": self.semantic_route_mode,
@@ -145,52 +211,6 @@ class ModelPlan:
             if self.semantic_route_codes:
                 telemetry["semantic_route_codes"] = list(self.semantic_route_codes)
         return telemetry
-
-
-_OBJECTIVE_COMPONENTS = {
-    "request_load": frozenset({"input_length", "multiple_requirements"}),
-    "context_load": frozenset({
-        "explicit_reply_length",
-        "deep_target_history",
-        "basic_target_history",
-        "target_history_volume",
-        "surrounding_context_length",
-    }),
-    "retrieval_load": frozenset({
-        "required_web_search",
-        "multi_source_lore",
-        "reference_volume",
-    }),
-    "visual_load": frozenset({"strong_visual_input", "passive_visual_context"}),
-}
-
-
-def objective_profile(
-    plan: ModelPlan,
-) -> tuple[tuple[tuple[str, float], ...], tuple[tuple[str, str], ...]]:
-    """Group quantitative routing components without treating wording as objective load."""
-    components = dict(plan.components)
-    axes = tuple(
-        (axis, round(sum(components.get(name, 0.0) for name in names), 3))
-        for axis, names in _OBJECTIVE_COMPONENTS.items()
-    )
-    medium_threshold = min(0.75, plan.smart_threshold)
-    bands = tuple(
-        (
-            axis,
-            "high" if score >= plan.smart_threshold else
-            "medium" if score >= medium_threshold else "low",
-        )
-        for axis, score in axes
-    )
-    return axes, bands
-
-
-def has_high_precision_complex_signal(plan: ModelPlan) -> bool:
-    components = dict(plan.components)
-    return any(components.get(name, 0.0) >= 2.0 for name in (
-        "complex_request", "complex_followup"
-    ))
 
 
 def fixed_model_plan(settings) -> ModelPlan:
@@ -211,168 +231,75 @@ def build_model_plan(
     settings,
     information: InformationPlan,
     *,
-    channel_context: list[dict] | tuple[dict, ...] = (),
+    context_chars: int = 0,
     visual_inputs: Sequence[object] = (),
+    semantic_level: str = "",
+    semantic_codes: Sequence[str] = (),
+    semantic_route_mode: str = "off",
+    semantic_route_status: str = "not_used",
+    model_route_decision_source: str = "deterministic",
+    model_route_baseline_tier: str = "",
 ) -> ModelPlan:
-    """Choose a tier without an additional model call or inspecting hidden model output."""
+    """Choose the final tier from physical load plus one semantic difficulty score."""
     if settings.model_routing_mode != "adaptive":
         return fixed_model_plan(settings)
 
-    visible_text = information.routing.visible_content.strip()
-    anchor_text = information.routing.anchor.strip()
-    prior_user_request = information.routing.prior_user_request.strip()
-    reasons: list[str] = []
-    components: list[tuple[str, float]] = []
-
-    def add(points: float, reason: str, *, minimum_reason: float = 0.0) -> None:
-        points = round(points, 3)
-        if points <= 0:
-            return
-        components.append((reason, points))
-        if points >= minimum_reason:
-            reasons.append(reason)
-
-    # Strong semantic signals come from the user's literal request. A quoted/anchored source may be
-    # technically complex, but source wording such as "분석" must not be mistaken for an instruction.
-    if _affirmative_match(
-        visible_text, _COMPLEX_TASK_REQUEST, _NEGATED_COMPLEX_TASK
-    ):
-        add(2.0, "complex_request")
-    elif prior_user_request and _affirmative_match(
-        prior_user_request, _COMPLEX_TASK_REQUEST, _NEGATED_COMPLEX_TASK
-    ):
-        add(2.0, "complex_followup")
-    elif anchor_text and _affirmative_match(
-        anchor_text, _COMPLEX_TASK_REQUEST, _NEGATED_COMPLEX_TASK
-    ):
-        add(0.5, "complex_reference")
-
-    if _affirmative_match(
-        visible_text, _LONG_ANSWER_REQUEST, _NEGATED_LONG_ANSWER
-    ):
-        add(2.0, "long_answer_requested")
-
-    # Length is a weak signal for short input, becomes useful in the middle, and has diminishing
-    # marginal weight for very long input. There is no hard boundary around an ordinary message size.
-    add(
-        _soft_length_score(len(visible_text)),
-        "input_length",
-        minimum_reason=0.05,
+    objective = chat_objective_components(
+        information,
+        context_chars=context_chars,
+        visual_inputs=visual_inputs,
     )
+    local_level = local_semantic_level(information)
+    chosen_level = semantic_level if semantic_value(semantic_level) >= semantic_value(local_level) else local_level
+    semantic_score = semantic_value(chosen_level)
+    components = objective + (("semantic_score", round(semantic_score, 3)),)
+    score = round(sum(value for _, value in components), 3)
+    threshold = settings.model_routing_smart_threshold
+    smart = score >= threshold
+    expanded_output = wants_expanded_output(information)
 
-    requirement_count = max(
-        visible_text.count("?"),
-        len(_LISTED_REQUIREMENT.findall(visible_text)),
-    )
-    add(
-        _saturating_count(
-            max(0, requirement_count - 1), maximum=1.0, half=1.5
-        ),
-        "multiple_requirements",
-    )
-
-    strong_visual_units = sum(
-        _VISUAL_SOURCE_UNITS.get(str(getattr(visual, "source", "")), 0.0)
-        for visual in visual_inputs
-        if getattr(visual, "reference_strength", "") in _STRONG_VISUAL_REFERENCES
-    )
-    passive_visual_units = sum(
-        _VISUAL_SOURCE_UNITS.get(str(getattr(visual, "source", "")), 0.0)
-        for visual in visual_inputs
-        if getattr(visual, "reference_strength", "") == "passive_recent"
-    )
-    # Current-message and explicit-reply visuals are deliberate input. Passive recent images are
-    # only weak continuity context and stay bounded well below a tier decision by themselves.
-    add(
-        _saturating_count(strong_visual_units, maximum=1.25, half=1.5),
-        "strong_visual_input",
-    )
-    add(
-        _saturating_count(passive_visual_units, maximum=0.3, half=2.0),
-        "passive_visual_context",
-    )
-
-    if information.search_mode == "required":
-        add(0.5, "required_web_search")
-    if information.route == InformationRoute.LOCAL_THEN_WEB:
-        add(0.75, "multi_source_lore")
-
-    # One reference is ordinary grounding. Additional references add synthesis work with diminishing
-    # returns so retrieval volume cannot dominate the decision by itself.
-    add(
-        _saturating_count(
-            max(0, len(information.references) - 1), maximum=0.8, half=3.0
-        ),
-        "reference_volume",
-    )
-
-    reply_chars = sum(
-        len(str(row.get("content", "")))
-        for row in channel_context
-        if row.get("context_kind") == "replied_message"
-    )
-    # Explicit replies are stronger than ambient history because the user deliberately selected the
-    # source. Several thousand characters of quoted material can therefore reach smart by itself.
-    add(
-        _linear_ramp(reply_chars, start=300, full=2000, maximum=2.0),
-        "explicit_reply_length",
-    )
-
-    target_rows = [
-        row for row in channel_context
-        if row.get("context_kind") == "target_user_history"
-    ]
-    if any(row.get("target_retrieval_mode") == "deep" for row in target_rows):
-        add(1.6, "deep_target_history")
-    elif target_rows:
-        add(0.4, "basic_target_history")
-
-    target_chars = sum(len(str(row.get("content", ""))) for row in target_rows)
-    add(
-        _linear_ramp(target_chars, start=300, full=2400, maximum=0.5),
-        "target_history_volume",
-    )
-
-    # Keep explicit replies and target history out of ambient-context scoring so the same text is not
-    # counted twice. Ambient context should influence routing, but only as a modest supporting signal.
-    surrounding_chars = sum(
-        len(str(row.get("content", "")))
-        for row in channel_context
-        if row.get("context_kind") in _SURROUNDING_CONTEXT_KINDS
-    )
-    add(
-        _linear_ramp(surrounding_chars, start=1500, full=5000, maximum=0.75),
-        "surrounding_context_length",
-    )
-
-    score = round(sum(points for _, points in components), 3)
-    smart_threshold = settings.model_routing_smart_threshold
-    smart = score >= smart_threshold
+    reasons = [name for name, value in objective if value > 0]
+    if semantic_score > 0:
+        reasons.append("semantic_score")
+    if expanded_output:
+        reasons.append("long_answer_budget")
     if not reasons:
         reasons.append("routine_request")
+
     return ModelPlan(
         tier=ModelTier.SMART if smart else ModelTier.FAST,
         model=settings.smart_model if smart else settings.fast_model,
         max_output_tokens=(
-            settings.smart_output_tokens if smart else settings.fast_output_tokens
+            settings.smart_output_tokens
+            if smart or expanded_output
+            else settings.fast_output_tokens
         ),
         thinking_level=(
             settings.gemini_smart_thinking_level
             if smart else settings.gemini_fast_thinking_level
         ),
         score=score,
-        smart_threshold=smart_threshold,
+        smart_threshold=threshold,
         reasons=tuple(reasons),
-        policy=_CHAT_POLICY,
-        components=tuple(components),
+        policy=_HYBRID_POLICY if semantic_route_mode != "off" else _CHAT_POLICY,
+        components=components,
+        semantic_route_mode=semantic_route_mode,
+        semantic_route_status=semantic_route_status,
+        semantic_route_level=chosen_level,
+        semantic_route_codes=tuple(semantic_codes),
+        model_route_decision_source=model_route_decision_source,
+        model_route_baseline_tier=model_route_baseline_tier,
     )
 
 
 __all__ = [
     "ModelPlan",
     "ModelTier",
+    "baseline_route_state",
     "build_model_plan",
+    "chat_objective_components",
     "fixed_model_plan",
-    "has_high_precision_complex_signal",
-    "objective_profile",
+    "local_semantic_level",
+    "semantic_value",
+    "wants_expanded_output",
 ]
