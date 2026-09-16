@@ -7,10 +7,9 @@ import pytest
 from hina_bot.ai.freshness import FreshnessMode
 from hina_bot.ai.information_plan import InformationPlan
 from hina_bot.ai.information_routing import InformationRoute
-from hina_bot.ai.model_routing import build_model_plan
 from hina_bot.ai.routing_plan import RoutingPlan, build_routing_plan
 from hina_bot.ai.rp_output_policy import ProvenanceMode
-from hina_bot.ai.semantic_model_routing import SemanticModelRouter, prepare_hybrid_plan
+from hina_bot.ai.semantic_model_routing import SemanticModelRouter
 from hina_bot.ai.usage import UsageLogger
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
@@ -47,6 +46,17 @@ def client(result):
     )
 
 
+def classification(*, level="medium", uncertain=False):
+    return json.dumps({
+        "level": level,
+        "codes": ["constraint_interaction" if level != "low" else "ambiguous"],
+        "uncertain": uncertain,
+        "web_need": "none",
+        "web_codes": ["stable_or_contextual"],
+        "web_uncertain": False,
+    })
+
+
 def information(routing, *, references=(), search_mode="none"):
     return InformationPlan(
         routing=routing,
@@ -56,6 +66,7 @@ def information(routing, *, references=(), search_mode="none"):
         fact_question=False,
         search_mode=search_mode,
         provenance=ProvenanceMode.SILENT,
+        search_locked=True,
     )
 
 
@@ -119,9 +130,7 @@ def test_routing_plan_exposes_only_safe_explicit_reply_to_classifier():
 @pytest.mark.asyncio
 async def test_classifier_payload_includes_bounded_anchor_and_context_signals():
     config = settings()
-    classifier_client = client(response(
-        '{"level":"medium","codes":["constraint_interaction"],"uncertain":false}'
-    ))
+    classifier_client = client(response(classification()))
     router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
     routing = RoutingPlan(
         "그 부분은 왜?",
@@ -132,10 +141,8 @@ async def test_classifier_payload_includes_bounded_anchor_and_context_signals():
         classifier_anchor="앞에서 설명한 복잡한 근거",
     )
     info = information(routing, references=("r1", "r2"), search_mode="required")
-    baseline = build_model_plan(config, info)
-    prepared, _ = prepare_hybrid_plan(config, baseline, "active")
 
-    outcome = await router.classify(info, prepared)
+    outcome = await router.classify(info, baseline_tier="fast")
 
     assert outcome.status == "completed"
     request = classifier_client.responses.create.await_args.kwargs
@@ -149,13 +156,13 @@ async def test_classifier_payload_includes_bounded_anchor_and_context_signals():
         "anchor_included": True,
         "reference_count": 2,
         "web_search_required": True,
+        "web_search_locked": True,
     }
     assert set(payload) == {
         "current_request",
         "prior_user_request",
         "anchor",
         "context_signals",
-        "objective_load",
     }
 
 
@@ -164,9 +171,7 @@ async def test_classifier_payload_marks_withheld_third_party_anchor_without_forw
     store = Store(":memory:")
     scope = Scope(None, 10, 100)
     config = settings()
-    classifier_client = client(response(
-        '{"level":"low","codes":["ambiguous"],"uncertain":true}'
-    ))
+    classifier_client = client(response(classification(level="low", uncertain=True)))
     router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
     try:
         routing = build_routing_plan(
@@ -182,10 +187,8 @@ async def test_classifier_payload_marks_withheld_third_party_anchor_without_forw
             use_memory=False,
         )
         info = information(routing)
-        baseline = build_model_plan(config, info)
-        prepared, _ = prepare_hybrid_plan(config, baseline, "active")
 
-        outcome = await router.classify(info, prepared)
+        outcome = await router.classify(info, baseline_tier="fast")
 
         assert outcome.status == "completed"
         request = classifier_client.responses.create.await_args.kwargs
