@@ -52,11 +52,13 @@ class VisualInput:
         context = {
             "current_message": "현재 메시지",
             "replied_message": "명시적 답장 대상 메시지",
+            "reply_origin_source": "답변을 만든 원래 문맥 메시지",
             "recent_channel_message": "최근 채널 메시지",
         }.get(self.context_kind, "대화 문맥 메시지")
         strength = {
             "current_message": "강한 참조",
             "explicit_reply": "강한 참조",
+            "prior_explicit_reply": "답장 체인의 강한 참조",
             "passive_recent": "약한 최근 문맥",
         }.get(self.reference_strength, self.reference_strength)
         name = " ".join(self.name.split())[:80]
