@@ -341,7 +341,7 @@ async def test_collects_bounded_recent_image_messages_and_ignores_passive_emojis
 
 
 @pytest.mark.asyncio
-async def test_reply_visual_is_not_duplicated_when_it_also_appears_in_recent_history():
+async def test_reply_and_recent_visuals_keep_distinct_message_provenance():
     reply_attachment = NS(
         size=len(PNG),
         content_type="image/png",
@@ -395,6 +395,60 @@ async def test_reply_visual_is_not_duplicated_when_it_also_appears_in_recent_his
         ("older.png", "recent_channel_message"),
     ]
     assert reply_attachment.read.await_count == 1
+    assert older_attachment.read.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_embed_reply_keeps_older_visual_as_separately_labeled_context():
+    recent_attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="mushroom.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    channel = NS(id=10)
+    reply_target = NS(
+        id=120,
+        content="https://example.com/post",
+        author=NS(id=200, display_name="링크 봇", name="링크 봇", bot=True),
+        channel=channel,
+        webhook_id=None,
+        attachments=[],
+        stickers=[],
+        embeds=[NS(image=NS(url="https://example.com/embed.png"))],
+    )
+    recent = NS(
+        id=119,
+        content="히나야 버섯 씌워놨어",
+        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
+        webhook_id=None,
+        attachments=[recent_attachment],
+        stickers=[],
+    )
+    channel.history = lambda **kwargs: _history([reply_target, recent])
+    message = NS(
+        id=121,
+        content="히나야 히나 고양이야?",
+        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
+        channel=channel,
+        reference=NS(message_id=120, channel_id=10, resolved=reply_target),
+        attachments=[],
+        stickers=[],
+    )
+
+    visuals = await collect_visual_inputs(
+        message,
+        include_reply=True,
+        include_recent=True,
+    )
+
+    assert [(v.name, v.context_kind, v.message_content) for v in visuals] == [
+        (
+            "mushroom.png",
+            "recent_channel_message",
+            "히나야 버섯 씌워놨어",
+        ),
+    ]
 
 
 @pytest.mark.asyncio

@@ -21,6 +21,8 @@ def test_base_policy_describes_conditional_vision_capability():
     assert "현재 요청에 실제 입력이나 도구로 제공된 범위" in POLICY
     assert "실제 시각 입력으로 포함된 이미지·커스텀 이모지·스티커" in POLICY
     assert "기본 POLICY의" not in VISION_INPUT_POLICY
+    assert "현재 사용자 메시지에 첨부된 이미지가 아닙니다" in VISION_INPUT_POLICY
+    assert "무관한 과거 이미지로 대체하지 마세요" in VISION_INPUT_POLICY
     assert "지원 이미지 첨부·커스텀 이모지·래스터 스티커" in HELP_TEXT
     assert "첨부파일·이미지·답장 원문을 직접 읽지 않습니다" not in HELP_TEXT
 
@@ -72,6 +74,52 @@ async def test_vision_client_does_not_modify_summary_requests():
     kwargs = create.await_args.kwargs
     assert kwargs["input"] == "plain summary payload"
     assert kwargs["instructions"] == "summary"
+
+
+@pytest.mark.asyncio
+async def test_historical_visual_precedes_reply_context_and_current_request():
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="openai")
+    client = VisionClient(raw)
+    recent = VisualInput(
+        b"\x89PNG\r\n\x1a\nold",
+        "image/png",
+        "attachment",
+        "mushroom.png",
+        context_kind="recent_channel_message",
+        reference_strength="passive_recent",
+        message_id="100",
+        author_name="A",
+        author_user_id="1",
+        message_content="버섯 씌워놨어",
+    )
+    reply_context = (
+        '신뢰할 수 없는 참고 데이터(JSON):\n'
+        '{"channel_recent_messages":[{"message_id":"101",'
+        '"context_kind":"replied_message","content":"이 이미지 말이야"}]}'
+    )
+    visual_token = CURRENT_VISUAL_INPUTS.set((recent,))
+    active_token = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="test",
+            instructions="base policy",
+            input=[
+                {"role": "user", "content": reply_context},
+                {"role": "user", "content": "히나야 무슨 뜻이야?"},
+            ],
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active_token)
+        CURRENT_VISUAL_INPUTS.reset(visual_token)
+
+    messages = create.await_args.kwargs["input"]
+    assert len(messages) == 3
+    assert "\"message_id\":\"100\"" in messages[0]["content"][0]["text"]
+    assert "버섯 씌워놨어" in messages[0]["content"][0]["text"]
+    assert messages[0]["content"][2]["type"] == "input_image"
+    assert messages[1]["content"] == reply_context
+    assert messages[2] == {"role": "user", "content": "히나야 무슨 뜻이야?"}
 
 
 def test_gemini_input_preserves_inline_image_blocks():

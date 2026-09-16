@@ -98,6 +98,7 @@ def _message_metadata(message, context_kind: str, reference_strength: str) -> di
             getattr(author, "display_name", getattr(author, "name", "")) or ""
         )[:100],
         "author_user_id": str(getattr(author, "id", "") or ""),
+        "message_content": str(getattr(message, "content", "") or "")[:2000],
     }
 
 
