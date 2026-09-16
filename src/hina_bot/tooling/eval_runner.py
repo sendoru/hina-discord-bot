@@ -1,7 +1,9 @@
 import argparse
+import ast
 import asyncio
 import json
 import os
+import re
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +21,29 @@ EVAL_USER_ID = 910001
 SPECIAL_EVAL_USER_ID = 910002
 EVAL_GUILD_ID = 920001
 EVAL_CHANNEL_ID = 930001
+VALIDATORS = frozenset({"python_fenced_code", "python_syntax"})
+_PYTHON_FENCE = re.compile(r"```(?:python|py)\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
+
+
+def response_validation_errors(response: str, validators: list[str]) -> list[str]:
+    """Run deterministic checks on the final response without executing generated code."""
+
+    blocks = _PYTHON_FENCE.findall(response)
+    errors = []
+    if "python_fenced_code" in validators and not blocks:
+        errors.append("python 코드 블록이 없습니다.")
+    if "python_syntax" in validators:
+        if not blocks:
+            if "python_fenced_code" not in validators:
+                errors.append("구문을 검사할 python 코드 블록이 없습니다.")
+        else:
+            for index, code in enumerate(blocks, 1):
+                try:
+                    ast.parse(code)
+                except SyntaxError as exc:
+                    location = f"{exc.lineno}:{exc.offset}" if exc.lineno else "알 수 없음"
+                    errors.append(f"python 코드 블록 {index} 구문 오류({location}): {exc.msg}")
+    return errors
 
 
 def read_cases(path: Path) -> list[dict]:
@@ -62,6 +87,12 @@ def read_cases(path: Path) -> list[dict]:
                        or not row["content"].strip()
                        for row in channel_context)):
             raise ValueError(f"{path}:{number}: channel_context는 content가 있는 객체 배열이어야 합니다.")
+        validators = case.get("validators", [])
+        if (not isinstance(validators, list)
+                or any(not isinstance(value, str) or value not in VALIDATORS
+                       for value in validators)):
+            supported = ", ".join(sorted(VALIDATORS))
+            raise ValueError(f"{path}:{number}: validators는 다음 값의 배열이어야 합니다: {supported}")
         cases.append(case)
     ids = [case["id"] for case in cases]
     if len(ids) != len(set(ids)):
@@ -174,6 +205,11 @@ async def run_case(llm: LLM, case: dict) -> dict:
         error = f"{type(exc).__name__}: {exc}"
     finally:
         store.close()
+    validation_errors = (
+        response_validation_errors(responses[-1], case.get("validators", []))
+        if responses and not error
+        else []
+    )
     return {
         "id": case["id"],
         "mode": mode,
@@ -184,6 +220,8 @@ async def run_case(llm: LLM, case: dict) -> dict:
         "expected": case["expected"],
         "responses": responses,
         "error": error,
+        "validators": case.get("validators", []),
+        "validation_errors": validation_errors,
         "provider": llm.settings.provider,
         "model": llm.settings.model,
     }
@@ -202,18 +240,25 @@ def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
         f"- provider: `{results[0]['provider'] if results else ''}`",
         f"- model: `{results[0]['model'] if results else ''}`",
         f"- errors: {sum(bool(row['error']) for row in results)}",
+        f"- validator failures: {sum(bool(row['validation_errors']) for row in results)}",
         "",
         "각 케이스의 `expected`와 실제 응답을 비교해 PASS/FAIL을 수동으로 판정하세요.",
         "실패한 사례는 `evals/character_lore_cases.jsonl`에 회귀 테스트로 남기는 것을 권장합니다.",
         "",
     ]
     for row in results:
-        lines += [f"## {row['id']} ({row['mode']})", "", f"**Expected:** {row['expected']}", ""]
+        attempt = f", attempt {row['attempt']}" if "attempt" in row else ""
+        lines += [f"## {row['id']} ({row['mode']}{attempt})", "",
+                  f"**Expected:** {row['expected']}", ""]
         if row["channel_context"]:
             context_text = json.dumps(row["channel_context"], ensure_ascii=False, indent=2)
             lines += ["**Channel context**", "", "```json", context_text, "```", ""]
         if row["error"]:
             lines += [f"**ERROR:** `{row['error']}`", ""]
+        if row["validation_errors"]:
+            lines += ["**Validator failures**", ""]
+            lines += [f"- {message}" for message in row["validation_errors"]]
+            lines.append("")
         for index, (turn, response) in enumerate(zip(row["turns"], row["responses"]), 1):
             speaker = row["speakers"][index - 1]
             lines += [f"**Turn {index} input ({speaker['speaker']}, {speaker['user_id']})**",
@@ -240,9 +285,18 @@ async def run(args) -> None:
     llm = LLM(settings)
     try:
         results = []
-        for index, case in enumerate(cases, 1):
-            print(f"[{index}/{len(cases)}] {case['id']}", flush=True)
-            results.append(await run_case(llm, case))
+        total = len(cases) * args.repeat
+        completed = 0
+        for case in cases:
+            for attempt in range(1, args.repeat + 1):
+                completed += 1
+                print(
+                    f"[{completed}/{total}] {case['id']} (attempt {attempt}/{args.repeat})",
+                    flush=True,
+                )
+                result = await run_case(llm, case)
+                result["attempt"] = attempt
+                results.append(result)
     finally:
         await llm.close()
 
@@ -255,6 +309,10 @@ async def run(args) -> None:
     print(f"results: {jsonl_path}")
     print(f"report:  {report_path}")
     print(f"errors:  {sum(bool(row['error']) for row in results)}/{len(results)}")
+    print(
+        "validator failures:  "
+        f"{sum(bool(row['validation_errors']) for row in results)}/{len(results)}"
+    )
 
 
 def parser() -> argparse.ArgumentParser:
@@ -262,6 +320,7 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--cases", default=str(DEFAULT_CASES))
     root.add_argument("--id", action="append", help="특정 case id만 실행합니다. 반복 지정할 수 있습니다.")
     root.add_argument("--limit", type=int, help="앞에서부터 N개 case만 실행합니다.")
+    root.add_argument("--repeat", type=int, default=1, help="각 case 반복 횟수. 기본은 1입니다.")
     root.add_argument("--provider", help="openai, gemini, openrouter. 기본은 LLM_PROVIDER입니다.")
     root.add_argument("--model", help="평가에 사용할 모델. 기본은 LLM_MODEL입니다.")
     root.add_argument("--output", help="결과 JSONL 경로. 같은 이름의 .md 리포트도 생성합니다.")
@@ -273,6 +332,8 @@ def main() -> None:
     args = parser().parse_args()
     if args.limit is not None and args.limit <= 0:
         raise SystemExit("--limit은 양수여야 합니다.")
+    if args.repeat <= 0:
+        raise SystemExit("--repeat은 양수여야 합니다.")
     try:
         asyncio.run(run(args))
     except (OSError, ValueError) as exc:

@@ -4,7 +4,13 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from hina_bot.tooling.eval_runner import case_turns, read_cases, run_case, scope_for
+from hina_bot.tooling.eval_runner import (
+    case_turns,
+    read_cases,
+    response_validation_errors,
+    run_case,
+    scope_for,
+)
 
 
 class EvalRunnerTests(unittest.TestCase):
@@ -16,7 +22,7 @@ class EvalRunnerTests(unittest.TestCase):
             {"id": "channel", "input": "배고파", "expected": "현재 화자에게 답한다.",
              "mode": "server", "channel_context": [
                  {"user_id": "99", "name": "A", "role": "user", "content": "아까 한 말"},
-             ]},
+             ], "validators": ["python_syntax"]},
         ]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "cases.jsonl"
@@ -27,6 +33,7 @@ class EvalRunnerTests(unittest.TestCase):
         self.assertEqual(case_turns(cases[1]), ["안녕", "오늘 뭐 했어?"])
         self.assertEqual(cases[1]["mode"], "special_dm")
         self.assertEqual(cases[2]["channel_context"][0]["name"], "A")
+        self.assertEqual(cases[2]["validators"], ["python_syntax"])
 
     def test_rejects_duplicate_ids_invalid_mode_and_bad_channel_context(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -36,6 +43,11 @@ class EvalRunnerTests(unittest.TestCase):
                 json.dumps({"id": "same", "input": "b", "expected": "y"}) + "\n",
                 encoding="utf-8",
             )
+            with self.assertRaises(ValueError):
+                read_cases(path)
+            path.write_text(json.dumps(
+                {"id": "bad-validator", "input": "a", "expected": "x",
+                 "validators": ["execute_python"]}) + "\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 read_cases(path)
             path.write_text(json.dumps(
@@ -58,6 +70,24 @@ class EvalRunnerTests(unittest.TestCase):
         self.assertIsNone(special.guild_id)
         self.assertNotEqual(normal.user_id, special.user_id)
         self.assertIsNotNone(server.guild_id)
+
+    def test_python_response_validators_parse_without_execution(self):
+        valid = "설명\n```python\ndef solve():\n    return 1\n```"
+        invalid = "```python\ndef solve():\nreturn 1\n```"
+        self.assertEqual(
+            response_validation_errors(valid, ["python_fenced_code", "python_syntax"]),
+            [],
+        )
+        errors = response_validation_errors(
+            invalid,
+            ["python_fenced_code", "python_syntax"],
+        )
+        self.assertEqual(len(errors), 1)
+        self.assertIn("구문 오류", errors[0])
+        self.assertEqual(
+            response_validation_errors("print(1)", ["python_fenced_code", "python_syntax"]),
+            ["python 코드 블록이 없습니다."],
+        )
 
 
 class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
@@ -89,6 +119,7 @@ class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["channel_context"], context)
         self.assertEqual(result["responses"], ["ok"])
         self.assertEqual(result["error"], "")
+        self.assertEqual(result["validation_errors"], [])
 
 
 def test_tone_cases_include_valid_speaker_switches():
