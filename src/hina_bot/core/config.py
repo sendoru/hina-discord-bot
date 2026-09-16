@@ -10,6 +10,7 @@ SUPPORTED_MODEL_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
 GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
+ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 
 
 def parse_call_prefixes(value: str) -> tuple[str, ...]:
@@ -62,6 +63,12 @@ class Settings:
     fast_output_tokens: int = 4096
     smart_output_tokens: int = 8192
     memory_output_tokens: int = 4096
+    routing_classifier_mode: str = "off"
+    routing_classifier_provider: str = "openai"
+    routing_classifier_model: str = "gpt-4.1-mini"
+    routing_classifier_api_key: str = ""
+    routing_classifier_timeout_seconds: float = 4.0
+    routing_classifier_max_output_tokens: int = 256
     provider: str = "openai"
     openai_api_key: str = ""
     gemini_api_key: str = ""
@@ -117,6 +124,12 @@ class Settings:
             return self.api_key.strip()
         return ""
 
+    def routing_classifier_key(self) -> str:
+        """Use a dedicated classifier credential when configured, otherwise the provider key."""
+        return self.routing_classifier_api_key.strip() or self.api_key_for(
+            self.routing_classifier_provider
+        )
+
     @classmethod
     def load(cls):
         load_dotenv(Path.cwd() / ".env.local", override=False)
@@ -164,6 +177,40 @@ class Settings:
                for value in (fast_model, smart_model)):
             raise ValueError("LLM_FAST_MODEL과 LLM_SMART_MODEL은 줄바꿈 없이 200자 이하여야 합니다.")
 
+        routing_classifier_mode = os.getenv(
+            "ROUTING_CLASSIFIER_MODE", "off"
+        ).strip().lower()
+        if routing_classifier_mode not in ROUTING_CLASSIFIER_MODES:
+            allowed = ", ".join(sorted(ROUTING_CLASSIFIER_MODES))
+            raise ValueError(f"ROUTING_CLASSIFIER_MODE은 {allowed} 중 하나여야 합니다.")
+        routing_classifier_provider = _provider(
+            os.getenv("ROUTING_CLASSIFIER_PROVIDER", provider) or provider,
+            "ROUTING_CLASSIFIER_PROVIDER",
+        )
+        classifier_model_value = os.getenv("ROUTING_CLASSIFIER_MODEL", "").strip()
+        if (routing_classifier_mode != "off" and not classifier_model_value
+                and routing_classifier_provider != provider):
+            raise ValueError(
+                "다른 provider의 routing classifier를 사용하려면 "
+                "ROUTING_CLASSIFIER_MODEL을 설정해 주세요."
+            )
+        routing_classifier_model = classifier_model_value or fast_model
+        if (len(routing_classifier_model) > 200
+                or any(c in routing_classifier_model for c in "\r\n\0")):
+            raise ValueError("ROUTING_CLASSIFIER_MODEL은 줄바꿈 없이 200자 이하여야 합니다.")
+        try:
+            routing_classifier_timeout_seconds = float(
+                os.getenv("ROUTING_CLASSIFIER_TIMEOUT_SECONDS", "4")
+            )
+            routing_classifier_max_output_tokens = int(
+                os.getenv("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "256")
+            )
+        except ValueError as exc:
+            raise ValueError(
+                "ROUTING_CLASSIFIER_TIMEOUT_SECONDS와 "
+                "ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS는 숫자여야 합니다."
+            ) from exc
+
         memory_output_tokens = int(os.getenv("MEMORY_MAX_OUTPUT_TOKENS", "4096"))
 
         keys = {
@@ -173,6 +220,14 @@ class Settings:
         }
         if not keys[provider]:
             raise ValueError(f"{_env_key(provider)}를 설정해 주세요.")
+        routing_classifier_api_key = os.getenv("ROUTING_CLASSIFIER_API_KEY", "").strip()
+        if (routing_classifier_mode != "off"
+                and not routing_classifier_api_key
+                and not keys[routing_classifier_provider]):
+            raise ValueError(
+                "ROUTING_CLASSIFIER_API_KEY 또는 "
+                f"{_env_key(routing_classifier_provider)}를 설정해 주세요."
+            )
 
         output_tokens = int(os.getenv("MAX_OUTPUT_TOKENS", "1000"))
         fast_output_tokens = int(os.getenv("FAST_MAX_OUTPUT_TOKENS", "4096"))
@@ -247,6 +302,12 @@ class Settings:
             fast_model=fast_model, smart_model=smart_model,
             fast_output_tokens=fast_output_tokens,
             smart_output_tokens=smart_output_tokens,
+            routing_classifier_mode=routing_classifier_mode,
+            routing_classifier_provider=routing_classifier_provider,
+            routing_classifier_model=routing_classifier_model,
+            routing_classifier_api_key=routing_classifier_api_key,
+            routing_classifier_timeout_seconds=routing_classifier_timeout_seconds,
+            routing_classifier_max_output_tokens=routing_classifier_max_output_tokens,
             openai_api_key=keys["openai"], gemini_api_key=keys["gemini"],
             openrouter_api_key=keys["openrouter"],
             gemini_thinking_level=gemini_thinking_level,
@@ -297,6 +358,8 @@ class Settings:
                 and 128 <= s.output_tokens <= 65536
                 and 128 <= s.fast_output_tokens <= s.smart_output_tokens <= 65536
                 and 128 <= s.memory_output_tokens <= 65536
+                and 0.25 <= s.routing_classifier_timeout_seconds <= 30.0
+                and 32 <= s.routing_classifier_max_output_tokens <= 1024
                 and 0.1 <= s.model_routing_smart_threshold <= 10.0
                 and 0.1 <= s.memory_routing_smart_threshold <= 10.0
                 and 0 <= s.history_max_chars <= 120000
@@ -310,6 +373,7 @@ class Settings:
             raise ValueError("설정 범위 오류: cooldown 0~3600, concurrency 1~20, "
                              "output_tokens 128~65536, fast output <= smart output, "
                              "memory output tokens 128~65536, "
+                             "routing classifier timeout 0.25~30초, output tokens 32~1024, "
                              "model/memory routing smart threshold 0.1~10.0, "
                              "2 <= summary_every <= history_turns <= 30, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
