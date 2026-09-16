@@ -101,9 +101,8 @@ def _classifier_context(
         if str(row.get("context_kind") or "") == "speaker_thread"
     ]
 
-    causal_budget = min(
-        _CLASSIFIER_CONTEXT_BUDGET,
-        _CLASSIFIER_CAUSAL_BUDGET if speaker else _CLASSIFIER_CONTEXT_BUDGET,
+    causal_budget = (
+        _CLASSIFIER_CAUSAL_BUDGET if speaker else _CLASSIFIER_CONTEXT_BUDGET
     )
     causal_selected, causal_unused, slots = _take_context(
         causal,
@@ -119,33 +118,8 @@ def _classifier_context(
         slots=slots,
     )
 
-    # Preserve the source order used by request assembly instead of grouping the two slices.
-    selected_ids = {
-        (item.kind, item.role, item.ownership, item.text)
-        for item in causal_selected + speaker_selected
-    }
-    ordered = []
-    for row in safe:
-        text = str(row.get("content") or "").strip()
-        ownership = _ownership(row, current_user_id)
-        key = (
-            str(row.get("context_kind") or "context"),
-            str(row.get("role") or ""),
-            ownership,
-            text,
-        )
-        exact = next((item for item in causal_selected + speaker_selected if (
-            item.kind == key[0]
-            and item.role == key[1]
-            and item.ownership == key[2]
-            and (item.text == text or text.endswith(item.text))
-        )), None)
-        if exact is not None and (
-            exact.kind, exact.role, exact.ownership, exact.text
-        ) in selected_ids:
-            ordered.append(exact)
-            selected_ids.remove((exact.kind, exact.role, exact.ownership, exact.text))
-    return tuple(ordered)
+    # Same-speaker continuity precedes the currently selected reply chain conceptually.
+    return tuple(speaker_selected + causal_selected)
 
 
 def build_routing_plan(
