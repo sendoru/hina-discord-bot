@@ -116,14 +116,23 @@ ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS=256
 ```
 
 classifier client는 일반 답변 client와 분리되며 vision, 웹 도구, retry를 사용하지 않습니다. 별도 API
-key는 quota·비용·폐기 범위를 분리할 때만 필요합니다. 별도 provider를 지정하면 현재 사용자 요청이 그
-provider에도 전달되므로 운영자가 명시적으로 선택해야 합니다.
+key는 quota·비용·폐기 범위를 분리할 때만 필요합니다. 별도 provider를 지정하면 현재 사용자 요청뿐
+아니라 아래에서 허용된 routing context도 그 provider에 전달되므로 운영자가 명시적으로 선택해야 합니다.
 
-classifier에는 현재 사용자 요청, 현재 사용자가 소유한 직전 요청, 안전하게 전달 가능한 reply anchor와
-원문 없는 구조적 신호만 제한된 길이로 전달합니다. physical load score, 채널 전체 문맥, 제3자 reply
-원문, memory/note/lore, 캐릭터 프롬프트, 이미지와 식별자는 보내지 않습니다. 현재 schema는
-`level`, `codes`, `uncertain`, `web_need`, `web_codes`, `web_uncertain` 여섯 필드를 모두 요구하며 예전
-reasoning-only 3-field 응답은 더 이상 허용하지 않습니다.
+classifier에는 현재 사용자 요청과 기존 `prior_user_request`/reply anchor 외에 최대 **4000자, 8개 항목**의
+`routing_context`를 전달합니다. 최근 채널 전체를 넘기지는 않고, 이미 context subsystem이 선택한
+`reply_origin_source` → `reply_origin_request` → `replied_message` 인과 체인과 `prior_reply_source`,
+그리고 현재 사용자와 히나 사이의 `speaker_thread`만 사용합니다. reply 인과 문맥이 있으면 최대 2800자를
+우선 확보하고 남는 예산을 speaker thread에 사용합니다. 각 항목에는 `kind`, `role`, `ownership`을 함께
+보내 제3자 인용문을 현재 사용자의 지시로 오인하지 않도록 합니다.
+
+이 context도 `EXTERNAL_CONTEXT_POLICY`를 그대로 따릅니다. `bot_interactions_only`에서는 임의의 제3자
+메시지 원문이 classifier에 전달되지 않습니다. `full`에서는 사용자가 명시적으로 reply한 제3자 원문이
+`ownership=external`인 인용 문맥으로 포함될 수 있으며, classifier provider를 별도로 설정했다면 해당
+provider에도 전달됩니다. physical load score, ambient 채널 대화 전체, target-user history, memory/note/lore,
+캐릭터 프롬프트, 이미지와 식별자는 classifier에 보내지 않습니다. 현재 schema는 `level`, `codes`,
+`uncertain`, `web_need`, `web_codes`, `web_uncertain` 여섯 필드를 모두 요구하며 예전 reasoning-only
+3-field 응답은 더 이상 허용하지 않습니다.
 
 ### 장기 기억 `memory-v2`
 
