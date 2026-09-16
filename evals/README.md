@@ -20,10 +20,15 @@ classifier 실패, smart 누락·과잉 선택 수를 집계합니다. 고정밀
 ## 일상 화법 평가
 
 `hina-eval --cases evals/tone_cases.jsonl --provider <provider> --model <model>`로
-29개 화법 사례를 실행할 수 있어요. 모델 API 키와 비용이 필요하며 기본 단위 테스트에서는
+화법 사례를 실행할 수 있어요. 모델 API 키와 비용이 필요하며 기본 단위 테스트에서는
 실행하지 않아요. `--id <case-id>`로 일부만 실행할 수도 있어요.
 결과 JSONL과 Markdown의 실제 응답을 `expected`와 비교해서 수동 평가해요.
 이 러너의 정상 종료는 화법 PASS를 의미하지 않아요.
+
+확률적인 회귀는 `--repeat 3`처럼 같은 사례를 반복해 확인할 수 있어요. 사례의 `validators`에는
+`python_fenced_code`, `python_syntax`를 지정할 수 있고, 생성 코드를 실행하지 않은 채 마지막
+응답의 Python 코드 블록 존재 여부와 구문만 검사해요. validator 실패는 JSONL과 Markdown
+리포트에 별도로 기록돼요.
 
 `turns`는 기존 문자열 배열을 지원하며, server 모드에서는
 `{"input":"안녕", "user_id":910011, "speaker":"A"}` 객체도 지원해요.

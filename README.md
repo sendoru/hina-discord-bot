@@ -44,6 +44,24 @@ DISCORD_TOKEN=...
 Gemini/OpenRouter 설정과 답변 모델·기억 모델 분리는
 [`docs/model-providers.md`](docs/model-providers.md)를 참고하세요.
 
+### GitHub Actions 환경 변수 동기화
+
+GitHub CLI를 설치하고 `gh auth login`을 마친 뒤 로컬 dotenv 값을 저장소의 Actions 설정으로
+동기화할 수 있습니다. 먼저 값 없이 분류 결과만 확인하는 것을 권장합니다.
+
+```bash
+uv run python scripts/sync_github_actions_env.py .env.local \
+  --repo sendoru/hina-discord-bot --dry-run
+uv run python scripts/sync_github_actions_env.py .env.local \
+  --repo sendoru/hina-discord-bot
+```
+
+`*_API_KEY`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`, `*_PRIVATE_KEY`는 Secret으로, 나머지는
+Variable로 등록합니다. 빈 값은 기존 원격 값을 덮어쓰지 않도록 건너뜁니다. 이름만으로 분류하기
+어려운 값은 `--secret NAME` 또는 `--variable NAME`으로 명시할 수 있습니다. GitHub Environment에
+등록하려면 `--environment production`을 추가합니다. 값은 명령행 인자나 출력에 표시하지 않고
+`gh secret set`/`gh variable set`의 표준입력으로 전달합니다.
+
 테스트:
 
 ```bash
