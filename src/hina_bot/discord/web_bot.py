@@ -17,6 +17,7 @@ from .reply_context import REPLY_CONTEXT, collect_reply_context
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
 from .target_recent import CURRENT_DIRECT_TRIGGER, TargetAwareRecentMessages
+from .turn_provenance import CURRENT_TURN_PROVENANCE, build_turn_provenance
 from .vision import VisionLimits, collect_visual_inputs
 
 log = logging.getLogger("hina")
@@ -263,11 +264,12 @@ class HinaClient(BaseHinaClient):
             await collect_reply_context(
                 message,
                 self.user.id,
-                allowed_author_id=scope.user_id if strict_egress else None,
+                allowed_author_id={scope.user_id, self.user.id} if strict_egress else None,
             )
             if text is not None
             else []
         )
+        reply_chain_visual_ids = self.recent.reply_chain_visual_ids(scope, replied)
 
         visual_capture_mode = capture_mode(self.store, scope)
 
@@ -301,7 +303,11 @@ class HinaClient(BaseHinaClient):
                 limits=self.vision_limits,
                 include_reply=True,
                 include_recent=self.store.chat_log_enabled(scope),
-                allowed_reply_author_id=scope.user_id if strict_egress else None,
+                allowed_reply_author_id=(
+                    {scope.user_id, self.user.id} if strict_egress else None
+                ),
+                context_message_ids=reply_chain_visual_ids,
+                allowed_context_author_id=scope.user_id if strict_egress else None,
                 recent_filter=recent_visual_allowed,
             )
             if text is not None else []
@@ -328,6 +334,11 @@ class HinaClient(BaseHinaClient):
         target_token = TARGET_CONTEXT.set(tuple(sampled))
         reply_token = REPLY_CONTEXT.set(tuple(replied))
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
+        provenance_token = CURRENT_TURN_PROVENANCE.set(
+            build_turn_provenance(message, text or "", replied, visuals)
+            if text is not None
+            else None
+        )
         public_token = CURRENT_PUBLIC_CONTEXT_REQUEST.set(public_request)
         direct_token = CURRENT_DIRECT_TRIGGER.set(text is not None)
 
@@ -351,6 +362,7 @@ class HinaClient(BaseHinaClient):
             CURRENT_DIRECT_TRIGGER.reset(direct_token)
             CURRENT_PUBLIC_CONTEXT_REQUEST.reset(public_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)
+            CURRENT_TURN_PROVENANCE.reset(provenance_token)
             REPLY_CONTEXT.reset(reply_token)
             TARGET_CONTEXT.reset(target_token)
 
