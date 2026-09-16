@@ -1,5 +1,7 @@
 """Classify information needs, retrieve lore, and decide evidence/search routing."""
 
+import asyncio
+import logging
 import re
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
@@ -18,6 +20,7 @@ from .note_context import NoteContextStore
 from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
+from .semantic_model_routing import SemanticModelRouter
 from .vision import CURRENT_VISUAL_INPUTS
 
 _IN_WORLD_PRESENT_STATE_QUERY = re.compile(
@@ -32,14 +35,61 @@ _EXTERNAL_PRESENT_STATE_MARKER = re.compile(
     r"서버|한섭|한국\s*서버|일섭|재고|예약)",
     re.IGNORECASE,
 )
+log = logging.getLogger("hina")
 
 
 class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     """Resolve information/evidence decisions before final request assembly."""
 
-    def __init__(self, settings, client=None):
+    def __init__(self, settings, client=None, classifier_client=None):
         super().__init__(settings, client=client)
         self.ambient_weather = AmbientWeatherCache()
+        self._routing_shadow_tasks: set[asyncio.Task] = set()
+        self.routing_classifier_client = classifier_client
+        if settings.routing_classifier_mode != "off":
+            if self.routing_classifier_client is None:
+                from .providers import create_provider_client
+
+                self.routing_classifier_client = create_provider_client(
+                    settings,
+                    settings.routing_classifier_provider,
+                    credential=settings.routing_classifier_key(),
+                    timeout=settings.routing_classifier_timeout_seconds,
+                    max_retries=0,
+                    thinking_level="minimal",
+                )
+            self.semantic_model_router = SemanticModelRouter(
+                settings,
+                self.routing_classifier_client,
+                self.usage,
+            )
+        else:
+            self.semantic_model_router = None
+
+    async def close(self):
+        if self._routing_shadow_tasks:
+            await asyncio.gather(*tuple(self._routing_shadow_tasks), return_exceptions=True)
+        try:
+            if self.routing_classifier_client is not None:
+                await self.routing_classifier_client.close()
+        finally:
+            await super().close()
+
+    def _start_shadow_classification(self, information, baseline) -> None:
+        task = asyncio.create_task(
+            self.semantic_model_router.observe_shadow(information, baseline)
+        )
+        self._routing_shadow_tasks.add(task)
+        task.add_done_callback(self._finish_shadow_classification)
+
+    def _finish_shadow_classification(self, task: asyncio.Task) -> None:
+        self._routing_shadow_tasks.discard(task)
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Shadow model routing failed (%s)", type(exc).__name__)
 
     def _call_prefixes(self) -> tuple[str, ...] | None:
         return getattr(self.settings, "call_prefixes", None)
@@ -133,6 +183,13 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             channel_context=channel_context or (),
             visual_inputs=CURRENT_VISUAL_INPUTS.get(),
         )
+        if self.semantic_model_router is not None and self.settings.model_routing_mode == "adaptive":
+            if self.settings.routing_classifier_mode == "active":
+                model_plan = await self.semantic_model_router.active_plan(
+                    information, model_plan
+                )
+            elif self.settings.routing_classifier_mode == "shadow":
+                self._start_shadow_classification(information, model_plan)
         weather = None
         if information.route == InformationRoute.GENERAL:
             weather = await self.ambient_weather.current(self.settings)

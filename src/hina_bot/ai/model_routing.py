@@ -109,9 +109,17 @@ class ModelPlan:
     reasons: tuple[str, ...]
     policy: str
     components: tuple[tuple[str, float], ...]
+    objective_axes: tuple[tuple[str, float], ...] = ()
+    objective_bands: tuple[tuple[str, str], ...] = ()
+    semantic_route_mode: str = "off"
+    semantic_route_status: str = "not_used"
+    semantic_route_level: str = ""
+    semantic_route_codes: tuple[str, ...] = ()
+    model_route_decision_source: str = "deterministic"
+    model_route_baseline_tier: str = ""
 
     def telemetry(self) -> dict:
-        return {
+        telemetry = {
             "model_tier": self.tier.value,
             "model_route_score": self.score,
             "model_route_threshold": self.smart_threshold,
@@ -122,6 +130,67 @@ class ModelPlan:
             "requested_max_output_tokens": self.max_output_tokens,
             "requested_thinking_level": self.thinking_level,
         }
+        if self.objective_axes:
+            telemetry["model_route_objective_axes"] = dict(self.objective_axes)
+            telemetry["model_route_objective_bands"] = dict(self.objective_bands)
+        if self.semantic_route_mode != "off":
+            telemetry.update({
+                "semantic_route_mode": self.semantic_route_mode,
+                "semantic_route_status": self.semantic_route_status,
+                "model_route_decision_source": self.model_route_decision_source,
+                "model_route_baseline_tier": self.model_route_baseline_tier,
+            })
+            if self.semantic_route_level:
+                telemetry["semantic_route_level"] = self.semantic_route_level
+            if self.semantic_route_codes:
+                telemetry["semantic_route_codes"] = list(self.semantic_route_codes)
+        return telemetry
+
+
+_OBJECTIVE_COMPONENTS = {
+    "request_load": frozenset({"input_length", "multiple_requirements"}),
+    "context_load": frozenset({
+        "explicit_reply_length",
+        "deep_target_history",
+        "basic_target_history",
+        "target_history_volume",
+        "surrounding_context_length",
+    }),
+    "retrieval_load": frozenset({
+        "required_web_search",
+        "multi_source_lore",
+        "reference_volume",
+    }),
+    "visual_load": frozenset({"strong_visual_input", "passive_visual_context"}),
+}
+
+
+def objective_profile(
+    plan: ModelPlan,
+) -> tuple[tuple[tuple[str, float], ...], tuple[tuple[str, str], ...]]:
+    """Group quantitative routing components without treating wording as objective load."""
+    components = dict(plan.components)
+    axes = tuple(
+        (axis, round(sum(components.get(name, 0.0) for name in names), 3))
+        for axis, names in _OBJECTIVE_COMPONENTS.items()
+    )
+    medium_threshold = min(0.75, plan.smart_threshold)
+    bands = tuple(
+        (
+            axis,
+            "high" if score >= plan.smart_threshold else
+            "medium" if score >= medium_threshold else "low",
+        )
+        for axis, score in axes
+    )
+    return axes, bands
+
+
+def has_high_precision_complex_signal(plan: ModelPlan) -> bool:
+    components = dict(plan.components)
+    return any(components.get(name, 0.0) >= 2.0 for name in (
+        "complex_request", "complex_followup"
+    ))
 
 
 def fixed_model_plan(settings) -> ModelPlan:
@@ -299,4 +368,11 @@ def build_model_plan(
     )
 
 
-__all__ = ["ModelPlan", "ModelTier", "build_model_plan", "fixed_model_plan"]
+__all__ = [
+    "ModelPlan",
+    "ModelTier",
+    "build_model_plan",
+    "fixed_model_plan",
+    "has_high_precision_complex_signal",
+    "objective_profile",
+]

@@ -34,11 +34,15 @@ Discord 최종 답변에는 사용자가 실제로 읽을 대사와 필요한 �
 class LLM(InformationPipeline):
     """Production LLM orchestrating routing, vision, memory, and RP policy."""
 
-    def __init__(self, settings, client=None):
+    def __init__(self, settings, client=None, classifier_client=None):
         primary_client = wrap_vision_client(
             client or create_provider_client(settings, settings.provider)
         )
-        super().__init__(settings, client=primary_client)
+        super().__init__(
+            settings,
+            client=primary_client,
+            classifier_client=classifier_client,
+        )
         self.character = self.character.rstrip() + "\n\n" + GENERAL_RP_OUTPUT_POLICY
 
     async def answer(
