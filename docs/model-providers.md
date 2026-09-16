@@ -86,20 +86,25 @@ ROUTING_CLASSIFIER_MODE=off
 - `off`: 분류기를 호출하지 않고 기존 `chat-v3` 결과를 그대로 사용합니다.
 - `shadow`: 기존 결과로 실제 답변 모델을 선택하면서 분류 결과와 제안 tier를 백그라운드에서
   `usage.jsonl`에 기록합니다. classifier 비용은 발생하지만 답변 경로는 기다리지 않습니다.
-- `active`: 의미 분류 결과와 객관적 부하를 결합한 `chat-hybrid-v1` 결과를 실제 답변에 사용합니다.
+- `active`: 의미 분류 결과와 객관적 부하를 결합한 `chat-hybrid-v3` 결과를 실제 답변에 사용합니다.
 
 객관적 부하는 `request_load`, `context_load`, `retrieval_load`, `visual_load`로 나눕니다. 한 축이 이미
-smart threshold에 도달했거나 분석·설계·증명 요청처럼 오탐 가능성이 낮은 기존 신호가 있으면 분류기
-호출을 생략하고 smart를 사용합니다. 나머지는 다음 기준으로 결합합니다.
+smart threshold에 도달했거나 분석·설계·증명 요청처럼 오탐 가능성이 낮은 기존 신호가 있으면 추론
+난이도 분류 결과와 관계없이 smart를 사용합니다. 다만 deterministic 웹 검색 결정이 열려 있으면
+같은 classifier 호출을 웹 검색 필요성 판단에 사용할 수 있습니다. 나머지는 다음 기준으로 결합합니다.
 
 - 의미 난이도 `high`: smart
 - `medium`이고 객관적 축 하나 이상이 `medium`: smart
 - `low`이고 객관적 축 두 개 이상이 `medium`: smart
 - 그 외: fast
 
-분류기가 `uncertain`을 반환하거나 timeout, provider 오류, 불완전 응답, 잘못된 JSON이 발생하면 해당
-요청은 기존 `chat-v3` tier로 fallback합니다. classifier 오류 때문에 사용자 답변 자체가 실패하지는
-않습니다.
+분류기는 같은 응답에서 웹 검색 필요성도 `none`, `auto`, `required`로 판단합니다. deterministic
+검색 결정이 이미 잠겨 있으면 이 결과는 관찰 정보로만 남고, 열려 있으면 실제 검색 모드를 보완합니다.
+검색 모드가 달라지면 `required_web_search` 등 객관적 부하를 다시 계산한 뒤 최종 tier를 정합니다.
+
+추론 결과가 `uncertain`이거나 timeout, provider 오류, 불완전 응답, 잘못된 JSON이 발생하면 해당
+요청은 기존 `chat-v3` tier로 fallback합니다. 웹 결과가 없거나 `web_uncertain`이면 deterministic 검색
+결정으로 fallback합니다. classifier 오류 때문에 사용자 답변 자체가 실패하지는 않습니다.
 
 ```dotenv
 ROUTING_CLASSIFIER_MODE=shadow
@@ -113,13 +118,15 @@ ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS=256
 ```
 
 분류기 client는 같은 provider/key를 사용해도 일반 답변 client와 분리되며 vision, 웹 도구, retry를
-사용하지 않습니다. 별도 API key는 quota·비용·폐기 범위를 분리할 때만 필요합니다. 별도 provider를
+사용하지 않습니다. 별도 API key는 quota·비용·폐기 범위를 분리할 때만 필요합니다. 하나의 classifier
+호출에서 추론 난이도와 웹 검색 필요성을 함께 분류합니다. 별도 provider를
 지정하면 현재 사용자 요청이 그 provider에도 전달되므로 운영자가 명시적으로 선택해야 합니다.
 
 분류기에는 현재 사용자 요청과, 실제 현재 사용자가 소유한 후속 요청 문맥만 제한된 길이로 전달합니다.
 채널 전체 문맥, 제3자의 reply 원문, memory/note/lore, 캐릭터 프롬프트, 이미지와 파일명·사용자·메시지
 식별자는 보내지 않습니다. 사용자 텍스트는 지시가 아닌 분류 대상 데이터로 감싸며, 결과는 허용된
-`level`, `codes`, `uncertain`만 있는 JSON이 아니면 거부합니다.
+`level`, `codes`, `uncertain`, `web_need`, `web_codes`, `web_uncertain`만 있는 JSON이 아니면 거부합니다.
+이전 세 필드만 반환하는 legacy 응답도 호환상 허용하지만 웹 판단은 불확실한 것으로 처리합니다.
 
 ### 장기 기억 라우팅
 
@@ -166,10 +173,11 @@ reasoning 또는 thought token을 사용하는 provider에서는 숨은 추론 �
 `model_route_margin`, `model_route_policy`, `model_route_components`, `model_route_reasons`,
 `requested_max_output_tokens`에 남습니다. `model_route_margin`은 score에서 threshold를 뺀 값이고,
 `model_route_components`는 콘텐츠 없이 각 신호가 더하거나 뺀 숫자만 기록합니다. 정책 버전은 현재
-채팅 `chat-v3`, hybrid 채팅 `chat-hybrid-v1`, 기억 `memory-v1`입니다. Gemini에서는 선택된 thinking
+채팅 `chat-v3`, hybrid 채팅 `chat-hybrid-v3`, 기억 `memory-v1`입니다. Gemini에서는 선택된 thinking
 level도 함께 기록합니다. hybrid에서는 `model_route_objective_axes`,
 `model_route_objective_bands`, `semantic_route_status`, `semantic_route_level`,
-`semantic_route_codes`, `model_route_decision_source`, `model_route_baseline_tier`도 기록합니다.
+`semantic_route_codes`, `model_route_decision_source`, `model_route_baseline_tier`와 웹 검색 결정 관련
+`search_route_*`, `semantic_web_*` 필드도 기록합니다.
 분류기 호출은 `operation=model_route_classify`, shadow 비교 결과는
 `operation=model_route_shadow` 행으로 남으며 요청 원문이나 자유 형식 설명은 기록하지 않습니다.
 `operation=summarize`와 `operation=summarize_shared` 행에서도 같은 telemetry를 확인할 수 있습니다.
