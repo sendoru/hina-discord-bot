@@ -61,7 +61,7 @@ def _take_context(
     current_user_id: int | str,
     budget: int,
     slots: int,
-) -> tuple[list[ClassifierContextItem], int, int]:
+) -> tuple[list[ClassifierContextItem], int]:
     """Take newest useful rows within a text budget, then restore chronological order."""
     selected: list[ClassifierContextItem] = []
     remaining = max(0, budget)
@@ -81,7 +81,7 @@ def _take_context(
         ))
         remaining -= len(text)
     selected.reverse()
-    return selected, remaining, slots - len(selected)
+    return selected, remaining
 
 
 def _classifier_context(
@@ -104,18 +104,18 @@ def _classifier_context(
     causal_budget = (
         _CLASSIFIER_CAUSAL_BUDGET if speaker else _CLASSIFIER_CONTEXT_BUDGET
     )
-    causal_selected, causal_unused, slots = _take_context(
+    causal_selected, causal_unused = _take_context(
         causal,
         current_user_id=current_user_id,
         budget=causal_budget,
         slots=min(4, _CLASSIFIER_CONTEXT_ITEMS),
     )
     speaker_budget = _CLASSIFIER_CONTEXT_BUDGET - (causal_budget - causal_unused)
-    speaker_selected, _, _ = _take_context(
+    speaker_selected, _ = _take_context(
         speaker,
         current_user_id=current_user_id,
         budget=speaker_budget,
-        slots=slots,
+        slots=_CLASSIFIER_CONTEXT_ITEMS - len(causal_selected),
     )
 
     # Same-speaker continuity precedes the currently selected reply chain conceptually.
