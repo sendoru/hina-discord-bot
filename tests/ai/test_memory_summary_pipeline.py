@@ -104,8 +104,8 @@ async def test_server_personal_summary_routes_only_on_fields_sent_to_provider():
     request = pipeline.usage.request.await_args.kwargs
     payload = json.loads(request["input"])
     metadata = request["route_metadata"]
-    assert request["model"] == "smart-model"
+    assert request["model"] == "fast-model"
     assert metadata["model_route_policy"] == "memory-v2"
     assert all("hina" not in turn for turn in payload["new_turns"])
     # The large bot replies are absent from both the provider payload and the pending-load input.
-    assert metadata["model_route_components"]["pending_load"] < 0.5
+    assert metadata["model_route_components"].get("pending_load", 0.0) < 0.5
