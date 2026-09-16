@@ -84,6 +84,8 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
         assert "is_current_speaker" not in channel_context[0]
         assert "현재 사용자에게 직접 말을 걸거나" in payload["instructions"]
         assert "제3자로 지칭" in payload["instructions"]
+        assert "reply_target_user_id가 current_speaker의 user_id와 다르면" in payload["instructions"]
+        assert "현재 화자의 현재 발화에 먼저 답하세요" in payload["instructions"]
         assert payload["input"][1] == {"role": "user", "content": "안녕"}
         assert "speaker_name" not in reference
         assert "speaker_id" not in reference

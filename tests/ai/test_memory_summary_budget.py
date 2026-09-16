@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from hina_bot.ai.memory_summary import normalize_memory_output
 from hina_bot.ai.runtime_llm import LLM, SHARED_SUMMARY_POLICY, SUMMARY_POLICY
 from hina_bot.core.config import Settings
 
@@ -64,6 +65,8 @@ def test_memory_summary_policies_keep_personal_and_shared_limits_separate():
     assert "개인 장기 기억을 한국어 1800자 이내" in SUMMARY_POLICY
     assert "장기 기억을 한국어 1200자 이내" in SHARED_SUMMARY_POLICY
     assert "공개 참고 문맥으로 사용될 수 있으므로" in SHARED_SUMMARY_POLICY
+    assert "같은 말투·역할극 요청이 여러 번 나와도" in SUMMARY_POLICY
+    assert "'앞으로', '항상', '평소에도'" in SUMMARY_POLICY
 
 
 @pytest.mark.asyncio
@@ -134,6 +137,11 @@ def test_removed_memory_provider_and_model_env_are_ignored(monkeypatch, tmp_path
 @pytest.mark.parametrize("shared", [False, True])
 @pytest.mark.parametrize("output,status,clears", [
     ("  <NO_MEMORY>\n", "completed", True),
+    ("없음", "completed", True),
+    ("없습니다.", "completed", True),
+    ("기억할 내용 없음", "completed", True),
+    ("기억할 정보가 없습니다.", "completed", True),
+    ("저장할 내용 없음", "completed", True),
     ("", "completed", False),
     ("   ", "completed", False),
     ("<NO_MEMORY>", "incomplete", False),
@@ -174,3 +182,11 @@ async def test_marker_inside_real_memory_is_not_treated_as_empty():
     store = FakeStore()
     await llm.summarize(store, NS(guild_id=None, user_id=100))
     assert store.saved_summary == (text, 1)
+
+
+@pytest.mark.parametrize("text", [
+    "사용자는 '없음'을 답변 형식으로 사용한다.",
+    "기억할 내용 없음이라는 문구를 처리하는 프로그램을 개발 중이다.",
+])
+def test_empty_memory_phrases_inside_real_memory_are_preserved(text):
+    assert normalize_memory_output(text) == text

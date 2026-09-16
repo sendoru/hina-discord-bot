@@ -1,15 +1,32 @@
 """Shared long-term memory summarization policy and adaptive model routing."""
 
 import json
+import re
 
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .memory_model_routing import build_memory_model_plan
 
 NO_MEMORY = "<NO_MEMORY>"
 
+_EMPTY_MEMORY_OUTPUT = re.compile(
+    r"^(?:<NO_MEMORY>|없음|없습니다|기억할\s+(?:내용|정보)(?:가)?\s+없(?:음|습니다)|"
+    r"저장할\s+(?:내용|정보)(?:가)?\s+없(?:음|습니다))[.!。]?$",
+    re.IGNORECASE,
+)
+
+
+def normalize_memory_output(text: str) -> str:
+    """Normalize whole-output empty markers without erasing real memory text."""
+
+    stripped = text.strip()
+    return "" if _EMPTY_MEMORY_OUTPUT.fullmatch(stripped) else stripped
+
+
 MEMORY_SELECTION_POLICY = """
 요약은 대화 목록이나 사용자 성격 평가가 아닙니다. 앞으로 다시 참고할 명시적 사실만 남기세요.
 일회성 질문·키워드·칭찬·현재 피곤함은 지속적인 관심사·선호·상태로 확대하지 마세요.
+같은 말투·역할극 요청이 여러 번 나와도 그것만으로 지속 선호를 만들지 마세요. 사용자가
+'앞으로', '항상', '평소에도'처럼 이후 대화에도 적용할 의사를 명시했을 때만 선호로 저장하세요.
 해결되지 않은 구체적인 작업은 개인 기억에 남길 수 있지만 단순히 질문한 적이 있다는 기록은
 제거하세요. 이전 기억도 같은 기준으로 재검토하고, 유효한 선호·목표·약속은 새 대화에 나오지
 않았다는 이유만으로 지우지 마세요. 해결·변경은 명시적인 근거가 있을 때만 반영하세요.
@@ -91,9 +108,9 @@ class MemorySummaryMixin:
         )
         response = await self._memory_request("summarize", SUMMARY_POLICY, payload, plan)
         if response.status == "completed" and response.output_text.strip():
-            text = response.output_text.strip()
+            text = normalize_memory_output(response.output_text)
             # An explicit empty result advances the cursor; an empty API response must not erase memory.
-            store.save_summary(scope, "" if text == NO_MEMORY else text[:2000], pending[-1]["id"])
+            store.save_summary(scope, text[:2000], pending[-1]["id"])
 
     async def summarize_shared(self, store, scope):
         pending = store.pending_shared(scope)
@@ -122,11 +139,11 @@ class MemorySummaryMixin:
             plan,
         )
         if response.status == "completed" and response.output_text.strip():
-            text = response.output_text.strip()
+            text = normalize_memory_output(response.output_text)
             store.save_shared_summary(
                 scope,
                 pending[-1]["name"],
-                "" if text == NO_MEMORY else text,
+                text,
                 pending[-1]["id"],
             )
 
@@ -135,4 +152,5 @@ __all__ = [
     "SHARED_SUMMARY_POLICY",
     "SUMMARY_POLICY",
     "MemorySummaryMixin",
+    "normalize_memory_output",
 ]
