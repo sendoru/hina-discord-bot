@@ -123,6 +123,7 @@ def test_routing_plan_exposes_only_safe_explicit_reply_to_classifier():
         assert third_party.anchor == "third-party-secret"
         assert third_party.classifier_anchor == ""
         assert third_party.prior_user_request == ""
+        assert all(item.text != "third-party-secret" for item in third_party.classifier_context)
     finally:
         store.close()
 
@@ -151,9 +152,11 @@ async def test_classifier_payload_includes_bounded_anchor_and_context_signals():
         "source": "explicit_reply",
         "text": "앞에서 설명한 복잡한 근거",
     }
+    assert payload["routing_context"] == []
     assert payload["context_signals"] == {
         "anchor_present": True,
         "anchor_included": True,
+        "routing_context_count": 0,
         "reference_count": 2,
         "web_search_required": True,
         "web_search_locked": True,
@@ -162,6 +165,7 @@ async def test_classifier_payload_includes_bounded_anchor_and_context_signals():
         "current_request",
         "prior_user_request",
         "anchor",
+        "routing_context",
         "context_signals",
     }
 
@@ -196,6 +200,92 @@ async def test_classifier_payload_marks_withheld_third_party_anchor_without_forw
         assert payload["anchor"] == {"source": "explicit_reply", "text": ""}
         assert payload["context_signals"]["anchor_present"] is True
         assert payload["context_signals"]["anchor_included"] is False
+        assert payload["routing_context"] == []
         assert "third-party-secret" not in request["input"]
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_short_nonquestion_reference_gets_recent_thread_and_explicit_reply_context():
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100)
+    config = settings()
+    classifier_client = client(response(classification(level="high")))
+    router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
+    source = (
+        "이 음식점은 정상적으로 밥을 팔아서 돈을 버는 본업이 있지만, "
+        "옆의 도박장에서 빚을 지고 정부가 채무를 탕감해 주는 구조다. "
+        "투자자는 음식점 대신 도박장만 증축하고 정부는 손실을 반복해서 구제한다."
+    )
+    rows = [
+        {
+            "context_kind": "speaker_thread",
+            "content": "아까 그 도박장 글과 비슷한 정부실패 사례가 뭐가 있을까",
+            "role": "user",
+            "author_user_id": "100",
+        },
+        {
+            "context_kind": "speaker_thread",
+            "content": "도박 규제와 구제정책의 인센티브 문제를 생각해볼 수 있어.",
+            "role": "assistant",
+            "reply_target_user_id": "100",
+        },
+        {
+            "context_kind": "speaker_thread",
+            "content": "재부팅해서 날아갔나",
+            "role": "user",
+            "author_user_id": "100",
+        },
+        {
+            "context_kind": "speaker_thread",
+            "content": "응? 무슨 일이야?",
+            "role": "assistant",
+            "reply_target_user_id": "100",
+        },
+        {
+            "context_kind": "replied_message",
+            "content": source,
+            "role": "user",
+            "author_user_id": "999",
+        },
+    ]
+    try:
+        routing = build_routing_plan(
+            store,
+            scope,
+            "ㅇㅇ 이거",
+            rows,
+            use_memory=False,
+            classifier_context_policy="full",
+        )
+        assert routing.anchor == ""  # This short acknowledgement is not the old question-shaped follow-up.
+        assert routing.prior_user_request == ""
+
+        info = information(routing)
+        outcome = await router.classify(info, baseline_tier="fast")
+
+        assert outcome.status == "completed"
+        request = classifier_client.responses.create.await_args.kwargs
+        payload = json.loads(request["input"])
+        context = payload["routing_context"]
+        assert context[-1] == {
+            "kind": "replied_message",
+            "role": "user",
+            "ownership": "external",
+            "text": source,
+        }
+        assert any(
+            item["ownership"] == "self"
+            and "정부실패 사례" in item["text"]
+            for item in context
+        )
+        assert any(
+            item["ownership"] == "assistant"
+            and "무슨 일이야" in item["text"]
+            for item in context
+        )
+        assert sum(len(item["text"]) for item in context) <= 4000
+        assert payload["context_signals"]["routing_context_count"] == len(context)
     finally:
         store.close()
