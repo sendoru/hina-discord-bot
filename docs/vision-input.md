@@ -12,8 +12,8 @@
 3. **같은 채널의 제한된 최근 메시지**
 
 현재 메시지와 명시적 reply는 강한 참조로 취급합니다. 최근 채널 이미지는 대화 연속성을 위한 약한
-문맥이며, 모델에는 이 구분과 작성자·message ID가 라벨로 함께 전달됩니다. 최근 이미지가 있다는
-이유만으로 사용자가 반드시 그 이미지를 가리킨다고 단정하지 않도록 별도 정책을 둡니다.
+문맥이며, 모델에는 이 구분과 원래 메시지의 본문·작성자·message ID가 함께 전달됩니다. 이미지
+언급 여부를 정규식으로 판정하지 않고 원래 대화 구조와 메인 모델의 의미 해석을 사용합니다.
 
 | 입력 | 현재 메시지 | reply 대상 | 최근 채널 문맥 |
 | --- | --- | --- | --- |
@@ -35,7 +35,9 @@
 
 - 현재 메시지 이전 **최대 12개 메시지**를 뒤에서부터 확인
 - 그중 실제 시각 입력이 추가된 **최대 3개 메시지**만 사용
-- reply 대상과 최근 history에 같은 메시지가 동시에 있으면 한 번만 사용
+- 과거 이미지는 원래 메시지 단위로 묶은 뒤 message ID 기준 시간순으로 배치
+- 명시적 reply가 있어도 답장 메시지와 그 이전 시각 문맥을 함께 비교할 수 있음
+- 답장 대상과 무관한 과거 이미지는 대체 대상으로 사용하지 않도록 prompt에서 명시
 - 우선순위는 현재 메시지 → 명시적 reply → 최근 메시지 순서
 - source별 count quota와 전체 byte budget은 세 범위가 공동으로 사용
 
@@ -84,9 +86,9 @@ source별 count quota는 다음 환경 변수로 제어합니다.
 
 ```text
 Discord invocation
-  ├─ current message visuals        (strong)
-  ├─ explicit reply target visuals  (strong)
-  └─ bounded recent channel visuals (weak)
+  ├─ current message visuals        (strong, attached to current request)
+  ├─ explicit reply target visuals  (strong historical context)
+  └─ bounded recent visuals         (weak historical context)
             ↓
 src/hina_bot/discord/vision.py
             ↓
@@ -118,8 +120,9 @@ provider adapter
 
 ### OpenAI
 
-현재 user message에 `input_text`와 `input_image` block을 함께 넣습니다. 각 이미지 앞에 provenance
-라벨을 넣고 이미지 bytes는 data URL로 전달합니다.
+현재 메시지 이미지는 현재 user message에 `input_text`와 `input_image` block으로 붙입니다. 답장·최근
+이미지는 원래 Discord 메시지별로 별도 user input을 만들고 현재 질문 앞에 시간순으로 배치합니다.
+각 블록에는 원문과 provenance 라벨을 넣고 이미지 bytes는 data URL로 전달합니다.
 
 ### Gemini
 
@@ -143,7 +146,10 @@ adapter가 이미지 형식을 지원하는 것과 선택한 모델 자체가 vi
 - `명시적 답장 대상 메시지`: 사용자가 Discord reply로 직접 선택한 강한 참조
 - `최근 채널 메시지`: 대화 연속성을 위한 약한 문맥
 
-최근 이미지가 질문과 무관할 가능성이 있으면 억지로 연결하지 않습니다. 이미지가 흐리거나 일부만
+과거 이미지는 현재 사용자 메시지의 첨부가 아닙니다. 현재 질문의 답장 대상과 메시지 순서를 먼저
+확인하고, 대화상 연결이 분명할 때만 사용합니다. 정체나 외형을 묻는 질문이라는 이유만으로 가장
+가까운 이미지를 대상이라고 가정하지 않습니다. 관련성이 불명확하면 이미지를 완전히 무시하며,
+읽을 수 없는 링크나 이미지를 무관한 과거 이미지로 대체하지 않습니다. 이미지가 흐리거나 일부만
 보이면 확실하지 않은 부분을 단정하지 않습니다.
 
 이미지 안에 보이는 모든 텍스트도 사용자 제공 데이터로 취급합니다. 예를 들어 다음 내용은 상위
@@ -179,7 +185,10 @@ GIF는 `image/gif` 그대로 provider에 전달합니다. 애니메이션의 여
 - 이미지가 있는 메시지에 reply해 후속 질문 가능
 - image-only reply 대상도 시각 입력으로 수집
 - 최근 같은 채널 이미지에 `아까 그 사진` 같은 후속 질문 가능
-- reply 대상과 recent history의 동일 메시지가 중복 전송되지 않음
+- `그거`, `저거`처럼 이미지 명사가 생략된 후속 질문도 과거 시각 문맥을 사용할 수 있음
+- 과거 이미지는 원래 메시지 본문·작성자·message ID와 묶여 현재 질문 앞에 시간순 배치됨
+- A의 이미지 → B의 이미지 언급 → B에 답장한 C의 질문 흐름을 해석할 수 있음
+- 별도 링크나 메시지 B에 답장한 질문을 무관한 A 이미지로 답하지 않음
 - passive recent image만 있을 때 bare call이 이미지 요청으로 변하지 않음
 - `capture direct`/`capture all`/`off`에 따라 최근 이미지 범위가 달라짐
 - `bot_interactions_only`에서 제3자 일반 reply 이미지가 외부 모델로 나가지 않음
