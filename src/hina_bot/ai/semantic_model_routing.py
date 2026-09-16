@@ -6,13 +6,7 @@ import asyncio
 import json
 from dataclasses import dataclass, replace
 
-from .model_routing import (
-    ModelPlan,
-    ModelTier,
-    build_model_plan,
-    has_high_precision_complex_signal,
-    objective_profile,
-)
+from .model_routing import ModelPlan, build_model_plan
 
 _CLASSIFIER_POLICY = """You classify two independent properties of one user request:
 1) semantic reasoning difficulty, and
@@ -77,7 +71,6 @@ _WEB_CODES = frozenset({
     "external_verification",
     "ambiguous",
 })
-_POLICY = "chat-hybrid-v3"
 
 
 class InvalidClassifierResponse(ValueError):
@@ -89,9 +82,9 @@ class SemanticClassification:
     level: str
     codes: tuple[str, ...]
     uncertain: bool
-    web_need: str = "none"
-    web_codes: tuple[str, ...] = ()
-    web_uncertain: bool = True
+    web_need: str
+    web_codes: tuple[str, ...]
+    web_uncertain: bool
 
 
 @dataclass(frozen=True)
@@ -129,131 +122,32 @@ def parse_classification(text: str) -> SemanticClassification:
     if not isinstance(value, dict):
         raise InvalidClassifierResponse("classifier output has an invalid shape")
 
-    legacy = {"level", "codes", "uncertain"}
-    current = legacy | {"web_need", "web_codes", "web_uncertain"}
-    keys = set(value)
-    if keys != legacy and keys != current:
+    expected = {"level", "codes", "uncertain", "web_need", "web_codes", "web_uncertain"}
+    if set(value) != expected:
         raise InvalidClassifierResponse("classifier output has an invalid shape")
 
     level = value["level"]
     uncertain = value["uncertain"]
-    if level not in _LEVELS:
-        raise InvalidClassifierResponse("classifier level is invalid")
-    codes = _validate_codes(value["codes"], _CODES, label="reasoning", maximum=4)
-    if not isinstance(uncertain, bool):
-        raise InvalidClassifierResponse("classifier uncertainty is invalid")
-
-    # Legacy responses are accepted only as a safe compatibility fallback. Their web result is
-    # treated as uncertain, so they can never change the deterministic search decision.
-    if keys == legacy:
-        return SemanticClassification(level, codes, uncertain)
-
     web_need = value["web_need"]
     web_uncertain = value["web_uncertain"]
+    if level not in _LEVELS:
+        raise InvalidClassifierResponse("classifier level is invalid")
     if web_need not in _WEB_NEEDS:
         raise InvalidClassifierResponse("classifier web need is invalid")
-    web_codes = _validate_codes(value["web_codes"], _WEB_CODES, label="web", maximum=3)
-    if not isinstance(web_uncertain, bool):
-        raise InvalidClassifierResponse("classifier web uncertainty is invalid")
+    if not isinstance(uncertain, bool) or not isinstance(web_uncertain, bool):
+        raise InvalidClassifierResponse("classifier uncertainty is invalid")
     return SemanticClassification(
-        level,
-        codes,
-        uncertain,
-        web_need,
-        web_codes,
-        web_uncertain,
-    )
-
-
-def _with_tier(settings, plan: ModelPlan, smart: bool, **changes) -> ModelPlan:
-    return replace(
-        plan,
-        tier=ModelTier.SMART if smart else ModelTier.FAST,
-        model=settings.smart_model if smart else settings.fast_model,
-        max_output_tokens=(
-            settings.smart_output_tokens if smart else settings.fast_output_tokens
-        ),
-        thinking_level=(
-            settings.gemini_smart_thinking_level
-            if smart else settings.gemini_fast_thinking_level
-        ),
-        policy=_POLICY,
-        **changes,
-    )
-
-
-def prepare_hybrid_plan(settings, baseline: ModelPlan, mode: str) -> tuple[ModelPlan, str]:
-    """Attach objective telemetry and return a reasoning-classifier bypass reason when safe."""
-
-    axes, bands = objective_profile(baseline)
-    common = {
-        "objective_axes": axes,
-        "objective_bands": bands,
-        "semantic_route_mode": mode,
-        "model_route_baseline_tier": baseline.tier.value,
-    }
-    if any(band == "high" for _, band in bands):
-        return _with_tier(
-            settings,
-            baseline,
-            True,
-            semantic_route_status="skipped_objective_high",
-            model_route_decision_source="objective",
-            **common,
-        ), "skipped_objective_high"
-    if has_high_precision_complex_signal(baseline):
-        return _with_tier(
-            settings,
-            baseline,
-            True,
-            semantic_route_status="skipped_rule_high",
-            model_route_decision_source="rule_shortcut",
-            **common,
-        ), "skipped_rule_high"
-    return replace(baseline, policy=_POLICY, **common), ""
-
-
-def apply_classification(
-    settings,
-    prepared: ModelPlan,
-    outcome: ClassificationOutcome,
-) -> ModelPlan:
-    """Apply only the reasoning half of a combined classifier result."""
-
-    result = outcome.result
-    if result is None or result.uncertain:
-        return _with_tier(
-            settings,
-            prepared,
-            prepared.model_route_baseline_tier == ModelTier.SMART.value,
-            semantic_route_status=("uncertain" if result is not None else outcome.status),
-            semantic_route_level=result.level if result is not None else "",
-            semantic_route_codes=result.codes if result is not None else (),
-            model_route_decision_source="rules_fallback",
-        )
-
-    bands = dict(prepared.objective_bands)
-    medium_axes = sum(band in {"medium", "high"} for band in bands.values())
-    smart = (
-        result.level == "high"
-        or (result.level == "medium" and medium_axes >= 1)
-        or (result.level == "low" and medium_axes >= 2)
-    )
-    source = "semantic" if medium_axes == 0 else "combined"
-    return _with_tier(
-        settings,
-        prepared,
-        smart,
-        semantic_route_status="completed",
-        semantic_route_level=result.level,
-        semantic_route_codes=result.codes,
-        model_route_decision_source=source,
+        level=level,
+        codes=_validate_codes(value["codes"], _CODES, label="reasoning", maximum=4),
+        uncertain=uncertain,
+        web_need=web_need,
+        web_codes=_validate_codes(value["web_codes"], _WEB_CODES, label="web", maximum=3),
+        web_uncertain=web_uncertain,
     )
 
 
 def apply_web_classification(information, outcome: ClassificationOutcome):
     """Apply the web half only when the deterministic decision deliberately left room."""
-
     result = outcome.result
     if information.search_locked:
         return replace(
@@ -264,10 +158,7 @@ def apply_web_classification(information, outcome: ClassificationOutcome):
             search_decision_source="deterministic",
         )
     if result is None:
-        return replace(
-            information,
-            search_decision_source="rules_fallback",
-        )
+        return replace(information, search_decision_source="rules_fallback")
     if result.web_uncertain:
         return replace(
             information,
@@ -286,13 +177,23 @@ def apply_web_classification(information, outcome: ClassificationOutcome):
     )
 
 
+def semantic_result(outcome: ClassificationOutcome) -> tuple[str, tuple[str, ...], str]:
+    """Return a usable semantic level/codes plus telemetry status."""
+    result = outcome.result
+    if result is None:
+        return "", (), outcome.status
+    if result.uncertain:
+        return "", result.codes, "uncertain"
+    return result.level, result.codes, "completed"
+
+
 class SemanticModelRouter:
     def __init__(self, settings, client, usage):
         self.settings = settings
         self.client = client
         self.usage = usage
 
-    async def classify(self, information, prepared: ModelPlan) -> ClassificationOutcome:
+    async def classify(self, information, *, baseline_tier: str = "") -> ClassificationOutcome:
         anchor_text = _bounded_text(
             getattr(information.routing, "classifier_anchor", ""), 1000
         )
@@ -310,10 +211,7 @@ class SemanticModelRouter:
                 "anchor_included": bool(anchor_text),
                 "reference_count": len(information.references),
                 "web_search_required": information.search_mode == "required",
-            },
-            "objective_load": {
-                axis: {"score": score, "band": dict(prepared.objective_bands)[axis]}
-                for axis, score in prepared.objective_axes
+                "web_search_locked": information.search_locked,
             },
         }
         request = {
@@ -327,10 +225,8 @@ class SemanticModelRouter:
             request["thinking_level"] = "minimal"
         metadata = {
             "semantic_route_mode": self.settings.routing_classifier_mode,
-            "model_route_baseline_tier": prepared.model_route_baseline_tier,
+            "model_route_baseline_tier": baseline_tier,
             "routing_classifier_provider": self.settings.routing_classifier_provider,
-            "model_route_objective_axes": dict(prepared.objective_axes),
-            "model_route_objective_bands": dict(prepared.objective_bands),
             "search_route_baseline_mode": (
                 information.search_baseline_mode or information.search_mode
             ),
@@ -350,8 +246,6 @@ class SemanticModelRouter:
             )
         except TimeoutError:
             return ClassificationOutcome("timeout")
-        # Provider SDKs expose different exception hierarchies. Classification is optional, so all
-        # ordinary provider failures must degrade to deterministic routing.
         except Exception:  # noqa: BLE001
             return ClassificationOutcome("provider_error")
         if getattr(response, "status", None) != "completed":
@@ -362,54 +256,33 @@ class SemanticModelRouter:
             return ClassificationOutcome("invalid")
         return ClassificationOutcome("completed", result)
 
-    async def active_plan(self, information, baseline: ModelPlan) -> ModelPlan:
-        """Backward-compatible reasoning-only helper used by focused routing tests."""
-
-        prepared, bypass = prepare_hybrid_plan(self.settings, baseline, "active")
-        if bypass:
-            return prepared
-        return apply_classification(
-            self.settings,
-            prepared,
-            await self.classify(information, prepared),
-        )
-
     async def observe_shadow(
         self,
         information,
         baseline: ModelPlan,
         *,
-        channel_context=(),
+        context_chars: int,
         visual_inputs=(),
     ) -> None:
-        prepared, bypass = prepare_hybrid_plan(self.settings, baseline, "shadow")
-        outcome = None
-        if not bypass or not information.search_locked:
-            outcome = await self.classify(information, prepared)
-
-        proposed_information = information
-        if outcome is not None:
-            proposed_information = apply_web_classification(information, outcome)
-
-        proposed_baseline = baseline
-        if proposed_information.search_mode != information.search_mode:
-            proposed_baseline = build_model_plan(
-                self.settings,
-                proposed_information,
-                channel_context=channel_context,
-                visual_inputs=visual_inputs,
-            )
-
-        proposed, proposed_bypass = prepare_hybrid_plan(
+        outcome = await self.classify(information, baseline_tier=baseline.tier.value)
+        proposed_information = apply_web_classification(information, outcome)
+        level, codes, status = semantic_result(outcome)
+        proposed = build_model_plan(
             self.settings,
-            proposed_baseline,
-            "shadow",
+            proposed_information,
+            context_chars=context_chars,
+            visual_inputs=visual_inputs,
+            semantic_level=level,
+            semantic_codes=codes,
+            semantic_route_mode="shadow",
+            semantic_route_status=status,
+            model_route_decision_source=(
+                "semantic" if status == "completed" else "rules_fallback"
+            ),
+            model_route_baseline_tier=baseline.tier.value,
         )
-        if not proposed_bypass and outcome is not None:
-            proposed = apply_classification(self.settings, proposed, outcome)
 
-        result = outcome.result if outcome is not None else None
-        telemetry = proposed.telemetry()
+        result = outcome.result
         self.usage.routing_event(
             "model_route_shadow",
             status="completed",
@@ -422,10 +295,8 @@ class SemanticModelRouter:
             search_route_locked=information.search_locked,
             semantic_web_need=result.web_need if result is not None else "",
             semantic_web_codes=list(result.web_codes) if result is not None else [],
-            semantic_web_uncertain=(
-                result.web_uncertain if result is not None else False
-            ),
-            **telemetry,
+            semantic_web_uncertain=(result.web_uncertain if result is not None else False),
+            **proposed.telemetry(),
         )
 
 
@@ -434,8 +305,7 @@ __all__ = [
     "InvalidClassifierResponse",
     "SemanticClassification",
     "SemanticModelRouter",
-    "apply_classification",
     "apply_web_classification",
     "parse_classification",
-    "prepare_hybrid_plan",
+    "semantic_result",
 ]
