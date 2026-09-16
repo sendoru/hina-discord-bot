@@ -39,7 +39,7 @@ async def collect_reply_context(
     message,
     bot_id: int,
     *,
-    allowed_author_id: int | None = None,
+    allowed_author_id: int | set[int] | tuple[int, ...] | None = None,
 ) -> list[dict]:
     """Return the message explicitly replied to by the current invocation, if readable.
 
@@ -87,7 +87,12 @@ async def collect_reply_context(
         return []
     if allowed_author_id is not None:
         author_id = getattr(getattr(target, "author", None), "id", None)
-        if author_id != allowed_author_id:
+        allowed_ids = (
+            {allowed_author_id}
+            if isinstance(allowed_author_id, int)
+            else set(allowed_author_id)
+        )
+        if author_id not in allowed_ids:
             return []
 
     row = _row(target, bot_id)

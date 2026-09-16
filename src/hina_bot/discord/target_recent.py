@@ -1,3 +1,4 @@
+import time
 from contextvars import ContextVar
 
 from hina_bot.core.recent import RecentMessages
@@ -6,6 +7,7 @@ from ..ai.egress_policy import filter_channel_context
 from .chatlog_capture import capture_mode
 from .reply_context import REPLY_CONTEXT
 from .target_context import TARGET_CONTEXT
+from .turn_provenance import CURRENT_TURN_PROVENANCE
 
 CURRENT_DIRECT_TRIGGER = ContextVar("current_direct_trigger", default=False)
 
@@ -65,7 +67,49 @@ class TargetAwareRecentMessages(RecentMessages):
             for row in self.buffers.get(self._key(scope), ()):
                 if row["message_id"] == message_id:
                     row["reply_sources"] = [dict(source) for source in REPLY_CONTEXT.get()][:1]
+                    provenance = CURRENT_TURN_PROVENANCE.get()
+                    if provenance:
+                        row["turn_provenance"] = {
+                            "origin_request": dict(provenance.get("origin_request", {})),
+                            "origin_sources": [
+                                dict(source)
+                                for source in provenance.get("origin_sources", ())
+                            ][:2],
+                        }
                     break
+
+    def _explicit_assistant_turn(self, scope, replied):
+        current_user_id = str(scope.user_id)
+        reply_ids = {
+            str(row.get("message_id", ""))
+            for row in replied
+            if row.get("role") == "assistant"
+        }
+        if not reply_ids:
+            return None
+        self.prune(time.monotonic())
+        for row in reversed(self.buffers.get(self._key(scope), ())):
+            if str(row.get("message_id", "")) not in reply_ids:
+                continue
+            if str(row.get("reply_target_user_id") or "") != current_user_id:
+                return None
+            if row.get("turn_provenance"):
+                return row
+        return None
+
+    def reply_chain_visual_ids(self, scope, replied) -> tuple[str, ...]:
+        """Return only strong visual source IDs from the explicitly replied assistant turn."""
+        turn = self._explicit_assistant_turn(scope, replied)
+        if turn is None:
+            return ()
+        provenance = turn.get("turn_provenance", {})
+        rows = [provenance.get("origin_request", {})]
+        rows.extend(provenance.get("origin_sources", ()))
+        return tuple(
+            str(row.get("message_id", ""))
+            for row in rows
+            if row.get("has_visual") and row.get("message_id")
+        )[:3]
 
     @staticmethod
     def _take_recent(rows, budget, slots):
@@ -77,7 +121,7 @@ class TargetAwareRecentMessages(RecentMessages):
             if remaining <= 0 or len(selected) >= slots:
                 break
             content = str(row.get("content", ""))
-            if not content:
+            if not content and not row.get("has_visual"):
                 continue
             item = dict(row)
             item["content"] = content[:remaining]
@@ -102,6 +146,33 @@ class TargetAwareRecentMessages(RecentMessages):
     def context(self, scope, before_id):
         current_user_id = str(scope.user_id)
         base = super().candidates(scope, before_id)
+
+        active_turn = self._explicit_assistant_turn(scope, REPLY_CONTEXT.get())
+        active_chain = []
+        if active_turn is not None:
+            provenance = active_turn.get("turn_provenance", {})
+            for source in provenance.get("origin_sources", ()):
+                item = dict(source)
+                item.update(
+                    context_kind="reply_origin_source",
+                    reference_strength="prior_explicit_reply",
+                    source_turn_message_id=str(active_turn["message_id"]),
+                )
+                active_chain.append(item)
+            request = provenance.get("origin_request")
+            if request:
+                item = dict(request)
+                item.update(
+                    context_kind="reply_origin_request",
+                    reference_strength="prior_user_request",
+                    source_turn_message_id=str(active_turn["message_id"]),
+                )
+                active_chain.append(item)
+            active_chain = filter_channel_context(
+                active_chain,
+                scope.user_id,
+                self.external_context_policy,
+            )
 
         explicit_ids = {str(row.get("message_id", "")) for row in REPLY_CONTEXT.get()}
         turns = [row for row in base if row.get("role") == "assistant" and (
@@ -128,6 +199,7 @@ class TargetAwareRecentMessages(RecentMessages):
         # Flatten before budgeting/filtering; nested data must never bypass egress policy.
         for row in base:
             row.pop("reply_sources", None)
+            row.pop("turn_provenance", None)
 
         replied = []
         reply_ids = set()
@@ -145,6 +217,21 @@ class TargetAwareRecentMessages(RecentMessages):
             base = [
                 row for row in base
                 if str(row.get("message_id", "")) not in reply_ids
+            ]
+
+        chain_ids = {
+            str(row.get("message_id", ""))
+            for row in active_chain
+            if row.get("message_id")
+        }
+        if chain_ids:
+            base = [
+                row for row in base
+                if str(row.get("message_id", "")) not in chain_ids
+            ]
+            sources = [
+                row for row in sources
+                if str(row.get("message_id", "")) not in chain_ids
             ]
 
         # Busy public channels can produce many short side messages between two turns of the same
@@ -218,6 +305,13 @@ class TargetAwareRecentMessages(RecentMessages):
         replied_selected, remaining = self._take_recent(replied, remaining, slots)
         slots -= len(replied_selected)
 
+        chain_selected, remaining = self._take_recent(
+            active_chain,
+            remaining,
+            min(3, slots),
+        )
+        slots -= len(chain_selected)
+
         source_selected, remaining = self._take_recent(sources, remaining, min(2, slots))
         slots -= len(source_selected)
 
@@ -273,4 +367,10 @@ class TargetAwareRecentMessages(RecentMessages):
         )
         selected_base.sort(key=lambda row: row.get("message_id", ""))
 
-        return target_selected + selected_base + source_selected + replied_selected
+        return (
+            target_selected
+            + selected_base
+            + source_selected
+            + chain_selected
+            + replied_selected
+        )

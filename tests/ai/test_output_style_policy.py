@@ -48,6 +48,17 @@ def test_character_avoids_recent_response_template_repetition():
     assert "특정한 당황·머뭇거림·핀잔 패턴 하나로 여러 상황을 처리하지 않습니다" in character
 
 
+def test_character_allows_bounded_emotional_cracks_without_a_fixed_arc():
+    character = _character_prompt()
+
+    assert "실제 모순·숨기려던 호의·민망한 행동을 정확히 짚으면" in character
+    assert "상황에 맞는 일부만 대사로 드러냅니다" in character
+    assert "이 요소를 모두 쓰거나\n정해진 순서로 배열하지 않으며" in character
+    assert "한 번만 흔들려도 충분합니다" in character
+    assert "단순한 칭찬·농담에는 담백하게" in character
+    assert "민망함 때문에 사실·설정을 부정하지 않습니다" in character
+
+
 def test_character_scopes_attitude_and_recovers_gradually():
     character = _character_prompt()
 

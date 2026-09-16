@@ -1,6 +1,7 @@
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
@@ -396,6 +397,58 @@ async def test_reply_and_recent_visuals_keep_distinct_message_provenance():
     ]
     assert reply_attachment.read.await_count == 1
     assert older_attachment.read.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fetches_reply_origin_visual_directly_by_message_id():
+    attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="embarrassing.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    author = NS(id=100, display_name="사용자", name="사용자", bot=False)
+    origin = NS(
+        id=130,
+        content="",
+        author=author,
+        attachments=[attachment],
+        stickers=[],
+    )
+    channel = NS(id=10, fetch_message=AsyncMock(return_value=origin))
+    message = NS(
+        id=133,
+        content="히나야 고마워",
+        author=author,
+        channel=channel,
+        attachments=[],
+        stickers=[],
+    )
+
+    visuals = await collect_visual_inputs(message, context_message_ids=("130",))
+
+    channel.fetch_message.assert_awaited_once_with(130)
+    assert [(v.name, v.context_kind, v.reference_strength) for v in visuals] == [
+        ("embarrassing.png", "reply_origin_source", "prior_explicit_reply")
+    ]
+    assert "답장 체인의 강한 참조" in visuals[0].label(1)
+
+
+@pytest.mark.asyncio
+async def test_missing_reply_origin_visual_is_not_substituted():
+    channel = NS(id=10, fetch_message=AsyncMock(side_effect=discord.NotFound(
+        NS(status=404, reason="not found"), "missing"
+    )))
+    message = NS(
+        id=133,
+        content="히나야 고마워",
+        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
+        channel=channel,
+        attachments=[],
+        stickers=[],
+    )
+
+    assert await collect_visual_inputs(message, context_message_ids=("130",)) == []
 
 
 @pytest.mark.asyncio

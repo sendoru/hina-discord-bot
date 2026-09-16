@@ -160,8 +160,9 @@ async def collect_visual_inputs(
     downloader=_download,
     include_reply: bool = False,
     include_recent: bool = False,
-    allowed_reply_author_id: int | None = None,
+    allowed_reply_author_id: int | set[int] | tuple[int, ...] | None = None,
     allowed_context_author_id: int | None = None,
+    context_message_ids: tuple[str, ...] | list[str] = (),
     recent_filter=None,
     recent_scan_limit: int = RECENT_VISUAL_SCAN_LIMIT,
     recent_message_limit: int = MAX_RECENT_VISUAL_MESSAGES,
@@ -262,11 +263,20 @@ async def collect_visual_inputs(
     if include_reply:
         target = await _resolve_reply_message(message)
         target_author_id = getattr(getattr(target, "author", None), "id", None)
+        allowed_reply_ids = (
+            None
+            if allowed_reply_author_id is None
+            else (
+                {allowed_reply_author_id}
+                if isinstance(allowed_reply_author_id, int)
+                else set(allowed_reply_author_id)
+            )
+        )
         if (
             target is not None
             and (
-                allowed_reply_author_id is None
-                or target_author_id == allowed_reply_author_id
+                allowed_reply_ids is None
+                or target_author_id in allowed_reply_ids
             )
         ):
             await collect_message(
@@ -275,6 +285,32 @@ async def collect_visual_inputs(
                 reference_strength="explicit_reply",
                 include_inline_emojis=True,
             )
+
+    if context_message_ids:
+        channel = getattr(message, "channel", None)
+        fetch_message = getattr(channel, "fetch_message", None)
+        if fetch_message is not None:
+            for message_id in context_message_ids:
+                if str(message_id) in seen_message_ids:
+                    continue
+                try:
+                    target = await fetch_message(int(message_id))
+                except (TypeError, ValueError, discord.Forbidden, discord.NotFound,
+                        discord.HTTPException) as exc:
+                    log.warning("Reply-origin visual lookup failed (%s)", type(exc).__name__)
+                    continue
+                target_author_id = getattr(getattr(target, "author", None), "id", None)
+                if (
+                    allowed_context_author_id is not None
+                    and target_author_id != allowed_context_author_id
+                ):
+                    continue
+                await collect_message(
+                    target,
+                    context_kind="reply_origin_source",
+                    reference_strength="prior_explicit_reply",
+                    include_inline_emojis=False,
+                )
 
     if include_recent and recent_scan_limit > 0 and recent_message_limit > 0:
         channel = getattr(message, "channel", None)

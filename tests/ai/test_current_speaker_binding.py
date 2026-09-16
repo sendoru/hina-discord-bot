@@ -92,3 +92,57 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
     finally:
         await llm.close()
         store.close()
+
+
+@pytest.mark.asyncio
+async def test_active_reply_chain_is_structured_separately_from_ambient_context():
+    calls = []
+
+    def handler(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json=_response())
+
+    client = AsyncOpenAI(
+        api_key="test-not-a-real-key",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100, True)
+    chain = [{
+        "message_id": "1", "author_user_id": "100", "user_id": "100",
+        "content": "", "role": "user", "context_kind": "reply_origin_source",
+        "has_visual": True,
+    }, {
+        "message_id": "2", "author_user_id": "100", "user_id": "100",
+        "content": "이거 그대로 읽어봐", "role": "user",
+        "context_kind": "reply_origin_request",
+    }, {
+        "message_id": "3", "author_user_id": "99", "user_id": "99",
+        "content": "하아... 나는 고양이가 아니야.", "role": "assistant",
+        "context_kind": "replied_message", "reply_target_user_id": "100",
+    }]
+    ambient = {
+        "message_id": "4", "author_user_id": "200", "user_id": "200",
+        "content": "옆 대화", "role": "user", "context_kind": "channel_ambient",
+    }
+    try:
+        await llm.answer(
+            store,
+            scope,
+            "사용자",
+            "고마워",
+            channel_context=[ambient, *chain],
+        )
+        payload = calls[-1]
+        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+
+        assert [row["message_id"] for row in reference["active_reply_chain"]] == [
+            "1", "2", "3"
+        ]
+        assert [row["message_id"] for row in reference["channel_recent_messages"]] == ["4"]
+        assert "감사·웃음·사과" in payload["instructions"]
+        assert "실제 시각 입력이 제공되지 않았다면" in payload["instructions"]
+    finally:
+        await llm.close()
+        store.close()
