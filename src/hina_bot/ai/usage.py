@@ -246,6 +246,9 @@ class UsageLogger:
                 "semantic_route_mode", "semantic_route_status", "semantic_route_level",
                 "semantic_route_codes", "model_route_decision_source",
                 "model_route_baseline_tier", "routing_classifier_provider",
+                "search_route_mode", "search_route_baseline_mode", "search_route_locked",
+                "search_route_reason", "search_route_decision_source",
+                "semantic_web_need", "semantic_web_codes", "semantic_web_uncertain",
             }
             row.update({key: value for key, value in route_metadata.items() if key in allowed})
         responses = []
@@ -305,7 +308,9 @@ class UsageLogger:
             "model_route_decision_source", "model_route_baseline_tier",
             "model_route_proposed_tier", "model_route_objective_axes",
             "model_route_objective_bands", "routing_classifier_provider",
-            "model_route_policy",
+            "model_route_policy", "search_route_baseline_mode",
+            "search_route_proposed_mode", "search_route_locked", "search_route_reason",
+            "semantic_web_need", "semantic_web_codes", "semantic_web_uncertain",
         }
         row = {
             "at": datetime.now(UTC).isoformat(),

@@ -19,6 +19,13 @@ class InformationPlan:
     fact_question: bool
     search_mode: str
     provenance: ProvenanceMode
+    search_baseline_mode: str = ""
+    search_locked: bool = True
+    search_reason: str = ""
+    search_decision_source: str = "deterministic"
+    semantic_web_need: str = ""
+    semantic_web_codes: tuple[str, ...] = ()
+    semantic_web_uncertain: bool = False
 
 
 __all__ = ["InformationPlan"]
