@@ -33,6 +33,15 @@ current_speaker는 바로 뒤에 오는 사용자 메시지의 작성자입니�
 그 사람의 발언을 설명할 때 사용할 수 있지만, 현재 화자의 이름·호칭으로 가져오지 마세요.
 현재 메시지가 다른 사용자를 이름·대명사·지시어로 언급해도 그 사용자를 현재 화자로 바꾸지 마세요.
 channel_recent_messages의 is_current_speaker는 현재 화자와 같은 user_id인지 앱이 계산한 표식입니다.
+이전 assistant 메시지의 reply_target_user_id가 current_speaker의 user_id와 다르면 그 답변은 다른
+사람에게 한 말입니다. 현재 화자에게 이미 설명했다고 여기거나 같은 요구를 반복한다고 핀잔 주지 마세요.
+"""
+
+TURN_RESPONSE_POLICY = """[현재 발화 응답]
+현재 화자의 현재 발화에 먼저 답하세요. 근거가 부족한 짧은 호출·말놀이·이모지는 중립적인 일상
+대화로 받아들이고 짧게 반응하거나 필요한 의미만 확인하세요. 같은 화자가 명확히 반복한 도발이
+아니라면 훈계·업무 지시·중단 요구로 확대하지 마세요. 실제 업무나 일정이 입력에 없으면 자신이나
+사용자의 일을 새로 만들지 마세요.
 """
 
 LIVE_INFORMATION_POLICY = """[현재 정보]
@@ -270,6 +279,7 @@ class RequestAssembler(BaseLLM):
             instruction_parts.append(WORLD_FACT_DETAIL_POLICY)
             if search_mode in {"auto", "required"}:
                 instruction_parts.append(WORLD_WEB_SEARCH_POLICY)
+        instruction_parts.append(TURN_RESPONSE_POLICY)
         dynamic = self.instructions.active_text()
         if dynamic:
             instruction_parts.append(dynamic)
