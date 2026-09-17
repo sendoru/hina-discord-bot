@@ -46,12 +46,22 @@ def _strip_boundary_bot_mentions(text: str, bot_id: int) -> str:
 
 def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
                  prefixes: tuple[str, ...] = ("히나야",)) -> str | None:
-    if message.author.bot or message.webhook_id is not None:
+    if message.webhook_id is not None:
         return None
     raw = message.content.lstrip()
     # Discord includes the replied-to author in mentions only when reply ping is enabled.
     # Do not infer a ping merely from message.reference.
     ping = any(user.id == bot_id for user in message.mentions)
+    bot_author = bool(getattr(message.author, "bot", False))
+
+    if bot_author:
+        # Never react to our own Gateway message. Other bots may call Hina only through an
+        # explicit Discord mention/reply ping; natural-language prefixes and DM auto-reply are
+        # intentionally human-only so arbitrary bot chatter cannot spend model quota.
+        if getattr(message.author, "id", None) == bot_id or not ping:
+            return None
+        return _strip_boundary_bot_mentions(raw, bot_id)
+
     matched = _matched_prefix(raw, prefixes)
     keyword = matched is not None
     implicit_dm = message.guild is None and dm_always_reply
@@ -76,7 +86,7 @@ def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
 def chunks(text: str, limit: int = 1900):
     # Count UTF-16 units conservatively, including emoji; Discord limit is 2000.
     part, size = [], 0
-    for char in re.findall(r"<a?:[^:<>\s]{1,32}:\d{1,20}>|.", text, flags=re.DOTALL):
+    for char in re.findall(r"<a?:[^:<> \s]{1,32}:\d{1,20}>|.", text, flags=re.DOTALL):
         n = len(char.encode("utf-16-le")) // 2
         if size + n > limit:
             yield "".join(part)
