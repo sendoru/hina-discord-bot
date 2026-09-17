@@ -21,6 +21,29 @@ _TOPIC_PARTICLE = re.compile(
     r"(?:은|는|도)(?=\s|[?？!.~]|$)"
 )
 
+# Classifier grounding is intentionally broader than route inheritance.  These signals mean that
+# the current request may need earlier conversation merely to resolve its referent; they do not mean
+# that earlier text is safe to splice into the deterministic routing query.
+_EXPLICIT_CONTEXT_REFERENCE = re.compile(
+    r"(?:위(?:에|에서|의)?|앞(?:에서|의)?|아까|방금|이전(?:에|의)?|전에)\s*"
+    r"(?:말|얘기|이야기|질문|설명|답변|내용|문맥|대화)|"
+    r"(?:그|이)\s*(?:얘기|이야기|설명|질문|답변|부분|경우|내용|문맥)|"
+    r"(?:연장선|이어서|이어가|이어지는|계속해서|계속해서는)",
+    re.IGNORECASE,
+)
+_DEICTIC_CONTEXT_REFERENCE = re.compile(
+    r"(?:^|[\s,])(?:그거|그건|그게|그걸|그때|거기|그쪽)(?=$|[\s,?？!.])",
+    re.IGNORECASE,
+)
+_CONTINUATION_REFERENCE = re.compile(
+    r"(?:^|[\s,])(?:그럼|그러면|그렇다면|그래서)(?=$|[\s,?？!.])",
+    re.IGNORECASE,
+)
+_ELLIPTICAL_CONTEXT_QUESTION = re.compile(
+    r"(?:^|\s)(?:왜|어떻게|언제|어디|누구|뭐|무엇|얼마)\s*[?？]?\s*$",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class RoutingAnchor:
@@ -36,6 +59,31 @@ def is_followup(text: str) -> bool:
         value
         and len(value) <= 300
         and _FOLLOWUP.search(value)
+        and _QUESTION.search(value)
+    )
+
+
+def needs_context_grounding(text: str, *, has_explicit_reply: bool = False) -> bool:
+    """Return whether semantic classification should see a little prior conversation.
+
+    This deliberately does not answer the stronger question asked by ``is_followup``: whether an
+    old request should be inherited into the routing query.  Classifier context is non-authoritative
+    evidence and its prompt can ignore irrelevant rows, so this gate prefers recall for explicit
+    conversational references while avoiding weak topic-shift words such as ``근데`` on their own.
+    """
+    value = text.strip()
+    if not value:
+        return False
+    if has_explicit_reply:
+        return True
+    if _EXPLICIT_CONTEXT_REFERENCE.search(value):
+        return True
+    if _DEICTIC_CONTEXT_REFERENCE.search(value):
+        return True
+    if _ELLIPTICAL_CONTEXT_QUESTION.search(value):
+        return True
+    return bool(
+        _CONTINUATION_REFERENCE.search(value[:120])
         and _QUESTION.search(value)
     )
 
