@@ -36,11 +36,22 @@ class MemoryItem:
     kind: MemoryKind
     origin_realm: str
     origin_channel_id: str
+    origin_public_at_capture: bool
     disclosure: MemoryDisclosure
     source_message_ids: tuple[str, ...]
     confidence: float
     created_at: str
     updated_at: str
+
+
+def _same_disclosure_space(item: MemoryItem, current_scope: Scope) -> bool:
+    if item.origin_realm != current_scope.realm:
+        return False
+    if not item.origin_realm.startswith("guild:"):
+        return True
+    if item.origin_public_at_capture:
+        return True
+    return item.origin_channel_id == str(current_scope.channel_id)
 
 
 def memory_access(
@@ -59,7 +70,7 @@ def memory_access(
     if item.user_id != str(current_scope.user_id):
         return MemoryAccess.HIDDEN
 
-    if item.origin_realm == current_scope.realm:
+    if _same_disclosure_space(item, current_scope):
         return MemoryAccess.FULL
 
     if item.disclosure == MemoryDisclosure.GLOBAL:
@@ -69,11 +80,13 @@ def memory_access(
         return MemoryAccess.IMPLICIT
 
     if item.disclosure == MemoryDisclosure.REFERENCE_GATED:
-        # Preserve the existing one-way public-server -> DM inheritance switch. A public fact can
-        # still be remembered privately without making it available in a different public server.
-        origin_is_guild = item.origin_realm.startswith("guild:")
+        # Preserve the existing one-way public-server -> DM inheritance switch. Only memories that
+        # were public at capture may use this shortcut; private-channel memories stay gated.
+        origin_is_public_guild = (
+            item.origin_realm.startswith("guild:") and item.origin_public_at_capture
+        )
         current_is_dm = current_scope.guild_id is None
-        if origin_is_guild and current_is_dm and public_server_memory_in_dm:
+        if origin_is_public_guild and current_is_dm and public_server_memory_in_dm:
             return MemoryAccess.FULL
         if explicitly_referenced:
             return MemoryAccess.FULL
