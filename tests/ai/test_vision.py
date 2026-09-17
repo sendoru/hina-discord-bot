@@ -27,6 +27,36 @@ def test_base_policy_describes_conditional_vision_capability():
     assert "첨부파일·이미지·답장 원문을 직접 읽지 않습니다" not in HELP_TEXT
 
 
+def test_vision_policy_keeps_action_target_without_suppressing_grounded_identity():
+    compact = " ".join(VISION_INPUT_POLICY.split())
+    assert "일부 요소에 적용되는 행동이라면 그 동사의 자연스러운 대상을 놓치지 마세요" in compact
+    assert "'입어줘', '써줘', '메어줘'" in compact
+    assert "등장인물의 신원이 충분히 근거 있고" in compact
+    assert "그 이름을 함께 언급해도 됩니다" in compact
+    assert "신원과 행동의 대상을 각각 별도로 근거화" in compact
+
+
+def test_vision_policy_calibrates_character_identity():
+    compact = " ".join(VISION_INPUT_POLICY.split())
+    assert "익숙한 이름" in compact
+    assert "빈칸을 채우지 마세요" in compact
+    assert "모르는 신원을 가장 비슷하게 떠오르는 아는 인물로 대체하지 마세요" in compact
+    assert "이미지가 그 신원을 독립적으로 확인한 것처럼 말하지 마세요" in compact
+    assert "추측·정정은 추가 문맥일 뿐" in compact
+
+
+def test_vision_policy_separates_current_past_and_depicted_character_state():
+    compact = " ".join(VISION_INPUT_POLICY.split())
+    assert "현재 대화 시점의 실제 상태로 자동 적용하지 마세요" in compact
+    assert "'내가 지금 그러고 있다'는 현재 사실로 옮기지 않습니다" in compact
+    assert "실제 과거의 모습으로 볼 근거를 함께 준다면" in compact
+    assert "'예전에 이런 걸 입은 적이 있었네'" in compact
+    assert "'예전에 이런 모습이었던 것 같네'" in compact
+    assert "사진처럼 사실적으로 보인다는 이유만으로 과거 사건을 만들지는 마세요" in compact
+    assert "새로운 과거 경험이나 기억으로 만들지 마세요" in compact
+    assert "과거 기록인지, 단순 묘사인지를 서로 구분해서 표현하세요" in compact
+
+
 @pytest.mark.asyncio
 async def test_vision_client_adds_images_only_for_active_answer():
     create = AsyncMock(return_value=NS(status="completed"))
