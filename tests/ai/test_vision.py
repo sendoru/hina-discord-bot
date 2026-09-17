@@ -27,23 +27,26 @@ def test_base_policy_describes_conditional_vision_capability():
     assert "첨부파일·이미지·답장 원문을 직접 읽지 않습니다" not in HELP_TEXT
 
 
-def test_vision_policy_grounds_action_target_before_unasked_identity():
-    assert "일부 요소에 적용되는" in VISION_INPUT_POLICY
-    assert "동사의 자연스러운 대상을 찾으세요" in VISION_INPUT_POLICY
-    assert "'입어줘', '써줘', '메어줘'" in VISION_INPUT_POLICY
-    assert "등장인물의 신원을 먼저 추측하거나 이름을 자발적으로 언급하지 마세요" in (
-        VISION_INPUT_POLICY
-    )
-
-
-def test_vision_policy_separates_depiction_from_current_role_state_and_name_guesses():
+def test_vision_policy_keeps_action_target_without_suppressing_grounded_identity():
     compact = " ".join(VISION_INPUT_POLICY.split())
+    assert "일부 요소에 적용되는 행동이라면 그 동사의 자연스러운 대상을 놓치지 마세요" in compact
+    assert "'입어줘', '써줘', '메어줘'" in compact
+    assert "등장인물의 신원이 충분히 근거 있고" in compact
+    assert "그 이름을 함께 언급해도 됩니다" in compact
+    assert "신원과 행동의 대상을 각각 별도로 근거화" in compact
+
+
+def test_vision_policy_calibrates_identity_and_separates_depiction_from_current_state():
+    compact = " ".join(VISION_INPUT_POLICY.split())
+    assert "익숙한 이름" in compact
+    assert "빈칸을 채우지 마세요" in compact
+    assert "모르는 신원을 가장 비슷하게 떠오르는 아는 인물로 대체하지 마세요" in compact
+    assert "이미지가 그 신원을 독립적으로 확인한 것처럼 말하지 마세요" in compact
     assert "그 인물을 묘사한 표현일 뿐" in compact
     assert "'내가 지금 그러고 있다'는 현재 사실로 옮기지 마세요" in compact
     assert "묘사된 모습과 현재 상태를 구분하세요" in compact
-    assert "그 발화만으로 신원을 확정하지 마세요" in compact
-    assert "다른 확정적 신원으로 갈아끼우지 마세요" in compact
     assert "이부키" not in VISION_INPUT_POLICY
+    assert "호시노" not in VISION_INPUT_POLICY
 
 
 @pytest.mark.asyncio
