@@ -1,14 +1,22 @@
 """Shared long-term memory summarization policy and adaptive model routing."""
 
 import json
+import logging
 import re
 
 from hina_bot.core.memory_context import decode_memory_context
 
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
+from .memory_extraction import (
+    SHADOW_EXTRACTION_POLICY,
+    build_shadow_turns,
+    parse_shadow_extraction,
+    persist_shadow_items,
+)
 from .memory_model_routing import build_memory_model_plan
 
 NO_MEMORY = "<NO_MEMORY>"
+log = logging.getLogger("hina")
 
 _EMPTY_MEMORY_OUTPUT = re.compile(
     r"^(?:<NO_MEMORY>|없음|없습니다|기억할\s+(?:내용|정보)(?:가)?\s+없(?:음|습니다)|"
@@ -54,6 +62,14 @@ def _record_summary_requested(usage, **metrics) -> None:
     emit = getattr(usage, "routing_event", None)
     if callable(emit):
         emit("memory.summary_requested", status="requested", **metrics)
+
+
+def _record_shadow_extraction(usage, status: str, **metrics) -> None:
+    """Emit content-free lifecycle telemetry using the existing memory metric fields."""
+
+    emit = getattr(usage, "routing_event", None)
+    if callable(emit):
+        emit("memory.shadow_extraction", status=status, **metrics)
 
 
 MEMORY_SELECTION_POLICY = """
@@ -125,6 +141,65 @@ class MemorySummaryMixin:
             **request,
         )
 
+    async def _extract_memory_items_shadow(self, store, scope, pending, plan) -> None:
+        """Populate memory_items for inspection without affecting the active read path."""
+
+        if not callable(getattr(store, "add_memory_item", None)) or not callable(
+            getattr(store, "memory_items", None)
+        ):
+            return
+        turns, allowed_source_ids, context_items = build_shadow_turns(
+            pending,
+            include_replies=scope.guild_id is None,
+        )
+        if not turns:
+            return
+        payload = {
+            "speaker_id": str(scope.user_id),
+            "origin": {
+                "realm": scope.realm,
+                "channel_id": str(scope.channel_id),
+                "public_at_capture": bool(scope.public_at_capture),
+            },
+            "turns": turns,
+        }
+        metrics = _summary_metrics(
+            memory_kind="structured_shadow",
+            pending_turns=len(pending),
+            batch_turns=len(turns),
+            payload=payload,
+            context_items=context_items,
+            old_memory="",
+        )
+        _record_shadow_extraction(self.usage, "requested", **metrics)
+        try:
+            response = await self._memory_request(
+                "extract_memory_items_shadow",
+                SHADOW_EXTRACTION_POLICY,
+                payload,
+                plan,
+            )
+            if response.status != "completed" or not response.output_text.strip():
+                _record_shadow_extraction(self.usage, "empty", **metrics)
+                return
+            parsed = parse_shadow_extraction(
+                response.output_text,
+                allowed_source_ids=allowed_source_ids,
+            )
+            stored, duplicates = persist_shadow_items(store, scope, parsed.items)
+            _record_shadow_extraction(self.usage, "completed", **metrics)
+            log.info(
+                "Structured memory shadow extraction completed: accepted=%d stored=%d "
+                "duplicates=%d rejected=%d",
+                len(parsed.items),
+                stored,
+                duplicates,
+                parsed.rejected_items,
+            )
+        except Exception as exc:  # noqa: BLE001 - shadow extraction must never break legacy memory
+            _record_shadow_extraction(self.usage, "error", **metrics)
+            log.warning("Structured memory shadow extraction failed (%s)", type(exc).__name__)
+
     async def summarize(self, store, scope):
         pending = store.pending(scope)
         if len(pending) < self.settings.summary_every:
@@ -169,6 +244,9 @@ class MemorySummaryMixin:
             text = normalize_memory_output(response.output_text)
             # An explicit empty result advances the cursor; an empty API response must not erase memory.
             store.save_summary(scope, text[:2000], pending[-1]["id"])
+            # Shadow extraction runs only after the legacy summary has committed. Any extractor
+            # failure is isolated, and structured rows are still not read by normal responses.
+            await self._extract_memory_items_shadow(store, scope, pending, plan)
 
     async def summarize_shared(self, store, scope):
         pending = store.pending_shared(scope)
