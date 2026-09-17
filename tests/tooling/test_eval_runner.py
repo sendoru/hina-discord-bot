@@ -135,6 +135,13 @@ def test_tone_cases_include_relationship_honorific_perspective():
     assert "유메 선배" in case["expected"]
 
 
+def test_tone_cases_include_conversational_baseline_regressions():
+    cases = read_cases(Path("evals/tone_cases.jsonl"))
+    ids = {row["id"] for row in cases}
+    assert "informational_question_not_rejected_as_off_topic" in ids
+    assert "single_silly_message_not_scolded" in ids
+
+
 def test_invalid_speaker_turns_are_rejected(tmp_path):
     import pytest
 
