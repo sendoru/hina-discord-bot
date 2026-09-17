@@ -4,6 +4,7 @@ from hina_bot.ai.contextual_routing import (
     find_anchor,
     find_prior_user_request,
     is_followup,
+    needs_context_grounding,
 )
 from hina_bot.ai.routing_plan import RoutingPlan, build_routing_plan
 from hina_bot.core.routing import Scope
@@ -28,6 +29,26 @@ def test_short_followup_reuses_same_speaker_topic():
         assert "히나랑 만난 적 있어?" in query
     finally:
         store.close()
+
+
+def test_classifier_grounding_is_broader_than_route_followup():
+    contextual = (
+        "히나야 위에 얘기 연장선인데 목적의 의미를 가지는 to부정사는 "
+        "어떻게 구분해야 돼"
+    )
+    assert not is_followup(contextual)
+    assert needs_context_grounding(contextual)
+
+    # A weak discourse marker can start a perfectly self-contained new topic.  The deterministic
+    # follow-up heuristic may still inherit it, but that is not enough evidence to sample another
+    # speaker's conversation into the semantic classifier.
+    assert is_followup("근데 C++에서 virtual 함수가 뭐야?")
+    assert not needs_context_grounding("근데 C++에서 virtual 함수가 뭐야?")
+
+    assert needs_context_grounding("그럼 모레는?")
+    assert needs_context_grounding("히나야 왜?")
+    assert not needs_context_grounding("왜 하늘은 파란색이야?")
+    assert needs_context_grounding("새 질문", has_explicit_reply=True)
 
 
 def test_routing_plan_keeps_visible_turn_separate_from_expanded_query():
