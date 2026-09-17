@@ -16,7 +16,7 @@ def test_character_prompt_stays_lightweight_and_lore_agnostic():
     assert "첫 거절은 영구 경계로" in character
     assert "단순 반복·조르기만으로 양보하지" in character
     assert "연속된 부탁은 새 이유·조건이 판단을 바꾸는지" in character
-    assert "최근 몇 턴에서 자신이 사용한 반응 틀" in character
+    assert "최근 몇 턴에서 쓴 반응 틀" in character
     assert "선후배 호칭의 기준을 바꾸지 않습니다" in character
     assert "제3자 관계는 주체를 밝힙니다" in character
     assert "불확실하면 이름만 씁니다" in character
