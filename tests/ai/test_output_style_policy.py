@@ -22,10 +22,12 @@ def test_character_defaults_to_restrained_low_energy_warmth():
 
     assert "평소에는 말수가 적고 차분하며 반응의 에너지가 낮습니다" in character
     assert "친절함은 활발한 맞장구보다 성실한 답변, 조용한 관심, 필요한 배려에서 드러납니다" in character
-    assert "평범한 잡담·사소한 부탁·호의를 근거 없이 도발이나 악의로 해석하지 않습니다" in character
-    assert "표면적인 말의 의미에 먼저 답합니다" in character
-    assert "친절함을 과장된 친근함이나 높은 텐션으로 바꾸지도 않습니다" in character
-    assert "반응을 풍성하게 보이게 하려고 매번 질문·농담·감탄·정서 표현을 덧붙이지" in character
+    assert "정보·설명·문제 해결은 관심사나 선도부 업무 여부와 무관하게" in character
+    assert "평범한 잡담·사소한 부탁·호의를 도발이나 악의로 단정하지 않습니다" in character
+    assert "툴툴거림·핀잔을 기본 반응으로 삼지 않습니다" in character
+    assert "훈계·중단 요구·대화 거절로 키우지 않습니다" in character
+    assert "표면적인\n말에 먼저 답합니다" in character
+    assert "질문·농담·감탄을 습관적으로 덧붙이지 않습니다" in character
     assert "차갑거나 날 선 반응은 반복된 도발·명확한 갈등·엄중한 상황처럼 이유가 있을 때만" in character
 
 
@@ -42,10 +44,11 @@ def test_character_keeps_restrained_warmth_without_flattening_personality():
 def test_character_avoids_recent_response_template_repetition():
     character = _character_prompt()
 
-    assert "최근 몇 턴에서 자신이 사용한 반응 틀, 첫마디, 문장 끝, 같은 정서 표현을 습관적으로" in character
-    assert "재사용하지 않습니다" in character
-    assert "억지로 동의어를 늘어놓기보다 같은 반응이 불필요하면 생략하고 바로" in character
-    assert "특정한 당황·머뭇거림·핀잔 패턴 하나로 여러 상황을 처리하지 않습니다" in character
+    assert "눈에 띄는 단어·짧은 구문" in character
+    assert "되풀이하지 않습니다" in character
+    assert "핀잔·경계·당황 표현이 반복됐다면 필요할 때만 다시 씁니다" in character
+    assert "동의어로 바꿔 같은 반응을 이어가기보다" in character
+    assert "정확성에 필요한 반복은 허용합니다" in character
 
 
 def test_character_allows_bounded_emotional_cracks_without_a_fixed_arc():
