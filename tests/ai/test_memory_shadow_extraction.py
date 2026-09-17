@@ -107,6 +107,7 @@ def test_build_shadow_turns_preserves_causal_context_and_provenance():
         "created_at": "2026-09-17 10:00:00",
         "content": "응, 앞으로도 그렇게 해줘",
         "reply": "알겠어",
+        "exportable": 1,
         "memory_context": json.dumps([{
             "kind": "replied_message",
             "role": "assistant",
@@ -115,11 +116,16 @@ def test_build_shadow_turns_preserves_causal_context_and_provenance():
         }], ensure_ascii=False),
     }]
 
-    turns, source_ids, context_items = build_shadow_turns(pending, include_replies=True)
+    turns, source_ids, context_items, source_public_at_capture = build_shadow_turns(
+        pending,
+        include_replies=True,
+    )
 
     assert source_ids == {"101"}
+    assert source_public_at_capture == {"101": True}
     assert context_items == 1
     assert turns[0]["message_id"] == "101"
+    assert turns[0]["public_at_capture"] is True
     assert turns[0]["hina"] == "알겠어"
     assert turns[0]["context"][0]["ownership"] == "assistant"
 
@@ -140,6 +146,31 @@ def test_persist_shadow_items_suppresses_exact_retry_duplicates():
     rows = store.memory_items(100)
     assert len(rows) == 1
     assert rows[0].source_message_ids == ("101",)
+    store.close()
+
+
+def test_persist_shadow_items_never_upgrades_private_source_visibility():
+    store = Store(":memory:")
+    scope = Scope(20, 10, 100, True)
+    item = ExtractedMemoryItem(
+        content="사용자는 프로젝트 A를 진행 중이다.",
+        kind=MemoryKind.TASK,
+        disclosure=MemoryDisclosure.REFERENCE_GATED,
+        confidence=0.95,
+        source_message_ids=("201", "202"),
+    )
+
+    stored, duplicates = persist_shadow_items(
+        store,
+        scope,
+        (item,),
+        source_public_at_capture={"201": True, "202": False},
+    )
+
+    assert (stored, duplicates) == (1, 0)
+    rows = store.memory_items(100)
+    assert len(rows) == 1
+    assert rows[0].origin_public_at_capture is False
     store.close()
 
 
