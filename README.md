@@ -282,7 +282,7 @@ production runtime의 관리·설정 기능은 Discord native slash command를 �
 - 이미지 안의 텍스트·QR·화면 속 prompt
 
 관리 권한, memory 삭제, Discord 전송 경계는 모델의 주장에 맡기지 않고 Python 코드에서 검사합니다.
-모델 출력의 `@everyone`, `@here`, 사용자/역할 멘션도 전송 전에 비활성화합니다.
+모델 출력의 일반 사용자 멘션은 허용하지만 `@everyone`, `@here`, 역할 멘션은 전송 전에 비활성화합니다.
 
 ## 로그와 데이터 보관
 
