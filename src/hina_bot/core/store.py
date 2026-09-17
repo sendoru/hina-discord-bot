@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -22,6 +23,7 @@ class Store:
                 scope TEXT NOT NULL, realm TEXT NOT NULL, user_id TEXT NOT NULL,
                 message_id TEXT NOT NULL UNIQUE,
                 content TEXT NOT NULL, reply TEXT NOT NULL, exportable INTEGER NOT NULL,
+                memory_context TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS turns_scope ON turns(scope, id);
@@ -55,6 +57,12 @@ class Store:
             );
             CREATE TABLE IF NOT EXISTS notes (scope TEXT PRIMARY KEY, text TEXT NOT NULL);
         """)
+        columns = {row["name"] for row in self.db.execute("PRAGMA table_info(turns)")}
+        if "memory_context" not in columns:
+            with self.db:
+                self.db.execute(
+                    "ALTER TABLE turns ADD COLUMN memory_context TEXT NOT NULL DEFAULT ''"
+                )
 
     def close(self):
         self.db.close()
@@ -89,13 +97,37 @@ class Store:
         return self.db.execute("SELECT 1 FROM turns WHERE message_id=?",
                                (str(message_id),)).fetchone() is not None
 
-    def add(self, scope: Scope, message_id: int, content: str, reply: str):
+    def add(
+        self,
+        scope: Scope,
+        message_id: int,
+        content: str,
+        reply: str,
+        *,
+        memory_context=(),
+    ):
         exportable = scope.public_at_capture and self.summary_exportable(scope)
         exportable = exportable and all(row["exportable"] for row in self.history(scope))
+        encoded_context = (
+            json.dumps(list(memory_context), ensure_ascii=False, separators=(",", ":"))
+            if memory_context
+            else ""
+        )
         with self.db:
-            self.db.execute("INSERT INTO turns(scope,realm,user_id,message_id,content,reply,exportable) "
-                            "VALUES (?,?,?,?,?,?,?)", (scope.conversation, scope.realm,
-                            str(scope.user_id), str(message_id), content, reply, int(exportable)))
+            self.db.execute(
+                "INSERT INTO turns(scope,realm,user_id,message_id,content,reply,exportable,"
+                "memory_context) VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    scope.conversation,
+                    scope.realm,
+                    str(scope.user_id),
+                    str(message_id),
+                    content,
+                    reply,
+                    int(exportable),
+                    encoded_context,
+                ),
+            )
             # Bound raw retention even if the summary API keeps failing.
             self.db.execute("DELETE FROM turns WHERE scope=? AND id NOT IN "
                             "(SELECT id FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?)",
@@ -275,7 +307,7 @@ class Store:
         elif server_mode is not None:
             effective, source = server_mode, "server"
         elif global_mode is not None:
-            effective, source = global_mode, "global"
+            effective, source = "on", "global"
         else:
             effective, source = "on", "default"
         return {
