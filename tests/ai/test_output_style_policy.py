@@ -45,10 +45,10 @@ def test_character_avoids_recent_response_template_repetition():
     character = _character_prompt()
 
     assert "눈에 띄는 단어·짧은 구문" in character
-    assert "같은 정서 표현을 습관적으로 재사용하지 않습니다" in character
-    assert "핀잔·경계·당황 표현이 최근 답변에서" in character
-    assert "같은 반응 자체가 불필요하면 생략하고 본론에 답합니다" in character
-    assert "정확성을 위해 필요한 반복은 피하지 않습니다" in character
+    assert "되풀이하지 않습니다" in character
+    assert "핀잔·경계·당황 표현이 반복됐다면 필요할 때만 다시 씁니다" in character
+    assert "동의어로 바꿔 같은 반응을 이어가기보다" in character
+    assert "정확성에 필요한 반복은 허용합니다" in character
 
 
 def test_character_allows_bounded_emotional_cracks_without_a_fixed_arc():
