@@ -226,7 +226,9 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         kwargs = self.channel.send.call_args.kwargs
         self.assertNotIn("reference", kwargs)
         mentions = kwargs["allowed_mentions"].to_dict()
-        self.assertEqual(mentions["parse"], [])
+        self.assertIn("users", mentions["parse"])
+        self.assertNotIn("roles", mentions["parse"])
+        self.assertNotIn("everyone", mentions["parse"])
         self.assertFalse(mentions.get("replied_user", False))
         rows = [json.loads(line) for line in self.event_path.read_text().splitlines()]
         completed = next(row for row in rows if row["event"] == "turn.completed")
@@ -287,13 +289,19 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row["error_type"], "RuntimeError")
         self.assertIn("error_location", row)
 
-    async def test_model_mentions_are_neutralized_before_delivery_and_memory(self):
+    async def test_user_mentions_survive_but_mass_mentions_are_neutralized(self):
         self.llm.answer.return_value = "@everyone <@123> <@!456> <@&789> 안녕"
         await self.bot.on_message(self.message())
         delivered = self.channel.send.call_args.args[0]
         self.assertNotIn("@everyone", delivered)
-        self.assertNotIn("<@", delivered)
         self.assertIn("＠everyone", delivered)
+        self.assertIn("<@123>", delivered)
+        self.assertIn("<@!456>", delivered)
+        self.assertIn("<＠&789>", delivered)
+        mentions = self.channel.send.call_args.kwargs["allowed_mentions"].to_dict()
+        self.assertIn("users", mentions["parse"])
+        self.assertNotIn("roles", mentions["parse"])
+        self.assertNotIn("everyone", mentions["parse"])
         self.assertEqual(self.store.history(Scope(1, 10, 100))[0]["reply"], delivered)
 
     async def test_untriggered_message_is_not_saved(self):
