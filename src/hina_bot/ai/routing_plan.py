@@ -7,12 +7,15 @@ from .contextual_routing import (
     find_anchor,
     find_prior_user_request,
     is_followup,
+    needs_context_grounding,
 )
 from .egress_policy import BOT_INTERACTIONS_ONLY, filter_channel_context
 
 _CLASSIFIER_CONTEXT_BUDGET = 4000
 _CLASSIFIER_CAUSAL_BUDGET = 2800
 _CLASSIFIER_CONTEXT_ITEMS = 8
+_CLASSIFIER_CROSS_SPEAKER_BUDGET = 1200
+_CLASSIFIER_CROSS_SPEAKER_ITEMS = 4
 _CLASSIFIER_CAUSAL_KINDS = frozenset({
     "prior_reply_source",
     "reply_origin_source",
@@ -84,13 +87,81 @@ def _take_context(
     return selected, remaining
 
 
+def _cross_speaker_bot_interactions(
+    rows: list[dict],
+    *,
+    current_user_id: int | str,
+) -> list[dict]:
+    """Return up to two recent external-user <-> assistant exchanges from ambient context.
+
+    General channel chatter is deliberately excluded even under the ``full`` egress policy.  A user
+    row must have direct-trigger provenance; assistant rows must identify an external reply target.
+    Pairing keeps the classifier from seeing a bare answer when the matching bot-directed question is
+    still present in the context window.
+    """
+    current = str(current_user_id)
+    pending: list[tuple[int, str, dict]] = []
+    exchanges: list[list[tuple[int, dict]]] = []
+
+    for position, row in enumerate(rows):
+        if str(row.get("context_kind") or "") != "channel_ambient":
+            continue
+        role = str(row.get("role") or "")
+        if role == "user":
+            author = str(row.get("author_user_id") or row.get("user_id") or "")
+            if author == current or row.get("direct_trigger") is not True:
+                continue
+            pending.append((position, author, row))
+            continue
+        if role != "assistant":
+            continue
+
+        target = str(row.get("reply_target_user_id") or "")
+        if not target or target == current:
+            continue
+        matched = None
+        for pending_index in range(len(pending) - 1, -1, -1):
+            if pending[pending_index][1] == target:
+                matched = pending.pop(pending_index)
+                break
+        exchange: list[tuple[int, dict]] = []
+        if matched is not None:
+            exchange.append((matched[0], matched[2]))
+        exchange.append((position, row))
+        exchanges.append(exchange)
+
+    # A just-triggered external question can be useful even if its bot reply has not entered the
+    # recent-message buffer yet.
+    exchanges.extend([[(position, row)] for position, _author, row in pending])
+    exchanges.sort(key=lambda group: max(position for position, _row in group))
+
+    selected: list[tuple[int, dict]] = []
+    for group in exchanges[-2:]:
+        selected.extend(group)
+    selected.sort(key=lambda item: item[0])
+
+    result = []
+    seen = set()
+    for _position, row in selected:
+        message_id = str(row.get("message_id") or "")
+        dedupe_key = message_id or id(row)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        item = dict(row)
+        item["context_kind"] = "cross_speaker_bot_interaction"
+        result.append(item)
+    return result
+
+
 def _classifier_context(
     rows: list[dict],
     *,
     current_user_id: int | str,
     policy: str,
+    include_cross_speaker: bool = False,
 ) -> tuple[ClassifierContextItem, ...]:
-    """Select causal reply context plus a small same-speaker window for semantic routing."""
+    """Select causal, same-speaker, and conditionally cross-speaker classifier context."""
     safe = filter_channel_context(rows, current_user_id, policy)
     causal = [
         row for row in safe
@@ -100,9 +171,16 @@ def _classifier_context(
         row for row in safe
         if str(row.get("context_kind") or "") == "speaker_thread"
     ]
+    cross_speaker = (
+        _cross_speaker_bot_interactions(safe, current_user_id=current_user_id)
+        if include_cross_speaker
+        else []
+    )
 
     causal_budget = (
-        _CLASSIFIER_CAUSAL_BUDGET if speaker else _CLASSIFIER_CONTEXT_BUDGET
+        _CLASSIFIER_CAUSAL_BUDGET
+        if speaker or cross_speaker
+        else _CLASSIFIER_CONTEXT_BUDGET
     )
     causal_selected, causal_unused = _take_context(
         causal,
@@ -110,16 +188,35 @@ def _classifier_context(
         budget=causal_budget,
         slots=min(4, _CLASSIFIER_CONTEXT_ITEMS),
     )
-    speaker_budget = _CLASSIFIER_CONTEXT_BUDGET - (causal_budget - causal_unused)
-    speaker_selected, _ = _take_context(
+
+    remaining_budget = _CLASSIFIER_CONTEXT_BUDGET - (causal_budget - causal_unused)
+    remaining_slots = _CLASSIFIER_CONTEXT_ITEMS - len(causal_selected)
+    cross_reserve = (
+        min(_CLASSIFIER_CROSS_SPEAKER_BUDGET, remaining_budget)
+        if cross_speaker
+        else 0
+    )
+    cross_slot_reserve = min(2, remaining_slots) if cross_speaker else 0
+
+    speaker_selected, speaker_unused = _take_context(
         speaker,
         current_user_id=current_user_id,
-        budget=speaker_budget,
-        slots=_CLASSIFIER_CONTEXT_ITEMS - len(causal_selected),
+        budget=max(0, remaining_budget - cross_reserve),
+        slots=max(0, remaining_slots - cross_slot_reserve),
+    )
+    remaining_budget = cross_reserve + speaker_unused
+    remaining_slots -= len(speaker_selected)
+
+    cross_selected, _ = _take_context(
+        cross_speaker,
+        current_user_id=current_user_id,
+        budget=remaining_budget,
+        slots=min(_CLASSIFIER_CROSS_SPEAKER_ITEMS, remaining_slots),
     )
 
-    # Same-speaker continuity precedes the currently selected reply chain conceptually.
-    return tuple(speaker_selected + causal_selected)
+    # Same-speaker continuity comes first conceptually, then the optional shared bot conversation,
+    # while explicit reply/provenance context remains closest to the current request.
+    return tuple(speaker_selected + cross_selected + causal_selected)
 
 
 def build_routing_plan(
@@ -167,10 +264,21 @@ def build_routing_plan(
     ):
         classifier_anchor = anchor_text
 
+    has_explicit_reply = any(
+        str(row.get("context_kind") or "") == "replied_message"
+        for row in rows
+    )
+    grounding_needed = needs_context_grounding(
+        content,
+        has_explicit_reply=has_explicit_reply,
+    )
     classifier_context = _classifier_context(
         rows,
         current_user_id=scope.user_id,
         policy=classifier_context_policy,
+        # An explicit reply already has a higher-quality causal lane.  Only sample the shared bot
+        # conversation when the request refers backwards without selecting a concrete message.
+        include_cross_speaker=grounding_needed and not has_explicit_reply,
     )
     return RoutingPlan(
         visible_content=content,
