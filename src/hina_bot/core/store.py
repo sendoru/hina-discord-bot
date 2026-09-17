@@ -2,6 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+from .memory_context import CURRENT_MEMORY_CONTEXT
 from .routing import Scope
 
 
@@ -104,10 +105,13 @@ class Store:
         content: str,
         reply: str,
         *,
-        memory_context=(),
+        memory_context=None,
     ):
         exportable = scope.public_at_capture and self.summary_exportable(scope)
         exportable = exportable and all(row["exportable"] for row in self.history(scope))
+        if memory_context is None:
+            memory_context = CURRENT_MEMORY_CONTEXT.get()
+            CURRENT_MEMORY_CONTEXT.set(())
         encoded_context = (
             json.dumps(list(memory_context), ensure_ascii=False, separators=(",", ":"))
             if memory_context
@@ -307,7 +311,7 @@ class Store:
         elif server_mode is not None:
             effective, source = server_mode, "server"
         elif global_mode is not None:
-            effective, source = "on", "global"
+            effective, source = global_mode, "global"
         else:
             effective, source = "on", "default"
         return {
