@@ -89,7 +89,13 @@ class Store:
                 )
 
     def close(self):
-        self.db.close()
+        try:
+            self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            # A checkpoint failure must not prevent the connection from closing during shutdown.
+            pass
+        finally:
+            self.db.close()
 
     def note(self, key: str) -> str:
         row = self.db.execute("SELECT text FROM notes WHERE scope=?", (key,)).fetchone()
