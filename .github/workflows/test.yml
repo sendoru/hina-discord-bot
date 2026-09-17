@@ -14,11 +14,5 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install -e '.[dev]'
-      - name: Capture Ruff diagnostics
-        run: ruff check . --output-format=concise > ruff-${{ matrix.python }}.txt 2>&1 || true
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ruff-${{ matrix.python }}
-          path: ruff-${{ matrix.python }}.txt
       - run: ruff check .
       - run: pytest -q
