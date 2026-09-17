@@ -59,6 +59,10 @@ def search_decision(request, references, *, enabled, default_location="") -> Sea
         if request.relation_or_event and not trusted_local(references):
             return SearchDecision("required", True, "trusted_lore_missing")
         return SearchDecision("none", True, "local_evidence_sufficient")
+    if request.route == InformationRoute.GENERAL and request.factual_challenge:
+        # A disagreement alone is not proof that the previous answer was wrong. Give the final model
+        # access to verification without forcing a lookup for every correction or stable fact.
+        return SearchDecision("auto", True, "factual_challenge")
     if request.freshness == FreshnessMode.AUTO:
         return SearchDecision("auto", False, "semantic_temporal")
     # GENERAL + STATIC is intentionally open: stable questions usually remain none, but a semantic

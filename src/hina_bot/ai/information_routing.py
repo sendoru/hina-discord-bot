@@ -13,7 +13,7 @@ from .information_intent import (
     simple_world_fact,
     world_fact,
 )
-from .rp_output_policy import SOURCE_REQUEST_QUERY
+from .rp_output_policy import FACTUAL_CHALLENGE_QUERY, SOURCE_REQUEST_QUERY
 
 
 class InformationRoute(StrEnum):
@@ -34,6 +34,7 @@ class InformationRequest:
     relation_or_event: bool = False
     self_profile: bool = False
     explicit_source: bool = False
+    factual_challenge: bool = False
 
 
 def classify_information_request(
@@ -51,6 +52,7 @@ def classify_information_request(
     simple_fact = simple_world_fact(text)
     fact_question = world_fact(text, call_prefixes=call_prefixes)
     explicit_source = bool(SOURCE_REQUEST_QUERY.search(text))
+    factual_challenge = bool(FACTUAL_CHALLENGE_QUERY.search(text))
     query = lore_query(
         text,
         profile=profile,
@@ -86,6 +88,7 @@ def classify_information_request(
         relation_or_event=relation,
         self_profile=profile,
         explicit_source=explicit_source,
+        factual_challenge=factual_challenge,
     )
 
 

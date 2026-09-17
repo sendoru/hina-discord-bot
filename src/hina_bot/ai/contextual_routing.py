@@ -3,7 +3,7 @@
 import re
 from dataclasses import dataclass
 
-from .rp_output_policy import SOURCE_REQUEST_QUERY
+from .rp_output_policy import FACTUAL_CHALLENGE_QUERY, SOURCE_REQUEST_QUERY
 
 _FOLLOWUP = re.compile(
     r"^\s*(?:그럼|그러면|그렇다면|그래서|근데|그런데|"
@@ -75,6 +75,8 @@ def needs_context_grounding(text: str, *, has_explicit_reply: bool = False) -> b
     if not value:
         return False
     if has_explicit_reply:
+        return True
+    if FACTUAL_CHALLENGE_QUERY.search(value):
         return True
     if _EXPLICIT_CONTEXT_REFERENCE.search(value):
         return True
