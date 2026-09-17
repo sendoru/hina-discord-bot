@@ -10,8 +10,10 @@ The current summaries are scoped strings. They cannot express the difference bet
 fact, carrying relationship familiarity across spaces, and deciding whether a fact may be mentioned
 in another Discord space. Structured items separate memory content from disclosure policy.
 
-A Discord guild is treated as one disclosure realm even when the user moves between channels in that
-guild. `origin_channel_id` is still stored for provenance and channel-level deletion.
+A public Discord guild channel contributes to a guild-level disclosure space. A private guild channel
+is narrower: memories formed there are automatically full only in that same channel. This preserves
+the existing `public_at_capture` privacy boundary while still keeping `origin_channel_id` for
+provenance and channel-level deletion.
 
 ## Item fields
 
@@ -22,6 +24,7 @@ Each item stores:
 - `kind`: `fact`, `event`, `preference`, `relationship`, `boundary`, or `task`.
 - `origin_realm`: `dm:<user>` or `guild:<guild>` where the memory was formed.
 - `origin_channel_id`: channel provenance inside that realm.
+- `origin_public_at_capture`: whether the guild channel was public when the source was captured.
 - `disclosure`: `local`, `implicit`, `reference_gated`, or `global`.
 - `source_message_ids`: source Discord message ids for later provenance/auditing work.
 - `confidence`: extractor confidence in the range 0..1.
@@ -35,17 +38,25 @@ The policy primitive returns one of three access levels:
   must not be supplied verbatim.
 - `hidden`: the item must not enter the response context.
 
-| disclosure | same realm | DM -> guild | guild A -> guild B | guild -> DM |
+A memory is in the same disclosure space when it comes from the current DM, the same private guild
+channel, or a public channel in the current guild. A private guild memory does not become guild-wide
+merely because the target channel belongs to the same server.
+
+| disclosure | same disclosure space | DM -> guild | guild A -> guild B | public guild -> DM |
 | --- | --- | --- | --- | --- |
 | `local` | full | hidden | hidden | hidden |
 | `implicit` | full | implicit | implicit | implicit |
 | `reference_gated` | full | full only after owner reference | full only after owner reference | full when `PUBLIC_SERVER_MEMORY_IN_DM=true`, otherwise owner reference only |
 | `global` | full | full | full | full |
 
+For a private guild-channel origin, `reference_gated` remains hidden in every other channel, server,
+or DM until the owner explicitly references it. The public-server-to-DM shortcut never applies to
+private-channel memories.
+
 `reference_gated` does not mean that any person can unlock a memory by mentioning it. The current
 speaker must be the same `user_id` that owns the item. This is checked before every other rule.
 
-The one-way `guild -> DM` exception intentionally preserves the existing
+The one-way public `guild -> DM` exception intentionally preserves the existing
 `PUBLIC_SERVER_MEMORY_IN_DM` behavior: information the user already said in a public server can remain
 available in their private conversation with Hina without making it automatically visible in another
 server.
