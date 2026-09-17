@@ -86,9 +86,7 @@ def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
 def chunks(text: str, limit: int = 1900):
     # Count UTF-16 units conservatively, including emoji; Discord limit is 2000.
     part, size = [], 0
-    for char in re.findall(r"<a?:[^:<>
-
-\s]{1,32}:\d{1,20}>|.", text, flags=re.DOTALL):
+    for char in re.findall(r"<a?:[^:<>\s]{1,32}:\d{1,20}>|.", text, flags=re.DOTALL):
         n = len(char.encode("utf-16-le")) // 2
         if size + n > limit:
             yield "".join(part)
