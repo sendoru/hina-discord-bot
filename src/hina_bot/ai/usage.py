@@ -300,7 +300,7 @@ class UsageLogger:
             self._emit(self.handler, row)
 
     def routing_event(self, operation: str, **metadata):
-        """Write a content-free routing decision that is not a second API usage row."""
+        """Write a content-free routing/lifecycle event that is not a second API usage row."""
         allowed = {
             "status", "semantic_route_mode", "semantic_route_status",
             "semantic_route_level", "semantic_route_codes",
@@ -309,6 +309,8 @@ class UsageLogger:
             "model_route_policy", "search_route_baseline_mode",
             "search_route_proposed_mode", "search_route_locked", "search_route_reason",
             "semantic_web_need", "semantic_web_codes", "semantic_web_uncertain",
+            "memory_kind", "pending_turns", "batch_turns", "payload_chars",
+            "context_items", "old_memory_chars",
         }
         row = {
             "at": datetime.now(UTC).isoformat(),
