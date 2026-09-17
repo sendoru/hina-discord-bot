@@ -231,9 +231,9 @@ def persist_shadow_items(
 
 
 __all__ = [
+    "SHADOW_EXTRACTION_POLICY",
     "ExtractedMemoryItem",
     "ExtractionParseResult",
-    "SHADOW_EXTRACTION_POLICY",
     "build_shadow_turns",
     "parse_shadow_extraction",
     "persist_shadow_items",
