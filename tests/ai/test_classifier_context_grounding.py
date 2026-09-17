@@ -157,6 +157,8 @@ async def test_classifier_payload_includes_bounded_anchor_and_context_signals():
         "anchor_present": True,
         "anchor_included": True,
         "routing_context_count": 0,
+        "cross_speaker_context_count": 0,
+        "cross_speaker_context_chars": 0,
         "reference_count": 2,
         "web_search_required": True,
         "web_search_locked": True,
@@ -202,6 +204,114 @@ async def test_classifier_payload_marks_withheld_third_party_anchor_without_forw
         assert payload["context_signals"]["anchor_included"] is False
         assert payload["routing_context"] == []
         assert "third-party-secret" not in request["input"]
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_context_reference_samples_recent_cross_speaker_bot_exchange():
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100)
+    config = settings()
+    classifier_client = client(response(classification()))
+    router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
+    rows = [
+        {
+            "message_id": "10",
+            "context_kind": "channel_ambient",
+            "content": "히나야 그 때 자동사인지 타동사인지는 어떻게 구별해",
+            "role": "user",
+            "author_user_id": "200",
+            "direct_trigger": True,
+        },
+        {
+            "message_id": "11",
+            "context_kind": "channel_ambient",
+            "content": "목적어를 곧바로 데리고 오는지 보면 돼.",
+            "role": "assistant",
+            "reply_target_user_id": "200",
+        },
+        {
+            "message_id": "12",
+            "context_kind": "channel_ambient",
+            "content": "이건 그냥 채널에서 한 일반 잡담",
+            "role": "user",
+            "author_user_id": "300",
+            "direct_trigger": False,
+        },
+    ]
+    current = (
+        "히나야 위에 얘기 연장선인데 목적의 의미를 가지는 to부정사가 오는 경우에 "
+        "이게 전치사가 붙은 부사절인지 목적어인지는 어떻게 구분해야 돼"
+    )
+    try:
+        routing = build_routing_plan(
+            store,
+            scope,
+            current,
+            rows,
+            use_memory=False,
+            classifier_context_policy="full",
+        )
+        assert routing.routing_query == current
+        cross = [
+            item
+            for item in routing.classifier_context
+            if item.kind == "cross_speaker_bot_interaction"
+        ]
+        assert [item.text for item in cross] == [
+            "히나야 그 때 자동사인지 타동사인지는 어떻게 구별해",
+            "목적어를 곧바로 데리고 오는지 보면 돼.",
+        ]
+        assert [item.ownership for item in cross] == ["external", "assistant"]
+        assert all("일반 잡담" not in item.text for item in routing.classifier_context)
+        assert sum(len(item.text) for item in cross) <= 1200
+
+        outcome = await router.classify(information(routing), baseline_tier="fast")
+        assert outcome.status == "completed"
+        request = classifier_client.responses.create.await_args.kwargs
+        payload = json.loads(request["input"])
+        assert payload["context_signals"]["cross_speaker_context_count"] == 2
+        assert payload["context_signals"]["cross_speaker_context_chars"] == sum(
+            len(item.text) for item in cross
+        )
+    finally:
+        store.close()
+
+
+def test_self_contained_question_does_not_sample_cross_speaker_context():
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100)
+    rows = [
+        {
+            "message_id": "10",
+            "context_kind": "channel_ambient",
+            "content": "히나야 그 때 자동사인지 타동사인지는 어떻게 구별해",
+            "role": "user",
+            "author_user_id": "200",
+            "direct_trigger": True,
+        },
+        {
+            "message_id": "11",
+            "context_kind": "channel_ambient",
+            "content": "목적어를 곧바로 데리고 오는지 보면 돼.",
+            "role": "assistant",
+            "reply_target_user_id": "200",
+        },
+    ]
+    try:
+        routing = build_routing_plan(
+            store,
+            scope,
+            "히나야 C++에서 virtual 함수가 뭐야?",
+            rows,
+            use_memory=False,
+            classifier_context_policy="full",
+        )
+        assert all(
+            item.kind != "cross_speaker_bot_interaction"
+            for item in routing.classifier_context
+        )
     finally:
         store.close()
 
