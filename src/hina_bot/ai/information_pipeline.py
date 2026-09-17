@@ -5,6 +5,8 @@ import logging
 import re
 from dataclasses import replace
 
+from hina_bot.core.memory_context import CURRENT_MEMORY_CONTEXT, build_memory_context
+
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode, is_live_domain
@@ -289,6 +291,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             assembly_use_memory = True
 
         channel_rows = channel_context or ()
+        CURRENT_MEMORY_CONTEXT.set(tuple(build_memory_context(channel_rows, scope.user_id)))
         visual_inputs = CURRENT_VISUAL_INPUTS.get()
         context_chars = self._routing_context_chars(
             assembly_store,
