@@ -3,6 +3,7 @@ import sqlite3
 from pathlib import Path
 
 from .memory_context import CURRENT_MEMORY_CONTEXT
+from .memory_items import MemoryDisclosure, MemoryItem, MemoryKind
 from .routing import Scope
 
 
@@ -44,6 +45,26 @@ class Store:
                 scope TEXT PRIMARY KEY, realm TEXT NOT NULL, user_id TEXT NOT NULL,
                 name TEXT NOT NULL, text TEXT NOT NULL, through_id INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS memory_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN (
+                    'fact','event','preference','relationship','boundary','task'
+                )),
+                origin_realm TEXT NOT NULL,
+                origin_channel_id TEXT NOT NULL,
+                disclosure TEXT NOT NULL CHECK(disclosure IN (
+                    'local','implicit','reference_gated','global'
+                )),
+                source_message_ids TEXT NOT NULL DEFAULT '[]',
+                confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0 AND confidence <= 1),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS memory_items_owner ON memory_items(user_id, id);
+            CREATE INDEX IF NOT EXISTS memory_items_origin
+                ON memory_items(origin_realm, origin_channel_id, user_id);
             CREATE TABLE IF NOT EXISTS emoji_registry (
                 alias TEXT PRIMARY KEY, emoji_id TEXT NOT NULL UNIQUE, description TEXT NOT NULL,
                 source_guild_id TEXT
@@ -150,12 +171,82 @@ class Store:
                               (scope.conversation,)).fetchone()
         return row is None or bool(row[0])
 
+    @staticmethod
+    def _decode_memory_item(row) -> MemoryItem:
+        source_ids = json.loads(row["source_message_ids"] or "[]")
+        return MemoryItem(
+            id=int(row["id"]),
+            user_id=str(row["user_id"]),
+            content=str(row["content"]),
+            kind=MemoryKind(row["kind"]),
+            origin_realm=str(row["origin_realm"]),
+            origin_channel_id=str(row["origin_channel_id"]),
+            disclosure=MemoryDisclosure(row["disclosure"]),
+            source_message_ids=tuple(str(value) for value in source_ids),
+            confidence=float(row["confidence"]),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    def add_memory_item(
+        self,
+        scope: Scope,
+        content: str,
+        *,
+        kind: MemoryKind | str,
+        disclosure: MemoryDisclosure | str,
+        source_message_ids=(),
+        confidence: float = 1.0,
+    ) -> int:
+        text = content.strip()
+        if not text:
+            raise ValueError("Memory item content must not be empty")
+        kind = MemoryKind(kind)
+        disclosure = MemoryDisclosure(disclosure)
+        confidence = float(confidence)
+        if not 0 <= confidence <= 1:
+            raise ValueError("Memory item confidence must be between 0 and 1")
+        source_ids = tuple(dict.fromkeys(str(value) for value in source_message_ids))
+        encoded_sources = json.dumps(source_ids, ensure_ascii=False, separators=(",", ":"))
+        with self.db:
+            cursor = self.db.execute(
+                "INSERT INTO memory_items(user_id,content,kind,origin_realm,origin_channel_id,"
+                "disclosure,source_message_ids,confidence) VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    str(scope.user_id),
+                    text,
+                    kind.value,
+                    scope.realm,
+                    str(scope.channel_id),
+                    disclosure.value,
+                    encoded_sources,
+                    confidence,
+                ),
+            )
+        return int(cursor.lastrowid)
+
+    def memory_items(self, user_id: int | str, *, origin_realm: str | None = None):
+        params: list[str] = [str(user_id)]
+        where = "user_id=?"
+        if origin_realm is not None:
+            where += " AND origin_realm=?"
+            params.append(origin_realm)
+        rows = self.db.execute(
+            f"SELECT * FROM memory_items WHERE {where} ORDER BY id",
+            tuple(params),
+        ).fetchall()
+        return [self._decode_memory_item(row) for row in rows]
+
     def forget(self, scope: Scope):
         """Delete this user's automatically accumulated memory in the current realm."""
         with self.db:
             for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
                 self.db.execute(f"DELETE FROM {table} WHERE realm=? AND user_id=?",
                                 (scope.realm, str(scope.user_id)))
+            self.db.execute(
+                "DELETE FROM memory_items WHERE origin_realm=? AND user_id=?",
+                (scope.realm, str(scope.user_id)),
+            )
 
     @staticmethod
     def _rowcount(cursor) -> int:
@@ -169,6 +260,11 @@ class Store:
             for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE scope LIKE ?", (prefix,))
                 deleted += self._rowcount(cursor)
+            cursor = self.db.execute(
+                "DELETE FROM memory_items WHERE origin_realm=? AND origin_channel_id=?",
+                (scope.realm, str(scope.channel_id)),
+            )
+            deleted += self._rowcount(cursor)
         return deleted
 
     def purge_realm_memory(self, scope: Scope) -> int:
@@ -178,13 +274,24 @@ class Store:
             for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE realm=?", (scope.realm,))
                 deleted += self._rowcount(cursor)
+            cursor = self.db.execute(
+                "DELETE FROM memory_items WHERE origin_realm=?",
+                (scope.realm,),
+            )
+            deleted += self._rowcount(cursor)
         return deleted
 
     def purge_all_memory(self) -> int:
         """Delete all automatic persistent memory while preserving notes and configuration."""
         deleted = 0
         with self.db:
-            for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
+            for table in (
+                "turns",
+                "summaries",
+                "shared_calls",
+                "shared_summaries",
+                "memory_items",
+            ):
                 cursor = self.db.execute(f"DELETE FROM {table}")
                 deleted += self._rowcount(cursor)
         return deleted
@@ -303,9 +410,9 @@ class Store:
         return row[0] if row else None
 
     def chat_log_mode_chain(self, scope: Scope) -> dict[str, str | None]:
-        global_mode = self.chat_log_mode_override("global")
-        server_mode = self.chat_log_mode_override(scope.realm) if scope.guild_id is not None else None
-        channel_mode = self.chat_log_mode_override(scope.channel)
+        global_mode = self.memory_mode_override("global")
+        server_mode = self.memory_mode_override(scope.realm) if scope.guild_id is not None else None
+        channel_mode = self.memory_mode_override(scope.channel)
         if channel_mode is not None:
             effective, source = channel_mode, "channel"
         elif server_mode is not None:
