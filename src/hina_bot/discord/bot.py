@@ -35,7 +35,7 @@ USER_ONLY_ALLOWED_MENTIONS = discord.AllowedMentions(
     replied_user=False,
 )
 BOT_TRIGGER_CHAIN_LIMIT = 2
-BOT_TRIGGER_CHAIN_WINDOW_SECONDS = 30.0
+BOT_TRIGGER_CHAIN_WINDOW_SECONDS = 15.0
 
 
 def _bare_call_reply(
