@@ -88,23 +88,23 @@ class MemorySummaryMixin:
             return
         old, _ = store.summary(scope)
         include_replies = scope.guild_id is None
+        new_turns = [
+            {
+                "at": turn["created_at"],
+                "user": turn["content"],
+                **({"hina": turn["reply"]} if include_replies else {}),
+            }
+            for turn in pending
+        ]
         payload = {
             "previous_memory": old,
-            "new_turns": [
-                {
-                    "at": turn["created_at"],
-                    "user": turn["content"],
-                    **({"hina": turn["reply"]} if include_replies else {}),
-                }
-                for turn in pending
-            ],
+            "new_turns": new_turns,
         }
         plan = build_memory_model_plan(
             self.settings,
             old,
-            pending,
+            new_turns,
             shared=False,
-            include_replies=include_replies,
         )
         response = await self._memory_request("summarize", SUMMARY_POLICY, payload, plan)
         if response.status == "completed" and response.output_text.strip():
@@ -117,20 +117,20 @@ class MemorySummaryMixin:
         if len(pending) < self.settings.summary_every:
             return
         old = store.shared_summary(scope)[0]
+        direct_calls = [
+            {"at": turn["created_at"], "user": turn["content"]}
+            for turn in pending
+        ]
         payload = {
             "previous_memory": old,
             "speaker_id": str(scope.user_id),
-            "direct_calls": [
-                {"at": turn["created_at"], "user": turn["content"]}
-                for turn in pending
-            ],
+            "direct_calls": direct_calls,
         }
         plan = build_memory_model_plan(
             self.settings,
             old,
-            pending,
+            direct_calls,
             shared=True,
-            include_replies=False,
         )
         response = await self._memory_request(
             "summarize_shared",

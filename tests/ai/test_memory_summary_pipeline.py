@@ -83,11 +83,13 @@ async def test_information_pipeline_memory_summary_uses_adaptive_smart_route():
     await pipeline.summarize(store, scope)
 
     request = pipeline.usage.request.await_args.kwargs
+    metadata = request["route_metadata"]
     assert request["model"] == "smart-model"
     assert request["instructions"] == SUMMARY_POLICY
     assert request["max_output_tokens"] == 4096
-    assert request["route_metadata"]["model_tier"] == "smart"
-    assert "compaction_pressure" in request["route_metadata"]["model_route_reasons"]
+    assert metadata["model_tier"] == "smart"
+    assert metadata["model_route_policy"] == "memory-v2"
+    assert set(metadata["model_route_components"]) <= {"capacity_load", "pending_load"}
     assert store.saved == ("z" * 2000, 8)
 
 
@@ -101,7 +103,9 @@ async def test_server_personal_summary_routes_only_on_fields_sent_to_provider():
 
     request = pipeline.usage.request.await_args.kwargs
     payload = json.loads(request["input"])
+    metadata = request["route_metadata"]
     assert request["model"] == "fast-model"
-    assert request["route_metadata"]["model_route_policy"] == "memory-v1"
-    assert "pending_input_volume" not in request["route_metadata"]["model_route_reasons"]
+    assert metadata["model_route_policy"] == "memory-v2"
     assert all("hina" not in turn for turn in payload["new_turns"])
+    # The large bot replies are absent from both the provider payload and the pending-load input.
+    assert metadata["model_route_components"].get("pending_load", 0.0) < 0.5
