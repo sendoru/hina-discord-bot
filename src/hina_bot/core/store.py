@@ -54,6 +54,8 @@ class Store:
                 )),
                 origin_realm TEXT NOT NULL,
                 origin_channel_id TEXT NOT NULL,
+                origin_public_at_capture INTEGER NOT NULL
+                    CHECK(origin_public_at_capture IN (0,1)),
                 disclosure TEXT NOT NULL CHECK(disclosure IN (
                     'local','implicit','reference_gated','global'
                 )),
@@ -181,6 +183,7 @@ class Store:
             kind=MemoryKind(row["kind"]),
             origin_realm=str(row["origin_realm"]),
             origin_channel_id=str(row["origin_channel_id"]),
+            origin_public_at_capture=bool(row["origin_public_at_capture"]),
             disclosure=MemoryDisclosure(row["disclosure"]),
             source_message_ids=tuple(str(value) for value in source_ids),
             confidence=float(row["confidence"]),
@@ -211,13 +214,15 @@ class Store:
         with self.db:
             cursor = self.db.execute(
                 "INSERT INTO memory_items(user_id,content,kind,origin_realm,origin_channel_id,"
-                "disclosure,source_message_ids,confidence) VALUES (?,?,?,?,?,?,?,?)",
+                "origin_public_at_capture,disclosure,source_message_ids,confidence) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     str(scope.user_id),
                     text,
                     kind.value,
                     scope.realm,
                     str(scope.channel_id),
+                    int(scope.public_at_capture),
                     disclosure.value,
                     encoded_sources,
                     confidence,
