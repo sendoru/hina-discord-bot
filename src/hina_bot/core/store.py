@@ -410,9 +410,9 @@ class Store:
         return row[0] if row else None
 
     def chat_log_mode_chain(self, scope: Scope) -> dict[str, str | None]:
-        global_mode = self.memory_mode_override("global")
-        server_mode = self.memory_mode_override(scope.realm) if scope.guild_id is not None else None
-        channel_mode = self.memory_mode_override(scope.channel)
+        global_mode = self.chat_log_mode_override("global")
+        server_mode = self.chat_log_mode_override(scope.realm) if scope.guild_id is not None else None
+        channel_mode = self.chat_log_mode_override(scope.channel)
         if channel_mode is not None:
             effective, source = channel_mode, "channel"
         elif server_mode is not None:
