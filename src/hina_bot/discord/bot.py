@@ -28,6 +28,13 @@ from .output_safety import neutralize_mentions
 
 log = logging.getLogger("hina")
 
+USER_ONLY_ALLOWED_MENTIONS = discord.AllowedMentions(
+    everyone=False,
+    users=True,
+    roles=False,
+    replied_user=False,
+)
+
 
 def _bare_call_reply(
     scope: Scope,
@@ -50,8 +57,11 @@ class HinaClient(discord.Client):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.emojis_and_stickers = True
-        super().__init__(intents=intents, allowed_mentions=discord.AllowedMentions.none(),
-                         max_messages=None)
+        super().__init__(
+            intents=intents,
+            allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
+            max_messages=None,
+        )
         self.settings = settings
         self.store = store or Store(settings.db_path, settings.history_turns)
         self.llm = llm or LLM(settings)
@@ -120,7 +130,7 @@ class HinaClient(discord.Client):
 
     async def send_text(self, channel, text):
         for part in chunks(neutralize_mentions(text)):
-            await channel.send(part, allowed_mentions=discord.AllowedMentions.none())
+            await channel.send(part, allowed_mentions=USER_ONLY_ALLOWED_MENTIONS)
 
     async def hydrate_recent_history(self, message, scope):
         """Backfill only the bounded recent window after restart or chat-log re-enable."""
@@ -367,9 +377,10 @@ class HinaClient(discord.Client):
                             stage = "delivery"
                             delivery_started = time.perf_counter()
                             sent = await message.channel.send(
-                                parts[0], allowed_mentions=discord.AllowedMentions.none())
+                                parts[0], allowed_mentions=USER_ONLY_ALLOWED_MENTIONS)
                             for part in parts[1:]:
-                                await message.channel.send(part, allowed_mentions=discord.AllowedMentions.none())
+                                await message.channel.send(
+                                    part, allowed_mentions=USER_ONLY_ALLOWED_MENTIONS)
                             reply_delivered = True
                             timings["delivery_ms"] = round(
                                 (time.perf_counter() - delivery_started) * 1000
