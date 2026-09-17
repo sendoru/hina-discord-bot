@@ -3,8 +3,9 @@
 import json
 import re
 
+from hina_bot.core.memory_context import decode_memory_context
+
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
-from .memory_context import decode_memory_context
 from .memory_model_routing import build_memory_model_plan
 
 NO_MEMORY = "<NO_MEMORY>"
@@ -30,9 +31,7 @@ def _row_value(row, key: str, default=""):
         return default
 
 
-def _emit_summary_requested(
-    events,
-    scope,
+def _summary_metrics(
     *,
     memory_kind: str,
     pending_turns: int,
@@ -40,21 +39,15 @@ def _emit_summary_requested(
     payload: dict,
     context_items: int,
     old_memory: str,
-):
-    emit = getattr(events, "emit", None) if events is not None else None
-    if not callable(emit):
-        return
-    payload_chars = len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
-    emit(
-        "memory.summary_requested",
-        scope="guild" if scope.guild_id is not None else "dm",
-        memory_kind=memory_kind,
-        pending_turns=pending_turns,
-        batch_turns=batch_turns,
-        payload_chars=payload_chars,
-        context_items=context_items,
-        old_memory_chars=len(old_memory or ""),
-    )
+) -> dict:
+    return {
+        "memory_kind": memory_kind,
+        "pending_turns": pending_turns,
+        "batch_turns": batch_turns,
+        "payload_chars": len(json.dumps(payload, ensure_ascii=False, separators=(",", ":"))),
+        "context_items": context_items,
+        "old_memory_chars": len(old_memory or ""),
+    }
 
 
 MEMORY_SELECTION_POLICY = """
@@ -126,7 +119,7 @@ class MemorySummaryMixin:
             **request,
         )
 
-    async def summarize(self, store, scope, *, events=None):
+    async def summarize(self, store, scope):
         pending = store.pending(scope)
         if len(pending) < self.settings.summary_every:
             return
@@ -154,15 +147,17 @@ class MemorySummaryMixin:
             new_turns,
             shared=False,
         )
-        _emit_summary_requested(
-            events,
-            scope,
-            memory_kind="personal",
-            pending_turns=len(pending),
-            batch_turns=len(new_turns),
-            payload=payload,
-            context_items=context_items,
-            old_memory=old,
+        self.usage.routing_event(
+            "memory.summary_requested",
+            status="requested",
+            **_summary_metrics(
+                memory_kind="personal",
+                pending_turns=len(pending),
+                batch_turns=len(new_turns),
+                payload=payload,
+                context_items=context_items,
+                old_memory=old,
+            ),
         )
         response = await self._memory_request("summarize", SUMMARY_POLICY, payload, plan)
         if response.status == "completed" and response.output_text.strip():
@@ -170,7 +165,7 @@ class MemorySummaryMixin:
             # An explicit empty result advances the cursor; an empty API response must not erase memory.
             store.save_summary(scope, text[:2000], pending[-1]["id"])
 
-    async def summarize_shared(self, store, scope, *, events=None):
+    async def summarize_shared(self, store, scope):
         pending = store.pending_shared(scope)
         if len(pending) < self.settings.summary_every:
             return
@@ -190,15 +185,17 @@ class MemorySummaryMixin:
             direct_calls,
             shared=True,
         )
-        _emit_summary_requested(
-            events,
-            scope,
-            memory_kind="shared",
-            pending_turns=len(pending),
-            batch_turns=len(direct_calls),
-            payload=payload,
-            context_items=0,
-            old_memory=old,
+        self.usage.routing_event(
+            "memory.summary_requested",
+            status="requested",
+            **_summary_metrics(
+                memory_kind="shared",
+                pending_turns=len(pending),
+                batch_turns=len(direct_calls),
+                payload=payload,
+                context_items=0,
+                old_memory=old,
+            ),
         )
         response = await self._memory_request(
             "summarize_shared",
