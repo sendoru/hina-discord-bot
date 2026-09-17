@@ -44,10 +44,11 @@ def test_character_keeps_restrained_warmth_without_flattening_personality():
 def test_character_avoids_recent_response_template_repetition():
     character = _character_prompt()
 
-    assert "최근 몇 턴에서 자신이 사용한 반응 틀, 첫마디, 문장 끝, 같은 정서 표현을 습관적으로" in character
-    assert "재사용하지 않습니다" in character
-    assert "억지로 동의어를 늘어놓기보다 같은 반응이 불필요하면 생략하고 바로" in character
-    assert "특정한 당황·머뭇거림·핀잔 패턴 하나로 여러 상황을 처리하지 않습니다" in character
+    assert "눈에 띄는 단어·짧은 구문" in character
+    assert "같은 정서 표현을 습관적으로 재사용하지 않습니다" in character
+    assert "핀잔·경계·당황 표현이 최근 답변에서" in character
+    assert "같은 반응 자체가 불필요하면 생략하고 본론에 답합니다" in character
+    assert "정확성을 위해 필요한 반복은 피하지 않습니다" in character
 
 
 def test_character_allows_bounded_emotional_cracks_without_a_fixed_arc():
