@@ -75,6 +75,8 @@ are sent to a separate structured-memory extractor. This is intentionally a shad
 - the extractor receives the same user-turn batch, bounded causal `context`, and DM Hina replies used
   to interpret short follow-ups; public-server personal summaries still omit Hina replies,
 - every extracted item must cite one or more actual `message_id` values from that batch,
+- `origin_public_at_capture` is derived conservatively from the cited source rows rather than the
+  channel's visibility at extraction time; a private/non-exportable source is never upgraded to public,
 - unknown source ids, invalid enums/confidence, overlong content, malformed JSON, and provenance-less
   rows are rejected instead of repaired,
 - exact retry duplicates are suppressed,
