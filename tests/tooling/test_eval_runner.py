@@ -128,6 +128,13 @@ def test_tone_cases_include_valid_speaker_switches():
     assert len(case_turns(case)) == 4
 
 
+def test_tone_cases_include_relationship_honorific_perspective():
+    cases = read_cases(Path("evals/tone_cases.jsonl"))
+    case = next(row for row in cases if row["id"] == "relationship_honorific_perspective")
+    assert "호시노 선배" in case["expected"]
+    assert "유메 선배" in case["expected"]
+
+
 def test_invalid_speaker_turns_are_rejected(tmp_path):
     import pytest
 
