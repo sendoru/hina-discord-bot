@@ -222,14 +222,16 @@ class HinaClient(BaseHinaClient):
             message.author.id,
         )
 
-        # Other bots never trigger Hina, but in chatlog `all` mode their visible channel messages
-        # are useful conversational context just like human side chatter. The final egress policy is
-        # a separate boundary and can still remove these rows before any external model request.
         own_bot = message.author.id == self.user.id
-        if message.author.bot and not own_bot:
+        if own_bot or message.webhook_id is not None:
+            return
+
+        # Passive messages from other bots remain channel context only in chatlog `all` mode.
+        # An explicit mention/reply ping is different: it is a real invocation and continues through
+        # the normal request pipeline, while prefixes and DM auto-reply remain human-only.
+        if message.author.bot and text is None:
             if (
-                message.webhook_id is None
-                and scope.guild_id is not None
+                scope.guild_id is not None
                 and self.store.chat_log_enabled(scope)
                 and capture_mode(self.store, scope) == "all"
                 and message.content
@@ -283,14 +285,16 @@ class HinaClient(BaseHinaClient):
             own_visual = author_id == self.user.id
             if own_visual:
                 return True
-            if getattr(author, "bot", False):
-                return False
             direct = trigger_text(
                 candidate,
                 self.user.id,
                 self.settings.dm_always_reply,
                 self.settings.call_prefixes,
             ) is not None
+            # Passive bot images never become visual context. A bot's own explicit call may carry
+            # an image, and is bounded by the same direct-call provenance as its text.
+            if getattr(author, "bot", False):
+                return direct
             if strict_egress:
                 return direct
             if visual_capture_mode == "direct":
