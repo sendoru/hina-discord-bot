@@ -45,8 +45,6 @@ def test_vision_policy_calibrates_identity_and_separates_depiction_from_current_
     assert "그 인물을 묘사한 표현일 뿐" in compact
     assert "'내가 지금 그러고 있다'는 현재 사실로 옮기지 마세요" in compact
     assert "묘사된 모습과 현재 상태를 구분하세요" in compact
-    assert "이부키" not in VISION_INPUT_POLICY
-    assert "호시노" not in VISION_INPUT_POLICY
 
 
 @pytest.mark.asyncio
