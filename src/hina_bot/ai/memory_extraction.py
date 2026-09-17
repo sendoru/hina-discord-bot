@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from hina_bot.core.memory_context import decode_memory_context
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
@@ -75,11 +75,16 @@ def _row_value(row, key: str, default=""):
         return default
 
 
-def build_shadow_turns(pending, *, include_replies: bool) -> tuple[list[dict], set[str], int]:
+def build_shadow_turns(
+    pending,
+    *,
+    include_replies: bool,
+) -> tuple[list[dict], set[str], int, dict[str, bool]]:
     """Build extractor input from the exact pending-row batch selected by summarize()."""
 
     turns: list[dict] = []
     source_ids: set[str] = set()
+    source_public_at_capture: dict[str, bool] = {}
     context_items = 0
     for turn in pending:
         message_id = str(_row_value(turn, "message_id", "")).strip()
@@ -88,17 +93,23 @@ def build_shadow_turns(pending, *, include_replies: bool) -> tuple[list[dict], s
             # than inventing an identifier when a test/legacy adapter does not provide one.
             continue
         context = decode_memory_context(_row_value(turn, "memory_context"))
+        # ``exportable`` is conservative: false may include a formerly-public turn behind a private
+        # summary boundary, but true never upgrades a private capture to public. That makes it safe
+        # to use as the shadow item's cross-space provenance until turns store the raw visibility bit.
+        public_at_capture = bool(_row_value(turn, "exportable", False))
         item = {
             "message_id": message_id,
             "at": _row_value(turn, "created_at"),
             "user": _row_value(turn, "content"),
+            "public_at_capture": public_at_capture,
             **({"hina": _row_value(turn, "reply")} if include_replies else {}),
             **({"context": context} if context else {}),
         }
         turns.append(item)
         source_ids.add(message_id)
+        source_public_at_capture[message_id] = public_at_capture
         context_items += len(context)
-    return turns, source_ids, context_items
+    return turns, source_ids, context_items, source_public_at_capture
 
 
 def _json_text(text: str) -> str:
@@ -133,13 +144,23 @@ def parse_shadow_extraction(text: str, *, allowed_source_ids: set[str]) -> Extra
         except (KeyError, AttributeError, TypeError, ValueError):
             rejected += 1
             continue
-        if (not content or len(content) > _MAX_CONTENT_CHARS or not math.isfinite(confidence)
-                or not 0 <= confidence <= 1 or not isinstance(source_values, list)):
+        valid_scalar_fields = (
+            content
+            and len(content) <= _MAX_CONTENT_CHARS
+            and math.isfinite(confidence)
+            and 0 <= confidence <= 1
+            and isinstance(source_values, list)
+        )
+        if not valid_scalar_fields:
             rejected += 1
             continue
         source_ids = tuple(dict.fromkeys(str(value).strip() for value in source_values))
-        if (not source_ids or any(not value for value in source_ids)
-                or any(value not in allowed_source_ids for value in source_ids)):
+        valid_sources = (
+            source_ids
+            and all(source_ids)
+            and all(value in allowed_source_ids for value in source_ids)
+        )
+        if not valid_sources:
             rejected += 1
             continue
         accepted.append(ExtractedMemoryItem(
@@ -153,7 +174,13 @@ def parse_shadow_extraction(text: str, *, allowed_source_ids: set[str]) -> Extra
     return ExtractionParseResult(tuple(accepted), rejected)
 
 
-def persist_shadow_items(store, scope, items: tuple[ExtractedMemoryItem, ...]) -> tuple[int, int]:
+def persist_shadow_items(
+    store,
+    scope,
+    items: tuple[ExtractedMemoryItem, ...],
+    *,
+    source_public_at_capture: dict[str, bool] | None = None,
+) -> tuple[int, int]:
     """Append validated shadow items, suppressing exact retry duplicates."""
 
     existing = store.memory_items(scope.user_id, origin_realm=scope.realm)
@@ -181,8 +208,17 @@ def persist_shadow_items(store, scope, items: tuple[ExtractedMemoryItem, ...]) -
         if signature in signatures:
             duplicates += 1
             continue
+        if source_public_at_capture is None:
+            origin_public_at_capture = bool(scope.public_at_capture)
+        else:
+            origin_public_at_capture = bool(
+                scope.guild_id is not None
+                and all(source_public_at_capture.get(source_id, False)
+                        for source_id in item.source_message_ids)
+            )
+        item_scope = replace(scope, public_at_capture=origin_public_at_capture)
         store.add_memory_item(
-            scope,
+            item_scope,
             item.content,
             kind=item.kind,
             disclosure=item.disclosure,
