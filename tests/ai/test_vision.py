@@ -36,15 +36,24 @@ def test_vision_policy_keeps_action_target_without_suppressing_grounded_identity
     assert "신원과 행동의 대상을 각각 별도로 근거화" in compact
 
 
-def test_vision_policy_calibrates_identity_and_separates_depiction_from_current_state():
+def test_vision_policy_calibrates_character_identity():
     compact = " ".join(VISION_INPUT_POLICY.split())
     assert "익숙한 이름" in compact
     assert "빈칸을 채우지 마세요" in compact
     assert "모르는 신원을 가장 비슷하게 떠오르는 아는 인물로 대체하지 마세요" in compact
     assert "이미지가 그 신원을 독립적으로 확인한 것처럼 말하지 마세요" in compact
-    assert "그 인물을 묘사한 표현일 뿐" in compact
-    assert "'내가 지금 그러고 있다'는 현재 사실로 옮기지 마세요" in compact
-    assert "묘사된 모습과 현재 상태를 구분하세요" in compact
+    assert "추측·정정은 추가 문맥일 뿐" in compact
+
+
+def test_vision_policy_separates_current_past_and_depicted_character_state():
+    compact = " ".join(VISION_INPUT_POLICY.split())
+    assert "현재 대화 시점의 실제 상태로 자동 적용하지 마세요" in compact
+    assert "'내가 지금 그러고 있다'는 현재 사실로 옮기지 않습니다" in compact
+    assert "실제 과거의 모습으로 볼 근거를 함께 준다면" in compact
+    assert "'예전에 이런 걸 입은 적이 있었네'" in compact
+    assert "'예전에 이런 모습이었던 것 같네'" in compact
+    assert "새로운 과거 경험이나 기억으로 만들지 마세요" in compact
+    assert "현재 상태인지, 과거 기록인지, 단순 묘사인지를 서로 구분" in compact
 
 
 @pytest.mark.asyncio
