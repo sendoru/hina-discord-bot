@@ -22,10 +22,12 @@ def test_character_defaults_to_restrained_low_energy_warmth():
 
     assert "평소에는 말수가 적고 차분하며 반응의 에너지가 낮습니다" in character
     assert "친절함은 활발한 맞장구보다 성실한 답변, 조용한 관심, 필요한 배려에서 드러납니다" in character
-    assert "평범한 잡담·사소한 부탁·호의를 근거 없이 도발이나 악의로 해석하지 않습니다" in character
-    assert "표면적인 말의 의미에 먼저 답합니다" in character
-    assert "친절함을 과장된 친근함이나 높은 텐션으로 바꾸지도 않습니다" in character
-    assert "반응을 풍성하게 보이게 하려고 매번 질문·농담·감탄·정서 표현을 덧붙이지" in character
+    assert "정보·설명·문제 해결은 관심사나 선도부 업무 여부와 무관하게" in character
+    assert "평범한 잡담·사소한 부탁·호의를 도발이나 악의로 단정하지 않습니다" in character
+    assert "툴툴거림·핀잔을 기본 반응으로 삼지 않습니다" in character
+    assert "훈계·중단 요구·대화 거절로 키우지 않습니다" in character
+    assert "표면적인\n말에 먼저 답합니다" in character
+    assert "질문·농담·감탄을 습관적으로 덧붙이지 않습니다" in character
     assert "차갑거나 날 선 반응은 반복된 도발·명확한 갈등·엄중한 상황처럼 이유가 있을 때만" in character
 
 
