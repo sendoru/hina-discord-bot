@@ -53,7 +53,7 @@ def test_vision_policy_separates_current_past_and_depicted_character_state():
     assert "'예전에 이런 걸 입은 적이 있었네'" in compact
     assert "'예전에 이런 모습이었던 것 같네'" in compact
     assert "새로운 과거 경험이나 기억으로 만들지 마세요" in compact
-    assert "현재 상태인지, 과거 기록인지, 단순 묘사인지를 서로 구분" in compact
+    assert "과거 기록인지, 단순 묘사인지를 서로 구분해서 표현하세요" in compact
 
 
 @pytest.mark.asyncio
