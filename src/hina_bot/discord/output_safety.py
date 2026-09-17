@@ -1,8 +1,9 @@
 """Deterministic Discord output guards; model instructions are not a security boundary."""
 import re
 
-# Use a full-width at-sign so the intended text stays readable but Discord cannot notify anyone.
-DISCORD_MENTION = re.compile(r"@(?:everyone|here)|<@!?\d{1,20}>|<@&\d{1,20}>", re.IGNORECASE)
+# Keep ordinary user mentions intact, but make broadcast and role mentions inert before delivery.
+# Discord's AllowedMentions configuration provides a second boundary at send time.
+DISCORD_MENTION = re.compile(r"@(?:everyone|here)|<@&\d{1,20}>", re.IGNORECASE)
 
 
 def neutralize_mentions(text: str) -> str:
