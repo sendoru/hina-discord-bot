@@ -28,6 +28,7 @@ def _author_row(message) -> dict:
         "name": str(
             getattr(author, "display_name", getattr(author, "name", "")) or ""
         )[:100],
+        "role": "bot" if getattr(author, "bot", False) else "user",
     }
 
 
@@ -56,7 +57,6 @@ def build_turn_provenance(
         "message_id": message_id,
         **_author_row(message),
         "content": str(visible_content or "")[:4000],
-        "role": "user",
         "direct_trigger": True,
         "has_visual": any(
             visual.message_id == message_id
