@@ -34,6 +34,8 @@ USER_ONLY_ALLOWED_MENTIONS = discord.AllowedMentions(
     roles=False,
     replied_user=False,
 )
+BOT_TRIGGER_CHAIN_LIMIT = 2
+BOT_TRIGGER_CHAIN_WINDOW_SECONDS = 15.0
 
 
 def _bare_call_reply(
@@ -71,6 +73,7 @@ class HinaClient(discord.Client):
         self.tree.add_command(MemoryCommands(self))
         self.locks = weakref.WeakValueDictionary()
         self.cooldowns = {}
+        self.bot_trigger_chains = {}
         self.recent = RecentMessages(budget=settings.channel_context_chars)
         self.channel_locks = weakref.WeakValueDictionary()
         self.slots = asyncio.Semaphore(settings.concurrency)
@@ -86,6 +89,28 @@ class HinaClient(discord.Client):
             lock = asyncio.Lock()
             self.channel_locks[key] = lock
         return lock
+
+    @staticmethod
+    def _bot_trigger_key(scope: Scope):
+        return scope.guild_id, scope.channel_id
+
+    def _reset_bot_trigger_chain(self, scope: Scope) -> None:
+        self.bot_trigger_chains.pop(self._bot_trigger_key(scope), None)
+
+    def _consume_bot_trigger(self, scope: Scope, now: float) -> bool:
+        self.bot_trigger_chains = {
+            key: value
+            for key, value in self.bot_trigger_chains.items()
+            if now - value[1] < BOT_TRIGGER_CHAIN_WINDOW_SECONDS
+        }
+        key = self._bot_trigger_key(scope)
+        count, last = self.bot_trigger_chains.get(key, (0, now))
+        if now - last >= BOT_TRIGGER_CHAIN_WINDOW_SECONDS:
+            count = 0
+        if count >= BOT_TRIGGER_CHAIN_LIMIT:
+            return False
+        self.bot_trigger_chains[key] = (count + 1, now)
+        return True
 
     async def setup_hook(self):
         info = await self.application_info()
@@ -223,13 +248,25 @@ class HinaClient(discord.Client):
             permissions = message.channel.permissions_for(message.guild.default_role)
             public_at_capture = permissions.view_channel and permissions.read_message_history
         scope = Scope(guild_id, message.channel.id, message.author.id, public_at_capture)
-        if message.author.bot or message.webhook_id is not None:
+        bot_author = bool(message.author.bot)
+        if message.webhook_id is not None or message.author.id == self.user.id:
             return
-        received_mode = MemoryMode(self.store.memory_mode(scope))
+        if not bot_author:
+            # Any human activity breaks a possible bot-to-bot response chain in this channel.
+            self._reset_bot_trigger_chain(scope)
+        received_mode = (
+            MemoryMode.off if bot_author else MemoryMode(self.store.memory_mode(scope))
+        )
         received_chat_log = self.store.chat_log_enabled(scope)
         # Recent chat context is independent from persistent memory and has its own switch.
         if guild_id is not None and received_chat_log:
-            self.recent.add(scope, message.id, message.author.display_name, message.content)
+            self.recent.add(
+                scope,
+                message.id,
+                message.author.display_name,
+                message.content,
+                role="bot" if bot_author else "user",
+            )
         if text is None:
             return
         turn_token = CURRENT_TURN_ID.set(new_turn_id())
@@ -241,7 +278,17 @@ class HinaClient(discord.Client):
             pending_count=self.pending_count,
             content_chars=len(text),
             attachment_count=len(getattr(message, "attachments", ()) or ()),
+            author_kind="bot" if bot_author else "user",
         )
+        if bot_author and not self._consume_bot_trigger(scope, turn_started):
+            self.events.emit(
+                "turn.dropped",
+                scope=scope_kind,
+                reason="bot_loop_guard",
+                elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+            )
+            CURRENT_TURN_ID.reset(turn_token)
+            return
         if self.pending_count >= 100:
             self.events.emit(
                 "turn.dropped",
@@ -270,7 +317,9 @@ class HinaClient(discord.Client):
         try:
             async with channel_lock, lock:
                 timings["lock_wait_ms"] = round((time.perf_counter() - turn_started) * 1000)
-                mode = MemoryMode(self.store.memory_mode(scope))
+                mode = (
+                    MemoryMode.off if bot_author else MemoryMode(self.store.memory_mode(scope))
+                )
                 use_memory = received_mode.reads and mode.reads
                 save_memory = received_mode.writes and mode.writes
                 use_chat_log = received_chat_log and self.store.chat_log_enabled(scope)
