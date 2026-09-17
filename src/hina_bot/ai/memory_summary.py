@@ -50,6 +50,12 @@ def _summary_metrics(
     }
 
 
+def _record_summary_requested(usage, **metrics) -> None:
+    emit = getattr(usage, "routing_event", None)
+    if callable(emit):
+        emit("memory.summary_requested", status="requested", **metrics)
+
+
 MEMORY_SELECTION_POLICY = """
 요약은 대화 목록이나 사용자 성격 평가가 아닙니다. 앞으로 다시 참고할 명시적 사실만 남기세요.
 일회성 질문·키워드·칭찬·현재 피곤함은 지속적인 관심사·선호·상태로 확대하지 마세요.
@@ -147,9 +153,8 @@ class MemorySummaryMixin:
             new_turns,
             shared=False,
         )
-        self.usage.routing_event(
-            "memory.summary_requested",
-            status="requested",
+        _record_summary_requested(
+            self.usage,
             **_summary_metrics(
                 memory_kind="personal",
                 pending_turns=len(pending),
@@ -185,9 +190,8 @@ class MemorySummaryMixin:
             direct_calls,
             shared=True,
         )
-        self.usage.routing_event(
-            "memory.summary_requested",
-            status="requested",
+        _record_summary_requested(
+            self.usage,
             **_summary_metrics(
                 memory_kind="shared",
                 pending_turns=len(pending),
