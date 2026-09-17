@@ -13,12 +13,13 @@ uv run hina-routing-eval --limit 10 --fail-on-mismatch
 
 `ROUTING_CLASSIFIER_API_KEY`가 있으면 우선 사용하고, 없으면 선택한 provider의 일반 key를 사용합니다.
 결과는 `data/evals/model-routing-*.json`에 저장하며 semantic level 일치율, 최종 tier 일치율,
-classifier 실패, smart 누락·과잉 선택 수를 집계합니다. 고정밀 rule이나 객관적 부하로 운영 중 호출을
-생략할 사례도 classifier 자체의 회귀를 보기 위해 평가에서는 한 번 분류합니다. 이 평가는 유료 API
-호출이므로 일반 테스트에는 포함되지 않습니다.
+classifier 실패, smart 누락·과잉 선택 수를 집계합니다. 운영에서는 이미 물리적 load 또는 고정밀
+로컬 semantic hint만으로 smart가 확정되면 reasoning 판정을 생략할 수 있지만, 이 평가는 classifier
+자체의 회귀를 보기 위해 각 사례를 한 번 분류합니다. 이 평가는 유료 API 호출이므로 일반 테스트에는
+포함되지 않습니다.
 
-현재 `chat-hybrid-v3` classifier는 같은 응답에서 웹 검색 필요성도 분류하지만, `hina-routing-eval`은
-아직 reasoning level과 model tier만 점수화합니다. 웹 검색 판정은 결정적 unit test와
+현재 `chat-hybrid-v4` classifier는 같은 응답에서 웹 검색 필요성도 분류하지만,
+`hina-routing-eval`은 reasoning level과 model tier만 점수화합니다. 웹 검색 판정은 결정적 unit test와
 `tests/ai/test_semantic_web_routing.py`에서 별도로 검증하며, 이 러너의 성공을 web routing 전체의
 정확도 평가로 해석하지 않습니다.
 

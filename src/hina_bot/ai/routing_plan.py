@@ -8,6 +8,27 @@ from .contextual_routing import (
     find_prior_user_request,
     is_followup,
 )
+from .egress_policy import BOT_INTERACTIONS_ONLY, filter_channel_context
+
+_CLASSIFIER_CONTEXT_BUDGET = 4000
+_CLASSIFIER_CAUSAL_BUDGET = 2800
+_CLASSIFIER_CONTEXT_ITEMS = 8
+_CLASSIFIER_CAUSAL_KINDS = frozenset({
+    "prior_reply_source",
+    "reply_origin_source",
+    "reply_origin_request",
+    "replied_message",
+})
+
+
+@dataclass(frozen=True)
+class ClassifierContextItem:
+    """Small, provenance-aware context item safe to serialize to the routing classifier."""
+
+    kind: str
+    role: str
+    ownership: str
+    text: str
 
 
 @dataclass(frozen=True)
@@ -20,10 +41,85 @@ class RoutingPlan:
     anchor_source: str = ""
     prior_user_request: str = ""
     classifier_anchor: str = ""
+    classifier_context: tuple[ClassifierContextItem, ...] = ()
 
     @property
     def expanded(self) -> bool:
         return self.routing_query != self.visible_content
+
+
+def _ownership(row: dict, current_user_id: int | str) -> str:
+    if str(row.get("role") or "") == "assistant":
+        return "assistant"
+    author = str(row.get("author_user_id") or row.get("user_id") or "")
+    return "self" if author == str(current_user_id) else "external"
+
+
+def _take_context(
+    rows: list[dict],
+    *,
+    current_user_id: int | str,
+    budget: int,
+    slots: int,
+) -> tuple[list[ClassifierContextItem], int]:
+    """Take newest useful rows within a text budget, then restore chronological order."""
+    selected: list[ClassifierContextItem] = []
+    remaining = max(0, budget)
+    slots = max(0, slots)
+    for row in reversed(rows):
+        if remaining <= 0 or len(selected) >= slots:
+            break
+        text = str(row.get("content") or "").strip()
+        if not text:
+            continue
+        text = text[-remaining:]
+        selected.append(ClassifierContextItem(
+            kind=str(row.get("context_kind") or "context"),
+            role=str(row.get("role") or ""),
+            ownership=_ownership(row, current_user_id),
+            text=text,
+        ))
+        remaining -= len(text)
+    selected.reverse()
+    return selected, remaining
+
+
+def _classifier_context(
+    rows: list[dict],
+    *,
+    current_user_id: int | str,
+    policy: str,
+) -> tuple[ClassifierContextItem, ...]:
+    """Select causal reply context plus a small same-speaker window for semantic routing."""
+    safe = filter_channel_context(rows, current_user_id, policy)
+    causal = [
+        row for row in safe
+        if str(row.get("context_kind") or "") in _CLASSIFIER_CAUSAL_KINDS
+    ]
+    speaker = [
+        row for row in safe
+        if str(row.get("context_kind") or "") == "speaker_thread"
+    ]
+
+    causal_budget = (
+        _CLASSIFIER_CAUSAL_BUDGET if speaker else _CLASSIFIER_CONTEXT_BUDGET
+    )
+    causal_selected, causal_unused = _take_context(
+        causal,
+        current_user_id=current_user_id,
+        budget=causal_budget,
+        slots=min(4, _CLASSIFIER_CONTEXT_ITEMS),
+    )
+    speaker_budget = _CLASSIFIER_CONTEXT_BUDGET - (causal_budget - causal_unused)
+    speaker_selected, _ = _take_context(
+        speaker,
+        current_user_id=current_user_id,
+        budget=speaker_budget,
+        slots=_CLASSIFIER_CONTEXT_ITEMS - len(causal_selected),
+    )
+
+    # Same-speaker continuity precedes the currently selected reply chain conceptually.
+    return tuple(speaker_selected + causal_selected)
 
 
 def build_routing_plan(
@@ -33,6 +129,7 @@ def build_routing_plan(
     channel_context: list[dict] | None = None,
     *,
     use_memory: bool = True,
+    classifier_context_policy: str = BOT_INTERACTIONS_ONLY,
 ) -> RoutingPlan:
     rows = channel_context or []
     followup = is_followup(content)
@@ -68,9 +165,13 @@ def build_routing_plan(
             )
         )
     ):
-        # The semantic classifier may use a deliberately selected reply for follow-up grounding, but
-        # never forward another user's reply text to a separately configured classifier provider.
         classifier_anchor = anchor_text
+
+    classifier_context = _classifier_context(
+        rows,
+        current_user_id=scope.user_id,
+        policy=classifier_context_policy,
+    )
     return RoutingPlan(
         visible_content=content,
         routing_query=build_query(content, anchor_text),
@@ -78,7 +179,8 @@ def build_routing_plan(
         anchor_source=anchor.source if anchor else "",
         prior_user_request=prior_user_request,
         classifier_anchor=classifier_anchor,
+        classifier_context=classifier_context,
     )
 
 
-__all__ = ["RoutingPlan", "build_routing_plan"]
+__all__ = ["ClassifierContextItem", "RoutingPlan", "build_routing_plan"]

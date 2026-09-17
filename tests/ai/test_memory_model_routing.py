@@ -17,22 +17,23 @@ def _settings(**overrides):
         "gemini_thinking_level": "low",
         "gemini_fast_thinking_level": "minimal",
         "gemini_smart_thinking_level": "medium",
-        "summary_every": 8,
     }
     values.update(overrides)
     return NS(**values)
 
 
 def _turn(content: str, reply: str = ""):
-    return {"content": content, "reply": reply}
+    row = {"at": "now", "user": content}
+    if reply:
+        row["hina"] = reply
+    return row
 
 
-def test_fixed_memory_routing_uses_fixed_chat_model_with_memory_budget():
+def test_fixed_memory_routing_uses_fixed_model_with_memory_budget():
     plan = build_memory_model_plan(
         _settings(model_routing_mode="fixed"),
         "x" * 1800,
-        [_turn("앞으로는 설정을 바꿔줘" * 100)],
-        include_replies=True,
+        [_turn("큰 입력" * 1000)],
     )
     assert plan.tier == ModelTier.FIXED
     assert plan.model == "fixed-model"
@@ -46,100 +47,72 @@ def test_routine_memory_update_stays_fast():
         _settings(),
         "짧은 기존 기억",
         [_turn("오늘은 그냥 평범한 대화였어", "응") for _ in range(8)],
-        include_replies=True,
     )
     assert plan.tier == ModelTier.FAST
     assert plan.model == "fast-model"
     assert plan.thinking_level == "minimal"
     assert plan.max_output_tokens == 4096
+    assert plan.score < 2.0
 
 
-def test_near_capacity_memory_with_large_pending_input_uses_smart():
+def test_near_capacity_memory_alone_can_require_smart_compaction():
     plan = build_memory_model_plan(
         _settings(),
-        "기" * 1700,
-        [_turn("새 정보" * 250, "응답" * 100) for _ in range(8)],
-        include_replies=True,
+        "기" * 1800,
+        [_turn("짧음")],
     )
     assert plan.tier == ModelTier.SMART
-    assert plan.model == "smart-model"
-    assert plan.thinking_level == "medium"
-    assert "memory_capacity_pressure" in plan.reasons
-    assert "pending_input_volume" in plan.reasons
-    assert "compaction_pressure" in plan.reasons
+    assert plan.score >= 2.0
+    assert dict(plan.components)["capacity_load"] == pytest.approx(2.0)
 
 
-def test_explicit_memory_updates_raise_score_without_forcing_smart_alone():
+def test_large_pending_payload_alone_can_require_smart_compaction():
+    plan = build_memory_model_plan(
+        _settings(),
+        "",
+        [_turn("새 정보" * 1500)],
+    )
+    assert plan.tier == ModelTier.SMART
+    assert dict(plan.components)["pending_load"] == pytest.approx(2.0)
+
+
+def test_moderate_capacity_and_pending_load_combine_without_bonus_rule():
+    plan = build_memory_model_plan(
+        _settings(),
+        "기" * 1350,
+        [_turn("새 정보" * 500)],
+    )
+    components = dict(plan.components)
+    assert set(components) <= {"capacity_load", "pending_load"}
+    assert plan.score == pytest.approx(sum(components.values()))
+    assert "compaction_pressure" not in components
+
+
+def test_semantic_wording_does_not_change_memory_route_at_same_payload_size():
     routine = build_memory_model_plan(
         _settings(),
-        "기억" * 300,
-        [_turn("평범한 대화") for _ in range(8)],
-        include_replies=True,
+        "기억" * 200,
+        [_turn("평범한 내용입니다." * 20)],
     )
-    updated = build_memory_model_plan(
+    update = build_memory_model_plan(
         _settings(),
-        "기억" * 300,
-        [_turn("앞으로는 호칭을 바꿔줘. 기존 설정은 취소할게.") for _ in range(8)],
-        include_replies=True,
+        "기억" * 200,
+        [_turn("앞으로는 설정을 바꾸고 기존 선호는 취소할게." * 8)],
     )
-    assert updated.score > routine.score
-    assert "memory_update_signal" in updated.reasons
+    assert "memory_update_signal" not in dict(routine.components)
+    assert "memory_update_signal" not in dict(update.components)
 
 
-def test_shared_scope_discount_reduces_same_input_score():
+def test_shared_scope_is_expressed_by_target_size_not_a_discount_component():
     settings = _settings()
-    pending = [_turn("공개 직접 호출" * 80) for _ in range(8)]
-    personal = build_memory_model_plan(
-        settings, "", pending, shared=False, include_replies=True
-    )
-    shared = build_memory_model_plan(
-        settings, "", pending, shared=True, include_replies=False
-    )
-    assert shared.score < personal.score
-    assert "shared_scope_discount" in shared.reasons
+    previous = "기" * 1000
+    pending = [_turn("공개 직접 호출" * 20)]
 
+    personal = build_memory_model_plan(settings, previous, pending, shared=False)
+    shared = build_memory_model_plan(settings, previous, pending, shared=True)
 
-def test_extra_pending_turns_add_bounded_pressure():
-    settings = _settings()
-    normal = build_memory_model_plan(
-        settings,
-        "",
-        [_turn("짧음") for _ in range(8)],
-        include_replies=True,
-    )
-    backed_up = build_memory_model_plan(
-        settings,
-        "",
-        [_turn("짧음") for _ in range(20)],
-        include_replies=True,
-    )
-    assert backed_up.score > normal.score
-    assert "extra_pending_turns" in backed_up.reasons
-
-
-def test_reply_volume_only_counts_when_the_summary_payload_includes_replies():
-    pending = [_turn("짧은 사용자 발화", "긴 봇 답변" * 100) for _ in range(8)]
-    direct_message = build_memory_model_plan(
-        _settings(),
-        "기" * 1700,
-        pending,
-        shared=False,
-        include_replies=True,
-    )
-    server_personal = build_memory_model_plan(
-        _settings(),
-        "기" * 1700,
-        pending,
-        shared=False,
-        include_replies=False,
-    )
-
-    assert direct_message.tier == ModelTier.SMART
-    assert "pending_input_volume" in direct_message.reasons
-    assert "compaction_pressure" in direct_message.reasons
-    assert server_personal.tier == ModelTier.FAST
-    assert "pending_input_volume" not in server_personal.reasons
-    assert "compaction_pressure" not in server_personal.reasons
+    assert dict(shared.components)["capacity_load"] > dict(personal.components)["capacity_load"]
+    assert "shared_scope_discount" not in dict(shared.components)
 
 
 def test_memory_route_components_explain_score_without_content():
@@ -147,14 +120,14 @@ def test_memory_route_components_explain_score_without_content():
     plan = build_memory_model_plan(
         _settings(),
         "기" * 1500,
-        [_turn(secret) for _ in range(8)],
+        [_turn(secret * 50)],
         shared=True,
-        include_replies=False,
     )
     telemetry = plan.telemetry()
 
     assert secret not in str(telemetry)
-    assert telemetry["model_route_policy"] == "memory-v1"
+    assert telemetry["model_route_policy"] == "memory-v2"
+    assert set(telemetry["model_route_components"]) <= {"capacity_load", "pending_load"}
     assert sum(telemetry["model_route_components"].values()) == pytest.approx(
         telemetry["model_route_score"]
     )
