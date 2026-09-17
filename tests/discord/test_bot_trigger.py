@@ -10,7 +10,8 @@ import pytest
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.store import Store
-from hina_bot.discord.bot import BOT_TRIGGER_CHAIN_LIMIT, HinaClient as BaseHinaClient
+from hina_bot.discord.bot import BOT_TRIGGER_CHAIN_LIMIT
+from hina_bot.discord.bot import HinaClient as BaseHinaClient
 from hina_bot.discord.turn_provenance import build_turn_provenance
 from hina_bot.discord.web_bot import HinaClient as ProductionHinaClient
 
