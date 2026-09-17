@@ -148,7 +148,12 @@ class MemorySummaryMixin:
             getattr(store, "memory_items", None)
         ):
             return
-        turns, allowed_source_ids, context_items = build_shadow_turns(
+        (
+            turns,
+            allowed_source_ids,
+            context_items,
+            source_public_at_capture,
+        ) = build_shadow_turns(
             pending,
             include_replies=scope.guild_id is None,
         )
@@ -159,7 +164,6 @@ class MemorySummaryMixin:
             "origin": {
                 "realm": scope.realm,
                 "channel_id": str(scope.channel_id),
-                "public_at_capture": bool(scope.public_at_capture),
             },
             "turns": turns,
         }
@@ -186,7 +190,12 @@ class MemorySummaryMixin:
                 response.output_text,
                 allowed_source_ids=allowed_source_ids,
             )
-            stored, duplicates = persist_shadow_items(store, scope, parsed.items)
+            stored, duplicates = persist_shadow_items(
+                store,
+                scope,
+                parsed.items,
+                source_public_at_capture=source_public_at_capture,
+            )
             _record_shadow_extraction(self.usage, "completed", **metrics)
             log.info(
                 "Structured memory shadow extraction completed: accepted=%d stored=%d "
