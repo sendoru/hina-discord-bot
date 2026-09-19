@@ -11,7 +11,7 @@ from hina_bot.ai.memory_extraction import (
     persist_shadow_items,
 )
 from hina_bot.ai.memory_summary import MemorySummaryMixin
-from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
+from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, RelationshipEvidence
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 
@@ -100,6 +100,60 @@ def test_parser_accepts_only_items_grounded_in_allowed_message_ids():
     assert item.source_message_ids == ("101",)
 
 
+def test_parser_accepts_sparse_numeric_relationship_evidence_and_drops_bad_axes():
+    payload = {
+        "items": [{
+            "content": "사용자는 히나와 편한 대화를 반복해 왔다.",
+            "kind": "relationship",
+            "disclosure": "implicit",
+            "confidence": 0.95,
+            "source_message_ids": ["101", "102"],
+            "relationship_evidence": {
+                "familiarity": 3,
+                "comfort": 2,
+                "teasing_tolerance": 0,
+                "unknown_axis": 4,
+                "casualness": True,
+            },
+        }]
+    }
+
+    parsed = parse_shadow_extraction(
+        json.dumps(payload, ensure_ascii=False),
+        allowed_source_ids={"101", "102"},
+    )
+
+    assert parsed.valid
+    assert len(parsed.items) == 1
+    assert parsed.items[0].relationship_evidence.as_dict() == {
+        "familiarity": 3,
+        "comfort": 2,
+    }
+    assert parsed.rejected_relationship_evidence == 3
+
+
+def test_parser_ignores_relationship_evidence_on_non_relationship_item():
+    payload = {
+        "items": [{
+            "content": "사용자는 차를 좋아한다.",
+            "kind": "fact",
+            "disclosure": "local",
+            "confidence": 0.9,
+            "source_message_ids": ["101"],
+            "relationship_evidence": {"familiarity": 4},
+        }]
+    }
+
+    parsed = parse_shadow_extraction(
+        json.dumps(payload, ensure_ascii=False),
+        allowed_source_ids={"101"},
+    )
+
+    assert len(parsed.items) == 1
+    assert not parsed.items[0].relationship_evidence
+    assert parsed.rejected_relationship_evidence == 1
+
+
 def test_parser_does_not_repair_malformed_output():
     parsed = parse_shadow_extraction(
         "사용자는 개발을 좋아함",
@@ -167,6 +221,32 @@ def test_persist_shadow_items_suppresses_exact_retry_duplicates():
     rows = store.memory_items(100)
     assert len(rows) == 1
     assert rows[0].source_message_ids == ("101",)
+    store.close()
+
+
+def test_persist_shadow_relationship_evidence_round_trips():
+    store = Store(":memory:")
+    scope = Scope(None, 10, 100)
+    item = ExtractedMemoryItem(
+        content="사용자는 히나와 편한 대화를 반복해 왔다.",
+        kind=MemoryKind.RELATIONSHIP,
+        disclosure=MemoryDisclosure.IMPLICIT,
+        confidence=0.95,
+        source_message_ids=("101", "102"),
+        relationship_evidence=RelationshipEvidence(
+            familiarity=3,
+            comfort=2,
+            casualness=2,
+        ),
+    )
+
+    assert persist_shadow_items(store, scope, (item,)) == (1, 0)
+    saved = store.memory_items(100)[0]
+    assert saved.relationship_evidence.as_dict() == {
+        "familiarity": 3,
+        "comfort": 2,
+        "casualness": 2,
+    }
     store.close()
 
 
