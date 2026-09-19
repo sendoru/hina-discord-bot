@@ -83,7 +83,14 @@ def structured_memory_context(
             "cross_space_relationship": {},
         }
 
-    items = store.memory_items(scope.user_id)
+    reader = getattr(store, "memory_items", None)
+    if not callable(reader):
+        return {
+            "structured_owner_memory": [],
+            "cross_space_relationship": {},
+        }
+
+    items = reader(scope.user_id)
     return {
         "structured_owner_memory": owner_dm_memory(items, scope),
         "cross_space_relationship": (
