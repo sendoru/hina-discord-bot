@@ -24,12 +24,12 @@ from .note_context import NoteContextStore
 from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
-from .structured_memory_context import structured_memory_context
 from .semantic_model_routing import (
     SemanticModelRouter,
     apply_web_classification,
     semantic_result,
 )
+from .structured_memory_context import structured_memory_context
 from .vision import CURRENT_VISUAL_INPUTS
 
 _IN_WORLD_PRESENT_STATE_QUERY = re.compile(
