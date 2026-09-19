@@ -58,6 +58,7 @@ def build_turn_provenance(
         **_author_row(message),
         "content": str(visible_content or "")[:4000],
         "direct_trigger": True,
+        "provenance_class": "conversation",
         "has_visual": any(
             visual.message_id == message_id
             and visual.reference_strength == "current_message"
@@ -73,17 +74,22 @@ def build_turn_provenance(
         if not source_id or source_id in seen or len(sources) >= _MAX_ORIGIN_SOURCES:
             return
         seen.add(source_id)
+        author_id = str(value.get("author_user_id") or value.get("user_id") or "")
+        role = str(value.get("role") or "user")
         sources.append({
             "message_id": source_id,
-            "user_id": str(value.get("author_user_id") or value.get("user_id") or ""),
-            "author_user_id": str(
-                value.get("author_user_id") or value.get("user_id") or ""
-            ),
+            "user_id": author_id,
+            "author_user_id": author_id,
             "name": str(value.get("name") or value.get("author_name") or "")[:100],
             "content": str(value.get("content") or value.get("message_content") or "")[:2000],
-            "role": str(value.get("role") or "user"),
+            "role": role,
             "direct_trigger": value.get("direct_trigger"),
             "has_visual": bool(value.get("has_visual", False)),
+            "provenance_class": (
+                "conversation"
+                if role == "assistant" or author_id == request["author_user_id"]
+                else "reference_material"
+            ),
         })
 
     for row in replied:
