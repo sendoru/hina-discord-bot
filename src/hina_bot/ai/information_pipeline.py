@@ -24,6 +24,7 @@ from .note_context import NoteContextStore
 from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
+from .structured_memory_context import structured_memory_context
 from .semantic_model_routing import (
     SemanticModelRouter,
     apply_web_classification,
@@ -242,6 +243,12 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             else []
         )
         cross_channel_memory = use_memory and not current_channel_only
+        structured_memory = structured_memory_context(
+            store,
+            scope,
+            use_memory=use_memory,
+            allow_cross_space=cross_channel_memory,
+        )
         context = {
             "server_note": (
                 store.note(scope.realm)
@@ -250,6 +257,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             ),
             "user_note": store.note(scope.user_note) if cross_channel_memory else "",
             "conversation_memory": summary,
+            **structured_memory,
             "personal_recent_conversation": server_recent,
             "public_server_context": (
                 self.authorized_context(scope, public_context or [])
