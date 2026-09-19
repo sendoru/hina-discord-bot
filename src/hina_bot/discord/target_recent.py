@@ -11,6 +11,41 @@ from .turn_provenance import CURRENT_TURN_PROVENANCE
 
 CURRENT_DIRECT_TRIGGER = ContextVar("current_direct_trigger", default=False)
 
+_MAX_REFERENCE_SOURCES = 2
+
+
+def _author_id(row: dict) -> str:
+    return str(row.get("author_user_id") or row.get("user_id") or "")
+
+
+def _is_reference_material(row: dict, current_user_id: int | str) -> bool:
+    if row.get("provenance_class") == "reference_material":
+        return True
+    role = str(row.get("role") or "")
+    return role not in {"assistant"} and _author_id(row) != str(current_user_id)
+
+
+def _reference_sources(provenance: dict, current_user_id: int | str) -> list[dict]:
+    """Return bounded original reference material, never assistant paraphrases."""
+
+    selected: list[dict] = []
+    seen: set[str] = set()
+    rows = list(provenance.get("reference_sources", ()))
+    rows.extend(provenance.get("origin_sources", ()))
+    for raw in rows:
+        row = dict(raw)
+        source_id = str(row.get("message_id") or "")
+        if not source_id or source_id in seen:
+            continue
+        if not _is_reference_material(row, current_user_id):
+            continue
+        row["provenance_class"] = "reference_material"
+        selected.append(row)
+        seen.add(source_id)
+        if len(selected) >= _MAX_REFERENCE_SOURCES:
+            break
+    return selected
+
 
 class TargetAwareRecentMessages(RecentMessages):
     def __init__(self, *args, store=None, external_context_policy="full", **kwargs):
@@ -51,6 +86,12 @@ class TargetAwareRecentMessages(RecentMessages):
             else:
                 author_user_id = scope.user_id
 
+        inherited_turn = (
+            self._explicit_assistant_turn(scope, REPLY_CONTEXT.get())
+            if role == "assistant" and unix_time is None
+            else None
+        )
+
         super().add(
             scope,
             message_id,
@@ -69,12 +110,29 @@ class TargetAwareRecentMessages(RecentMessages):
                     row["reply_sources"] = [dict(source) for source in REPLY_CONTEXT.get()][:1]
                     provenance = CURRENT_TURN_PROVENANCE.get()
                     if provenance:
+                        reference_sources = _reference_sources(provenance, scope.user_id)
+                        if inherited_turn is not None:
+                            inherited = inherited_turn.get("turn_provenance", {})
+                            inherited_refs = _reference_sources(inherited, scope.user_id)
+                            seen = {
+                                str(source.get("message_id") or "")
+                                for source in reference_sources
+                            }
+                            for source in inherited_refs:
+                                source_id = str(source.get("message_id") or "")
+                                if not source_id or source_id in seen:
+                                    continue
+                                reference_sources.append(dict(source))
+                                seen.add(source_id)
+                                if len(reference_sources) >= _MAX_REFERENCE_SOURCES:
+                                    break
                         row["turn_provenance"] = {
                             "origin_request": dict(provenance.get("origin_request", {})),
                             "origin_sources": [
                                 dict(source)
                                 for source in provenance.get("origin_sources", ())
                             ][:2],
+                            "reference_sources": reference_sources[:_MAX_REFERENCE_SOURCES],
                         }
                     break
 
@@ -105,6 +163,7 @@ class TargetAwareRecentMessages(RecentMessages):
         provenance = turn.get("turn_provenance", {})
         rows = [provenance.get("origin_request", {})]
         rows.extend(provenance.get("origin_sources", ()))
+        rows.extend(provenance.get("reference_sources", ()))
         return tuple(
             str(row.get("message_id", ""))
             for row in rows
