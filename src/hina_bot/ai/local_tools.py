@@ -117,7 +117,7 @@ class LocalToolRegistry:
             if inspect.isawaitable(output):
                 output = await output
             json.dumps(output, ensure_ascii=False)
-            return LocalToolResult(call.cal_id, call.name, output)
+            return LocalToolResult(call.call_id, call.name, output)
         except LocalToolError as exc:
             return LocalToolResult(call.call_id, call.name, {"error": exc.code}, True)
         except Exception:  # noqa: BLE001 - isolate arbitrary registered handler failures
