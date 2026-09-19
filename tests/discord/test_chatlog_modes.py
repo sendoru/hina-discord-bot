@@ -24,6 +24,7 @@ class ChatLogAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.llm = NS(
             answer=AsyncMock(return_value="안녕"),
             summarize=AsyncMock(),
+            extract_structured_memory=AsyncMock(),
             summarize_shared=AsyncMock(),
             close=AsyncMock(),
         )

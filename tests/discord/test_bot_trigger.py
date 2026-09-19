@@ -67,6 +67,7 @@ async def base_client():
     llm = NS(
         answer=AsyncMock(return_value="응"),
         summarize=AsyncMock(),
+        extract_structured_memory=AsyncMock(),
         summarize_shared=AsyncMock(),
         close=AsyncMock(),
     )
