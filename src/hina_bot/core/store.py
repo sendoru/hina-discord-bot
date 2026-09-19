@@ -315,14 +315,23 @@ class Store:
         return [self._decode_memory_item(row) for row in rows]
 
     def memory_reconciliation_candidates(self, scope: Scope, *, limit: int = 24):
-        """Return recent same-space items only; reconciliation never widens disclosure."""
+        """Return recent candidates without crossing another user's privacy boundary."""
 
-        rows = self.db.execute(
-            """SELECT * FROM memory_items
-               WHERE user_id=? AND origin_realm=? AND origin_channel_id=?
-               ORDER BY id DESC LIMIT ?""",
-            (str(scope.user_id), scope.realm, str(scope.channel_id), int(limit)),
-        ).fetchall()
+        if scope.guild_id is None:
+            rows = self.db.execute(
+                """SELECT * FROM memory_items
+                   WHERE user_id=?
+                   ORDER BY id DESC LIMIT ?""",
+                (str(scope.user_id), int(limit)),
+            ).fetchall()
+        else:
+            rows = self.db.execute(
+                """SELECT * FROM memory_items
+                   WHERE user_id=? AND origin_realm=?
+                     AND (origin_public_at_capture=1 OR origin_channel_id=?)
+                   ORDER BY id DESC LIMIT ?""",
+                (str(scope.user_id), scope.realm, str(scope.channel_id), int(limit)),
+            ).fetchall()
         return [self._decode_memory_item(row) for row in reversed(rows)]
 
     def add_memory_reconciliation_proposal(
@@ -343,21 +352,33 @@ class Store:
         if int(new_memory_item_id) == int(target_memory_item_id):
             raise ValueError("A memory item cannot reconcile with itself")
         owned = self.db.execute(
-            """SELECT id FROM memory_items
-               WHERE id IN (?,?) AND user_id=? AND origin_realm=? AND origin_channel_id=?""",
+            """SELECT id,origin_realm,origin_channel_id,origin_public_at_capture
+               FROM memory_items
+               WHERE id IN (?,?) AND user_id=?""",
             (
                 int(new_memory_item_id),
                 int(target_memory_item_id),
                 str(scope.user_id),
-                scope.realm,
-                str(scope.channel_id),
             ),
         ).fetchall()
-        if {int(row["id"]) for row in owned} != {
-            int(new_memory_item_id),
-            int(target_memory_item_id),
-        }:
-            raise ValueError("Reconciliation items must belong to the same memory space")
+        by_id = {int(row["id"]): row for row in owned}
+        if set(by_id) != {int(new_memory_item_id), int(target_memory_item_id)}:
+            raise ValueError("Reconciliation items must belong to the current user")
+        new_item = by_id[int(new_memory_item_id)]
+        target_item = by_id[int(target_memory_item_id)]
+        if (
+            str(new_item["origin_realm"]) != scope.realm
+            or str(new_item["origin_channel_id"]) != str(scope.channel_id)
+        ):
+            raise ValueError("New reconciliation item must belong to the current space")
+        if scope.guild_id is not None and not (
+            str(target_item["origin_realm"]) == scope.realm
+            and (
+                bool(target_item["origin_public_at_capture"])
+                or str(target_item["origin_channel_id"]) == str(scope.channel_id)
+            )
+        ):
+            raise ValueError("Server reconciliation target is outside the disclosure space")
         source_ids = tuple(dict.fromkeys(str(value) for value in source_message_ids))
         encoded_sources = json.dumps(source_ids, ensure_ascii=False, separators=(",", ":"))
         with self.db:
