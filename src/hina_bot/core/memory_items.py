@@ -87,9 +87,8 @@ def memory_access(
     if item.disclosure == MemoryDisclosure.IMPLICIT:
         return MemoryAccess.IMPLICIT
 
-    if item.disclosure == MemoryDisclosure.REFERENCE_GATED:
-        if explicitly_referenced:
-            return MemoryAccess.FULL
+    if item.disclosure == MemoryDisclosure.REFERENCE_GATED and explicitly_referenced:
+        return MemoryAccess.FULL
 
     return MemoryAccess.HIDDEN
 
