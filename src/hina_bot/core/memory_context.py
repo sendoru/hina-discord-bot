@@ -13,9 +13,10 @@ CURRENT_MEMORY_CONTEXT: ContextVar[tuple[dict, ...]] = ContextVar(
 _MEMORY_CONTEXT_KINDS = (
     "replied_message",
     "reply_origin_request",
+    "reply_reference_source",
     "reply_origin_source",
 )
-_MEMORY_CONTEXT_MAX_ITEMS = 2
+_MEMORY_CONTEXT_MAX_ITEMS = 3
 _MEMORY_CONTEXT_MAX_CHARS = 1600
 
 
@@ -55,12 +56,22 @@ def build_memory_context(
             clipped = content[:remaining]
             if not clipped:
                 continue
-            selected.append({
+            item = {
                 "kind": kind,
                 "role": str(row.get("role", "user")),
                 "ownership": _ownership(row, current_user_id),
                 "content": clipped,
-            })
+            }
+            author_id = str(row.get("author_user_id") or row.get("user_id") or "")
+            if author_id:
+                item["author_user_id"] = author_id
+            provenance_class = str(row.get("provenance_class") or "")
+            if provenance_class:
+                item["provenance_class"] = provenance_class
+            source_turn_message_id = str(row.get("source_turn_message_id") or "")
+            if source_turn_message_id:
+                item["source_turn_message_id"] = source_turn_message_id
+            selected.append(item)
             remaining -= len(clipped)
     return selected
 
