@@ -205,7 +205,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
 class AdapterTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.store = Store(":memory:")
-        self.llm = NS(answer=AsyncMock(return_value="안녕"), summarize=AsyncMock(), summarize_shared=AsyncMock(), close=AsyncMock())
+        self.llm = NS(answer=AsyncMock(return_value="안녕"), summarize=AsyncMock(), extract_structured_memory=AsyncMock(), summarize_shared=AsyncMock(), close=AsyncMock())
         self.tempdir = tempfile.TemporaryDirectory()
         self.event_path = Path(self.tempdir.name) / "events.jsonl"
         self.bot = HinaClient(
