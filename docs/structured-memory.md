@@ -27,6 +27,10 @@ Each item stores:
 - `disclosure`: `local`, `implicit`, `reference_gated`, or `global`.
 - `source_message_ids`: source Discord message ids for provenance/auditing.
 - `confidence`: extractor confidence in the range 0..1.
+- `relationship_evidence`: sparse positive 1..4 evidence vector used only by `relationship` items.
+  Supported axes are `familiarity`, `comfort`, `casualness`, `teasing_tolerance`,
+  `support_openness`, and `task_orientation`. Missing/zero means no stored positive evidence,
+  never dislike or rejection.
 
 ## Disclosure semantics
 
@@ -122,14 +126,47 @@ retry cannot accidentally reconcile an item with itself.
 This shadow period is intended to measure how often `duplicate`, `corrects`, and `conflicts` are right
 before any automatic supersede behavior is enabled.
 
+## Phase 3: owner-DM memory and numeric relationship projection
+
+Structured memory enters the response path in three deliberately different forms:
+
+- In the owner's DM, `structured_owner_memory` contains all structured items owned by that user,
+  regardless of origin realm/channel or disclosure. Relationship rows include their numeric evidence.
+  Another user's items are never included.
+- In a shared space, relationship items that already resolve to `full` may enter
+  `structured_relationship_memory` with raw content and evidence. This covers the same disclosure space
+  (and any relationship item explicitly marked `global`).
+- Cross-space `implicit` relationship items never expose raw `content`. Only a bounded
+  `cross_space_relationship` evidence vector reaches the response model.
+
+Each relationship extractor batch records sparse positive evidence on six 1..4 axes:
+`familiarity`, `comfort`, `casualness`, `teasing_tolerance`, `support_openness`, and
+`task_orientation`. The batch score is evidence from that batch, not a replacement global state. The
+response layer considers at most the eight most recent eligible items and combines each axis with item
+confidence and exponential recency decay using noisy-OR. Repeated moderate observations can therefore
+accumulate gradually, while one batch cannot overwrite the whole relationship profile.
+
+A missing axis means "no positive evidence", not a negative preference. Current user instructions and
+explicit boundaries always override the relationship profile. The model is explicitly forbidden from
+reconstructing concrete past events, locations, names, or conversation content from numeric evidence.
+
+- `reference_gated` factual content is still not opened in shared spaces, even when the current message
+  looks like a reference. Explicit factual recall remains Phase 4.
+- Explicit current-channel-only requests suppress only the cross-space projection; relationship memory
+  already FULL in the current disclosure space remains available.
+- The structured-memory fields are included in routing context-size accounting so model routing sees the
+  same dynamic context that request assembly will serialize.
+
+Because DM full-memory reads and numeric aggregation can still include stale/conflicting shadow items,
+this PR remains draft until reconciliation/supersede behavior is validated before production rollout.
+
 ## Still out of scope
 
 Shadow extraction still does not:
 
 - replace `summaries` or `shared_summaries`,
-- inject structured items into model context,
+- make structured memory the primary replacement for legacy summaries,
 - detect cross-space references,
-- project `implicit` relationship state into prompts,
 - apply reconciliation proposals or mark old items as superseded.
 
 Those steps should be enabled incrementally after shadow classifications have been inspected against
