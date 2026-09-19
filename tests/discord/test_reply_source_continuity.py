@@ -59,7 +59,13 @@ def test_explicit_reply_to_answer_retains_original():
     token = REPLY_CONTEXT.set(({"message_id": "3", "role": "assistant",
                                 "content": "여러 언어로 된 지시문이야"},))
     try:
-        assert sources(recent.context(scope, 4))[0]["message_id"] == "1"
+        rows = recent.context(scope, 4)
+        references = [
+            row for row in rows
+            if row.get("context_kind") == "reply_reference_source"
+        ]
+        assert references[0]["message_id"] == "1"
+        assert references[0]["provenance_class"] == "reference_material"
     finally:
         REPLY_CONTEXT.reset(token)
 
