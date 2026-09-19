@@ -366,8 +366,7 @@ class Settings:
                 and 0.1 <= s.memory_routing_smart_threshold <= 10.0
                 and 0 <= s.history_max_chars <= 120000
                 and 0 <= s.channel_context_chars <= 12000
-                and 2 <= s.summary_every <= s.history_turns <= 30
-                and 2 <= s.structured_memory_every <= s.history_turns
+                and 2 <= s.structured_memory_every <= s.summary_every <= s.history_turns <= 30
                 and 0 <= s.lore_max_items <= 20 and 0 <= s.lore_max_chars <= 12000
                 and 0 <= s.vision_max_attachments <= 32
                 and 0 <= s.vision_max_emojis <= 32
@@ -378,8 +377,7 @@ class Settings:
                              "memory output tokens 128~65536, "
                              "routing classifier timeout 0.25~30초, output tokens 32~1024, "
                              "model/memory routing smart threshold 0.1~10.0, "
-                             "2 <= summary_every <= history_turns <= 30, "
-                             "2 <= structured_memory_every <= history_turns, "
+                             "2 <= structured_memory_every <= summary_every <= history_turns <= 30, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하")
         return s
