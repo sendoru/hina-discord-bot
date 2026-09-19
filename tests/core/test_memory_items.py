@@ -200,12 +200,13 @@ class StructuredMemoryPrivacyTests(unittest.TestCase):
         public_item = self.item(self.guild_a, MemoryDisclosure.LOCAL)
         self.assertEqual(memory_access(public_item, self.guild_a_sibling), MemoryAccess.FULL)
         self.assertEqual(memory_access(public_item, self.guild_b), MemoryAccess.HIDDEN)
-        self.assertEqual(memory_access(public_item, self.dm), MemoryAccess.HIDDEN)
+        self.assertEqual(memory_access(public_item, self.dm), MemoryAccess.FULL)
 
         private_item = self.item(self.guild_a_private, MemoryDisclosure.LOCAL)
         self.assertEqual(memory_access(private_item, self.guild_a_private), MemoryAccess.FULL)
         self.assertEqual(memory_access(private_item, self.guild_a), MemoryAccess.HIDDEN)
         self.assertEqual(memory_access(private_item, self.guild_a_other_private), MemoryAccess.HIDDEN)
+        self.assertEqual(memory_access(private_item, self.dm), MemoryAccess.FULL)
 
         dm_item = self.item(self.dm, MemoryDisclosure.LOCAL)
         self.assertEqual(memory_access(dm_item, self.dm), MemoryAccess.FULL)
@@ -219,6 +220,7 @@ class StructuredMemoryPrivacyTests(unittest.TestCase):
 
         private_item = self.item(self.guild_a_private, MemoryDisclosure.IMPLICIT)
         self.assertEqual(memory_access(private_item, self.guild_a), MemoryAccess.IMPLICIT)
+        self.assertEqual(memory_access(private_item, self.dm), MemoryAccess.FULL)
 
     def test_reference_gated_dm_memory_requires_owner_reference_in_server(self):
         item = self.item(self.dm, MemoryDisclosure.REFERENCE_GATED)
@@ -247,20 +249,30 @@ class StructuredMemoryPrivacyTests(unittest.TestCase):
             MemoryAccess.FULL,
         )
 
-    def test_public_server_memory_can_flow_to_dm_only_when_enabled(self):
-        item = self.item(self.guild_a, MemoryDisclosure.REFERENCE_GATED)
-        self.assertEqual(memory_access(item, self.dm), MemoryAccess.FULL)
+    def test_owner_dm_aggregates_reference_gated_memory_from_every_origin(self):
+        public_item = self.item(self.guild_a, MemoryDisclosure.REFERENCE_GATED)
+        self.assertEqual(memory_access(public_item, self.dm), MemoryAccess.FULL)
         self.assertEqual(
-            memory_access(item, self.dm, public_server_memory_in_dm=False),
-            MemoryAccess.HIDDEN,
+            memory_access(public_item, self.dm, public_server_memory_in_dm=False),
+            MemoryAccess.FULL,
         )
 
         private_item = self.item(self.guild_a_private, MemoryDisclosure.REFERENCE_GATED)
-        self.assertEqual(memory_access(private_item, self.dm), MemoryAccess.HIDDEN)
+        self.assertEqual(memory_access(private_item, self.dm), MemoryAccess.FULL)
         self.assertEqual(
-            memory_access(private_item, self.dm, explicitly_referenced=True),
+            memory_access(private_item, self.dm, public_server_memory_in_dm=False),
             MemoryAccess.FULL,
         )
+
+    def test_owner_dm_never_aggregates_another_users_memory(self):
+        self.store.add_memory_item(
+            self.other_user_guild,
+            "other-user-private-fact",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        item = self.store.memory_items(200)[-1]
+        self.assertEqual(memory_access(item, self.dm), MemoryAccess.HIDDEN)
 
     def test_global_memory_can_cross_spaces_but_never_cross_users(self):
         item = self.item(self.dm, MemoryDisclosure.GLOBAL)

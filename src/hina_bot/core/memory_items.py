@@ -65,10 +65,18 @@ def memory_access(
 
     This is a pure policy primitive. Phase 1 does not wire it into request assembly yet.
     The current speaker must own the item before any cross-space rule is considered.
+    The public-server-to-DM flag is retained for compatibility with legacy callers;
+    structured owner memories are always full in that owner's DM.
     """
+    _ = public_server_memory_in_dm
 
     if item.user_id != str(current_scope.user_id):
         return MemoryAccess.HIDDEN
+
+    # The owner's DM is their private aggregate memory space. It may use that
+    # owner's structured memories from any origin, but never another user's.
+    if current_scope.guild_id is None:
+        return MemoryAccess.FULL
 
     if _same_disclosure_space(item, current_scope):
         return MemoryAccess.FULL
@@ -79,17 +87,8 @@ def memory_access(
     if item.disclosure == MemoryDisclosure.IMPLICIT:
         return MemoryAccess.IMPLICIT
 
-    if item.disclosure == MemoryDisclosure.REFERENCE_GATED:
-        # Preserve the existing one-way public-server -> DM inheritance switch. Only memories that
-        # were public at capture may use this shortcut; private-channel memories stay gated.
-        origin_is_public_guild = (
-            item.origin_realm.startswith("guild:") and item.origin_public_at_capture
-        )
-        current_is_dm = current_scope.guild_id is None
-        if origin_is_public_guild and current_is_dm and public_server_memory_in_dm:
-            return MemoryAccess.FULL
-        if explicitly_referenced:
-            return MemoryAccess.FULL
+    if item.disclosure == MemoryDisclosure.REFERENCE_GATED and explicitly_referenced:
+        return MemoryAccess.FULL
 
     return MemoryAccess.HIDDEN
 
