@@ -366,10 +366,10 @@ def persist_reconciliation_proposals(
 
 
 __all__ = [
+    "SHADOW_EXTRACTION_POLICY",
     "ExtractedMemoryItem",
     "ExtractionParseResult",
     "MemoryRelationProposal",
-    "SHADOW_EXTRACTION_POLICY",
     "ShadowPersistResult",
     "build_reconciliation_candidates",
     "build_shadow_turns",
