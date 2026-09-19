@@ -16,29 +16,32 @@ from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 
 
-def _settings():
-    return NS(
-        summary_every=2,
-        model="fixed-model",
-        model_routing_mode="fixed",
-        memory_routing_smart_threshold=2.0,
-        fast_model="fast-model",
-        smart_model="smart-model",
-        memory_output_tokens=4096,
-        gemini_thinking_level="low",
-        gemini_fast_thinking_level="minimal",
-        gemini_smart_thinking_level="medium",
-        provider="openai",
-    )
+def _settings(**overrides):
+    values = {
+        "summary_every": 8,
+        "structured_memory_every": 4,
+        "model": "fixed-model",
+        "model_routing_mode": "fixed",
+        "memory_routing_smart_threshold": 2.0,
+        "fast_model": "fast-model",
+        "smart_model": "smart-model",
+        "memory_output_tokens": 4096,
+        "gemini_thinking_level": "low",
+        "gemini_fast_thinking_level": "minimal",
+        "gemini_smart_thinking_level": "medium",
+        "provider": "openai",
+    }
+    values.update(overrides)
+    return NS(**values)
 
 
 class Harness(MemorySummaryMixin):
     pass
 
 
-def _harness(*responses):
+def _harness(*responses, **settings):
     harness = Harness()
-    harness.settings = _settings()
+    harness.settings = _settings(**settings)
     harness.client = object()
     harness.usage = NS(
         request=AsyncMock(side_effect=responses),
@@ -49,6 +52,11 @@ def _harness(*responses):
 
 def _response(text: str, status: str = "completed"):
     return NS(status=status, output_text=text)
+
+
+def _add_turns(store, scope, start: int, count: int):
+    for message_id in range(start, start + count):
+        store.add(scope, message_id, f"message-{message_id}", f"reply-{message_id}")
 
 
 def test_parser_accepts_only_items_grounded_in_allowed_message_ids():
@@ -83,6 +91,7 @@ def test_parser_accepts_only_items_grounded_in_allowed_message_ids():
         allowed_source_ids={"101", "102"},
     )
 
+    assert parsed.valid
     assert len(parsed.items) == 1
     assert parsed.rejected_items == 2
     item = parsed.items[0]
@@ -97,8 +106,20 @@ def test_parser_does_not_repair_malformed_output():
         allowed_source_ids={"101"},
     )
 
+    assert not parsed.valid
     assert parsed.items == ()
     assert parsed.rejected_items == 1
+
+
+def test_parser_accepts_explicit_empty_item_list():
+    parsed = parse_shadow_extraction(
+        '{"items":[]}',
+        allowed_source_ids={"101"},
+    )
+
+    assert parsed.valid
+    assert parsed.items == ()
+    assert parsed.rejected_items == 0
 
 
 def test_build_shadow_turns_preserves_causal_context_and_provenance():
@@ -174,50 +195,136 @@ def test_persist_shadow_items_never_upgrades_private_source_visibility():
     store.close()
 
 
-@pytest.mark.asyncio
-async def test_summary_commits_legacy_memory_then_persists_shadow_items():
+def test_new_cursor_baselines_from_existing_legacy_summary():
     store = Store(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
-    store.add(scope, 101, "나는 커피보다 차를 좋아해", "그렇구나")
-    store.add(scope, 102, "앞으로 음료 추천할 때도 기억해줘", "알겠어")
-    extraction = json.dumps({
-        "items": [{
-            "content": "사용자는 커피보다 차를 선호하며 이후 음료 추천에도 반영되기를 원한다.",
-            "kind": "preference",
-            "disclosure": "global",
-            "confidence": 0.97,
-            "source_message_ids": ["101", "102"],
-        }]
-    }, ensure_ascii=False)
-    harness = _harness(_response("사용자는 커피보다 차를 선호함"), _response(extraction))
+    _add_turns(store, scope, 101, 6)
+    history = store.history(scope)
+    store.save_summary(scope, "기존 요약", history[3]["id"])
 
-    await harness.summarize(store, scope)
-
-    assert store.summary(scope)[0] == "사용자는 커피보다 차를 선호함"
-    rows = store.memory_items(100)
-    assert len(rows) == 1
-    assert rows[0].kind == MemoryKind.PREFERENCE
-    assert rows[0].source_message_ids == ("101", "102")
-    operations = [call.args[1] for call in harness.usage.request.await_args_list]
-    assert operations == ["summarize", "extract_memory_items_shadow"]
+    assert store.memory_extraction_cursor(scope) == history[3]["id"]
+    pending = store.pending_memory_extraction(scope)
+    assert [row["message_id"] for row in pending] == ["105", "106"]
     store.close()
 
 
 @pytest.mark.asyncio
-async def test_shadow_failure_never_rolls_back_or_fails_legacy_summary():
+async def test_structured_extraction_runs_at_four_turns_without_legacy_summary():
     store = Store(":memory:", history_turns=12)
-    scope = Scope(20, 10, 100, True)
-    store.add(scope, 201, "프로젝트 A를 진행 중이야", "응")
-    store.add(scope, 202, "아직 끝나지 않았어", "확인했어")
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 4)
+    extraction = json.dumps({
+        "items": [{
+            "content": "사용자는 테스트용 사실을 말했다.",
+            "kind": "fact",
+            "disclosure": "local",
+            "confidence": 0.9,
+            "source_message_ids": ["101"],
+        }]
+    }, ensure_ascii=False)
+    harness = _harness(_response(extraction))
+
+    await harness.extract_structured_memory(store, scope)
+
+    assert store.summary(scope) == ("", 0)
+    assert store.memory_extraction_cursor(scope) == store.history(scope)[-1]["id"]
+    rows = store.memory_items(100)
+    assert len(rows) == 1
+    assert rows[0].source_message_ids == ("101",)
+    operations = [call.args[1] for call in harness.usage.request.await_args_list]
+    assert operations == ["extract_memory_items_shadow"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_structured_extraction_processes_fixed_size_batches():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 8)
     harness = _harness(
-        _response("사용자는 프로젝트 A를 진행 중임"),
-        RuntimeError("shadow extractor unavailable"),
+        _response('{"items":[]}'),
+        _response('{"items":[]}'),
     )
 
+    await harness.extract_structured_memory(store, scope)
+    first_cursor = store.memory_extraction_cursor(scope)
+    assert [row["message_id"] for row in store.pending_memory_extraction(scope)] == [
+        "105", "106", "107", "108"
+    ]
+
+    await harness.extract_structured_memory(store, scope)
+    assert store.memory_extraction_cursor(scope) > first_cursor
+    assert store.pending_memory_extraction(scope) == []
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_valid_empty_extraction_advances_cursor():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 4)
+    harness = _harness(_response('{"items":[]}'))
+
+    await harness.extract_structured_memory(store, scope)
+
+    assert store.memory_extraction_cursor(scope) == store.history(scope)[-1]["id"]
+    assert store.memory_items(100) == []
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_invalid_extraction_keeps_cursor_for_retry():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 4)
+    harness = _harness(
+        _response("not-json"),
+        _response('{"items":[]}'),
+    )
+
+    await harness.extract_structured_memory(store, scope)
+    assert store.memory_extraction_cursor(scope) == 0
+    assert len(store.pending_memory_extraction(scope)) == 4
+
+    await harness.extract_structured_memory(store, scope)
+    assert store.memory_extraction_cursor(scope) == store.history(scope)[-1]["id"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_extractor_failure_does_not_advance_cursor():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(20, 10, 100, True)
+    _add_turns(store, scope, 201, 4)
+    harness = _harness(RuntimeError("shadow extractor unavailable"))
+
+    await harness.extract_structured_memory(store, scope)
+
+    assert store.memory_extraction_cursor(scope) == 0
+    assert len(store.pending_memory_extraction(scope)) == 4
+    assert store.memory_items(100) == []
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_summary_and_structured_cursor_advance_independently():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 4)
+    harness = _harness(
+        _response('{"items":[]}'),
+        _response("사용자의 기존 장기 기억"),
+    )
+
+    await harness.extract_structured_memory(store, scope)
+    structured_through = store.memory_extraction_cursor(scope)
+    assert store.summary(scope) == ("", 0)
+
+    _add_turns(store, scope, 105, 4)
     await harness.summarize(store, scope)
 
-    assert store.summary(scope)[0] == "사용자는 프로젝트 A를 진행 중임"
-    assert store.memory_items(100) == []
+    assert store.memory_extraction_cursor(scope) == structured_through
+    assert store.summary(scope)[0] == "사용자의 기존 장기 기억"
     operations = [call.args[1] for call in harness.usage.request.await_args_list]
-    assert operations == ["summarize", "extract_memory_items_shadow"]
+    assert operations == ["extract_memory_items_shadow", "summarize"]
     store.close()
