@@ -122,6 +122,24 @@ retry cannot accidentally reconcile an item with itself.
 This shadow period is intended to measure how often `duplicate`, `corrects`, and `conflicts` are right
 before any automatic supersede behavior is enabled.
 
+## Phase 3: owner-DM memory and implicit relationship projection
+
+Structured memory now enters the response path in two deliberately different forms:
+
+- In the owner's DM, `structured_owner_memory` contains all structured items owned by that user,
+  regardless of origin realm/channel or disclosure. Another user's items are never included.
+- In a server/shared space, cross-space `implicit` relationship items never expose their raw `content`.
+  A sufficiently confident relationship item may only produce the bounded signal
+  `cross_space_relationship.familiarity=established`.
+- `reference_gated` factual content is still not opened in shared spaces, even when the current message
+  looks like a reference. Explicit factual recall remains Phase 4.
+- Explicit current-channel-only requests suppress the cross-space relationship projection.
+- The structured-memory fields are included in routing context-size accounting so model routing sees the
+  same dynamic context that request assembly will serialize.
+
+Because DM full-memory reads can surface stale/conflicting shadow items, this PR is intended to remain
+draft until reconciliation/supersede behavior is validated and inserted before production rollout.
+
 ## Still out of scope
 
 Shadow extraction still does not:
@@ -129,7 +147,6 @@ Shadow extraction still does not:
 - replace `summaries` or `shared_summaries`,
 - inject structured items into model context,
 - detect cross-space references,
-- project `implicit` relationship state into prompts,
 - apply reconciliation proposals or mark old items as superseded.
 
 Those steps should be enabled incrementally after shadow classifications have been inspected against
