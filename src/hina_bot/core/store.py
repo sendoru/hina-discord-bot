@@ -281,24 +281,6 @@ class Store:
         confidence = float(confidence)
         if not 0 <= confidence <= 1:
             raise ValueError("Memory item confidence must be between 0 and 1")
-        if int(new_memory_item_id) == int(target_memory_item_id):
-            raise ValueError("A memory item cannot reconcile with itself")
-        owned = self.db.execute(
-            """SELECT id FROM memory_items
-               WHERE id IN (?,?) AND user_id=? AND origin_realm=? AND origin_channel_id=?""",
-            (
-                int(new_memory_item_id),
-                int(target_memory_item_id),
-                str(scope.user_id),
-                scope.realm,
-                str(scope.channel_id),
-            ),
-        ).fetchall()
-        if {int(row["id"]) for row in owned} != {
-            int(new_memory_item_id),
-            int(target_memory_item_id),
-        }:
-            raise ValueError("Reconciliation items must belong to the same memory space")
         source_ids = tuple(dict.fromkeys(str(value) for value in source_message_ids))
         encoded_sources = json.dumps(source_ids, ensure_ascii=False, separators=(",", ":"))
         with self.db:
@@ -358,6 +340,24 @@ class Store:
         confidence = float(confidence)
         if not 0 <= confidence <= 1:
             raise ValueError("Memory reconciliation confidence must be between 0 and 1")
+        if int(new_memory_item_id) == int(target_memory_item_id):
+            raise ValueError("A memory item cannot reconcile with itself")
+        owned = self.db.execute(
+            """SELECT id FROM memory_items
+               WHERE id IN (?,?) AND user_id=? AND origin_realm=? AND origin_channel_id=?""",
+            (
+                int(new_memory_item_id),
+                int(target_memory_item_id),
+                str(scope.user_id),
+                scope.realm,
+                str(scope.channel_id),
+            ),
+        ).fetchall()
+        if {int(row["id"]) for row in owned} != {
+            int(new_memory_item_id),
+            int(target_memory_item_id),
+        }:
+            raise ValueError("Reconciliation items must belong to the same memory space")
         source_ids = tuple(dict.fromkeys(str(value) for value in source_message_ids))
         encoded_sources = json.dumps(source_ids, ensure_ascii=False, separators=(",", ":"))
         with self.db:
