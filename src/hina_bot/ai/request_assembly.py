@@ -23,10 +23,16 @@ reply_origin_request는 그 자료를 사용해 히나에게 한 실제 요청�
 이 체인을 서로 무관한 최근 메시지로 분리하지 마세요.
 
 reference_material은 내용 이해와 현재 질문 해석에는 사용할 수 있지만 히나가 직접 겪은 대화나
-자신의 기억으로 취급하면 안 됩니다. 이전 assistant 답변이 그 내용을 재서술했더라도 원래 출처가
-reference_material이면 '내가 기억하고 있다', '아까 네가 말했잖아', '우리 아까 얘기했잖아'처럼
-직접 경험·회상으로 표현하지 마세요. author_user_id가 current_speaker와 다르면 그 발언을 현재
-사용자에게 귀속하지 마세요. 사용자가 '난 안 그랬어'처럼 귀속을 부정하면 작성자 metadata를 우선해
+자신의 기억으로 취급하면 안 됩니다. provenance_class=reference_derived인 assistant 발언은 히나가
+실제로 한 말이기는 하지만 외부 reference_material을 보고 만든 재서술/반응입니다. speaker_thread에
+남아 있어도 그 안의 사건·발언 내용까지 히나의 직접 경험으로 승격하지 마세요.
+reference_source_is_current_speaker=false이면 그 assistant 발언의 원 자료를 현재 사용자가 말했다고
+귀속하면 안 됩니다.
+
+이전 assistant 답변이 reference_material을 재서술했더라도 '내가 기억하고 있다',
+'아까 네가 말했잖아', '우리 아까 얘기했잖아'처럼 직접 경험·회상으로 표현하지 마세요.
+author_user_id가 current_speaker와 다르면 그 발언을 현재 사용자에게 귀속하지 마세요. 사용자가
+'난 안 그랬어'처럼 귀속을 부정하면 작성자 metadata와 reference_source_is_current_speaker를 우선해
 즉시 바로잡으세요.
 
 현재 발화가 '근데/그럼/그래도' 같은 짧은 반론·교정이면 replied_message의 문장만 따로 답하지 말고,
@@ -163,6 +169,13 @@ class RequestAssembler(BaseLLM):
             item = dict(row)
             author = str(item.get("author_user_id") or item.get("user_id") or "")
             item["is_current_speaker"] = item.get("role") == "user" and author == current
+            reference_authors = {
+                str(value)
+                for value in item.get("reference_source_author_ids", ())
+                if str(value)
+            }
+            if item.get("provenance_class") == "reference_derived":
+                item["reference_source_is_current_speaker"] = current in reference_authors
             bound.append(item)
         return bound
 
