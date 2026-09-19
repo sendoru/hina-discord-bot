@@ -47,7 +47,7 @@ def allow_channel_row(row: dict, current_user_id: int | str, policy: str) -> boo
         return role == "user" and row.get("direct_trigger") is True
     if kind == "prior_reply_source":
         return False
-    if kind in {"reply_origin_request", "reply_origin_source"}:
+    if kind in {"reply_origin_request", "reply_origin_source", "reply_reference_source"}:
         if role == "assistant":
             return True
         return role == "user" and _author_id(row) == current
