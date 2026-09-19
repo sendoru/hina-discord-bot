@@ -93,3 +93,24 @@ def test_bot_interactions_only_filters_complete_serialized_context():
     assert filtered["conversation_history"] == context["conversation_history"]
     assert filtered["lore_reference"] == context["lore_reference"]
     assert context["server_note"] == "서버 공통 메모"  # input is not mutated
+
+
+def test_strict_egress_keeps_reference_derived_class_but_drops_source_identifiers():
+    rows = [{
+        "message_id": "4",
+        "role": "assistant",
+        "reply_target_user_id": "100",
+        "provenance_class": "reference_derived",
+        "reference_source_ids": ["1"],
+        "reference_source_author_ids": ["200"],
+        "content": "외부 인용을 보고 한 답변",
+    }]
+
+    filtered = filter_channel_context(rows, 100, BOT_INTERACTIONS_ONLY)
+
+    assert len(filtered) == 1
+    assert filtered[0]["provenance_class"] == "reference_derived"
+    assert filtered[0]["reference_source_is_current_speaker"] is False
+    assert "reference_source_ids" not in filtered[0]
+    assert "reference_source_author_ids" not in filtered[0]
+    assert rows[0]["reference_source_author_ids"] == ["200"]
