@@ -296,7 +296,7 @@ def persist_shadow_items_detailed(
         )
         if signature in signatures:
             duplicates += 1
-            item_ids.append(None)
+            item_ids.append(signatures[signature])
             continue
         if source_public_at_capture is None:
             origin_public_at_capture = bool(scope.public_at_capture)
@@ -350,6 +350,8 @@ def persist_reconciliation_proposals(
     stored = 0
     for item, item_id in zip(items, item_ids, strict=True):
         if item_id is None or item.relation is None:
+            continue
+        if item_id == item.relation.target_item_id:
             continue
         proposal_id = store.add_memory_reconciliation_proposal(
             scope,
