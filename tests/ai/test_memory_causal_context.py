@@ -149,7 +149,11 @@ async def test_personal_summary_receives_causal_context_and_logs_size_telemetry(
     finally:
         store.close()
 
-    request = mixin.usage.request.await_args.kwargs
+    summary_call = next(
+        call for call in mixin.usage.request.await_args_list
+        if call.args[1] == "summarize"
+    )
+    request = summary_call.kwargs
     payload = json.loads(request["input"])
     assert payload["new_turns"] == [{
         "at": payload["new_turns"][0]["at"],
@@ -159,8 +163,10 @@ async def test_personal_summary_receives_causal_context_and_logs_size_telemetry(
     assert "hina" not in payload["new_turns"][0]
     assert "해석하기 위한 제한된 인과 문맥" in SUMMARY_POLICY
 
-    event = mixin.usage.routing_event.call_args
-    assert event.args == ("memory.summary_requested",)
+    event = next(
+        call for call in mixin.usage.routing_event.call_args_list
+        if call.args == ("memory.summary_requested",)
+    )
     assert event.kwargs["status"] == "requested"
     assert event.kwargs["memory_kind"] == "personal"
     assert event.kwargs["pending_turns"] == 1
