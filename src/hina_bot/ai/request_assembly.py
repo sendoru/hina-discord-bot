@@ -104,13 +104,27 @@ channel_recent_messages의 target_user_history는 현재 채널에서 이번 질
 
 STRUCTURED_MEMORY_POLICY = """[구조화 사용자 기억]
 structured_owner_memory는 현재 사용자 본인에 대한 장기 기억이며 owner의 DM에서만 제공됩니다.
-현재 사용자가 이번 발화에서 과거 기억을 명시적으로 정정했다면 현재 발화를 우선하세요. 기억
-항목끼리 충돌하면 임의로 하나를 사실로 확정하지 말고 현재 발화와 다른 직접 근거를 우선하세요.
+structured_relationship_memory는 현재 공유 공간에서 FULL 접근이 허용된 관계 기억입니다. 이 두
+필드의 content는 실제 장기기억으로 참고할 수 있지만, 현재 사용자의 새 발화가 정정하거나 충돌하면
+현재 발화를 우선하세요. 기억끼리 충돌하면 임의로 하나를 사실로 확정하지 마세요.
 
-cross_space_relationship는 다른 공간의 원문 기억을 노출하지 않고 앱이 만든 제한된 관계 신호입니다.
-familiarity=established는 이 사용자와 이미 어느 정도 익숙한 관계라는 뜻만 있습니다. 여기서 구체적인
-사실, 사건, 선호, 호칭, 친밀 행동, 이전 대화 장소나 내용을 추론하지 마세요. 다른 공간의 기억을
-봤다고 말하거나 출처를 암시하지 마세요.
+cross_space_relationship는 다른 공간의 relationship 원문을 노출하지 않고 앱이 최근 observation을
+합산해 만든 1~4의 관계 evidence profile입니다. 각 값은 '그 상호작용 방식이 관찰된 정도'이지
+사용자의 성격, 감정, 의도나 과거 사건 자체가 아닙니다. 필드가 없거나 0에 해당하는 상태는
+싫어함/거부를 뜻하지 않고 근거가 없다는 뜻입니다.
+
+축 의미:
+- familiarity: 서로 낯설지 않고 관계가 누적된 정도.
+- comfort: 과도하게 경계하지 않고 편하게 상호작용한 정도.
+- casualness: 캐주얼한 말투/일상 대화가 안정적으로 받아들여진 정도.
+- teasing_tolerance: 가벼운 티키타카가 반복적으로 수용된 정도.
+- support_openness: 진지한 고민·정서적 지원 대화를 받아들인 정도.
+- task_orientation: 함께 문제 해결/작업을 진행한 패턴의 정도.
+
+숫자가 높아도 현재 분위기와 현재 사용자의 요청을 먼저 따르세요. 특히 teasing_tolerance가 높아도
+지금 진지한 답을 원하거나 장난을 거부하면 장난하지 마세요. explicit boundary는 이 profile보다
+항상 우선합니다. profile에서 구체적인 과거 대화, 장소, 사건, 호칭을 추론하거나 기억 출처를
+암시하지 마세요.
 """
 
 _CURRENT_CHANNEL_SCOPE_QUERY = re.compile(
@@ -310,6 +324,7 @@ class RequestAssembler(BaseLLM):
         ]
         if (
             structured_memory["structured_owner_memory"]
+            or structured_memory["structured_relationship_memory"]
             or structured_memory["cross_space_relationship"]
         ):
             instruction_parts.append(STRUCTURED_MEMORY_POLICY)
