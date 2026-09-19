@@ -59,11 +59,11 @@ class RelationshipEvidence:
                 raise ValueError(f"{axis} relationship evidence must be an integer from 0 to 4")
 
     @classmethod
-    def from_mapping(cls, raw) -> "RelationshipEvidence":
+    def from_mapping(cls, raw) -> RelationshipEvidence:
         if raw in (None, {}):
             return cls()
         if not isinstance(raw, dict):
-            raise ValueError("relationship_evidence must be an object")
+            raise TypeError("relationship_evidence must be an object")
         unknown = set(raw) - set(RELATIONSHIP_EVIDENCE_AXES)
         if unknown:
             raise ValueError("Unknown relationship evidence axis")
