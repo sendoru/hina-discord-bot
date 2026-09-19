@@ -332,3 +332,207 @@ async def test_legacy_summary_and_structured_cursor_advance_independently():
     operations = [call.args[1] for call in harness.usage.request.await_args_list]
     assert operations == ["extract_memory_items_shadow", "summarize"]
     store.close()
+
+
+def test_reconciliation_candidates_are_same_user_same_realm_same_channel_only():
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100, True)
+    sibling = Scope(1, 20, 100, True)
+    other_user = Scope(1, 10, 200, True)
+    keep_id = store.add_memory_item(
+        scope,
+        "same space",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("1",),
+    )
+    store.add_memory_item(
+        sibling,
+        "sibling channel",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("2",),
+    )
+    store.add_memory_item(
+        other_user,
+        "other user",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("3",),
+    )
+
+    candidates = store.memory_reconciliation_candidates(scope)
+
+    assert [item.id for item in candidates] == [keep_id]
+    assert [item.content for item in candidates] == ["same space"]
+    store.close()
+
+
+def test_parser_keeps_item_but_drops_relation_to_unknown_target():
+    parsed = parse_shadow_extraction(
+        json.dumps({
+            "items": [{
+                "content": "사용자는 새로운 사실을 말했다.",
+                "kind": "fact",
+                "disclosure": "local",
+                "confidence": 0.9,
+                "source_message_ids": ["101"],
+                "relation": {
+                    "type": "corrects",
+                    "target_item_id": 999,
+                    "confidence": 0.95,
+                },
+            }]
+        }, ensure_ascii=False),
+        allowed_source_ids={"101"},
+        allowed_target_item_ids={12},
+    )
+
+    assert parsed.valid
+    assert len(parsed.items) == 1
+    assert parsed.items[0].relation is None
+    assert parsed.rejected_relations == 1
+
+
+@pytest.mark.asyncio
+async def test_shadow_reconciliation_records_correction_without_mutating_old_item():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    old_id = store.add_memory_item(
+        scope,
+        "사용자는 '키위'라는 고양이를 키운다.",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("90",),
+        confidence=0.9,
+    )
+    _add_turns(store, scope, 101, 4)
+    extraction = json.dumps({
+        "items": [{
+            "content": "사용자는 '웅'이라는 고양이를 키운다.",
+            "kind": "fact",
+            "disclosure": "local",
+            "confidence": 0.99,
+            "source_message_ids": ["101", "102"],
+            "relation": {
+                "type": "corrects",
+                "target_item_id": old_id,
+                "confidence": 0.99,
+            },
+        }]
+    }, ensure_ascii=False)
+    harness = _harness(_response(extraction))
+
+    await harness.extract_structured_memory(store, scope)
+
+    items = store.memory_items(100)
+    assert [item.content for item in items] == [
+        "사용자는 '키위'라는 고양이를 키운다.",
+        "사용자는 '웅'이라는 고양이를 키운다.",
+    ]
+    assert items[0].id == old_id
+    request = harness.usage.request.await_args.kwargs
+    payload = json.loads(request["input"])
+    assert payload["existing_memory_candidates"] == [{
+        "id": old_id,
+        "content": "사용자는 '키위'라는 고양이를 키운다.",
+        "kind": "fact",
+        "disclosure": "local",
+        "confidence": 0.9,
+    }]
+
+    proposals = store.memory_reconciliation_proposals(100)
+    assert len(proposals) == 1
+    proposal = proposals[0]
+    assert proposal["new_memory_item_id"] == items[1].id
+    assert proposal["target_memory_item_id"] == old_id
+    assert proposal["relation"] == "corrects"
+    assert proposal["confidence"] == pytest.approx(0.99)
+    assert json.loads(proposal["source_message_ids"]) == ["101", "102"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_partial_retry_does_not_offer_same_batch_item_as_reconciliation_candidate():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    old_id = store.add_memory_item(
+        scope,
+        "사용자는 차를 좋아한다.",
+        kind=MemoryKind.PREFERENCE,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("90",),
+    )
+    _add_turns(store, scope, 101, 4)
+    first = json.dumps({
+        "items": [{
+            "content": "사용자는 녹차를 좋아한다.",
+            "kind": "preference",
+            "disclosure": "local",
+            "confidence": 0.9,
+            "source_message_ids": ["101"],
+            "relation": {
+                "type": "corrects",
+                "target_item_id": old_id,
+                "confidence": 0.8,
+            },
+        }]
+    }, ensure_ascii=False)
+    harness = _harness(_response(first), _response(first))
+
+    original_writer = store.add_memory_reconciliation_proposal
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("proposal write failed")
+        return original_writer(*args, **kwargs)
+
+    store.add_memory_reconciliation_proposal = fail_once
+    await harness.extract_structured_memory(store, scope)
+    assert store.memory_extraction_cursor(scope) == 0
+
+    await harness.extract_structured_memory(store, scope)
+
+    second_payload = json.loads(harness.usage.request.await_args_list[-1].kwargs["input"])
+    candidate_ids = {row["id"] for row in second_payload["existing_memory_candidates"]}
+    assert old_id in candidate_ids
+    new_item = next(item for item in store.memory_items(100) if item.id != old_id)
+    assert new_item.id not in candidate_ids
+    assert len(store.memory_reconciliation_proposals(100)) == 1
+    store.close()
+
+
+def test_forget_removes_reconciliation_proposals_with_memory():
+    store = Store(":memory:")
+    scope = Scope(None, 10, 100)
+    old_id = store.add_memory_item(
+        scope,
+        "old",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("1",),
+    )
+    new_id = store.add_memory_item(
+        scope,
+        "new",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("2",),
+    )
+    store.add_memory_reconciliation_proposal(
+        scope,
+        new_memory_item_id=new_id,
+        target_memory_item_id=old_id,
+        relation="corrects",
+        confidence=0.9,
+        source_message_ids=("2",),
+    )
+
+    store.forget(scope)
+
+    assert store.memory_items(100) == []
+    assert store.memory_reconciliation_proposals(100) == []
+    store.close()
