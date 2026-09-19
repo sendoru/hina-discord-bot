@@ -139,9 +139,17 @@ class Store:
         ).fetchone()
         if row is not None:
             return int(row["through_id"])
-        # #72 extracted structured items only when the legacy summary committed. Existing
-        # deployments therefore start from that summary cursor instead of replaying old turns.
-        return int(self.summary(scope)[1])
+        # #72 extracted structured items only when the legacy summary committed. Freeze that
+        # migration baseline now so a later summary update cannot skip a failed shadow batch.
+        baseline = int(self.summary(scope)[1])
+        with self.db:
+            self.db.execute(
+                """INSERT OR IGNORE INTO memory_extraction_cursors(
+                       scope,realm,user_id,through_id
+                   ) VALUES (?,?,?,?)""",
+                (scope.conversation, scope.realm, str(scope.user_id), baseline),
+            )
+        return baseline
 
     def pending_memory_extraction(self, scope: Scope, *, limit: int | None = None):
         through = self.memory_extraction_cursor(scope)
