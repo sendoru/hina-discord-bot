@@ -445,12 +445,12 @@ class HinaClient(discord.Client):
                             self.store.add(scope, message.id, text, answer)
                             self.store.add_shared_call(scope, message.id, message.author.display_name, text)
                             for memory_kind, update, failure_event in (
-                                ("personal", self.llm.summarize, "memory.summary_failed"),
                                 (
                                     "structured",
                                     self.llm.extract_structured_memory,
                                     "memory.extraction_failed",
                                 ),
+                                ("personal", self.llm.summarize, "memory.summary_failed"),
                                 ("shared", self.llm.summarize_shared, "memory.summary_failed"),
                             ):
                                 try:
