@@ -332,3 +332,387 @@ async def test_legacy_summary_and_structured_cursor_advance_independently():
     operations = [call.args[1] for call in harness.usage.request.await_args_list]
     assert operations == ["extract_memory_items_shadow", "summarize"]
     store.close()
+
+
+def test_server_reconciliation_candidates_follow_disclosure_space():
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100, True)
+    public_sibling = Scope(1, 20, 100, True)
+    private_sibling = Scope(1, 30, 100, False)
+    other_guild = Scope(2, 40, 100, True)
+    other_user = Scope(1, 10, 200, True)
+    current_id = store.add_memory_item(
+        scope,
+        "current public",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("1",),
+    )
+    sibling_id = store.add_memory_item(
+        public_sibling,
+        "same guild public",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("2",),
+    )
+    store.add_memory_item(
+        private_sibling,
+        "private sibling",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("3",),
+    )
+    store.add_memory_item(
+        other_guild,
+        "other guild",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("4",),
+    )
+    store.add_memory_item(
+        other_user,
+        "other user",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("5",),
+    )
+
+    candidates = store.memory_reconciliation_candidates(scope)
+
+    assert [item.id for item in candidates] == [current_id, sibling_id]
+    assert [item.content for item in candidates] == ["current public", "same guild public"]
+    store.close()
+
+
+def test_dm_reconciliation_candidates_include_all_owner_origins_only():
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    guild_a = Scope(1, 20, 100, True)
+    guild_private = Scope(1, 30, 100, False)
+    guild_b = Scope(2, 40, 100, True)
+    other_user = Scope(1, 20, 200, True)
+    expected = [
+        store.add_memory_item(
+            guild_a,
+            "guild a",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+            source_message_ids=("1",),
+        ),
+        store.add_memory_item(
+            guild_private,
+            "guild private",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+            source_message_ids=("2",),
+        ),
+        store.add_memory_item(
+            guild_b,
+            "guild b",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+            source_message_ids=("3",),
+        ),
+        store.add_memory_item(
+            dm,
+            "dm",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+            source_message_ids=("4",),
+        ),
+    ]
+    store.add_memory_item(
+        other_user,
+        "other user",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("5",),
+    )
+
+    candidates = store.memory_reconciliation_candidates(dm)
+
+    assert [item.id for item in candidates] == expected
+    store.close()
+
+
+def test_parser_keeps_item_but_drops_relation_to_unknown_target():
+    parsed = parse_shadow_extraction(
+        json.dumps({
+            "items": [{
+                "content": "사용자는 새로운 사실을 말했다.",
+                "kind": "fact",
+                "disclosure": "local",
+                "confidence": 0.9,
+                "source_message_ids": ["101"],
+                "relation": {
+                    "type": "corrects",
+                    "target_item_id": 999,
+                    "confidence": 0.95,
+                },
+            }]
+        }, ensure_ascii=False),
+        allowed_source_ids={"101"},
+        allowed_target_item_ids={12},
+    )
+
+    assert parsed.valid
+    assert len(parsed.items) == 1
+    assert parsed.items[0].relation is None
+    assert parsed.rejected_relations == 1
+
+
+@pytest.mark.asyncio
+async def test_shadow_reconciliation_records_correction_without_mutating_old_item():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    old_id = store.add_memory_item(
+        scope,
+        "사용자는 '키위'라는 고양이를 키운다.",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("90",),
+        confidence=0.9,
+    )
+    _add_turns(store, scope, 101, 4)
+    extraction = json.dumps({
+        "items": [{
+            "content": "사용자는 '웅'이라는 고양이를 키운다.",
+            "kind": "fact",
+            "disclosure": "local",
+            "confidence": 0.99,
+            "source_message_ids": ["101", "102"],
+            "relation": {
+                "type": "corrects",
+                "target_item_id": old_id,
+                "confidence": 0.99,
+            },
+        }]
+    }, ensure_ascii=False)
+    harness = _harness(_response(extraction))
+
+    await harness.extract_structured_memory(store, scope)
+
+    items = store.memory_items(100)
+    assert [item.content for item in items] == [
+        "사용자는 '키위'라는 고양이를 키운다.",
+        "사용자는 '웅'이라는 고양이를 키운다.",
+    ]
+    assert items[0].id == old_id
+    request = harness.usage.request.await_args.kwargs
+    payload = json.loads(request["input"])
+    assert payload["existing_memory_candidates"] == [{
+        "id": old_id,
+        "content": "사용자는 '키위'라는 고양이를 키운다.",
+        "kind": "fact",
+        "disclosure": "local",
+        "confidence": 0.9,
+    }]
+
+    proposals = store.memory_reconciliation_proposals(100)
+    assert len(proposals) == 1
+    proposal = proposals[0]
+    assert proposal["new_memory_item_id"] == items[1].id
+    assert proposal["target_memory_item_id"] == old_id
+    assert proposal["relation"] == "corrects"
+    assert proposal["confidence"] == pytest.approx(0.99)
+    assert json.loads(proposal["source_message_ids"]) == ["101", "102"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_partial_retry_does_not_offer_same_batch_item_as_reconciliation_candidate():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    old_id = store.add_memory_item(
+        scope,
+        "사용자는 차를 좋아한다.",
+        kind=MemoryKind.PREFERENCE,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("90",),
+    )
+    _add_turns(store, scope, 101, 4)
+    first = json.dumps({
+        "items": [{
+            "content": "사용자는 녹차를 좋아한다.",
+            "kind": "preference",
+            "disclosure": "local",
+            "confidence": 0.9,
+            "source_message_ids": ["101"],
+            "relation": {
+                "type": "corrects",
+                "target_item_id": old_id,
+                "confidence": 0.8,
+            },
+        }]
+    }, ensure_ascii=False)
+    harness = _harness(_response(first), _response(first))
+
+    original_writer = store.add_memory_reconciliation_proposal
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("proposal write failed")
+        return original_writer(*args, **kwargs)
+
+    store.add_memory_reconciliation_proposal = fail_once
+    await harness.extract_structured_memory(store, scope)
+    assert store.memory_extraction_cursor(scope) == 0
+
+    await harness.extract_structured_memory(store, scope)
+
+    second_payload = json.loads(harness.usage.request.await_args_list[-1].kwargs["input"])
+    candidate_ids = {row["id"] for row in second_payload["existing_memory_candidates"]}
+    assert old_id in candidate_ids
+    new_item = next(item for item in store.memory_items(100) if item.id != old_id)
+    assert new_item.id not in candidate_ids
+    assert len(store.memory_reconciliation_proposals(100)) == 1
+    store.close()
+
+
+def test_forget_removes_reconciliation_proposals_with_memory():
+    store = Store(":memory:")
+    scope = Scope(None, 10, 100)
+    old_id = store.add_memory_item(
+        scope,
+        "old",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("1",),
+    )
+    new_id = store.add_memory_item(
+        scope,
+        "new",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("2",),
+    )
+    store.add_memory_reconciliation_proposal(
+        scope,
+        new_memory_item_id=new_id,
+        target_memory_item_id=old_id,
+        relation="corrects",
+        confidence=0.9,
+        source_message_ids=("2",),
+    )
+
+    store.forget(scope)
+
+    assert store.memory_items(100) == []
+    assert store.memory_reconciliation_proposals(100) == []
+    store.close()
+
+
+def test_store_allows_public_same_guild_reconciliation_proposal():
+    store = Store(":memory:")
+    current = Scope(1, 10, 100, True)
+    sibling = Scope(1, 20, 100, True)
+    current_id = store.add_memory_item(
+        current,
+        "current",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("1",),
+    )
+    sibling_id = store.add_memory_item(
+        sibling,
+        "sibling",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("2",),
+    )
+
+    proposal_id = store.add_memory_reconciliation_proposal(
+        current,
+        new_memory_item_id=current_id,
+        target_memory_item_id=sibling_id,
+        relation="conflicts",
+        confidence=0.8,
+        source_message_ids=("1",),
+    )
+
+    assert proposal_id is not None
+    store.close()
+
+
+def test_store_rejects_server_reconciliation_outside_disclosure_space():
+    store = Store(":memory:")
+    current = Scope(1, 10, 100, True)
+    other_guild = Scope(2, 20, 100, True)
+    current_id = store.add_memory_item(
+        current,
+        "current",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("1",),
+    )
+    other_id = store.add_memory_item(
+        other_guild,
+        "other guild",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("2",),
+    )
+
+    with pytest.raises(ValueError):
+        store.add_memory_reconciliation_proposal(
+            current,
+            new_memory_item_id=current_id,
+            target_memory_item_id=other_id,
+            relation="conflicts",
+            confidence=0.8,
+            source_message_ids=("1",),
+        )
+    assert store.memory_reconciliation_proposals(100) == []
+    store.close()
+
+
+def test_store_allows_dm_reconciliation_across_owner_origins_only():
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    guild_private = Scope(1, 20, 100, False)
+    other_user = Scope(1, 20, 200, False)
+    target_id = store.add_memory_item(
+        guild_private,
+        "server fact",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("1",),
+    )
+    other_user_id = store.add_memory_item(
+        other_user,
+        "other user fact",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("2",),
+    )
+    new_id = store.add_memory_item(
+        dm,
+        "dm correction",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("3",),
+    )
+
+    proposal_id = store.add_memory_reconciliation_proposal(
+        dm,
+        new_memory_item_id=new_id,
+        target_memory_item_id=target_id,
+        relation="corrects",
+        confidence=0.95,
+        source_message_ids=("3",),
+    )
+    assert proposal_id is not None
+
+    with pytest.raises(ValueError):
+        store.add_memory_reconciliation_proposal(
+            dm,
+            new_memory_item_id=new_id,
+            target_memory_item_id=other_user_id,
+            relation="conflicts",
+            confidence=0.8,
+            source_message_ids=("3",),
+        )
+    store.close()

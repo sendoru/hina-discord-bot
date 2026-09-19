@@ -41,24 +41,26 @@ A memory is in the same disclosure space when it comes from the current DM, the 
 channel, or a public channel in the current guild. A private guild memory does not become guild-wide
 merely because the target channel belongs to the same server.
 
-| disclosure | same disclosure space | DM -> guild | guild A -> guild B | public guild -> DM |
+The owner's DM is a special private aggregate space: once ownership matches, structured memories from
+all of that user's guilds/channels are available there regardless of disclosure. This never permits
+another user's memory to enter the DM.
+
+| disclosure | same disclosure space | DM -> guild | guild A -> guild B | owner DM |
 | --- | --- | --- | --- | --- |
-| `local` | full | hidden | hidden | hidden |
-| `implicit` | full | implicit | implicit | implicit |
-| `reference_gated` | full | full only after owner reference | full only after owner reference | full when `PUBLIC_SERVER_MEMORY_IN_DM=true`, otherwise owner reference only |
+| `local` | full | hidden | hidden | full |
+| `implicit` | full | implicit | implicit | full |
+| `reference_gated` | full | full only after owner reference | full only after owner reference | full |
 | `global` | full | full | full | full |
 
-For a private guild-channel origin, `reference_gated` remains hidden in every other channel, server,
-or DM until the owner explicitly references it. The public-server-to-DM shortcut never applies to
-private-channel memories.
+Outside the owner's DM, a private guild-channel `reference_gated` item remains gated in every other
+channel or server until the owner explicitly references it.
 
 `reference_gated` does not mean that any person can unlock a memory by mentioning it. The current
 speaker must be the same `user_id` that owns the item. This is checked before every other rule.
 
-The one-way public `guild -> DM` exception intentionally preserves the existing
-`PUBLIC_SERVER_MEMORY_IN_DM` behavior: information the user already said in a public server can remain
-available in their private conversation with Hina without making it automatically visible in another
-server.
+`PUBLIC_SERVER_MEMORY_IN_DM` remains relevant to the legacy summary path while migration is in
+progress, but it no longer controls structured-memory access: the owner's DM aggregates all of that
+owner's structured memory.
 
 ## Phase 1: storage and privacy foundation
 
@@ -95,6 +97,31 @@ The extractor classifies `kind`, `disclosure`, and `confidence`; these classific
 not trusted by the response layer yet. Real stored rows can therefore be reviewed before deciding
 thresholds, reconciliation rules, or read-path behavior.
 
+## Phase 2.6: shadow reconciliation
+
+Before structured memories affect replies, new extraction batches are compared with a bounded set of
+recent existing items. In a server, candidates stay inside the current user's disclosure space. In the
+owner's DM, candidates may come from any realm/channel owned by that user. The extractor may propose exactly one
+relationship for a new item:
+
+- `duplicate`: materially the same fact/preference was extracted again,
+- `corrects`: the current turns explicitly correct, replace, or fix an earlier item,
+- `conflicts`: both claims cannot comfortably be true, but the current batch does not clearly establish
+  which one should replace the other.
+
+These are observation-only proposals. New items are still stored normally, existing items are not edited,
+deleted, hidden, or superseded, and proposals are written separately to
+`memory_reconciliation_proposals`.
+
+Candidate ids are accepted only when they were actually supplied to the model. The Store independently
+verifies ownership and origin rules: DM reconciliation may target any item owned by the current user,
+while server reconciliation targets only the current disclosure space. Items written by a
+partially failed retry batch are excluded from the next candidate set by source-message provenance, so a
+retry cannot accidentally reconcile an item with itself.
+
+This shadow period is intended to measure how often `duplicate`, `corrects`, and `conflicts` are right
+before any automatic supersede behavior is enabled.
+
 ## Still out of scope
 
 Shadow extraction still does not:
@@ -103,7 +130,7 @@ Shadow extraction still does not:
 - inject structured items into model context,
 - detect cross-space references,
 - project `implicit` relationship state into prompts,
-- reconcile semantically equivalent facts across separate summary batches.
+- apply reconciliation proposals or mark old items as superseded.
 
 Those steps should be enabled incrementally after shadow classifications have been inspected against
 real conversation data.

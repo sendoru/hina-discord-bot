@@ -9,9 +9,11 @@ from hina_bot.core.memory_context import decode_memory_context
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .memory_extraction import (
     SHADOW_EXTRACTION_POLICY,
+    build_reconciliation_candidates,
     build_shadow_turns,
     parse_shadow_extraction,
-    persist_shadow_items,
+    persist_reconciliation_proposals,
+    persist_shadow_items_detailed,
 )
 from .memory_model_routing import build_memory_model_plan
 
@@ -159,6 +161,15 @@ class MemorySummaryMixin:
         )
         if not turns:
             return False
+        candidate_items = []
+        candidate_reader = getattr(store, "memory_reconciliation_candidates", None)
+        if callable(candidate_reader):
+            raw_candidates = candidate_reader(scope, limit=32)
+            candidate_items = [
+                item for item in raw_candidates
+                if set(item.source_message_ids).isdisjoint(allowed_source_ids)
+            ][-24:]
+        reconciliation_candidates = build_reconciliation_candidates(candidate_items)
         payload = {
             "speaker_id": str(scope.user_id),
             "origin": {
@@ -166,11 +177,16 @@ class MemorySummaryMixin:
                 "channel_id": str(scope.channel_id),
             },
             "turns": turns,
+            **(
+                {"existing_memory_candidates": reconciliation_candidates}
+                if reconciliation_candidates
+                else {}
+            ),
         }
         plan = build_memory_model_plan(
             self.settings,
             "",
-            turns,
+            payload,
             shared=False,
         )
         metrics = _summary_metrics(
@@ -181,6 +197,7 @@ class MemorySummaryMixin:
             context_items=context_items,
             old_memory="",
         )
+        metrics["candidate_items"] = len(reconciliation_candidates)
         _record_shadow_extraction(self.usage, "requested", **metrics)
         try:
             response = await self._memory_request(
@@ -195,25 +212,38 @@ class MemorySummaryMixin:
             parsed = parse_shadow_extraction(
                 response.output_text,
                 allowed_source_ids=allowed_source_ids,
+                allowed_target_item_ids={item.id for item in candidate_items},
             )
             if not parsed.valid:
                 _record_shadow_extraction(self.usage, "invalid", **metrics)
                 log.warning("Structured memory shadow extraction returned invalid output")
                 return False
-            stored, duplicates = persist_shadow_items(
+            persisted = persist_shadow_items_detailed(
                 store,
                 scope,
                 parsed.items,
                 source_public_at_capture=source_public_at_capture,
             )
+            proposal_count = 0
+            proposal_writer = getattr(store, "add_memory_reconciliation_proposal", None)
+            if callable(proposal_writer):
+                proposal_count = persist_reconciliation_proposals(
+                    store,
+                    scope,
+                    parsed.items,
+                    persisted.item_ids,
+                )
             _record_shadow_extraction(self.usage, "completed", **metrics)
             log.info(
                 "Structured memory shadow extraction completed: accepted=%d stored=%d "
-                "duplicates=%d rejected=%d",
+                "duplicates=%d rejected=%d proposals=%d rejected_relations=%d candidates=%d",
                 len(parsed.items),
-                stored,
-                duplicates,
+                persisted.stored,
+                persisted.duplicates,
                 parsed.rejected_items,
+                proposal_count,
+                parsed.rejected_relations,
+                len(reconciliation_candidates),
             )
             return True
         except Exception as exc:  # noqa: BLE001 - shadow extraction must never break other memory

@@ -76,6 +76,22 @@ class Store:
             );
             CREATE INDEX IF NOT EXISTS memory_extraction_cursor_owner
                 ON memory_extraction_cursors(realm, user_id);
+            CREATE TABLE IF NOT EXISTS memory_reconciliation_proposals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                origin_realm TEXT NOT NULL,
+                origin_channel_id TEXT NOT NULL,
+                new_memory_item_id INTEGER NOT NULL,
+                target_memory_item_id INTEGER NOT NULL,
+                relation TEXT NOT NULL CHECK(relation IN ('duplicate','corrects','conflicts')),
+                confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+                source_message_ids TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(new_memory_item_id != target_memory_item_id),
+                UNIQUE(new_memory_item_id, target_memory_item_id, relation)
+            );
+            CREATE INDEX IF NOT EXISTS memory_reconciliation_owner
+                ON memory_reconciliation_proposals(user_id, origin_realm, origin_channel_id, id);
             CREATE TABLE IF NOT EXISTS emoji_registry (
                 alias TEXT PRIMARY KEY, emoji_id TEXT NOT NULL UNIQUE, description TEXT NOT NULL,
                 source_guild_id TEXT
@@ -298,6 +314,99 @@ class Store:
         ).fetchall()
         return [self._decode_memory_item(row) for row in rows]
 
+    def memory_reconciliation_candidates(self, scope: Scope, *, limit: int = 24):
+        """Return recent candidates without crossing another user's privacy boundary."""
+
+        if scope.guild_id is None:
+            rows = self.db.execute(
+                """SELECT * FROM memory_items
+                   WHERE user_id=?
+                   ORDER BY id DESC LIMIT ?""",
+                (str(scope.user_id), int(limit)),
+            ).fetchall()
+        else:
+            rows = self.db.execute(
+                """SELECT * FROM memory_items
+                   WHERE user_id=? AND origin_realm=?
+                     AND (origin_public_at_capture=1 OR origin_channel_id=?)
+                   ORDER BY id DESC LIMIT ?""",
+                (str(scope.user_id), scope.realm, str(scope.channel_id), int(limit)),
+            ).fetchall()
+        return [self._decode_memory_item(row) for row in reversed(rows)]
+
+    def add_memory_reconciliation_proposal(
+        self,
+        scope: Scope,
+        *,
+        new_memory_item_id: int,
+        target_memory_item_id: int,
+        relation: str,
+        confidence: float,
+        source_message_ids=(),
+    ) -> int | None:
+        if relation not in {"duplicate", "corrects", "conflicts"}:
+            raise ValueError("Invalid memory reconciliation relation")
+        confidence = float(confidence)
+        if not 0 <= confidence <= 1:
+            raise ValueError("Memory reconciliation confidence must be between 0 and 1")
+        if int(new_memory_item_id) == int(target_memory_item_id):
+            raise ValueError("A memory item cannot reconcile with itself")
+        owned = self.db.execute(
+            """SELECT id,origin_realm,origin_channel_id,origin_public_at_capture
+               FROM memory_items
+               WHERE id IN (?,?) AND user_id=?""",
+            (
+                int(new_memory_item_id),
+                int(target_memory_item_id),
+                str(scope.user_id),
+            ),
+        ).fetchall()
+        by_id = {int(row["id"]): row for row in owned}
+        if set(by_id) != {int(new_memory_item_id), int(target_memory_item_id)}:
+            raise ValueError("Reconciliation items must belong to the current user")
+        new_item = by_id[int(new_memory_item_id)]
+        target_item = by_id[int(target_memory_item_id)]
+        if (
+            str(new_item["origin_realm"]) != scope.realm
+            or str(new_item["origin_channel_id"]) != str(scope.channel_id)
+        ):
+            raise ValueError("New reconciliation item must belong to the current space")
+        if scope.guild_id is not None and not (
+            str(target_item["origin_realm"]) == scope.realm
+            and (
+                bool(target_item["origin_public_at_capture"])
+                or str(target_item["origin_channel_id"]) == str(scope.channel_id)
+            )
+        ):
+            raise ValueError("Server reconciliation target is outside the disclosure space")
+        source_ids = tuple(dict.fromkeys(str(value) for value in source_message_ids))
+        encoded_sources = json.dumps(source_ids, ensure_ascii=False, separators=(",", ":"))
+        with self.db:
+            cursor = self.db.execute(
+                """INSERT OR IGNORE INTO memory_reconciliation_proposals(
+                       user_id,origin_realm,origin_channel_id,new_memory_item_id,
+                       target_memory_item_id,relation,confidence,source_message_ids
+                   ) VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    str(scope.user_id),
+                    scope.realm,
+                    str(scope.channel_id),
+                    int(new_memory_item_id),
+                    int(target_memory_item_id),
+                    relation,
+                    confidence,
+                    encoded_sources,
+                ),
+            )
+        return int(cursor.lastrowid) if cursor.rowcount else None
+
+    def memory_reconciliation_proposals(self, user_id: int | str):
+        return self.db.execute(
+            """SELECT * FROM memory_reconciliation_proposals
+               WHERE user_id=? ORDER BY id""",
+            (str(user_id),),
+        ).fetchall()
+
     def forget(self, scope: Scope):
         """Delete this user's automatically accumulated memory in the current realm."""
         with self.db:
@@ -312,6 +421,10 @@ class Store:
                                 (scope.realm, str(scope.user_id)))
             self.db.execute(
                 "DELETE FROM memory_items WHERE origin_realm=? AND user_id=?",
+                (scope.realm, str(scope.user_id)),
+            )
+            self.db.execute(
+                "DELETE FROM memory_reconciliation_proposals WHERE origin_realm=? AND user_id=?",
                 (scope.realm, str(scope.user_id)),
             )
 
@@ -338,6 +451,12 @@ class Store:
                 (scope.realm, str(scope.channel_id)),
             )
             deleted += self._rowcount(cursor)
+            cursor = self.db.execute(
+                """DELETE FROM memory_reconciliation_proposals
+                   WHERE origin_realm=? AND origin_channel_id=?""",
+                (scope.realm, str(scope.channel_id)),
+            )
+            deleted += self._rowcount(cursor)
         return deleted
 
     def purge_realm_memory(self, scope: Scope) -> int:
@@ -358,6 +477,11 @@ class Store:
                 (scope.realm,),
             )
             deleted += self._rowcount(cursor)
+            cursor = self.db.execute(
+                "DELETE FROM memory_reconciliation_proposals WHERE origin_realm=?",
+                (scope.realm,),
+            )
+            deleted += self._rowcount(cursor)
         return deleted
 
     def purge_all_memory(self) -> int:
@@ -371,6 +495,7 @@ class Store:
                 "shared_summaries",
                 "memory_items",
                 "memory_extraction_cursors",
+                "memory_reconciliation_proposals",
             ):
                 cursor = self.db.execute(f"DELETE FROM {table}")
                 deleted += self._rowcount(cursor)
