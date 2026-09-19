@@ -95,6 +95,29 @@ The extractor classifies `kind`, `disclosure`, and `confidence`; these classific
 not trusted by the response layer yet. Real stored rows can therefore be reviewed before deciding
 thresholds, reconciliation rules, or read-path behavior.
 
+## Phase 2.6: shadow reconciliation
+
+Before structured memories affect replies, new extraction batches are compared with a bounded set of
+recent existing items from the same user, realm, and channel. The extractor may propose exactly one
+relationship for a new item:
+
+- `duplicate`: materially the same fact/preference was extracted again,
+- `corrects`: the current turns explicitly correct, replace, or fix an earlier item,
+- `conflicts`: both claims cannot comfortably be true, but the current batch does not clearly establish
+  which one should replace the other.
+
+These are observation-only proposals. New items are still stored normally, existing items are not edited,
+deleted, hidden, or superseded, and proposals are written separately to
+`memory_reconciliation_proposals`.
+
+Candidate ids are accepted only when they were actually supplied to the model, and the Store independently
+verifies that both the new and target items belong to the same user, realm, and channel. Items written by a
+partially failed retry batch are excluded from the next candidate set by source-message provenance, so a
+retry cannot accidentally reconcile an item with itself.
+
+This shadow period is intended to measure how often `duplicate`, `corrects`, and `conflicts` are right
+before any automatic supersede behavior is enabled.
+
 ## Still out of scope
 
 Shadow extraction still does not:
@@ -103,7 +126,7 @@ Shadow extraction still does not:
 - inject structured items into model context,
 - detect cross-space references,
 - project `implicit` relationship state into prompts,
-- reconcile semantically equivalent facts across separate summary batches.
+- apply reconciliation proposals or mark old items as superseded.
 
 Those steps should be enabled incrementally after shadow classifications have been inspected against
 real conversation data.
