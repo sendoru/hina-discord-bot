@@ -67,21 +67,27 @@ tests. It does not change any response context.
 
 ## Phase 2: shadow extraction
 
-After the normal personal-memory summarizer successfully commits a batch, the same pending turn rows
-are sent to a separate structured-memory extractor. This is intentionally a shadow path:
+Structured extraction now has its own persisted cursor and cadence. By default it processes four
+turns at a time (`STRUCTURED_MEMORY_EVERY=4`) while the legacy text summary remains on its independent
+eight-turn cadence. This is intentionally a shadow path:
 
 - legacy `summaries` / `shared_summaries` still serve every normal response,
 - extracted rows are written to `memory_items` only for inspection and tuning,
-- the extractor receives the same user-turn batch, bounded causal `context`, and DM Hina replies used
-  to interpret short follow-ups; public-server personal summaries still omit Hina replies,
+- the extractor receives its own fixed-size pending batch, bounded causal `context`, and DM Hina replies
+  used to interpret short follow-ups; public-server extraction still omits Hina replies,
+- existing databases seed the new extraction cursor from the current legacy summary cursor so #72-era
+  turns are not replayed; that baseline is persisted immediately so later summary updates cannot skip a
+  failed structured batch,
 - every extracted item must cite one or more actual `message_id` values from that batch,
 - `origin_public_at_capture` is derived conservatively from the cited source rows rather than the
   channel's visibility at extraction time; a private/non-exportable source is never upgraded to public,
 - unknown source ids, invalid enums/confidence, overlong content, malformed JSON, and provenance-less
   rows are rejected instead of repaired,
 - exact retry duplicates are suppressed,
-- extractor/API/parse/storage failures are isolated after the legacy summary commit, so they cannot
-  roll back or fail the existing memory path,
+- a valid `{"items":[]}` result advances the structured cursor, while API failures, empty responses,
+  malformed top-level JSON, or storage failures leave the batch pending for retry,
+- structured extraction, personal summary, and shared summary run as separate memory tasks so failures
+  do not block each other,
 - API usage is visible as the `extract_memory_items_shadow` operation, with content-free
   `memory.shadow_extraction` lifecycle events alongside the existing summary telemetry.
 
