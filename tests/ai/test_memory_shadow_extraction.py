@@ -202,9 +202,13 @@ def test_new_cursor_baselines_from_existing_legacy_summary():
     history = store.history(scope)
     store.save_summary(scope, "기존 요약", history[3]["id"])
 
-    assert store.memory_extraction_cursor(scope) == history[3]["id"]
+    baseline = store.memory_extraction_cursor(scope)
+    assert baseline == history[3]["id"]
     pending = store.pending_memory_extraction(scope)
     assert [row["message_id"] for row in pending] == ["105", "106"]
+
+    store.save_summary(scope, "더 최신 요약", history[-1]["id"])
+    assert store.memory_extraction_cursor(scope) == baseline
     store.close()
 
 
