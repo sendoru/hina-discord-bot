@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from hina_bot.core.memory_context import decode_memory_context
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, RelationshipEvidence
@@ -109,7 +109,7 @@ class ExtractedMemoryItem:
     disclosure: MemoryDisclosure
     confidence: float
     source_message_ids: tuple[str, ...]
-    relationship_evidence: RelationshipEvidence = RelationshipEvidence()
+    relationship_evidence: RelationshipEvidence = field(default_factory=RelationshipEvidence)
     relation: MemoryRelationProposal | None = None
 
 
