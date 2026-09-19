@@ -54,7 +54,7 @@ def test_reference_derived_assistant_row_keeps_source_authors_after_reply_chain_
     rows = recent.context(scope, 4)
     assistant = next(
         row for row in rows
-        if row.get("role") == "assistant" and row.get("message_id") == "3"
+        if row.get("role") == "assistant" and str(row.get("message_id")) == "3"
     )
     assert assistant["provenance_class"] == "reference_derived"
     assert assistant["reference_source_ids"] == ["1"]
@@ -77,7 +77,7 @@ def test_normal_assistant_row_is_not_reference_derived():
     rows = recent.context(scope, 3)
     assistant = next(
         row for row in rows
-        if row.get("role") == "assistant" and row.get("message_id") == "2"
+        if row.get("role") == "assistant" and str(row.get("message_id")) == "2"
     )
     assert assistant.get("provenance_class") == "conversation"
     assert "reference_source_author_ids" not in assistant
