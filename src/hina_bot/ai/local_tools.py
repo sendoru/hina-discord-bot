@@ -66,7 +66,6 @@ class LocalToolResult:
         return {
             "type": "function_call_output",
             "call_id": self.call_id,
-            "name": self.name,
             "output": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
         }
 
@@ -180,8 +179,25 @@ def _normalized_function_call(call: LocalToolCall) -> dict:
     }
 
 
+def _reasoning_replay_items(response) -> list[dict]:
+    items = []
+    for item in _field(response, "output", ()) or ():
+        if _field(item, "type") != "reasoning":
+            continue
+        if isinstance(item, dict):
+            items.append(dict(item))
+            continue
+        model_dump = getattr(item, "model_dump", None)
+        if callable(model_dump):
+            dumped = model_dump(exclude_none=True)
+            if isinstance(dumped, dict):
+                items.append(dumped)
+    return items
+
+
 def continuation_request(
     request: dict,
+    response,
     calls: tuple[LocalToolCall, ...],
     results: tuple[LocalToolResult, ...],
 ) -> dict:
@@ -194,6 +210,7 @@ def continuation_request(
         next_input = [{"role": "user", "content": previous_input}]
     else:
         next_input = [{"role": "user", "content": str(previous_input)}]
+    next_input.extend(_reasoning_replay_items(response))
     next_input.extend(_normalized_function_call(call) for call in calls)
     next_input.extend(result.provider_input() for result in results)
 
@@ -230,7 +247,7 @@ class LocalToolExecutor:
 
             results = tuple([await self.registry.execute(call) for call in calls])
             local_calls += len(calls)
-            current_request = continuation_request(current_request, calls, results)
+            current_request = continuation_request(current_request, response, calls, results)
 
         raise ToolRoundLimitError("local tool round limit exceeded")
 
