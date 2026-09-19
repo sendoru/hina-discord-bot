@@ -120,7 +120,7 @@ class LocalToolRegistry:
             return LocalToolResult(call.cal_id, call.name, output)
         except LocalToolError as exc:
             return LocalToolResult(call.call_id, call.name, {"error": exc.code}, True)
-        except Exception:
+        except Exception:  # noqa: BLE001 - isolate arbitrary registered handler failures
             return LocalToolResult(
                 call.call_id,
                 call.name,
