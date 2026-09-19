@@ -236,13 +236,15 @@ class MemorySummaryMixin:
             _record_shadow_extraction(self.usage, "completed", **metrics)
             log.info(
                 "Structured memory shadow extraction completed: accepted=%d stored=%d "
-                "duplicates=%d rejected=%d proposals=%d rejected_relations=%d candidates=%d",
+                "duplicates=%d rejected=%d proposals=%d rejected_relations=%d "
+                "rejected_relationship_evidence=%d candidates=%d",
                 len(parsed.items),
                 persisted.stored,
                 persisted.duplicates,
                 parsed.rejected_items,
                 proposal_count,
                 parsed.rejected_relations,
+                parsed.rejected_relationship_evidence,
                 len(reconciliation_candidates),
             )
             return True

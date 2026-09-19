@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 
 from .memory_context import CURRENT_MEMORY_CONTEXT
-from .memory_items import MemoryDisclosure, MemoryItem, MemoryKind
+from .memory_items import MemoryDisclosure, MemoryItem, MemoryKind, RelationshipEvidence
 from .routing import Scope
 
 
@@ -61,6 +61,7 @@ class Store:
                 )),
                 source_message_ids TEXT NOT NULL DEFAULT '[]',
                 confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0 AND confidence <= 1),
+                relationship_evidence TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -111,6 +112,15 @@ class Store:
             with self.db:
                 self.db.execute(
                     "ALTER TABLE turns ADD COLUMN memory_context TEXT NOT NULL DEFAULT ''"
+                )
+        memory_columns = {
+            row["name"] for row in self.db.execute("PRAGMA table_info(memory_items)")
+        }
+        if "relationship_evidence" not in memory_columns:
+            with self.db:
+                self.db.execute(
+                    "ALTER TABLE memory_items "
+                    "ADD COLUMN relationship_evidence TEXT NOT NULL DEFAULT '{}'"
                 )
 
     def close(self):
@@ -248,6 +258,9 @@ class Store:
     @staticmethod
     def _decode_memory_item(row) -> MemoryItem:
         source_ids = json.loads(row["source_message_ids"] or "[]")
+        relationship_evidence = RelationshipEvidence.from_mapping(
+            json.loads(row["relationship_evidence"] or "{}")
+        )
         return MemoryItem(
             id=int(row["id"]),
             user_id=str(row["user_id"]),
@@ -261,6 +274,7 @@ class Store:
             confidence=float(row["confidence"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
+            relationship_evidence=relationship_evidence,
         )
 
     def add_memory_item(
@@ -272,6 +286,7 @@ class Store:
         disclosure: MemoryDisclosure | str,
         source_message_ids=(),
         confidence: float = 1.0,
+        relationship_evidence: RelationshipEvidence | dict | None = None,
     ) -> int:
         text = content.strip()
         if not text:
@@ -281,13 +296,22 @@ class Store:
         confidence = float(confidence)
         if not 0 <= confidence <= 1:
             raise ValueError("Memory item confidence must be between 0 and 1")
+        if isinstance(relationship_evidence, RelationshipEvidence):
+            evidence = relationship_evidence
+        else:
+            evidence = RelationshipEvidence.from_mapping(relationship_evidence)
+        if kind != MemoryKind.RELATIONSHIP and evidence:
+            raise ValueError("relationship_evidence is valid only for relationship memory")
         source_ids = tuple(dict.fromkeys(str(value) for value in source_message_ids))
         encoded_sources = json.dumps(source_ids, ensure_ascii=False, separators=(",", ":"))
+        encoded_evidence = json.dumps(
+            evidence.as_dict(), ensure_ascii=False, separators=(",", ":")
+        )
         with self.db:
             cursor = self.db.execute(
                 "INSERT INTO memory_items(user_id,content,kind,origin_realm,origin_channel_id,"
-                "origin_public_at_capture,disclosure,source_message_ids,confidence) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
+                "origin_public_at_capture,disclosure,source_message_ids,confidence,"
+                "relationship_evidence) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     str(scope.user_id),
                     text,
@@ -298,6 +322,7 @@ class Store:
                     disclosure.value,
                     encoded_sources,
                     confidence,
+                    encoded_evidence,
                 ),
             )
         return int(cursor.lastrowid)
