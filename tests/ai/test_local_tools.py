@@ -126,6 +126,51 @@ async def test_expected_tool_error_exposes_only_safe_code():
 
 
 @pytest.mark.asyncio
+async def test_executor_replays_reasoning_item_before_function_result():
+    registry = LocalToolRegistry()
+    registry.register(spec(), lambda arguments: {"echo": arguments["value"]})
+    executor = LocalToolExecutor(registry)
+    requests = []
+    responses = [
+        NS(
+            status="completed",
+            output_text="",
+            output=[
+                {
+                    "type": "reasoning",
+                    "id": "reasoning_1",
+                    "summary": [],
+                },
+                NS(
+                    type="function_call",
+                    id="call_1",
+                    call_id="call_1",
+                    name="echo",
+                    arguments='{"value":"hello"}',
+                ),
+            ],
+        ),
+        final_response(),
+    ]
+
+    async def send(request):
+        requests.append(request)
+        return responses[len(requests) - 1]
+
+    await executor.run(send, {"model": "test", "input": "hello"})
+
+    followup = requests[1]["input"]
+    assert followup[-3] == {
+        "type": "reasoning",
+        "id": "reasoning_1",
+        "summary": [],
+    }
+    assert followup[-2]["type"] == "function_call"
+    assert followup[-1]["type"] == "function_call_output"
+    assert "name" not in followup[-1]
+
+
+@pytest.mark.asyncio
 async def test_executor_runs_function_and_appends_provider_neutral_result():
     registry = LocalToolRegistry()
     registry.register(spec(), lambda arguments: {"echo": arguments["value"]})
