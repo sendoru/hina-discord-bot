@@ -67,6 +67,15 @@ class Store:
             CREATE INDEX IF NOT EXISTS memory_items_owner ON memory_items(user_id, id);
             CREATE INDEX IF NOT EXISTS memory_items_origin
                 ON memory_items(origin_realm, origin_channel_id, user_id);
+            CREATE TABLE IF NOT EXISTS memory_extraction_cursors (
+                scope TEXT PRIMARY KEY,
+                realm TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                through_id INTEGER NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS memory_extraction_cursor_owner
+                ON memory_extraction_cursors(realm, user_id);
             CREATE TABLE IF NOT EXISTS emoji_registry (
                 alias TEXT PRIMARY KEY, emoji_id TEXT NOT NULL UNIQUE, description TEXT NOT NULL,
                 source_guild_id TEXT
@@ -122,6 +131,47 @@ class Store:
         _, through = self.summary(scope)
         return self.db.execute("SELECT * FROM turns WHERE scope=? AND id>? ORDER BY id",
                                (scope.conversation, through)).fetchall()
+
+    def memory_extraction_cursor(self, scope: Scope) -> int:
+        row = self.db.execute(
+            "SELECT through_id FROM memory_extraction_cursors WHERE scope=?",
+            (scope.conversation,),
+        ).fetchone()
+        if row is not None:
+            return int(row["through_id"])
+        # #72 extracted structured items only when the legacy summary committed. Freeze that
+        # migration baseline now so a later summary update cannot skip a failed shadow batch.
+        baseline = int(self.summary(scope)[1])
+        with self.db:
+            self.db.execute(
+                """INSERT OR IGNORE INTO memory_extraction_cursors(
+                       scope,realm,user_id,through_id
+                   ) VALUES (?,?,?,?)""",
+                (scope.conversation, scope.realm, str(scope.user_id), baseline),
+            )
+        return baseline
+
+    def pending_memory_extraction(self, scope: Scope, *, limit: int | None = None):
+        through = self.memory_extraction_cursor(scope)
+        sql = "SELECT * FROM turns WHERE scope=? AND id>? ORDER BY id"
+        params: tuple[object, ...] = (scope.conversation, through)
+        if limit is not None:
+            sql += " LIMIT ?"
+            params += (int(limit),)
+        return self.db.execute(sql, params).fetchall()
+
+    def save_memory_extraction_cursor(self, scope: Scope, through: int):
+        with self.db:
+            self.db.execute(
+                """INSERT INTO memory_extraction_cursors(scope,realm,user_id,through_id,updated_at)
+                   VALUES (?,?,?,?,CURRENT_TIMESTAMP)
+                   ON CONFLICT(scope) DO UPDATE SET
+                       realm=excluded.realm,
+                       user_id=excluded.user_id,
+                       through_id=excluded.through_id,
+                       updated_at=CURRENT_TIMESTAMP""",
+                (scope.conversation, scope.realm, str(scope.user_id), int(through)),
+            )
 
     def seen(self, message_id: int):
         return self.db.execute("SELECT 1 FROM turns WHERE message_id=?",
@@ -251,7 +301,13 @@ class Store:
     def forget(self, scope: Scope):
         """Delete this user's automatically accumulated memory in the current realm."""
         with self.db:
-            for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
+            for table in (
+                "turns",
+                "summaries",
+                "shared_calls",
+                "shared_summaries",
+                "memory_extraction_cursors",
+            ):
                 self.db.execute(f"DELETE FROM {table} WHERE realm=? AND user_id=?",
                                 (scope.realm, str(scope.user_id)))
             self.db.execute(
@@ -268,7 +324,13 @@ class Store:
         prefix = scope.channel + ":user:%"
         deleted = 0
         with self.db:
-            for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
+            for table in (
+                "turns",
+                "summaries",
+                "shared_calls",
+                "shared_summaries",
+                "memory_extraction_cursors",
+            ):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE scope LIKE ?", (prefix,))
                 deleted += self._rowcount(cursor)
             cursor = self.db.execute(
@@ -282,7 +344,13 @@ class Store:
         """Delete automatic persistent memory in a guild/realm, preserving manual notes."""
         deleted = 0
         with self.db:
-            for table in ("turns", "summaries", "shared_calls", "shared_summaries"):
+            for table in (
+                "turns",
+                "summaries",
+                "shared_calls",
+                "shared_summaries",
+                "memory_extraction_cursors",
+            ):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE realm=?", (scope.realm,))
                 deleted += self._rowcount(cursor)
             cursor = self.db.execute(
@@ -302,6 +370,7 @@ class Store:
                 "shared_calls",
                 "shared_summaries",
                 "memory_items",
+                "memory_extraction_cursors",
             ):
                 cursor = self.db.execute(f"DELETE FROM {table}")
                 deleted += self._rowcount(cursor)

@@ -205,7 +205,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
 class AdapterTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.store = Store(":memory:")
-        self.llm = NS(answer=AsyncMock(return_value="안녕"), summarize=AsyncMock(), summarize_shared=AsyncMock(), close=AsyncMock())
+        self.llm = NS(answer=AsyncMock(return_value="안녕"), summarize=AsyncMock(), extract_structured_memory=AsyncMock(), summarize_shared=AsyncMock(), close=AsyncMock())
         self.tempdir = tempfile.TemporaryDirectory()
         self.event_path = Path(self.tempdir.name) / "events.jsonl"
         self.bot = HinaClient(
@@ -285,6 +285,20 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(completed["status"], "partial_success")
         self.assertEqual(completed["memory_failures"], 1)
         self.assertTrue(completed["reply_delivered"])
+        self.llm.extract_structured_memory.assert_awaited_once()
+        self.llm.summarize_shared.assert_awaited_once()
+
+    async def test_structured_memory_failure_does_not_block_summaries(self):
+        self.llm.extract_structured_memory.side_effect = RuntimeError("structured-failure")
+
+        await self.bot.on_message(self.message())
+
+        rows = [json.loads(line) for line in self.event_path.read_text().splitlines()]
+        failed = next(row for row in rows if row["event"] == "memory.extraction_failed")
+        completed = next(row for row in rows if row["event"] == "turn.completed")
+        self.assertEqual(failed["memory_kind"], "structured")
+        self.assertEqual(completed["status"], "partial_success")
+        self.llm.summarize.assert_awaited_once()
         self.llm.summarize_shared.assert_awaited_once()
 
     async def test_unhandled_discord_event_records_safe_exception_location(self):
@@ -327,7 +341,9 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         await self.bot.on_message(self.message())
         self.llm.answer.assert_awaited_once()
         self.assertFalse(self.store.seen(1))
+        self.llm.extract_structured_memory.assert_not_awaited()
         self.llm.summarize.assert_not_awaited()
+        self.llm.summarize_shared.assert_not_awaited()
 
     async def test_retired_text_command_syntax_is_normal_conversation(self):
         scope = Scope(1, 10, 100)
@@ -392,6 +408,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.pending_shared(scope), [])
         recent = self.bot.recent.context(scope, 9999)
         self.assertTrue(any(row["content"] == "ordinary" for row in recent))
+        self.llm.extract_structured_memory.assert_not_awaited()
         self.llm.summarize.assert_not_awaited()
         self.llm.summarize_shared.assert_not_awaited()
 
@@ -404,7 +421,9 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([r["content"] for r in self.store.history(scope)], ["old"])
         self.assertFalse(self.store.seen(1))
         self.assertEqual(self.store.pending_shared(scope), [])
+        self.llm.extract_structured_memory.assert_not_awaited()
         self.llm.summarize.assert_not_awaited()
+        self.llm.summarize_shared.assert_not_awaited()
 
     async def test_write_only_saves_without_response_context(self):
         scope = Scope(1, 10, 100)
@@ -413,4 +432,6 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.llm.answer.call_args.kwargs["use_memory"])
         self.assertTrue(self.store.seen(1))
         self.assertEqual(len(self.store.pending_shared(scope)), 1)
+        self.llm.extract_structured_memory.assert_awaited_once()
         self.llm.summarize.assert_awaited_once()
+        self.llm.summarize_shared.assert_awaited_once()

@@ -119,6 +119,20 @@ def test_memory_generation_budget_defaults_to_4096_and_can_be_overridden(monkeyp
     assert _load_settings(monkeypatch, tmp_path, "6144").memory_output_tokens == 6144
 
 
+def test_structured_memory_cadence_defaults_to_four_and_can_be_overridden(
+    monkeypatch, tmp_path,
+):
+    assert _load_settings(monkeypatch, tmp_path, None).structured_memory_every == 4
+    monkeypatch.setenv("STRUCTURED_MEMORY_EVERY", "3")
+    assert _load_settings(monkeypatch, tmp_path, None).structured_memory_every == 3
+
+
+def test_structured_memory_cadence_cannot_exceed_summary_cadence(monkeypatch, tmp_path):
+    monkeypatch.setenv("STRUCTURED_MEMORY_EVERY", "9")
+    with pytest.raises(ValueError):
+        _load_settings(monkeypatch, tmp_path, None)
+
+
 @pytest.mark.parametrize("value", ["127", "65537"])
 def test_memory_generation_budget_rejects_out_of_range_values(monkeypatch, tmp_path, value):
     with pytest.raises(ValueError):

@@ -444,25 +444,31 @@ class HinaClient(discord.Client):
                             memory_started = time.perf_counter()
                             self.store.add(scope, message.id, text, answer)
                             self.store.add_shared_call(scope, message.id, message.author.display_name, text)
-                            for memory_kind, summarize in (
-                                ("personal", self.llm.summarize),
-                                ("shared", self.llm.summarize_shared),
+                            for memory_kind, update, failure_event in (
+                                (
+                                    "structured",
+                                    self.llm.extract_structured_memory,
+                                    "memory.extraction_failed",
+                                ),
+                                ("personal", self.llm.summarize, "memory.summary_failed"),
+                                ("shared", self.llm.summarize_shared, "memory.summary_failed"),
                             ):
                                 try:
-                                    await summarize(self.store, scope)
-                                except Exception as exc:  # noqa: BLE001 - isolate summary failures; redact logs
+                                    await update(self.store, scope)
+                                except Exception as exc:  # noqa: BLE001 - isolate memory failures; redact logs
                                     memory_failures += 1
                                     error = safe_exception_fields(exc, f"memory_{memory_kind}")
                                     self.events.emit(
-                                        "memory.summary_failed",
+                                        failure_event,
                                         level="warning",
                                         scope=scope_kind,
                                         memory_kind=memory_kind,
                                         **error,
                                     )
                                     log.warning(
-                                        "Memory summary deferred (%s, turn_id=%s, fingerprint=%s)",
+                                        "Memory update deferred (%s, kind=%s, turn_id=%s, fingerprint=%s)",
                                         type(exc).__name__,
+                                        memory_kind,
                                         current_turn_id(),
                                         error["error_fingerprint"],
                                     )
