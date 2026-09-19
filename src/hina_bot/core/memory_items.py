@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from .routing import Scope
@@ -28,6 +28,63 @@ class MemoryAccess(StrEnum):
     FULL = "full"
 
 
+RELATIONSHIP_EVIDENCE_AXES = (
+    "familiarity",
+    "comfort",
+    "casualness",
+    "teasing_tolerance",
+    "support_openness",
+    "task_orientation",
+)
+
+
+@dataclass(frozen=True)
+class RelationshipEvidence:
+    """Sparse 0..4 evidence vector attached only to relationship memories.
+
+    Zero means "no positive evidence stored for this axis", never a negative preference.
+    """
+
+    familiarity: int = 0
+    comfort: int = 0
+    casualness: int = 0
+    teasing_tolerance: int = 0
+    support_openness: int = 0
+    task_orientation: int = 0
+
+    def __post_init__(self) -> None:
+        for axis in RELATIONSHIP_EVIDENCE_AXES:
+            value = getattr(self, axis)
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 4:
+                raise ValueError(f"{axis} relationship evidence must be an integer from 0 to 4")
+
+    @classmethod
+    def from_mapping(cls, raw) -> "RelationshipEvidence":
+        if raw in (None, {}):
+            return cls()
+        if not isinstance(raw, dict):
+            raise ValueError("relationship_evidence must be an object")
+        unknown = set(raw) - set(RELATIONSHIP_EVIDENCE_AXES)
+        if unknown:
+            raise ValueError("Unknown relationship evidence axis")
+        values = {}
+        for axis, value in raw.items():
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 4:
+                raise ValueError(f"{axis} relationship evidence must be an integer from 0 to 4")
+            values[axis] = value
+        return cls(**values)
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            axis: getattr(self, axis)
+            for axis in RELATIONSHIP_EVIDENCE_AXES
+            if getattr(self, axis) > 0
+        }
+
+    def __bool__(self) -> bool:
+        return any(getattr(self, axis) > 0 for axis in RELATIONSHIP_EVIDENCE_AXES)
+
+
 @dataclass(frozen=True)
 class MemoryItem:
     id: int
@@ -42,6 +99,7 @@ class MemoryItem:
     confidence: float
     created_at: str
     updated_at: str
+    relationship_evidence: RelationshipEvidence = field(default_factory=RelationshipEvidence)
 
 
 def _same_disclosure_space(item: MemoryItem, current_scope: Scope) -> bool:
@@ -94,9 +152,11 @@ def memory_access(
 
 
 __all__ = [
+    "RELATIONSHIP_EVIDENCE_AXES",
     "MemoryAccess",
     "MemoryDisclosure",
     "MemoryItem",
     "MemoryKind",
+    "RelationshipEvidence",
     "memory_access",
 ]
