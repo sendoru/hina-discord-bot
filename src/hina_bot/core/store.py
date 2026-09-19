@@ -325,6 +325,17 @@ class Store:
         ).fetchall()
         return [self._decode_memory_item(row) for row in reversed(rows)]
 
+    def implicit_relationship_candidates(self, user_id: int | str, *, limit: int = 24):
+        """Return recent implicit relationship items for one owner only."""
+
+        rows = self.db.execute(
+            """SELECT * FROM memory_items
+               WHERE user_id=? AND kind='relationship' AND disclosure='implicit'
+               ORDER BY id DESC LIMIT ?""",
+            (str(user_id), int(limit)),
+        ).fetchall()
+        return [self._decode_memory_item(row) for row in reversed(rows)]
+
     def add_memory_reconciliation_proposal(
         self,
         scope: Scope,
