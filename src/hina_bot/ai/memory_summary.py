@@ -141,13 +141,13 @@ class MemorySummaryMixin:
             **request,
         )
 
-    async def _extract_memory_items_shadow(self, store, scope, pending, plan) -> None:
-        """Populate memory_items for inspection without affecting the active read path."""
+    async def _extract_memory_items_shadow(self, store, scope, pending) -> bool:
+        """Extract one fixed shadow batch and report whether its cursor may advance."""
 
         if not callable(getattr(store, "add_memory_item", None)) or not callable(
             getattr(store, "memory_items", None)
         ):
-            return
+            return False
         (
             turns,
             allowed_source_ids,
@@ -158,7 +158,7 @@ class MemorySummaryMixin:
             include_replies=scope.guild_id is None,
         )
         if not turns:
-            return
+            return False
         payload = {
             "speaker_id": str(scope.user_id),
             "origin": {
@@ -167,6 +167,12 @@ class MemorySummaryMixin:
             },
             "turns": turns,
         }
+        plan = build_memory_model_plan(
+            self.settings,
+            "",
+            turns,
+            shared=False,
+        )
         metrics = _summary_metrics(
             memory_kind="structured_shadow",
             pending_turns=len(pending),
@@ -185,11 +191,15 @@ class MemorySummaryMixin:
             )
             if response.status != "completed" or not response.output_text.strip():
                 _record_shadow_extraction(self.usage, "empty", **metrics)
-                return
+                return False
             parsed = parse_shadow_extraction(
                 response.output_text,
                 allowed_source_ids=allowed_source_ids,
             )
+            if not parsed.valid:
+                _record_shadow_extraction(self.usage, "invalid", **metrics)
+                log.warning("Structured memory shadow extraction returned invalid output")
+                return False
             stored, duplicates = persist_shadow_items(
                 store,
                 scope,
@@ -205,9 +215,21 @@ class MemorySummaryMixin:
                 duplicates,
                 parsed.rejected_items,
             )
-        except Exception as exc:  # noqa: BLE001 - shadow extraction must never break legacy memory
+            return True
+        except Exception as exc:  # noqa: BLE001 - shadow extraction must never break other memory
             _record_shadow_extraction(self.usage, "error", **metrics)
             log.warning("Structured memory shadow extraction failed (%s)", type(exc).__name__)
+            return False
+
+    async def extract_structured_memory(self, store, scope):
+        """Run the shadow extractor on its own cursor/cadence, independent of summaries."""
+
+        batch_size = self.settings.structured_memory_every
+        pending = store.pending_memory_extraction(scope, limit=batch_size)
+        if len(pending) < batch_size:
+            return
+        if await self._extract_memory_items_shadow(store, scope, pending):
+            store.save_memory_extraction_cursor(scope, pending[-1]["id"])
 
     async def summarize(self, store, scope):
         pending = store.pending(scope)
@@ -253,9 +275,6 @@ class MemorySummaryMixin:
             text = normalize_memory_output(response.output_text)
             # An explicit empty result advances the cursor; an empty API response must not erase memory.
             store.save_summary(scope, text[:2000], pending[-1]["id"])
-            # Shadow extraction runs only after the legacy summary has committed. Any extractor
-            # failure is isolated, and structured rows are still not read by normal responses.
-            await self._extract_memory_items_shadow(store, scope, pending, plan)
 
     async def summarize_shared(self, store, scope):
         pending = store.pending_shared(scope)
