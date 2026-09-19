@@ -515,6 +515,7 @@ async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
     llm = NS(
         answer=AsyncMock(side_effect=answer),
         summarize=AsyncMock(),
+        extract_structured_memory=AsyncMock(),
         summarize_shared=AsyncMock(),
         close=AsyncMock(),
     )
@@ -569,6 +570,7 @@ async def test_passive_recent_visual_alone_does_not_turn_bare_call_into_image_re
     llm = NS(
         answer=AsyncMock(return_value="이미지 답변"),
         summarize=AsyncMock(),
+        extract_structured_memory=AsyncMock(),
         summarize_shared=AsyncMock(),
         close=AsyncMock(),
     )
