@@ -28,6 +28,9 @@ class MemoryAccess(StrEnum):
     FULL = "full"
 
 
+IMPLICIT_RELATIONSHIP_MIN_CONFIDENCE = 0.8
+
+
 @dataclass(frozen=True)
 class MemoryItem:
     id: int
@@ -94,10 +97,36 @@ def memory_access(
     return MemoryAccess.HIDDEN
 
 
+def implicit_relationship_projection(
+    items,
+    current_scope: Scope,
+    *,
+    min_confidence: float = IMPLICIT_RELATIONSHIP_MIN_CONFIDENCE,
+) -> dict:
+    """Project cross-space relationship memory into a bounded non-factual signal.
+
+    Raw memory content is intentionally ignored. Only relationship items whose policy
+    resolves to IMPLICIT in the current space can contribute.
+    """
+
+    for item in items:
+        if item.kind != MemoryKind.RELATIONSHIP:
+            continue
+        if item.disclosure != MemoryDisclosure.IMPLICIT:
+            continue
+        if item.confidence < min_confidence:
+            continue
+        if memory_access(item, current_scope) == MemoryAccess.IMPLICIT:
+            return {"familiarity": "established"}
+    return {}
+
+
 __all__ = [
+    "IMPLICIT_RELATIONSHIP_MIN_CONFIDENCE",
     "MemoryAccess",
     "MemoryDisclosure",
     "MemoryItem",
     "MemoryKind",
+    "implicit_relationship_projection",
     "memory_access",
 ]
