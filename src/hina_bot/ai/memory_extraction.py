@@ -72,6 +72,7 @@ class ExtractedMemoryItem:
 class ExtractionParseResult:
     items: tuple[ExtractedMemoryItem, ...]
     rejected_items: int = 0
+    valid: bool = True
 
 
 def _row_value(row, key: str, default=""):
@@ -130,9 +131,9 @@ def parse_shadow_extraction(text: str, *, allowed_source_ids: set[str]) -> Extra
     try:
         root = json.loads(_json_text(text))
     except (json.JSONDecodeError, TypeError):
-        return ExtractionParseResult((), 1)
+        return ExtractionParseResult((), 1, False)
     if not isinstance(root, dict) or not isinstance(root.get("items"), list):
-        return ExtractionParseResult((), 1)
+        return ExtractionParseResult((), 1, False)
 
     accepted: list[ExtractedMemoryItem] = []
     rejected = 0
