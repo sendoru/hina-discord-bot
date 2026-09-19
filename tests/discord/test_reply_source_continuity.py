@@ -63,7 +63,7 @@ def test_reference_derived_assistant_row_keeps_source_authors_after_reply_chain_
     bound = RequestAssembler._bind_current_speaker(rows, 100)
     assistant = next(
         row for row in bound
-        if row.get("role") == "assistant" and row.get("message_id") == "3"
+        if row.get("role") == "assistant" and str(row.get("message_id")) == "3"
     )
     assert assistant["reference_source_is_current_speaker"] is False
 
