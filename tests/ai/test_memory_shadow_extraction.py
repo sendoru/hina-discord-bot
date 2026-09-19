@@ -536,3 +536,35 @@ def test_forget_removes_reconciliation_proposals_with_memory():
     assert store.memory_items(100) == []
     assert store.memory_reconciliation_proposals(100) == []
     store.close()
+
+
+def test_store_rejects_cross_space_reconciliation_proposal():
+    store = Store(":memory:")
+    current = Scope(1, 10, 100, True)
+    other_channel = Scope(1, 20, 100, True)
+    current_id = store.add_memory_item(
+        current,
+        "current",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("1",),
+    )
+    other_id = store.add_memory_item(
+        other_channel,
+        "other",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("2",),
+    )
+
+    with pytest.raises(ValueError):
+        store.add_memory_reconciliation_proposal(
+            current,
+            new_memory_item_id=current_id,
+            target_memory_item_id=other_id,
+            relation="conflicts",
+            confidence=0.8,
+            source_message_ids=("1",),
+        )
+    assert store.memory_reconciliation_proposals(100) == []
+    store.close()
