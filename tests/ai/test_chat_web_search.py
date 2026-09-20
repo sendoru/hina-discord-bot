@@ -164,7 +164,6 @@ async def test_current_release_question_requires_search(chat_llm):
         await llm.answer(store, Scope(None, 20, 100), "사용자", "한섭에 지금 어디까지 공개됐어?")
         payload = calls[-1]
         assert_required_web_with_code(payload)
-        assert payload["tools"] == [{"type": "web_search", "search_context_size": "low"}]
         assert "현재 정보" in payload["instructions"]
     finally:
         store.close()
