@@ -3,13 +3,12 @@
 import json
 import re
 
-from .calculator_tool import CALCULATOR_POLICY, register_calculator
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode
 from .information_plan import InformationPlan
 from .llm import LLM as BaseLLM
 from .llm import POLICY
-from .local_tools import LocalToolExecutor, LocalToolRegistry
+from .managed_tools import CODE_EXECUTION_POLICY, managed_tool_config
 from .model_routing import ModelPlan, fixed_model_plan
 from .rp_output_policy import hide_web_citations, provenance_instruction
 from .runtime_context import build_runtime_context, runtime_instruction
@@ -139,12 +138,6 @@ _SERVER_RECENT_CHARS = 4000
 
 class RequestAssembler(BaseLLM):
     """Build the final model request from a precomputed information plan."""
-
-    def __init__(self, settings, client=None):
-        super().__init__(settings, client=client)
-        self.local_tools = LocalToolRegistry()
-        register_calculator(self.local_tools)
-        self.local_tool_executor = LocalToolExecutor(self.local_tools)
 
     @staticmethod
     def _current_channel_scope_only(scope, content: str) -> bool:
@@ -353,7 +346,8 @@ class RequestAssembler(BaseLLM):
             instruction_parts.append(WORLD_FACT_DETAIL_POLICY)
             if search_mode in {"auto", "required"}:
                 instruction_parts.append(WORLD_WEB_SEARCH_POLICY)
-        instruction_parts.append(CALCULATOR_POLICY)
+        if managed_tool_config(self.settings.provider):
+            instruction_parts.append(CODE_EXECUTION_POLICY)
         instruction_parts.append(TURN_RESPONSE_POLICY)
         dynamic = self.instructions.active_text()
         if dynamic:
@@ -369,7 +363,7 @@ class RequestAssembler(BaseLLM):
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
         tools = list(tool_config(search_mode) or ())
-        tools.extend(self.local_tools.schemas())
+        tools.extend(managed_tool_config(self.settings.provider))
         if tools:
             request["tools"] = tools
             request["tool_choice"] = "required" if search_mode == "required" else "auto"
@@ -377,17 +371,12 @@ class RequestAssembler(BaseLLM):
         route_metadata = model_plan.telemetry()
         if self.settings.provider != "gemini":
             route_metadata.pop("requested_thinking_level", None)
-
-        async def send(tool_request):
-            return await self.usage.request(
-                self.client,
-                "answer",
-                route_metadata=route_metadata,
-                **tool_request,
-            )
-
-        loop = await self.local_tool_executor.run(send, request)
-        response = loop.response
+        response = await self.usage.request(
+            self.client,
+            "answer",
+            route_metadata=route_metadata,
+            **request,
+        )
         text = response_text(response, hide_citations=hide_web_citations(provenance))
         if response.status != "completed" or not text:
             raise ValueError("No completed model response")
