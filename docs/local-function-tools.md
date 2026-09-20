@@ -55,18 +55,8 @@ The loop is bounded to four local-tool rounds by default. Exceeding the limit ra
 
 ## Current rollout
 
-Normal chat requests register one production local tool: `calculator`.
+This abstraction intentionally registers no production local tools yet. Therefore merging this
+change alone does not expose any new capability to chat requests.
 
-The calculator schema is included on every normal chat request so the model, rather than an
-application regex/classifier, decides whether a natural-language request actually needs arithmetic.
-When web search is not forced, tool selection is `auto`; ordinary non-numeric chat therefore
-finishes without a calculator round.
-
-The calculator uses a bounded AST evaluator and Python `Decimal`, not `eval`. It supports decimal
-arithmetic and numeric comparisons while rejecting names, function calls, containers, boolean
-operators, oversized expressions, and excessive powers. Its prompt/tool description explicitly
-treats software versions, dates, IP addresses, and identifiers as semantic labels rather than
-decimal values unless the user asks for a numeric interpretation.
-
-Memory summarization, routing classification, and other internal LLM calls do not receive the
-calculator. Only the final conversational answer path registers it.
+The next planned step is to register a deterministic calculator and include its schema in normal
+chat requests with auto tool selection.
