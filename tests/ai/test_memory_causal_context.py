@@ -51,12 +51,21 @@ def test_memory_context_keeps_only_strong_causal_rows_with_bounded_ownership():
             "role": "assistant",
             "ownership": "assistant",
             "content": "이런 취향을 말하는 거야.",
+            "author_user_id": "999",
         },
         {
             "kind": "reply_origin_request",
             "role": "user",
             "ownership": "self",
             "content": "이 사람 말이랑 비슷한 사례가 있어?",
+            "author_user_id": "100",
+        },
+        {
+            "kind": "reply_origin_source",
+            "role": "user",
+            "ownership": "external",
+            "content": "나는 매운 음식을 못 먹어",
+            "author_user_id": "200",
         },
     ]
     assert sum(len(item["content"]) for item in context) <= 1600
@@ -70,6 +79,8 @@ def test_store_consumes_request_scoped_memory_context_once():
         "role": "user",
         "ownership": "external",
         "content": "난 이런 옷 좋아해",
+        "author_user_id": "200",
+        "provenance_class": "reference_material",
     },)
     token = CURRENT_MEMORY_CONTEXT.set(context)
     try:
@@ -136,6 +147,8 @@ async def test_personal_summary_receives_causal_context_and_logs_size_telemetry(
         "role": "user",
         "ownership": "external",
         "content": "난 매운 음식을 못 먹어",
+        "author_user_id": "200",
+        "provenance_class": "reference_material",
     }]
     try:
         store.add(
@@ -174,3 +187,51 @@ async def test_personal_summary_receives_causal_context_and_logs_size_telemetry(
     assert event.kwargs["context_items"] == 1
     assert event.kwargs["old_memory_chars"] == 0
     assert event.kwargs["payload_chars"] == len(request["input"])
+
+def test_memory_context_prioritizes_inherited_reference_source_over_intermediate_assistant_source():
+    rows = [
+        {
+            "context_kind": "reply_origin_source",
+            "role": "assistant",
+            "author_user_id": "999",
+            "content": "미카가 킹콩이 된다니...",
+            "source_turn_message_id": "5",
+            "provenance_class": "conversation",
+        },
+        {
+            "context_kind": "reply_reference_source",
+            "role": "user",
+            "author_user_id": "200",
+            "content": "미카가 킹콩으로 변해서...",
+            "source_turn_message_id": "5",
+            "provenance_class": "reference_material",
+        },
+        {
+            "context_kind": "reply_origin_request",
+            "role": "user",
+            "author_user_id": "100",
+            "content": "난 안 그랬어",
+            "source_turn_message_id": "5",
+            "provenance_class": "conversation",
+        },
+        {
+            "context_kind": "replied_message",
+            "role": "assistant",
+            "author_user_id": "999",
+            "content": "그럼 아까 그런 소릴 꺼낸 게 누구였더라?",
+            "provenance_class": "conversation",
+        },
+    ]
+
+    context = build_memory_context(rows, 100)
+
+    assert [item["kind"] for item in context] == [
+        "replied_message",
+        "reply_origin_request",
+        "reply_reference_source",
+    ]
+    reference = context[-1]
+    assert reference["ownership"] == "external"
+    assert reference["author_user_id"] == "200"
+    assert reference["provenance_class"] == "reference_material"
+    assert reference["content"] == "미카가 킹콩으로 변해서..."
