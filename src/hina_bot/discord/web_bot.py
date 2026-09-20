@@ -6,6 +6,7 @@ from datetime import timedelta
 import discord
 
 from hina_bot.ai.egress_policy import strict_policy
+from hina_bot.ai.identity_resolution import identity_resolution_needed
 from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
@@ -62,6 +63,7 @@ def _public_context_request(
     sampled: list[dict],
     *,
     allow_cross_user: bool = True,
+    resolved_user_ids=(),
 ):
     """Choose whether cross-channel public memory is relevant to this invocation.
 
@@ -71,9 +73,16 @@ def _public_context_request(
     A strict external-context policy disables cross-user fan-out entirely.
     """
     target_ids = tuple({
-        int(item["user_id"])
-        for item in sampled
-        if str(item.get("user_id", "")).isdigit()
+        *(
+            int(item["user_id"])
+            for item in sampled
+            if str(item.get("user_id", "")).isdigit()
+        ),
+        *(
+            int(user_id)
+            for user_id in resolved_user_ids
+            if str(user_id).isdigit()
+        ),
     })
     if target_ids and allow_cross_user:
         return True, target_ids
@@ -102,6 +111,79 @@ class HinaClient(BaseHinaClient):
         )
         self.vision_limits = VisionLimits.from_settings(settings)
         install_slash_commands(self)
+
+    async def _resolve_text_targets(
+        self,
+        message,
+        scope: Scope,
+        text: str | None,
+        *,
+        strict_egress: bool,
+        third_party_mention: bool,
+    ):
+        if (
+            text is None
+            or scope.guild_id is None
+            or strict_egress
+            or third_party_mention
+            or not identity_resolution_needed(text)
+            or not hasattr(self.llm, "resolve_speaker_identity")
+        ):
+            return [], ()
+
+        raw_candidates = self.store.identity_candidates(
+            scope.guild_id,
+            exclude_user_ids={scope.user_id, self.user.id},
+        )
+        guild = message.guild
+        candidates = []
+        for candidate in raw_candidates:
+            visible = False
+            for channel_id in candidate.get("channel_ids", ()):
+                channel = guild.get_channel(channel_id) if guild is not None else None
+                if not isinstance(channel, discord.TextChannel):
+                    continue
+                public = channel.permissions_for(guild.default_role)
+                caller = channel.permissions_for(message.author)
+                if (
+                    public.view_channel
+                    and public.read_message_history
+                    and caller.view_channel
+                    and caller.read_message_history
+                ):
+                    visible = True
+                    break
+            if not visible:
+                continue
+            member = guild.get_member(int(candidate["user_id"])) if guild is not None else None
+            if member is not None:
+                names = candidate["names"]
+                for value in (
+                    getattr(member, "display_name", ""),
+                    getattr(member, "global_name", ""),
+                    getattr(member, "name", ""),
+                ):
+                    value = str(value or "").strip()
+                    if value and value not in names and len(names) < 4:
+                        names.append(value[:100])
+            candidates.append(candidate)
+
+        resolution = await self.llm.resolve_speaker_identity(text, candidates)
+        if not resolution.resolved:
+            return [], ()
+        candidate = next(
+            (
+                row for row in candidates
+                if str(row.get("user_id")) == resolution.user_id
+            ),
+            None,
+        )
+        if candidate is None:
+            return [], ()
+        return ([{
+            "user_id": resolution.user_id,
+            "name": candidate["names"][0] if candidate["names"] else "",
+        }], (int(resolution.user_id),))
 
     async def public_sources(self, user_id: int, guild_id: int | None = None):
         enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
@@ -246,6 +328,20 @@ class HinaClient(BaseHinaClient):
             return
 
         strict_egress = strict_policy(self.settings.external_context_policy)
+        third_party_mention = any(
+            getattr(user, "id", None) not in {self.user.id, scope.user_id}
+            and not getattr(user, "bot", False)
+            for user in getattr(message, "mentions", ())
+        )
+
+        resolved_targets, resolved_user_ids = await self._resolve_text_targets(
+            message,
+            scope,
+            text,
+            strict_egress=strict_egress,
+            third_party_mention=third_party_mention,
+        )
+
         target_visibility = _target_history_visibility(
             self.store,
             scope,
@@ -258,6 +354,7 @@ class HinaClient(BaseHinaClient):
                 text,
                 visibility_mode=target_visibility,
                 call_prefixes=self.settings.call_prefixes,
+                extra_targets=resolved_targets,
             )
             if text is not None
             else []
@@ -316,11 +413,6 @@ class HinaClient(BaseHinaClient):
             )
             if text is not None else []
         )
-        third_party_mention = any(
-            getattr(user, "id", None) not in {self.user.id, scope.user_id}
-            and not getattr(user, "bot", False)
-            for user in getattr(message, "mentions", ())
-        )
         public_request = (
             (
                 (False, ())
@@ -330,6 +422,7 @@ class HinaClient(BaseHinaClient):
                     text,
                     sampled,
                     allow_cross_user=not strict_egress,
+                    resolved_user_ids=resolved_user_ids,
                 )
             )
             if text is not None
