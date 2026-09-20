@@ -7,7 +7,6 @@ import json
 import re
 from dataclasses import dataclass
 
-
 _IDENTITY_QUERY = re.compile(
     r"(?:누구(?:야|지|인지)?|누군지|어떤\s*(?:사람|애|분|유저)|성격|인상|평판|"
     r"(?:어떻게|뭐라고)\s*생각)",
