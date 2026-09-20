@@ -120,6 +120,44 @@ def _gemini_input(value):
     for item in value:
         if not isinstance(item, dict):
             continue
+        item_type = item.get("type")
+        if item_type == "function_call":
+            raw_arguments = item.get("arguments", {})
+            if isinstance(raw_arguments, str):
+                try:
+                    raw_arguments = json.loads(raw_arguments)
+                except ValueError:
+                    raw_arguments = {}
+            if not isinstance(raw_arguments, dict):
+                raw_arguments = {}
+            call_id = str(item.get("call_id") or item.get("id") or "")
+            name = str(item.get("name") or "")
+            if call_id and name:
+                steps.append({
+                    "type": "function_call",
+                    "id": call_id,
+                    "name": name,
+                    "arguments": raw_arguments,
+                })
+            continue
+        if item_type == "function_call_output":
+            call_id = str(item.get("call_id") or "")
+            if not call_id:
+                continue
+            output = item.get("output", "")
+            if not isinstance(output, str):
+                output = json.dumps(output, ensure_ascii=False, separators=(",", ":"))
+            result = {
+                "type": "function_result",
+                "call_id": call_id,
+                "result": [{"type": "text", "text": output}],
+            }
+            name = item.get("name")
+            if isinstance(name, str) and name:
+                result["name"] = name
+            steps.append(result)
+            continue
+
         role = item.get("role", "user")
         content = _gemini_content(item.get("content", ""))
         if not content:
@@ -146,6 +184,37 @@ def _gemini_output(data: dict):
         if step_type == "google_search_call":
             output.append(NS(type="web_search_call"))
             web_search_calls += 1
+            continue
+        if step_type == "function_call":
+            call_id = str(step.get("id") or "")
+            name = str(step.get("name") or "")
+            if call_id and name:
+                output.append(NS(
+                    type="function_call",
+                    id=call_id,
+                    call_id=call_id,
+                    name=name,
+                    arguments=json.dumps(
+                        step.get("arguments") or {},
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                ))
+            continue
+        if step_type == "code_execution_call":
+            output.append(NS(
+                type="code_execution_call",
+                id=str(step.get("id") or ""),
+                arguments=step.get("arguments") or {},
+            ))
+            continue
+        if step_type == "code_execution_result":
+            output.append(NS(
+                type="code_execution_result",
+                call_id=str(step.get("call_id") or ""),
+                result=step.get("result") or "",
+                is_error=bool(step.get("is_error", False)),
+            ))
             continue
         if step_type != "model_output":
             continue
@@ -225,13 +294,34 @@ class _GeminiResponses:
             generation_config["max_output_tokens"] = max_output_tokens
 
         tools = kwargs.get("tools") or []
-        unknown_tools = [tool for tool in tools if tool.get("type") != "web_search"]
+        unknown_tools = [
+            tool for tool in tools
+            if tool.get("type") not in {"web_search", "function", "code_execution"}
+        ]
         if unknown_tools:
-            raise ValueError("Gemini provider는 현재 web_search 서버 도구만 변환합니다.")
+            raise ValueError("Gemini provider가 지원하지 않는 tool type입니다.")
 
-        required_search = bool(tools and kwargs.get("tool_choice") == "required")
+        web_tools = [tool for tool in tools if tool.get("type") == "web_search"]
+        function_tools = [tool for tool in tools if tool.get("type") == "function"]
+        code_execution_tools = [
+            tool for tool in tools if tool.get("type") == "code_execution"
+        ]
+        required_search = bool(web_tools and kwargs.get("tool_choice") == "required")
         if tools:
-            payload["tools"] = [{"type": "google_search", "search_types": ["web_search"]}]
+            payload_tools = []
+            if web_tools:
+                payload_tools.append({"type": "google_search", "search_types": ["web_search"]})
+            for tool in function_tools:
+                item = {
+                    "type": "function",
+                    "name": tool["name"],
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("parameters") or {"type": "object", "properties": {}},
+                }
+                payload_tools.append(item)
+            if code_execution_tools:
+                payload_tools.append({"type": "code_execution"})
+            payload["tools"] = payload_tools
             if required_search:
                 # OpenAI `required` means that a tool must be used before the final answer.
                 # Gemini `any` is stronger: every model step must be a tool call. With a
@@ -255,7 +345,7 @@ class _GeminiResponses:
         except httpx.HTTPStatusError as exc:
             error = _gemini_http_error(response)
             too_many_calls = (
-                bool(tools)
+                bool(web_tools)
                 and error.status_code == 400
                 and "too many tool calls" in error.error_message.lower()
             )
@@ -309,17 +399,30 @@ class _OpenRouterResponses:
 
     async def create(self, **kwargs):
         request = dict(kwargs)
-        tools = request.get("tools") or []
-        if any(tool.get("type") == "web_search" for tool in tools):
-            if any(tool.get("type") != "web_search" for tool in tools):
-                raise ValueError("OpenRouter provider는 현재 web_search 서버 도구만 변환합니다.")
-            request.pop("tools", None)
-            request.pop("tool_choice", None)
+        tools = list(request.get("tools") or [])
+        unknown_tools = [
+            tool for tool in tools
+            if tool.get("type") not in {"web_search", "function"}
+        ]
+        if unknown_tools:
+            raise ValueError("OpenRouter provider가 지원하지 않는 tool type입니다.")
+
+        web_tools = [tool for tool in tools if tool.get("type") == "web_search"]
+        function_tools = [tool for tool in tools if tool.get("type") == "function"]
+        if web_tools:
             extra_body = dict(request.pop("extra_body", {}) or {})
             plugins = list(extra_body.get("plugins") or [])
             plugins.append({"id": "web", "max_results": 3})
             extra_body["plugins"] = plugins
             request["extra_body"] = extra_body
+            if function_tools:
+                request["tools"] = function_tools
+                # Mixed local/server tools must remain model-selectable. Search-required policy
+                # continues to be expressed by the caller's instruction layer.
+                request["tool_choice"] = "auto"
+            else:
+                request.pop("tools", None)
+                request.pop("tool_choice", None)
         return await self._responses.create(**request)
 
 
