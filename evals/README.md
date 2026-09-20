@@ -31,6 +31,30 @@ classifier 실패, smart 누락·과잉 선택 수를 집계합니다. 운영에
 결과 JSONL과 Markdown의 실제 응답을 `expected`와 비교해서 수동 평가해요.
 이 러너의 정상 종료는 화법 PASS를 의미하지 않아요.
 
+Gemini의 경우 `--gemini-thinking-level minimal|low|medium|high`로 fixed eval의 추론 강도를
+명시할 수 있어요. 지정하지 않으면 `GEMINI_THINKING_LEVEL`, 그것도 없으면 `low`를 사용해요.
+`CHAT_WEB_SEARCH=false`도 live eval 설정에 반영되므로 말투 비교에서는 검색 호출을 끌 수 있어요.
+
+### GitHub Actions live tone 비교
+
+`.github/workflows/live-tone-eval.yml`은 `workflow_dispatch`로만 실행돼요. push/PR에서는 모델 API를
+자동 호출하지 않아요. Repository Actions secret에 `GEMINI_API_KEY`를 등록한 뒤 baseline/candidate
+ref, suite 파일, 반복 횟수를 선택하면 같은 case ID 집합을 다음 네 조합으로 순차 실행해요.
+
+- baseline + FAST model/thinking
+- baseline + SMART model/thinking
+- candidate + FAST model/thinking
+- candidate + SMART model/thinking
+
+suite 파일은 한 줄에 case ID 하나를 적고 빈 줄과 `#` 주석을 사용할 수 있어요.
+예: `evals/suites/ambiguous-input.txt`. 결과 JSONL/Markdown과 usage log는 하나의 Actions artifact로
+14일간 보관해요. tone PASS/FAIL 자체는 자동 판정하지 않고 사람이 네 결과를 비교해요.
+
+workflow는 각 ref의 `hina-eval`을 실제로 설치해 실행하므로 baseline/candidate ref 모두 이 live-eval
+runner 기능(`--gemini-thinking-level`, `CHAT_WEB_SEARCH` 반영)을 포함한 커밋을 기반으로 두는 것을
+권장해요. 오래된 ref를 비교해야 한다면 이 인프라 커밋을 동일하게 적용한 두 비교 브랜치를 만든 뒤
+실행하면 돼요.
+
 확률적인 회귀는 `--repeat 3`처럼 같은 사례를 반복해 확인할 수 있어요. 사례의 `validators`에는
 `python_fenced_code`, `python_syntax`를 지정할 수 있고, 생성 코드를 실행하지 않은 채 마지막
 응답의 Python 코드 블록 존재 여부와 구문만 검사해요. validator 실패는 JSONL과 Markdown
