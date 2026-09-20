@@ -18,6 +18,13 @@ from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 
 
+def code_execution_tools(request):
+    return [
+        tool for tool in request.get("tools", ())
+        if tool.get("type") == "code_execution"
+    ]
+
+
 def settings(**overrides):
     values = {
         "api_key": "primary-key",
@@ -143,8 +150,8 @@ async def test_active_classifier_can_demote_soft_temporal_auto_to_none():
             "오늘 C++ coroutine은 어떻게 동작해?",
         )
         request = primary.responses.create.await_args.kwargs
-        assert "tools" not in request
-        assert "tool_choice" not in request
+        assert code_execution_tools(request) == [{"type": "code_execution"}]
+        assert request["tool_choice"] == "auto"
     finally:
         await llm.close()
         store.close()
@@ -205,8 +212,8 @@ async def test_shadow_classifier_records_web_proposal_without_changing_actual_re
             "Node.js의 --experimental-strip-types는 experimental이야?",
         )
         request = primary.responses.create.await_args.kwargs
-        assert "tools" not in request
-        assert "tool_choice" not in request
+        assert code_execution_tools(request) == [{"type": "code_execution"}]
+        assert request["tool_choice"] == "auto"
 
         await llm.close()
         rows = [json.loads(line) for line in log_path.read_text().splitlines()]
