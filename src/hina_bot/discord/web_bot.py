@@ -6,6 +6,7 @@ from datetime import timedelta
 import discord
 
 from hina_bot.ai.egress_policy import strict_policy
+from hina_bot.ai.identity_resolution import identity_resolution_needed
 from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
@@ -62,6 +63,7 @@ def _public_context_request(
     sampled: list[dict],
     *,
     allow_cross_user: bool = True,
+    resolved_user_ids=(),
 ):
     """Choose whether cross-channel public memory is relevant to this invocation.
 
@@ -71,9 +73,16 @@ def _public_context_request(
     A strict external-context policy disables cross-user fan-out entirely.
     """
     target_ids = tuple({
-        int(item["user_id"])
-        for item in sampled
-        if str(item.get("user_id", "")).isdigit()
+        *(
+            int(item["user_id"])
+            for item in sampled
+            if str(item.get("user_id", "")).isdigit()
+        ),
+        *(
+            int(user_id)
+            for user_id in resolved_user_ids
+            if str(user_id).isdigit()
+        ),
     })
     if target_ids and allow_cross_user:
         return True, target_ids
@@ -246,6 +255,56 @@ class HinaClient(BaseHinaClient):
             return
 
         strict_egress = strict_policy(self.settings.external_context_policy)
+        third_party_mention = any(
+            getattr(user, "id", None) not in {self.user.id, scope.user_id}
+            and not getattr(user, "bot", False)
+            for user in getattr(message, "mentions", ())
+        )
+
+        resolved_targets = []
+        resolved_user_ids = ()
+        if (
+            text is not None
+            and scope.guild_id is not None
+            and not strict_egress
+            and not third_party_mention
+            and identity_resolution_needed(text)
+            and hasattr(self.llm, "resolve_speaker_identity")
+        ):
+            candidates = self.store.identity_candidates(
+                scope.guild_id,
+                exclude_user_ids={scope.user_id, self.user.id},
+            )
+            guild = message.guild
+            for candidate in candidates:
+                member = guild.get_member(int(candidate["user_id"])) if guild is not None else None
+                if member is None:
+                    continue
+                names = candidate["names"]
+                for value in (
+                    getattr(member, "display_name", ""),
+                    getattr(member, "global_name", ""),
+                    getattr(member, "name", ""),
+                ):
+                    value = str(value or "").strip()
+                    if value and value not in names and len(names) < 4:
+                        names.append(value[:100])
+            resolution = await self.llm.resolve_speaker_identity(text, candidates)
+            if resolution.resolved:
+                resolved_user_ids = (int(resolution.user_id),)
+                candidate = next(
+                    (
+                        row for row in candidates
+                        if str(row.get("user_id")) == resolution.user_id
+                    ),
+                    None,
+                )
+                if candidate is not None:
+                    resolved_targets = [{
+                        "user_id": resolution.user_id,
+                        "name": candidate["names"][0] if candidate["names"] else "",
+                    }]
+
         target_visibility = _target_history_visibility(
             self.store,
             scope,
@@ -258,6 +317,7 @@ class HinaClient(BaseHinaClient):
                 text,
                 visibility_mode=target_visibility,
                 call_prefixes=self.settings.call_prefixes,
+                extra_targets=resolved_targets,
             )
             if text is not None
             else []
@@ -316,11 +376,6 @@ class HinaClient(BaseHinaClient):
             )
             if text is not None else []
         )
-        third_party_mention = any(
-            getattr(user, "id", None) not in {self.user.id, scope.user_id}
-            and not getattr(user, "bot", False)
-            for user in getattr(message, "mentions", ())
-        )
         public_request = (
             (
                 (False, ())
@@ -330,6 +385,7 @@ class HinaClient(BaseHinaClient):
                     text,
                     sampled,
                     allow_cross_user=not strict_egress,
+                    resolved_user_ids=resolved_user_ids,
                 )
             )
             if text is not None
