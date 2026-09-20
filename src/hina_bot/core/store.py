@@ -563,6 +563,39 @@ class Store:
         return [Scope(int(r["scope"].split(":")[1]), int(r["scope"].split(":")[3]),
                       int(r["user_id"])) for r in rows]
 
+    def identity_candidates(
+        self,
+        guild_id: int,
+        *,
+        exclude_user_ids=(),
+        limit: int = 32,
+        scan_limit: int = 256,
+    ) -> list[dict]:
+        """Return bounded recent public speaker identities without fuzzy inference."""
+
+        excluded = {str(value) for value in exclude_user_ids}
+        rows = self.db.execute(
+            """SELECT user_id,name,id FROM shared_calls
+               WHERE realm=?
+               ORDER BY id DESC LIMIT ?""",
+            (f"guild:{int(guild_id)}", max(int(scan_limit), int(limit))),
+        ).fetchall()
+        by_user: dict[str, dict] = {}
+        for row in rows:
+            user_id = str(row["user_id"])
+            if user_id in excluded:
+                continue
+            entry = by_user.get(user_id)
+            if entry is None:
+                if len(by_user) >= int(limit):
+                    continue
+                entry = {"user_id": user_id, "names": [], "recent_id": int(row["id"])}
+                by_user[user_id] = entry
+            name = str(row["name"] or "").strip()
+            if name and name not in entry["names"] and len(entry["names"]) < 4:
+                entry["names"].append(name[:100])
+        return list(by_user.values())
+
     def public_context(self, allowed_scopes):
         context = []
         for source in allowed_scopes[:4]:
