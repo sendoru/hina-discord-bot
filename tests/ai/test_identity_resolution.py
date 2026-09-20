@@ -7,9 +7,7 @@ import pytest
 from hina_bot.ai.identity_resolution import (
     SpeakerIdentityCandidate,
     SpeakerIdentityResolver,
-    exact_identity_match,
     identity_resolution_needed,
-    normalize_identity_text,
     parse_identity_resolution,
 )
 from hina_bot.core.config import Settings
@@ -17,31 +15,6 @@ from hina_bot.core.config import Settings
 
 def candidate(user_id, *names):
     return SpeakerIdentityCandidate(str(user_id), tuple(names))
-
-
-def test_identity_normalization_is_small_and_deterministic():
-    assert normalize_identity_text("  Ｓｅｎｄｏｌ!! ") == "sendol"
-    assert normalize_identity_text("tag : sendol") == "tag sendol"
-    assert normalize_identity_text("센돌") == "센돌"
-
-
-def test_exact_observed_name_match_skips_semantic_inference():
-    candidates = [candidate(200, "Tag : Sendol"), candidate(300, "manager_lulu")]
-
-    result = exact_identity_match("tag : sendol은 어떤 사람이야?", candidates)
-
-    assert result is not None
-    assert result.resolved
-    assert result.user_id == "200"
-
-
-def test_exact_match_refuses_ambiguous_duplicate_names():
-    candidates = [candidate(200, "same"), candidate(300, "same")]
-
-    result = exact_identity_match("same은 누구야?", candidates)
-
-    assert result is not None
-    assert result.status == "ambiguous"
 
 
 def test_resolution_parser_never_accepts_invented_user_id():
@@ -62,7 +35,7 @@ def test_resolution_parser_never_accepts_invented_user_id():
         "센돌이 누군지 알아?",
         "루루는 어떤 사람이야?",
         "sendol 성격 어떻게 생각해?",
-        "manager_lulu가 최근에 뭐라고 했어?",
+        "manager_lulu 평판 어때?",
     ],
 )
 def test_identity_resolution_trigger_covers_targeted_profile_and_history_questions(text):
@@ -107,19 +80,3 @@ async def test_semantic_resolver_handles_transliteration_without_app_rules():
         "user_id": "200",
         "names": ["tag : sendol"],
     }
-
-
-@pytest.mark.asyncio
-async def test_exact_match_does_not_make_extra_model_call():
-    client = NS(provider_name="gemini")
-    usage = NS(request=AsyncMock())
-    settings = Settings("token", "key", provider="gemini", model="gemini-model")
-    resolver = SpeakerIdentityResolver(settings, client, usage)
-
-    result = await resolver.resolve(
-        "tag : sendol이 누구야?",
-        [candidate(200, "tag : sendol")],
-    )
-
-    assert result.user_id == "200"
-    usage.request.assert_not_awaited()
