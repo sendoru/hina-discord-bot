@@ -1,0 +1,210 @@
+name: Live tone eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Baseline branch, tag, or commit
+        required: true
+        default: main
+      candidate_ref:
+        description: Candidate branch, tag, or commit
+        required: true
+      suite_file:
+        description: Eval case ID list, relative to the workflow ref checkout
+        required: true
+        default: evals/suites/ambiguous-input.txt
+      repeat:
+        description: Repeats per case
+        required: true
+        default: "1"
+      fast_model:
+        description: FAST Gemini model
+        required: true
+        default: gemini-3.5-flash-lite
+      smart_model:
+        description: SMART Gemini model
+        required: true
+        default: gemini-3.8-flash
+      fast_thinking:
+        description: FAST Gemini thinking level
+        required: true
+        default: minimal
+      smart_thinking:
+        description: SMART Gemini thinking level
+        required: true
+        default: medium
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-tone-eval-${{ github.actor }}
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CHAT_WEB_SEARCH: "false"
+      COMMUNITY_LORE: "true"
+      MAX_OUTPUT_TOKENS: "4096"
+
+    steps:
+      - name: Checkout workflow ref
+        uses: actions/checkout@v4
+        with:
+          path: control
+
+      - name: Checkout baseline
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.baseline_ref }}
+          path: baseline
+          persist-credentials: false
+
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Validate inputs
+        env:
+          SUITE_FILE: ${{ inputs.suite_file }}
+          REPEAT: ${{ inputs.repeat }}
+        run: |
+          set -euo pipefail
+          test -n "$GEMINI_API_KEY" || {
+            echo "GEMINI_API_KEY repository secret is missing." >&2
+            exit 1
+          }
+          test -f "control/$SUITE_FILE" || {
+            echo "Suite file not found: control/$SUITE_FILE" >&2
+            exit 1
+          }
+          [[ "$REPEAT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "repeat must be a positive integer." >&2
+            exit 1
+          }
+          mkdir -p results
+
+      - name: Install baseline
+        run: python -m pip install -e ./baseline
+
+      - name: Run baseline FAST
+        working-directory: baseline
+        env:
+          SUITE_FILE: ${{ inputs.suite_file }}
+          REPEAT: ${{ inputs.repeat }}
+          MODEL: ${{ inputs.fast_model }}
+          THINKING: ${{ inputs.fast_thinking }}
+        run: |
+          set -euo pipefail
+          mapfile -t CASE_IDS < <(
+            grep -Ev '^[[:space:]]*(#|$)' "../control/$SUITE_FILE"
+          )
+          ((${#CASE_IDS[@]} > 0)) || {
+            echo "Suite contains no case IDs." >&2
+            exit 1
+          }
+          ID_ARGS=()
+          for case_id in "${CASE_IDS[@]}"; do
+            ID_ARGS+=(--id "$case_id")
+          done
+          python -m hina_bot.tooling.eval_runner             --cases evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/baseline-fast-usage.jsonl             --output ../results/baseline-fast.jsonl             "${ID_ARGS[@]}"
+
+      - name: Run baseline SMART
+        working-directory: baseline
+        env:
+          SUITE_FILE: ${{ inputs.suite_file }}
+          REPEAT: ${{ inputs.repeat }}
+          MODEL: ${{ inputs.smart_model }}
+          THINKING: ${{ inputs.smart_thinking }}
+        run: |
+          set -euo pipefail
+          mapfile -t CASE_IDS < <(
+            grep -Ev '^[[:space:]]*(#|$)' "../control/$SUITE_FILE"
+          )
+          ID_ARGS=()
+          for case_id in "${CASE_IDS[@]}"; do
+            ID_ARGS+=(--id "$case_id")
+          done
+          python -m hina_bot.tooling.eval_runner             --cases evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/baseline-smart-usage.jsonl             --output ../results/baseline-smart.jsonl             "${ID_ARGS[@]}"
+
+      - name: Install candidate
+        run: python -m pip install -e ./candidate
+
+      - name: Run candidate FAST
+        working-directory: candidate
+        env:
+          SUITE_FILE: ${{ inputs.suite_file }}
+          REPEAT: ${{ inputs.repeat }}
+          MODEL: ${{ inputs.fast_model }}
+          THINKING: ${{ inputs.fast_thinking }}
+        run: |
+          set -euo pipefail
+          mapfile -t CASE_IDS < <(
+            grep -Ev '^[[:space:]]*(#|$)' "../control/$SUITE_FILE"
+          )
+          ID_ARGS=()
+          for case_id in "${CASE_IDS[@]}"; do
+            ID_ARGS+=(--id "$case_id")
+          done
+          python -m hina_bot.tooling.eval_runner             --cases evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/candidate-fast-usage.jsonl             --output ../results/candidate-fast.jsonl             "${ID_ARGS[@]}"
+
+      - name: Run candidate SMART
+        working-directory: candidate
+        env:
+          SUITE_FILE: ${{ inputs.suite_file }}
+          REPEAT: ${{ inputs.repeat }}
+          MODEL: ${{ inputs.smart_model }}
+          THINKING: ${{ inputs.smart_thinking }}
+        run: |
+          set -euo pipefail
+          mapfile -t CASE_IDS < <(
+            grep -Ev '^[[:space:]]*(#|$)' "../control/$SUITE_FILE"
+          )
+          ID_ARGS=()
+          for case_id in "${CASE_IDS[@]}"; do
+            ID_ARGS+=(--id "$case_id")
+          done
+          python -m hina_bot.tooling.eval_runner             --cases evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/candidate-smart-usage.jsonl             --output ../results/candidate-smart.jsonl             "${ID_ARGS[@]}"
+
+      - name: Write summary
+        if: always()
+        env:
+          BASELINE_REF: ${{ inputs.baseline_ref }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          SUITE_FILE: ${{ inputs.suite_file }}
+        run: |
+          {
+            echo "## Live tone eval"
+            echo
+            echo "- baseline: `$BASELINE_REF`"
+            echo "- candidate: `$CANDIDATE_REF`"
+            echo "- suite: `$SUITE_FILE`"
+            echo "- FAST: `${{ inputs.fast_model }}` / `${{ inputs.fast_thinking }}`"
+            echo "- SMART: `${{ inputs.smart_model }}` / `${{ inputs.smart_thinking }}`"
+            echo
+            echo "The uploaded artifact contains JSONL, Markdown reports, and usage logs."
+            echo "Tone PASS/FAIL remains a manual review."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-tone-eval-${{ github.run_id }}
+          path: results/
+          if-no-files-found: warn
+          retention-days: 14
