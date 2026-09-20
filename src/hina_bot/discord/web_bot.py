@@ -271,24 +271,42 @@ class HinaClient(BaseHinaClient):
             and identity_resolution_needed(text)
             and hasattr(self.llm, "resolve_speaker_identity")
         ):
-            candidates = self.store.identity_candidates(
+            raw_candidates = self.store.identity_candidates(
                 scope.guild_id,
                 exclude_user_ids={scope.user_id, self.user.id},
             )
             guild = message.guild
-            for candidate in candidates:
-                member = guild.get_member(int(candidate["user_id"])) if guild is not None else None
-                if member is None:
+            candidates = []
+            for candidate in raw_candidates:
+                visible = False
+                for channel_id in candidate.get("channel_ids", ()):
+                    channel = guild.get_channel(channel_id) if guild is not None else None
+                    if not isinstance(channel, discord.TextChannel):
+                        continue
+                    public = channel.permissions_for(guild.default_role)
+                    caller = channel.permissions_for(message.author)
+                    if (
+                        public.view_channel
+                        and public.read_message_history
+                        and caller.view_channel
+                        and caller.read_message_history
+                    ):
+                        visible = True
+                        break
+                if not visible:
                     continue
-                names = candidate["names"]
-                for value in (
-                    getattr(member, "display_name", ""),
-                    getattr(member, "global_name", ""),
-                    getattr(member, "name", ""),
-                ):
-                    value = str(value or "").strip()
-                    if value and value not in names and len(names) < 4:
-                        names.append(value[:100])
+                member = guild.get_member(int(candidate["user_id"])) if guild is not None else None
+                if member is not None:
+                    names = candidate["names"]
+                    for value in (
+                        getattr(member, "display_name", ""),
+                        getattr(member, "global_name", ""),
+                        getattr(member, "name", ""),
+                    ):
+                        value = str(value or "").strip()
+                        if value and value not in names and len(names) < 4:
+                            names.append(value[:100])
+                candidates.append(candidate)
             resolution = await self.llm.resolve_speaker_identity(text, candidates)
             if resolution.resolved:
                 resolved_user_ids = (int(resolution.user_id),)
