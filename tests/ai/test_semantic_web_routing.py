@@ -218,8 +218,9 @@ async def test_shadow_classifier_records_web_proposal_without_changing_actual_re
             "Node.js의 --experimental-strip-types는 experimental이야?",
         )
         request = primary.responses.create.await_args.kwargs
-        assert "tools" not in request
-        assert "tool_choice" not in request
+        assert web_tools(request) == []
+        assert len(calculator_tools(request)) == 1
+        assert request["tool_choice"] == "auto"
 
         await llm.close()
         rows = [json.loads(line) for line in log_path.read_text().splitlines()]
