@@ -112,6 +112,79 @@ class HinaClient(BaseHinaClient):
         self.vision_limits = VisionLimits.from_settings(settings)
         install_slash_commands(self)
 
+    async def _resolve_text_targets(
+        self,
+        message,
+        scope: Scope,
+        text: str | None,
+        *,
+        strict_egress: bool,
+        third_party_mention: bool,
+    ):
+        if (
+            text is None
+            or scope.guild_id is None
+            or strict_egress
+            or third_party_mention
+            or not identity_resolution_needed(text)
+            or not hasattr(self.llm, "resolve_speaker_identity")
+        ):
+            return [], ()
+
+        raw_candidates = self.store.identity_candidates(
+            scope.guild_id,
+            exclude_user_ids={scope.user_id, self.user.id},
+        )
+        guild = message.guild
+        candidates = []
+        for candidate in raw_candidates:
+            visible = False
+            for channel_id in candidate.get("channel_ids", ()):
+                channel = guild.get_channel(channel_id) if guild is not None else None
+                if not isinstance(channel, discord.TextChannel):
+                    continue
+                public = channel.permissions_for(guild.default_role)
+                caller = channel.permissions_for(message.author)
+                if (
+                    public.view_channel
+                    and public.read_message_history
+                    and caller.view_channel
+                    and caller.read_message_history
+                ):
+                    visible = True
+                    break
+            if not visible:
+                continue
+            member = guild.get_member(int(candidate["user_id"])) if guild is not None else None
+            if member is not None:
+                names = candidate["names"]
+                for value in (
+                    getattr(member, "display_name", ""),
+                    getattr(member, "global_name", ""),
+                    getattr(member, "name", ""),
+                ):
+                    value = str(value or "").strip()
+                    if value and value not in names and len(names) < 4:
+                        names.append(value[:100])
+            candidates.append(candidate)
+
+        resolution = await self.llm.resolve_speaker_identity(text, candidates)
+        if not resolution.resolved:
+            return [], ()
+        candidate = next(
+            (
+                row for row in candidates
+                if str(row.get("user_id")) == resolution.user_id
+            ),
+            None,
+        )
+        if candidate is None:
+            return [], ()
+        return ([{
+            "user_id": resolution.user_id,
+            "name": candidate["names"][0] if candidate["names"] else "",
+        }], (int(resolution.user_id),))
+
     async def public_sources(self, user_id: int, guild_id: int | None = None):
         enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
         if not enabled:
@@ -261,67 +334,13 @@ class HinaClient(BaseHinaClient):
             for user in getattr(message, "mentions", ())
         )
 
-        resolved_targets = []
-        resolved_user_ids = ()
-        if (
-            text is not None
-            and scope.guild_id is not None
-            and not strict_egress
-            and not third_party_mention
-            and identity_resolution_needed(text)
-            and hasattr(self.llm, "resolve_speaker_identity")
-        ):
-            raw_candidates = self.store.identity_candidates(
-                scope.guild_id,
-                exclude_user_ids={scope.user_id, self.user.id},
-            )
-            guild = message.guild
-            candidates = []
-            for candidate in raw_candidates:
-                visible = False
-                for channel_id in candidate.get("channel_ids", ()):
-                    channel = guild.get_channel(channel_id) if guild is not None else None
-                    if not isinstance(channel, discord.TextChannel):
-                        continue
-                    public = channel.permissions_for(guild.default_role)
-                    caller = channel.permissions_for(message.author)
-                    if (
-                        public.view_channel
-                        and public.read_message_history
-                        and caller.view_channel
-                        and caller.read_message_history
-                    ):
-                        visible = True
-                        break
-                if not visible:
-                    continue
-                member = guild.get_member(int(candidate["user_id"])) if guild is not None else None
-                if member is not None:
-                    names = candidate["names"]
-                    for value in (
-                        getattr(member, "display_name", ""),
-                        getattr(member, "global_name", ""),
-                        getattr(member, "name", ""),
-                    ):
-                        value = str(value or "").strip()
-                        if value and value not in names and len(names) < 4:
-                            names.append(value[:100])
-                candidates.append(candidate)
-            resolution = await self.llm.resolve_speaker_identity(text, candidates)
-            if resolution.resolved:
-                resolved_user_ids = (int(resolution.user_id),)
-                candidate = next(
-                    (
-                        row for row in candidates
-                        if str(row.get("user_id")) == resolution.user_id
-                    ),
-                    None,
-                )
-                if candidate is not None:
-                    resolved_targets = [{
-                        "user_id": resolution.user_id,
-                        "name": candidate["names"][0] if candidate["names"] else "",
-                    }]
+        resolved_targets, resolved_user_ids = await self._resolve_text_targets(
+            message,
+            scope,
+            text,
+            strict_egress=strict_egress,
+            third_party_mention=third_party_mention,
+        )
 
         target_visibility = _target_history_visibility(
             self.store,
