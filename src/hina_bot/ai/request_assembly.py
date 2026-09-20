@@ -363,10 +363,14 @@ class RequestAssembler(BaseLLM):
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
         tools = list(tool_config(search_mode) or ())
-        tools.extend(managed_tool_config(self.settings.provider))
+        managed_tools = managed_tool_config(self.settings.provider)
+        tools.extend(managed_tools)
         if tools:
             request["tools"] = tools
-            request["tool_choice"] = "required" if search_mode == "required" else "auto"
+            if search_mode == "required":
+                request["tool_choice"] = "required"
+            elif managed_tools:
+                request["tool_choice"] = "auto"
 
         route_metadata = model_plan.telemetry()
         if self.settings.provider != "gemini":
