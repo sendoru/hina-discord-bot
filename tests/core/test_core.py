@@ -163,6 +163,7 @@ class MemoryTests(unittest.TestCase):
 
         self.assertEqual([row["user_id"] for row in candidates], ["200"])
         self.assertEqual(candidates[0]["names"], ["sendol", "Tag : Sendol"])
+        self.assertEqual(candidates[0]["channel_ids"], [10])
         self.assertNotIn("outsider", str(candidates))
 
     def test_private_then_public_does_not_export_private_context(self):
