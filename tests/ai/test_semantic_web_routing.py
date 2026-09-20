@@ -18,6 +18,17 @@ from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 
 
+def web_tools(request):
+    return [tool for tool in request.get("tools", ()) if tool.get("type") == "web_search"]
+
+
+def calculator_tools(request):
+    return [
+        tool for tool in request.get("tools", ())
+        if tool.get("type") == "function" and tool.get("name") == "calculator"
+    ]
+
+
 def settings(**overrides):
     values = {
         "api_key": "primary-key",
@@ -118,7 +129,8 @@ async def test_active_classifier_promotes_unmarked_version_question_to_required_
         assert result == "응."
         request = primary.responses.create.await_args.kwargs
         assert request["tool_choice"] == "required"
-        assert request["tools"][0]["type"] == "web_search"
+        assert len(web_tools(request)) == 1
+        assert len(calculator_tools(request)) == 1
         assert classifier_client.responses.create.await_count == 1
     finally:
         await llm.close()
@@ -143,8 +155,9 @@ async def test_active_classifier_can_demote_soft_temporal_auto_to_none():
             "오늘 C++ coroutine은 어떻게 동작해?",
         )
         request = primary.responses.create.await_args.kwargs
-        assert "tools" not in request
-        assert "tool_choice" not in request
+        assert web_tools(request) == []
+        assert len(calculator_tools(request)) == 1
+        assert request["tool_choice"] == "auto"
     finally:
         await llm.close()
         store.close()
