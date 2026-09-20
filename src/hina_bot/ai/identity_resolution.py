@@ -5,13 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import unicodedata
 from dataclasses import dataclass
 
 
 _IDENTITY_QUERY = re.compile(
     r"(?:누구(?:야|지|인지)?|누군지|어떤\s*(?:사람|애|분|유저)|성격|인상|평판|"
-    r"(?:어떻게|뭐라고)\s*생각|아까|방금|최근|채팅|대화|메시지|발언|기록|로그)",
+    r"(?:어떻게|뭐라고)\s*생각)",
     re.IGNORECASE,
 )
 
@@ -66,45 +65,6 @@ def identity_resolution_needed(text: str) -> bool:
     return bool(_IDENTITY_QUERY.search(text or ""))
 
 
-def normalize_identity_text(value: str) -> str:
-    value = unicodedata.normalize("NFKC", value or "").casefold()
-    parts = []
-    spaced = False
-    for char in value:
-        if char.isalnum():
-            parts.append(char)
-            spaced = False
-        elif not spaced:
-            parts.append(" ")
-            spaced = True
-    return " ".join("".join(parts).split())
-
-
-def exact_identity_match(
-    request: str,
-    candidates: tuple[SpeakerIdentityCandidate, ...] | list[SpeakerIdentityCandidate],
-) -> SpeakerIdentityResolution | None:
-    normalized_request = normalize_identity_text(request)
-    if not normalized_request:
-        return None
-    matches: list[str] = []
-    padded_request = f" {normalized_request} "
-    for candidate in candidates:
-        if any(
-            normalized
-            and f" {normalized} " in padded_request
-            for name in candidate.names
-            if (normalized := normalize_identity_text(name))
-        ):
-            matches.append(candidate.user_id)
-    unique = tuple(dict.fromkeys(matches))
-    if len(unique) == 1:
-        return SpeakerIdentityResolution("resolved", unique[0])
-    if len(unique) > 1:
-        return SpeakerIdentityResolution("ambiguous")
-    return None
-
-
 def parse_identity_resolution(
     raw: str,
     candidates: tuple[SpeakerIdentityCandidate, ...] | list[SpeakerIdentityCandidate],
@@ -142,10 +102,6 @@ class SpeakerIdentityResolver:
         if not bounded:
             return SpeakerIdentityResolution("none")
 
-        exact = exact_identity_match(request, bounded)
-        if exact is not None:
-            return exact
-
         payload = {
             "request": (request or "")[:1000],
             "candidates": [
@@ -176,7 +132,7 @@ class SpeakerIdentityResolver:
                 self.usage.request(self.client, "identity_resolve", **call),
                 timeout=min(float(self.settings.routing_classifier_timeout_seconds), 8.0),
             )
-        except (TimeoutError, Exception):  # noqa: BLE001 - resolver fails closed
+        except Exception:  # noqa: BLE001 - resolver is optional and fails closed
             return SpeakerIdentityResolution("none")
         if getattr(response, "status", None) != "completed":
             return SpeakerIdentityResolution("none")
@@ -187,8 +143,6 @@ __all__ = [
     "SpeakerIdentityCandidate",
     "SpeakerIdentityResolution",
     "SpeakerIdentityResolver",
-    "exact_identity_match",
     "identity_resolution_needed",
-    "normalize_identity_text",
     "parse_identity_resolution",
 ]
