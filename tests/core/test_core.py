@@ -150,6 +150,21 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(context[0]["recent_user_messages"], ["text1"])
         self.assertNotIn("text3", str(context))
 
+    def test_identity_candidates_are_recent_bounded_and_keep_observed_names(self):
+        older = Scope(1, 10, 200, True)
+        newer = Scope(1, 11, 300, True)
+        other_guild = Scope(2, 20, 400, True)
+        self.store.add_shared_call(older, 1, "Tag : Sendol", "첫 발언")
+        self.store.add_shared_call(older, 2, "sendol", "둘째 발언")
+        self.store.add_shared_call(newer, 3, "manager_lulu", "최근 발언")
+        self.store.add_shared_call(other_guild, 4, "outsider", "다른 서버")
+
+        candidates = self.store.identity_candidates(1, exclude_user_ids={300})
+
+        self.assertEqual([row["user_id"] for row in candidates], ["200"])
+        self.assertEqual(candidates[0]["names"], ["sendol", "Tag : Sendol"])
+        self.assertNotIn("outsider", str(candidates))
+
     def test_private_then_public_does_not_export_private_context(self):
         private = Scope(1, 10, 100, False)
         self.store.add(private, 1, "비공개", "비공개 답변")
