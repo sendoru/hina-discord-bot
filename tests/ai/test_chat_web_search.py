@@ -13,6 +13,36 @@ from hina_bot.core.store import Store
 from hina_bot.discord.web_bot import LLM as DiscordLLM
 
 
+def web_tools(payload):
+    return [tool for tool in payload.get("tools", ()) if tool.get("type") == "web_search"]
+
+
+def code_interpreter_tools(payload):
+    return [
+        tool for tool in payload.get("tools", ())
+        if tool.get("type") == "code_interpreter"
+    ]
+
+
+def assert_openai_code_interpreter(payload):
+    assert code_interpreter_tools(payload) == [{
+        "type": "code_interpreter",
+        "container": {"type": "auto"},
+    }]
+
+
+def assert_code_only(payload):
+    assert web_tools(payload) == []
+    assert_openai_code_interpreter(payload)
+    assert payload["tool_choice"] == "auto"
+
+
+def assert_required_web_with_code(payload):
+    assert web_tools(payload) == [{"type": "web_search", "search_context_size": "low"}]
+    assert_openai_code_interpreter(payload)
+    assert payload["tool_choice"] == {"type": "web_search"}
+
+
 @pytest.fixture
 async def chat_llm():
     calls = []
@@ -56,8 +86,7 @@ async def test_relation_question_requires_search_without_local_evidence(chat_llm
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "나기사 만나본 적 있어?")
         payload = calls[-1]
-        assert payload["tools"] == [{"type": "web_search", "search_context_size": "low"}]
-        assert payload["tool_choice"] == "required"
+        assert_required_web_with_code(payload)
         assert "외부 확인" in payload["instructions"]
         assert "세계관 외부 확인" in payload["instructions"]
         assert "세계관 사실 질문" in payload["instructions"]
@@ -83,8 +112,7 @@ async def test_relation_question_still_searches_with_one_local_fact(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "나기사 만나본 적 있어?")
         payload = calls[-1]
-        assert payload["tool_choice"] == "required"
-        assert payload["tools"][0]["search_context_size"] == "low"
+        assert_required_web_with_code(payload)
         reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
         assert reference["lore_reference"][0]["reference"] == "test.hina.nagisa.meeting"
     finally:
@@ -108,8 +136,7 @@ async def test_simple_fact_with_local_world_fact_has_no_web_tool_overhead(chat_l
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "총 이름 뭐야?")
         payload = calls[-1]
-        assert "tools" not in payload
-        assert "tool_choice" not in payload
+        assert_code_only(payload)
         assert "[외부 확인]" not in payload["instructions"]
         assert "세계관 사실 질문" in payload["instructions"]
     finally:
@@ -123,8 +150,7 @@ async def test_named_who_question_is_world_fact_not_self_identity(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "나기사 누구야?")
         payload = calls[-1]
-        assert payload["tool_choice"] == "required"
-        assert payload["tools"][0]["search_context_size"] == "low"
+        assert_required_web_with_code(payload)
         assert "세계관 사실 질문" in payload["instructions"]
     finally:
         store.close()
@@ -137,8 +163,7 @@ async def test_current_release_question_requires_search(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "한섭에 지금 어디까지 공개됐어?")
         payload = calls[-1]
-        assert payload["tool_choice"] == "required"
-        assert payload["tools"] == [{"type": "web_search", "search_context_size": "low"}]
+        assert_required_web_with_code(payload)
         assert "현재 정보" in payload["instructions"]
     finally:
         store.close()
@@ -151,8 +176,7 @@ async def test_clock_question_uses_runtime_context_without_search(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "지금 몇 시야?")
         payload = calls[-1]
-        assert "tools" not in payload
-        assert "tool_choice" not in payload
+        assert_code_only(payload)
         assert "[현재 시점]" in payload["instructions"]
         assert "Asia/Seoul" in payload["instructions"]
     finally:
@@ -166,8 +190,9 @@ async def test_location_dependent_live_question_is_optional_without_default_loca
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "지금 날씨 어때?")
         payload = calls[-1]
-        assert payload["tools"] == [{"type": "web_search", "search_context_size": "low"}]
-        assert "tool_choice" not in payload
+        assert web_tools(payload) == [{"type": "web_search", "search_context_size": "low"}]
+        assert_openai_code_interpreter(payload)
+        assert payload["tool_choice"] == "auto"
         assert "기본 지역: 설정되지 않음" in payload["instructions"]
     finally:
         store.close()
@@ -181,7 +206,7 @@ async def test_default_location_allows_forced_live_lookup(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "지금 날씨 어때?")
         payload = calls[-1]
-        assert payload["tool_choice"] == "required"
+        assert_required_web_with_code(payload)
         assert "기본 지역: 서울" in payload["instructions"]
     finally:
         store.close()
@@ -196,8 +221,7 @@ async def test_public_schedule_countdown_requires_live_lookup(chat_llm):
             store, Scope(None, 20, 100), "사용자", "이번 추석 연휴 시작까지 며칠 남았어?"
         )
         payload = calls[-1]
-        assert payload["tool_choice"] == "required"
-        assert payload["tools"][0]["type"] == "web_search"
+        assert_required_web_with_code(payload)
         assert "현재 정보" in payload["instructions"]
     finally:
         store.close()
@@ -210,8 +234,9 @@ async def test_ambiguous_current_fact_gets_optional_search_tool(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "오늘 뭐 먹지?")
         payload = calls[-1]
-        assert payload["tools"] == [{"type": "web_search", "search_context_size": "low"}]
-        assert "tool_choice" not in payload
+        assert web_tools(payload) == [{"type": "web_search", "search_context_size": "low"}]
+        assert_openai_code_interpreter(payload)
+        assert payload["tool_choice"] == "auto"
     finally:
         store.close()
 
@@ -223,8 +248,7 @@ async def test_self_identity_question_has_no_web_tool_overhead(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "너 누구야?")
         payload = calls[-1]
-        assert "tools" not in payload
-        assert "tool_choice" not in payload
+        assert_code_only(payload)
         assert "[외부 확인]" not in payload["instructions"]
         assert "세계관 사실 질문" not in payload["instructions"]
     finally:
@@ -238,8 +262,7 @@ async def test_personal_memory_question_has_no_web_tool_overhead(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "내 생일 기억하고 있어?")
         payload = calls[-1]
-        assert "tools" not in payload
-        assert "tool_choice" not in payload
+        assert_code_only(payload)
         assert "[외부 확인]" not in payload["instructions"]
         assert "세계관 사실 질문" not in payload["instructions"]
     finally:
@@ -253,8 +276,7 @@ async def test_general_chat_has_no_web_search_prompt_or_tool(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "오늘 좀 피곤하네")
         payload = calls[-1]
-        assert "tools" not in payload
-        assert "tool_choice" not in payload
+        assert_code_only(payload)
         assert "[외부 확인]" not in payload["instructions"]
     finally:
         store.close()
@@ -267,8 +289,7 @@ async def test_roleplay_now_question_does_not_trigger_search(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "지금 뭐해?")
         payload = calls[-1]
-        assert "tools" not in payload
-        assert "tool_choice" not in payload
+        assert_code_only(payload)
     finally:
         store.close()
 
@@ -281,8 +302,7 @@ async def test_web_search_can_be_disabled_in_settings(chat_llm):
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "나기사 만나본 적 있어?")
         payload = calls[-1]
-        assert "tools" not in payload
-        assert "tool_choice" not in payload
+        assert_code_only(payload)
         assert "[외부 확인]" not in payload["instructions"]
     finally:
         store.close()
