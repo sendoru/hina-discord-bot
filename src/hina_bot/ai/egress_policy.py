@@ -47,7 +47,7 @@ def allow_channel_row(row: dict, current_user_id: int | str, policy: str) -> boo
         return role == "user" and row.get("direct_trigger") is True
     if kind == "prior_reply_source":
         return False
-    if kind in {"reply_origin_request", "reply_origin_source"}:
+    if kind in {"reply_origin_request", "reply_origin_source", "reply_reference_source"}:
         if role == "assistant":
             return True
         return role == "user" and _author_id(row) == current
@@ -69,7 +69,24 @@ def filter_channel_context(
     values = list(rows or [])
     if normalize_policy(policy) == FULL:
         return values
-    return [row for row in values if allow_channel_row(row, current_user_id, policy)]
+
+    current = str(current_user_id)
+    filtered = []
+    for row in values:
+        if not allow_channel_row(row, current_user_id, policy):
+            continue
+        item = dict(row)
+        reference_authors = {
+            str(value)
+            for value in item.get("reference_source_author_ids", ())
+            if str(value)
+        }
+        if item.get("provenance_class") == "reference_derived":
+            item["reference_source_is_current_speaker"] = current in reference_authors
+        item.pop("reference_source_ids", None)
+        item.pop("reference_source_author_ids", None)
+        filtered.append(item)
+    return filtered
 
 
 def filter_public_context(

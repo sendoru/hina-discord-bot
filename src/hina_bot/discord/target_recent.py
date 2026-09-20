@@ -11,6 +11,41 @@ from .turn_provenance import CURRENT_TURN_PROVENANCE
 
 CURRENT_DIRECT_TRIGGER = ContextVar("current_direct_trigger", default=False)
 
+_MAX_REFERENCE_SOURCES = 2
+
+
+def _author_id(row: dict) -> str:
+    return str(row.get("author_user_id") or row.get("user_id") or "")
+
+
+def _is_reference_material(row: dict, current_user_id: int | str) -> bool:
+    if row.get("provenance_class") == "reference_material":
+        return True
+    role = str(row.get("role") or "")
+    return role not in {"assistant"} and _author_id(row) != str(current_user_id)
+
+
+def _reference_sources(provenance: dict, current_user_id: int | str) -> list[dict]:
+    """Return bounded original reference material, never assistant paraphrases."""
+
+    selected: list[dict] = []
+    seen: set[str] = set()
+    rows = list(provenance.get("reference_sources", ()))
+    rows.extend(provenance.get("origin_sources", ()))
+    for raw in rows:
+        row = dict(raw)
+        source_id = str(row.get("message_id") or "")
+        if not source_id or source_id in seen:
+            continue
+        if not _is_reference_material(row, current_user_id):
+            continue
+        row["provenance_class"] = "reference_material"
+        selected.append(row)
+        seen.add(source_id)
+        if len(selected) >= _MAX_REFERENCE_SOURCES:
+            break
+    return selected
+
 
 class TargetAwareRecentMessages(RecentMessages):
     def __init__(self, *args, store=None, external_context_policy="full", **kwargs):
@@ -51,6 +86,12 @@ class TargetAwareRecentMessages(RecentMessages):
             else:
                 author_user_id = scope.user_id
 
+        inherited_turn = (
+            self._explicit_assistant_turn(scope, REPLY_CONTEXT.get())
+            if role == "assistant" and unix_time is None
+            else None
+        )
+
         super().add(
             scope,
             message_id,
@@ -69,13 +110,43 @@ class TargetAwareRecentMessages(RecentMessages):
                     row["reply_sources"] = [dict(source) for source in REPLY_CONTEXT.get()][:1]
                     provenance = CURRENT_TURN_PROVENANCE.get()
                     if provenance:
+                        reference_sources = _reference_sources(provenance, scope.user_id)
+                        if inherited_turn is not None:
+                            inherited = inherited_turn.get("turn_provenance", {})
+                            inherited_refs = _reference_sources(inherited, scope.user_id)
+                            seen = {
+                                str(source.get("message_id") or "")
+                                for source in reference_sources
+                            }
+                            for source in inherited_refs:
+                                source_id = str(source.get("message_id") or "")
+                                if not source_id or source_id in seen:
+                                    continue
+                                reference_sources.append(dict(source))
+                                seen.add(source_id)
+                                if len(reference_sources) >= _MAX_REFERENCE_SOURCES:
+                                    break
+                        bounded_references = reference_sources[:_MAX_REFERENCE_SOURCES]
                         row["turn_provenance"] = {
                             "origin_request": dict(provenance.get("origin_request", {})),
                             "origin_sources": [
                                 dict(source)
                                 for source in provenance.get("origin_sources", ())
                             ][:2],
+                            "reference_sources": bounded_references,
                         }
+                        if bounded_references:
+                            row["provenance_class"] = "reference_derived"
+                            row["reference_source_ids"] = [
+                                str(source.get("message_id") or "")
+                                for source in bounded_references
+                                if source.get("message_id")
+                            ]
+                            row["reference_source_author_ids"] = [
+                                _author_id(source)
+                                for source in bounded_references
+                                if _author_id(source)
+                            ]
                     break
 
     def _explicit_assistant_turn(self, scope, replied):
@@ -105,6 +176,7 @@ class TargetAwareRecentMessages(RecentMessages):
         provenance = turn.get("turn_provenance", {})
         rows = [provenance.get("origin_request", {})]
         rows.extend(provenance.get("origin_sources", ()))
+        rows.extend(provenance.get("reference_sources", ()))
         return tuple(
             str(row.get("message_id", ""))
             for row in rows
@@ -151,20 +223,46 @@ class TargetAwareRecentMessages(RecentMessages):
         active_chain = []
         if active_turn is not None:
             provenance = active_turn.get("turn_provenance", {})
-            for source in provenance.get("origin_sources", ()):
+            chain_ids: set[str] = set()
+            for source in provenance.get("reference_sources", ()):
                 item = dict(source)
+                source_id = str(item.get("message_id") or "")
+                if source_id and source_id in chain_ids:
+                    continue
                 item.update(
-                    context_kind="reply_origin_source",
-                    reference_strength="prior_explicit_reply",
+                    context_kind="reply_reference_source",
+                    reference_strength="inherited_reference",
+                    provenance_class="reference_material",
                     source_turn_message_id=str(active_turn["message_id"]),
                 )
                 active_chain.append(item)
+                if source_id:
+                    chain_ids.add(source_id)
+            for source in provenance.get("origin_sources", ()):
+                item = dict(source)
+                source_id = str(item.get("message_id") or "")
+                if source_id and source_id in chain_ids:
+                    continue
+                item.update(
+                    context_kind="reply_origin_source",
+                    reference_strength="prior_explicit_reply",
+                    provenance_class=(
+                        "reference_material"
+                        if _is_reference_material(item, scope.user_id)
+                        else "conversation"
+                    ),
+                    source_turn_message_id=str(active_turn["message_id"]),
+                )
+                active_chain.append(item)
+                if source_id:
+                    chain_ids.add(source_id)
             request = provenance.get("origin_request")
             if request:
                 item = dict(request)
                 item.update(
                     context_kind="reply_origin_request",
                     reference_strength="prior_user_request",
+                    provenance_class="conversation",
                     source_turn_message_id=str(active_turn["message_id"]),
                 )
                 active_chain.append(item)
@@ -178,21 +276,24 @@ class TargetAwareRecentMessages(RecentMessages):
         turns = [row for row in base if row.get("role") == "assistant" and (
             str(row.get("reply_target_user_id")) == current_user_id
             or str(row.get("message_id")) in explicit_ids
-        )][-4:]
+        )][-1:]
         sources = []
         seen_sources = set()
         for turn in reversed(turns):
-            for source in turn.get("reply_sources", ()):
+            provenance = turn.get("turn_provenance", {})
+            for source in _reference_sources(provenance, scope.user_id):
                 source_id = str(source.get("message_id", ""))
                 if source_id in seen_sources or source_id in explicit_ids:
                     continue
                 seen_sources.add(source_id)
                 item = dict(source)
-                item.pop("reply_sources", None)
-                item.update(context_kind="prior_reply_source",
-                            reference_strength="prior_explicit_reply",
-                            source_turn_message_id=str(turn["message_id"]),
-                            source_turn_user_id=str(turn.get("reply_target_user_id", "")))
+                item.update(
+                    context_kind="prior_reply_source",
+                    reference_strength="prior_reference_material",
+                    provenance_class="reference_material",
+                    source_turn_message_id=str(turn["message_id"]),
+                    source_turn_user_id=str(turn.get("reply_target_user_id", "")),
+                )
                 sources.append(item)
         sources = list(reversed(sources[:2]))
         sources = filter_channel_context(sources, scope.user_id, self.external_context_policy)
@@ -209,6 +310,25 @@ class TargetAwareRecentMessages(RecentMessages):
             item["content"] = str(item.get("content", ""))[:4000]
             item["context_kind"] = "replied_message"
             item["reference_strength"] = "explicit_reply"
+            if (
+                active_turn is not None
+                and str(active_turn.get("message_id") or "") == message_id
+                and active_turn.get("provenance_class") == "reference_derived"
+            ):
+                item["provenance_class"] = "reference_derived"
+                item["reference_source_ids"] = list(
+                    active_turn.get("reference_source_ids", ())
+                )
+                item["reference_source_author_ids"] = list(
+                    active_turn.get("reference_source_author_ids", ())
+                )
+            else:
+                item["provenance_class"] = (
+                    "conversation"
+                    if item.get("role") == "assistant"
+                    or _author_id(item) == current_user_id
+                    else "reference_material"
+                )
             replied.append(item)
             if message_id:
                 reply_ids.add(message_id)
@@ -248,10 +368,12 @@ class TargetAwareRecentMessages(RecentMessages):
                 item = dict(row)
                 item["context_kind"] = "speaker_thread"
                 item["reference_strength"] = "same_speaker"
+                item.setdefault("provenance_class", "conversation")
                 speaker_thread.append(item)
             else:
                 item = dict(row)
                 item["context_kind"] = "channel_ambient"
+                item.setdefault("provenance_class", "ambient")
                 ambient.append(item)
 
         seen = set(reply_ids)
@@ -275,6 +397,7 @@ class TargetAwareRecentMessages(RecentMessages):
                     "content": str(sampled.get("content", ""))[:2400],
                     "role": "user",
                     "context_kind": "target_user_history",
+                    "provenance_class": "reference_material",
                     "at": str(sampled.get("at", "")),
                 })
                 if message_id:
@@ -308,7 +431,7 @@ class TargetAwareRecentMessages(RecentMessages):
         chain_selected, remaining = self._take_recent(
             active_chain,
             remaining,
-            min(3, slots),
+            min(4, slots),
         )
         slots -= len(chain_selected)
 
