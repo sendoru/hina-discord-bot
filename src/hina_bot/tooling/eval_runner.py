@@ -138,7 +138,8 @@ def eval_settings(args) -> Settings:
     if community not in {"true", "false"}:
         raise ValueError("COMMUNITY_LORE는 true 또는 false여야 합니다.")
     gemini_thinking_level = (
-        args.gemini_thinking_level or os.getenv("GEMINI_THINKING_LEVEL", "low")
+        getattr(args, "gemini_thinking_level", None)
+        or os.getenv("GEMINI_THINKING_LEVEL", "low")
     ).strip().lower()
     if gemini_thinking_level not in GEMINI_THINKING_LEVELS:
         allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
