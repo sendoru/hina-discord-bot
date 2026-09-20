@@ -10,7 +10,8 @@ from hina_bot.core.routing import trigger_text
 log = logging.getLogger("hina")
 TARGET_CONTEXT = ContextVar("target_context", default=())
 TARGET_PROFILE_QUERY = re.compile(
-    r"(?:어떤\s*(?:사람|애|분|유저)|어떤\s*(?:거|것)\s*같|(?:어떻게|뭐라고)\s*생각|성격|인상|평가|평판)",
+    r"(?:누구(?:야|지|인지)?|누군지|어떤\s*(?:사람|애|분|유저)|어떤\s*(?:거|것)\s*같|"
+    r"(?:어떻게|뭐라고)\s*생각|성격|인상|평가|평판)",
     re.IGNORECASE,
 )
 TARGET_HISTORY_QUERY = re.compile(
@@ -39,14 +40,31 @@ def retrieval_mode(text: str) -> str | None:
     return None
 
 
-def targets(message, bot_id):
+def targets(message, bot_id, extra_targets=()):
     rows, seen = [], set()
     for user in getattr(message, "mentions", ()):
         uid = getattr(user, "id", None)
         if uid is None or uid in seen or uid in {bot_id, message.author.id} or getattr(user, "bot", False):
             continue
         seen.add(uid)
-        rows.append(user)
+        rows.append({
+            "user_id": int(uid),
+            "name": getattr(user, "display_name", getattr(user, "name", ""))[:100],
+        })
+        if len(rows) == 2:
+            return rows
+    for candidate in extra_targets:
+        raw_uid = candidate.get("user_id") if isinstance(candidate, dict) else None
+        if not str(raw_uid or "").isdigit():
+            continue
+        uid = int(raw_uid)
+        if uid in seen or uid in {bot_id, message.author.id}:
+            continue
+        seen.add(uid)
+        rows.append({
+            "user_id": uid,
+            "name": str(candidate.get("name") or "")[:100],
+        })
         if len(rows) == 2:
             break
     return rows
@@ -59,13 +77,14 @@ async def collect(
     *,
     visibility_mode: str = "all",
     call_prefixes: tuple[str, ...] = ("히나야",),
+    extra_targets=(),
 ):
     if visibility_mode not in {"all", "direct", "off"}:
         raise ValueError("visibility_mode must be all, direct, or off")
     mode = retrieval_mode(text)
     if visibility_mode == "off" or getattr(message, "guild", None) is None or mode is None:
         return []
-    selected = targets(message, bot_id)
+    selected = targets(message, bot_id, extra_targets)
     if not selected or not hasattr(message.channel, "history"):
         return []
     if hasattr(message.channel, "permissions_for"):
@@ -74,9 +93,9 @@ async def collect(
             return []
 
     limits = _RETRIEVAL_LIMITS[mode]
-    chosen = {u.id: u for u in selected}
-    found = {u.id: [] for u in selected}
-    sizes = {u.id: 0 for u in selected}
+    chosen = {row["user_id"]: row for row in selected}
+    found = {row["user_id"]: [] for row in selected}
+    sizes = {row["user_id"]: 0 for row in selected}
     after = message.created_at - timedelta(days=limits["days"])
     try:
         async for old in message.channel.history(
@@ -111,10 +130,10 @@ async def collect(
         return []
 
     return [{
-        "user_id": str(u.id),
-        "name": getattr(u, "display_name", getattr(u, "name", ""))[:100],
+        "user_id": str(row["user_id"]),
+        "name": row["name"],
         "channel_id": str(getattr(message.channel, "id", "")),
         "retrieval_mode": mode,
         "explicit_history_request": bool(TARGET_HISTORY_QUERY.search(text)),
-        "sampled_messages": list(reversed(found[u.id])),
-    } for u in selected if found[u.id]]
+        "sampled_messages": list(reversed(found[row["user_id"]])),
+    } for row in selected if found[row["user_id"]]]
