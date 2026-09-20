@@ -575,7 +575,7 @@ class Store:
 
         excluded = {str(value) for value in exclude_user_ids}
         rows = self.db.execute(
-            """SELECT user_id,name,id FROM shared_calls
+            """SELECT scope,user_id,name,id FROM shared_calls
                WHERE realm=?
                ORDER BY id DESC LIMIT ?""",
             (f"guild:{int(guild_id)}", max(int(scan_limit), int(limit))),
@@ -589,11 +589,21 @@ class Store:
             if entry is None:
                 if len(by_user) >= int(limit):
                     continue
-                entry = {"user_id": user_id, "names": [], "recent_id": int(row["id"])}
+                entry = {
+                    "user_id": user_id,
+                    "names": [],
+                    "channel_ids": [],
+                    "recent_id": int(row["id"]),
+                }
                 by_user[user_id] = entry
             name = str(row["name"] or "").strip()
             if name and name not in entry["names"] and len(entry["names"]) < 4:
                 entry["names"].append(name[:100])
+            parts = str(row["scope"] or "").split(":")
+            if len(parts) >= 4 and parts[2] == "channel" and parts[3].isdigit():
+                channel_id = int(parts[3])
+                if channel_id not in entry["channel_ids"] and len(entry["channel_ids"]) < 4:
+                    entry["channel_ids"].append(channel_id)
         return list(by_user.values())
 
     def public_context(self, allowed_scopes):
