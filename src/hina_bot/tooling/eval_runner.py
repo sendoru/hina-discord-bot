@@ -11,7 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from hina_bot.ai.runtime_llm import LLM
-from hina_bot.core.config import SUPPORTED_MODEL_PROVIDERS, Settings
+from hina_bot.core.config import GEMINI_THINKING_LEVELS, SUPPORTED_MODEL_PROVIDERS, Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 
@@ -112,6 +112,16 @@ def _provider_key(provider: str) -> str:
     return value
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized not in {"true", "false"}:
+        raise ValueError(f"{name}는 true 또는 false여야 합니다.")
+    return normalized == "true"
+
+
 def eval_settings(args) -> Settings:
     load_dotenv(Path.cwd() / ".env.local", override=False)
     load_dotenv(Path.cwd() / ".env", override=False)
@@ -127,6 +137,13 @@ def eval_settings(args) -> Settings:
     community = os.getenv("COMMUNITY_LORE", "true").lower()
     if community not in {"true", "false"}:
         raise ValueError("COMMUNITY_LORE는 true 또는 false여야 합니다.")
+    gemini_thinking_level = (
+        args.gemini_thinking_level or os.getenv("GEMINI_THINKING_LEVEL", "low")
+    ).strip().lower()
+    if gemini_thinking_level not in GEMINI_THINKING_LEVELS:
+        allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
+        raise ValueError(f"GEMINI_THINKING_LEVEL은 {allowed} 중 하나여야 합니다.")
+    chat_web_search = _env_bool("CHAT_WEB_SEARCH", True)
     base = Settings(
         api_key=api_key,
         discord_token="eval-only",
@@ -146,6 +163,8 @@ def eval_settings(args) -> Settings:
         lore_max_items=int(os.getenv("LORE_MAX_ITEMS", "6")),
         lore_max_chars=int(os.getenv("LORE_MAX_CHARS", "3200")),
         community_lore=community == "true",
+        gemini_thinking_level=gemini_thinking_level,
+        chat_web_search=chat_web_search,
     )
     return replace(base, output_tokens=max(128, min(base.output_tokens, 4096)))
 
@@ -224,6 +243,11 @@ async def run_case(llm: LLM, case: dict) -> dict:
         "validation_errors": validation_errors,
         "provider": llm.settings.provider,
         "model": llm.settings.model,
+        "thinking_level": (
+            llm.settings.gemini_thinking_level
+            if llm.settings.provider == "gemini"
+            else ""
+        ),
     }
 
 
@@ -239,6 +263,7 @@ def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
         f"- cases: {len(results)}",
         f"- provider: `{results[0]['provider'] if results else ''}`",
         f"- model: `{results[0]['model'] if results else ''}`",
+        f"- thinking level: `{results[0]['thinking_level'] if results else ''}`",
         f"- errors: {sum(bool(row['error']) for row in results)}",
         f"- validator failures: {sum(bool(row['validation_errors']) for row in results)}",
         "",
@@ -323,6 +348,11 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--repeat", type=int, default=1, help="각 case 반복 횟수. 기본은 1입니다.")
     root.add_argument("--provider", help="openai, gemini, openrouter. 기본은 LLM_PROVIDER입니다.")
     root.add_argument("--model", help="평가에 사용할 모델. 기본은 LLM_MODEL입니다.")
+    root.add_argument(
+        "--gemini-thinking-level",
+        choices=sorted(GEMINI_THINKING_LEVELS),
+        help="Gemini fixed eval의 thinking level. 기본은 GEMINI_THINKING_LEVEL 또는 low입니다.",
+    )
     root.add_argument("--output", help="결과 JSONL 경로. 같은 이름의 .md 리포트도 생성합니다.")
     root.add_argument("--usage-log", default="data/logs/eval-usage.jsonl")
     return root
