@@ -41,15 +41,6 @@ def _web_search_calls(response) -> int:
     return count
 
 
-def _local_function_calls(response) -> int:
-    count = 0
-    for item in getattr(response, "output", None) or []:
-        item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
-        if item_type == "function_call":
-            count += 1
-    return count
-
-
 def _provider_error_fields(exc: BaseException) -> dict:
     """Return only adapter-approved diagnostics; never serialize arbitrary exception strings."""
     fields = {}
@@ -159,7 +150,6 @@ class UsageLogger:
             "cached_tokens": 0,
             "reasoning_tokens": 0,
             "web_search_calls": 0,
-            "local_tool_calls": 0,
             "usage_complete": True,
         }
 
@@ -177,9 +167,6 @@ class UsageLogger:
         web_calls = row.get("web_search_calls")
         if isinstance(web_calls, int):
             bucket["web_search_calls"] += web_calls
-        local_calls = row.get("local_tool_calls")
-        if isinstance(local_calls, int):
-            bucket["local_tool_calls"] += local_calls
 
     def _accumulate(self, row: dict):
         state = self._exchange.get()
@@ -273,7 +260,6 @@ class UsageLogger:
                 provider == "gemini"
                 and getattr(response, "status", None) == "completed"
                 and not _visible_text(response).strip()
-                and _local_function_calls(response) == 0
             )
             if completed_empty:
                 response = await client.responses.create(**kwargs)
@@ -284,13 +270,10 @@ class UsageLogger:
                         "gemini", str(getattr(response, "status", "unknown")))
 
             web_calls = sum(_web_search_calls(item) for item in responses)
-            local_calls = sum(_local_function_calls(item) for item in responses)
             row.update(status=response.status,
                        **_combined_attempt_fields(responses),
                        web_search_calls=web_calls,
                        web_search_used=web_calls > 0,
-                       local_tool_calls=local_calls,
-                       local_tool_used=local_calls > 0,
                        api_attempts=len(responses))
             error_codes = []
             for item in responses:
@@ -306,11 +289,8 @@ class UsageLogger:
             if responses:
                 row.update(_combined_attempt_fields(responses))
                 web_calls = sum(_web_search_calls(item) for item in responses)
-                local_calls = sum(_local_function_calls(item) for item in responses)
                 row["web_search_calls"] = web_calls
                 row["web_search_used"] = web_calls > 0
-                row["local_tool_calls"] = local_calls
-                row["local_tool_used"] = local_calls > 0
                 row["api_attempts"] = len(responses)
             raise
         finally:
