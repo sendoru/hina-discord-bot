@@ -190,11 +190,11 @@ jobs:
           {
             echo "## Live tone eval"
             echo
-            echo "- baseline: `$BASELINE_REF`"
-            echo "- candidate: `$CANDIDATE_REF`"
-            echo "- suite: `$SUITE_FILE`"
-            echo "- FAST: `${{ inputs.fast_model }}` / `${{ inputs.fast_thinking }}`"
-            echo "- SMART: `${{ inputs.smart_model }}` / `${{ inputs.smart_thinking }}`"
+            printf -- '- baseline: `%s`\n' "$BASELINE_REF"
+            printf -- '- candidate: `%s`\n' "$CANDIDATE_REF"
+            printf -- '- suite: `%s`\n' "$SUITE_FILE"
+            printf -- '- FAST: `%s` / `%s`\n' "${{ inputs.fast_model }}" "${{ inputs.fast_thinking }}"
+            printf -- '- SMART: `%s` / `%s`\n' "${{ inputs.smart_model }}" "${{ inputs.smart_thinking }}"
             echo
             echo "The uploaded artifact contains JSONL, Markdown reports, and usage logs."
             echo "Tone PASS/FAIL remains a manual review."
