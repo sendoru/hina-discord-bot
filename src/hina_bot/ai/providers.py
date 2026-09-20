@@ -201,6 +201,21 @@ def _gemini_output(data: dict):
                     ),
                 ))
             continue
+        if step_type == "code_execution_call":
+            output.append(NS(
+                type="code_execution_call",
+                id=str(step.get("id") or ""),
+                arguments=step.get("arguments") or {},
+            ))
+            continue
+        if step_type == "code_execution_result":
+            output.append(NS(
+                type="code_execution_result",
+                call_id=str(step.get("call_id") or ""),
+                result=step.get("result") or "",
+                is_error=bool(step.get("is_error", False)),
+            ))
+            continue
         if step_type != "model_output":
             continue
 
@@ -281,13 +296,16 @@ class _GeminiResponses:
         tools = kwargs.get("tools") or []
         unknown_tools = [
             tool for tool in tools
-            if tool.get("type") not in {"web_search", "function"}
+            if tool.get("type") not in {"web_search", "function", "code_execution"}
         ]
         if unknown_tools:
             raise ValueError("Gemini provider가 지원하지 않는 tool type입니다.")
 
         web_tools = [tool for tool in tools if tool.get("type") == "web_search"]
         function_tools = [tool for tool in tools if tool.get("type") == "function"]
+        code_execution_tools = [
+            tool for tool in tools if tool.get("type") == "code_execution"
+        ]
         required_search = bool(web_tools and kwargs.get("tool_choice") == "required")
         if tools:
             payload_tools = []
@@ -301,6 +319,8 @@ class _GeminiResponses:
                     "parameters": tool.get("parameters") or {"type": "object", "properties": {}},
                 }
                 payload_tools.append(item)
+            if code_execution_tools:
+                payload_tools.append({"type": "code_execution"})
             payload["tools"] = payload_tools
             if required_search:
                 # OpenAI `required` means that a tool must be used before the final answer.
@@ -325,7 +345,7 @@ class _GeminiResponses:
         except httpx.HTTPStatusError as exc:
             error = _gemini_http_error(response)
             too_many_calls = (
-                bool(tools)
+                bool(web_tools)
                 and error.status_code == 400
                 and "too many tool calls" in error.error_message.lower()
             )

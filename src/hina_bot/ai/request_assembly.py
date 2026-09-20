@@ -8,6 +8,7 @@ from .freshness import FreshnessMode
 from .information_plan import InformationPlan
 from .llm import LLM as BaseLLM
 from .llm import POLICY
+from .managed_tools import CODE_EXECUTION_POLICY, managed_tool_config, search_tool_choice
 from .model_routing import ModelPlan, fixed_model_plan
 from .rp_output_policy import hide_web_citations, provenance_instruction
 from .runtime_context import build_runtime_context, runtime_instruction
@@ -345,6 +346,8 @@ class RequestAssembler(BaseLLM):
             instruction_parts.append(WORLD_FACT_DETAIL_POLICY)
             if search_mode in {"auto", "required"}:
                 instruction_parts.append(WORLD_WEB_SEARCH_POLICY)
+        if managed_tool_config(self.settings.provider):
+            instruction_parts.append(CODE_EXECUTION_POLICY)
         instruction_parts.append(TURN_RESPONSE_POLICY)
         dynamic = self.instructions.active_text()
         if dynamic:
@@ -359,11 +362,18 @@ class RequestAssembler(BaseLLM):
         }
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
-        tools = tool_config(search_mode)
+        tools = list(tool_config(search_mode) or ())
+        managed_tools = managed_tool_config(self.settings.provider)
+        tools.extend(managed_tools)
         if tools:
             request["tools"] = tools
-            if search_mode == "required":
-                request["tool_choice"] = "required"
+            tool_choice = search_tool_choice(
+                self.settings.provider,
+                search_mode,
+                has_managed_tools=bool(managed_tools),
+            )
+            if tool_choice is not None:
+                request["tool_choice"] = tool_choice
 
         route_metadata = model_plan.telemetry()
         if self.settings.provider != "gemini":

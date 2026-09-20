@@ -117,6 +117,93 @@ async def test_gemini_translates_search_and_normalizes_response():
 
 
 @pytest.mark.asyncio
+async def test_gemini_managed_code_execution_stays_inside_one_interaction():
+    seen = {}
+
+    async def handler(request: httpx.Request):
+        seen["json"] = __import__("json").loads(request.content)
+        return httpx.Response(200, json={
+            "status": "completed",
+            "steps": [
+                {
+                    "type": "code_execution_call",
+                    "id": "code_1",
+                    "arguments": {
+                        "code": "print(3.9 > 3.11)",
+                        "language": "python",
+                    },
+                },
+                {
+                    "type": "code_execution_result",
+                    "call_id": "code_1",
+                    "result": "True\n",
+                    "is_error": False,
+                },
+                {
+                    "type": "model_output",
+                    "content": [{"type": "text", "text": "3.9가 더 커."}],
+                },
+            ],
+            "usage": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        response = await _GeminiResponses(http).create(
+            model="gemini-test",
+            input="3.9랑 3.11 중 뭐가 더 커?",
+            tools=[{"type": "code_execution"}],
+            tool_choice="auto",
+        )
+    finally:
+        await http.aclose()
+
+    assert seen["json"]["tools"] == [{"type": "code_execution"}]
+    assert response.output_text == "3.9가 더 커."
+    assert [item.type for item in response.output] == [
+        "code_execution_call",
+        "code_execution_result",
+        "message",
+    ]
+    assert response.output[1].result == "True\n"
+
+
+@pytest.mark.asyncio
+async def test_gemini_can_offer_search_and_code_execution_together():
+    seen = {}
+
+    async def handler(request: httpx.Request):
+        seen["json"] = __import__("json").loads(request.content)
+        return httpx.Response(200, json={
+            "status": "completed",
+            "steps": [{
+                "type": "model_output",
+                "content": [{"type": "text", "text": "done"}],
+            }],
+            "usage": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        await _GeminiResponses(http).create(
+            model="gemini-test",
+            input="질문",
+            tools=[
+                {"type": "web_search", "search_context_size": "low"},
+                {"type": "code_execution"},
+            ],
+            tool_choice="auto",
+        )
+    finally:
+        await http.aclose()
+
+    assert seen["json"]["tools"] == [
+        {"type": "google_search", "search_types": ["web_search"]},
+        {"type": "code_execution"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_gemini_translates_local_function_tool_and_call_output():
     payloads = []
 
