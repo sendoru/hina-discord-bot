@@ -39,7 +39,7 @@ Gemini의 경우 `--gemini-thinking-level minimal|low|medium|high`로 fixed eval
 
 `.github/workflows/live-tone-eval.yml`은 `workflow_dispatch`로만 실행돼요. push/PR에서는 모델 API를
 자동 호출하지 않아요. Repository Actions secret에 `GEMINI_API_KEY`를 등록한 뒤 baseline/candidate
-ref, suite 파일, 반복 횟수를 선택하면 같은 case ID 집합을 다음 네 조합으로 순차 실행해요.
+ref, suite 파일, 반복 횟수를 선택하면 같은 case ID 집합을 다음 네 조합으로 순차 실행해요. 현재 운영 기본값에 맞춰 FAST는 `gemini-3.5-flash-lite` + `medium`, SMART는 `gemini-3.6-flash` + `medium`으로 설정되어 있어요.
 
 - baseline + FAST model/thinking
 - baseline + SMART model/thinking
