@@ -3,9 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from hina_bot.tooling.eval_runner import (
     case_turns,
+    eval_settings,
     read_cases,
     response_validation_errors,
     run_case,
@@ -70,6 +72,43 @@ class EvalRunnerTests(unittest.TestCase):
         self.assertIsNone(special.guild_id)
         self.assertNotEqual(normal.user_id, special.user_id)
         self.assertIsNotNone(server.guild_id)
+
+    def test_eval_settings_honors_live_eval_controls(self):
+        args = SimpleNamespace(
+            provider="gemini",
+            model="gemini-3.5-flash-lite",
+            usage_log="",
+            gemini_thinking_level="minimal",
+        )
+        with patch.dict(
+            "os.environ",
+            {
+                "GEMINI_API_KEY": "test-key",
+                "CHAT_WEB_SEARCH": "false",
+                "COMMUNITY_LORE": "true",
+                "MAX_OUTPUT_TOKENS": "1000",
+            },
+            clear=False,
+        ):
+            settings = eval_settings(args)
+
+        self.assertEqual(settings.provider, "gemini")
+        self.assertEqual(settings.gemini_thinking_level, "minimal")
+        self.assertFalse(settings.chat_web_search)
+
+    def test_eval_settings_rejects_invalid_web_search_flag(self):
+        args = SimpleNamespace(
+            provider="gemini",
+            model="gemini-3.5-flash-lite",
+            usage_log="",
+            gemini_thinking_level=None,
+        )
+        with patch.dict(
+            "os.environ",
+            {"GEMINI_API_KEY": "test-key", "CHAT_WEB_SEARCH": "sometimes"},
+            clear=False,
+        ), self.assertRaises(ValueError):
+            eval_settings(args)
 
     def test_python_response_validators_parse_without_execution(self):
         valid = "설명\n```python\ndef solve():\n    return 1\n```"
