@@ -36,6 +36,8 @@ async def test_usage_success_and_error_do_not_log_content(tmp_path):
     assert first['cached_tokens'] == 50
     assert first['web_search_calls'] == 0
     assert first['web_search_used'] is False
+    assert first['local_tool_calls'] == 0
+    assert first['local_tool_used'] is False
     assert second['error_type'] == 'ValueError'
     assert 'total_tokens' not in second
 
@@ -151,6 +153,44 @@ async def test_usage_preserves_caller_web_search_configuration_and_logs_it(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_gemini_function_call_is_not_retried_as_empty_response(tmp_path):
+    path = tmp_path / 'usage.jsonl'
+    logger = UsageLogger(str(path))
+    function_response = NS(
+        status='completed',
+        output_text='',
+        output=[NS(type='function_call', call_id='call_1', name='calculator')],
+        usage=None,
+    )
+    client = NS(
+        provider_name='gemini',
+        responses=NS(create=AsyncMock(return_value=function_response)),
+    )
+
+    result = await logger.request(
+        client,
+        'answer',
+        model='gemini-test',
+        input='secret numeric request',
+        tools=[{
+            'type': 'function',
+            'name': 'calculator',
+            'description': 'calculate',
+            'parameters': {'type': 'object', 'properties': {}},
+        }],
+        tool_choice='auto',
+    )
+    logger.close()
+
+    assert result is function_response
+    assert client.responses.create.await_count == 1
+    row = json.loads(path.read_text())
+    assert row['local_tool_calls'] == 1
+    assert row['local_tool_used'] is True
+    assert 'secret numeric request' not in path.read_text()
+
+
+@pytest.mark.asyncio
 async def test_usage_logger_does_not_add_web_search_by_itself(tmp_path):
     path = tmp_path / 'usage.jsonl'
     logger = UsageLogger(str(path))
@@ -199,6 +239,7 @@ async def test_discord_exchange_aggregates_answer_and_summary_calls(tmp_path):
     assert row['cached_tokens'] == 500
     assert row['reasoning_tokens'] == 20
     assert row['web_search_calls'] == 1
+    assert row['local_tool_calls'] == 0
     assert row['usage_complete'] is True
     assert row['models'] == ['chat-model', 'memory-model']
     assert row['operations']['answer']['total_tokens'] == 1100
