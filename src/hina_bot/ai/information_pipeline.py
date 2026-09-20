@@ -10,6 +10,7 @@ from hina_bot.core.memory_context import CURRENT_MEMORY_CONTEXT, build_memory_co
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode, is_live_domain
+from .identity_resolution import SpeakerIdentityCandidate, SpeakerIdentityResolver
 from .information_evidence import SearchDecision, search_decision
 from .information_plan import InformationPlan
 from .information_routing import (
@@ -84,6 +85,11 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             )
         else:
             self.semantic_model_router = None
+        self.speaker_identity_resolver = SpeakerIdentityResolver(
+            settings,
+            self.client,
+            self.usage,
+        )
 
     async def close(self):
         if self._routing_shadow_tasks:
@@ -124,6 +130,21 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
 
     def _call_prefixes(self) -> tuple[str, ...] | None:
         return getattr(self.settings, "call_prefixes", None)
+
+    async def resolve_speaker_identity(self, request: str, candidates: list[dict]):
+        normalized = [
+            SpeakerIdentityCandidate(
+                user_id=str(candidate.get("user_id") or ""),
+                names=tuple(
+                    str(name)
+                    for name in candidate.get("names", ())
+                    if str(name).strip()
+                ),
+            )
+            for candidate in candidates
+            if str(candidate.get("user_id") or "")
+        ]
+        return await self.speaker_identity_resolver.resolve(request, normalized)
 
     @staticmethod
     def _looks_like_relation_or_event_question(content: str) -> bool:
