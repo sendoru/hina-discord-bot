@@ -1,0 +1,8 @@
+# Issue #85 focus rerun: high-signal ambiguous/negative-prior cases
+fragmented_wordplay_not_escalated
+compact_wordplay_neutral
+self_compliment_not_defensively_framed
+unclear_abbreviation_not_called_weird
+long_wordplay_not_scolded
+knowledge_compliment_not_defensive
+ambiguous_reason_question_not_defensive
