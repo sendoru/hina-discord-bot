@@ -107,9 +107,8 @@ class EvalRunnerTests(unittest.TestCase):
             "os.environ",
             {"GEMINI_API_KEY": "test-key", "CHAT_WEB_SEARCH": "sometimes"},
             clear=False,
-        ):
-            with self.assertRaises(ValueError):
-                eval_settings(args)
+        ), self.assertRaises(ValueError):
+            eval_settings(args)
 
     def test_python_response_validators_parse_without_execution(self):
         valid = "설명\n```python\ndef solve():\n    return 1\n```"
