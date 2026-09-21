@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Hina Dashboard{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <a class="brand" href="/">Hina Dashboard</a>
+      <span class="badge">read-only</span>
+    </div>
+    <nav>
+      <a href="/">Overview</a>
+      <a href="/traces">Traces</a>
+      <a href="/conversations">Conversations</a>
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
