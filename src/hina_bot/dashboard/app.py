@@ -52,7 +52,11 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
         status: str = "",
         tier: str = "",
         model: str = "",
+        operation: str = "",
+        error: str = "",
         web_search: str = "",
+        after: str = "",
+        before: str = "",
         q: str = "",
     ):
         data = service.traces(
@@ -61,7 +65,11 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
             status=status,
             tier=tier,
             model=model,
+            operation=operation,
+            error=error,
             web_search=web_search,
+            after=after,
+            before=before,
             query=q,
         )
         return templates.TemplateResponse(
