@@ -329,6 +329,15 @@ class AdminRepository:
             ).fetchall()
         return self._dicts(rows)
 
+    def memory_counts_by_user(self) -> dict[str, int]:
+        if not self._table_exists("memory_items"):
+            return {}
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT user_id,COUNT(*) AS count FROM memory_items GROUP BY user_id"
+            ).fetchall()
+        return {str(row["user_id"]): int(row["count"]) for row in rows}
+
     def personal_summary_status(self) -> list[dict[str, object]]:
         if not self._table_exists("summaries"):
             return []
