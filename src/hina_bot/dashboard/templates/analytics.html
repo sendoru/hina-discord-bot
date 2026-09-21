@@ -92,7 +92,7 @@
       <thead><tr><th>Baseline</th><th>Final</th><th>Count</th></tr></thead>
       <tbody>
       {% for row in data.routing.baseline_to_final.rows %}
-      <tr><td>{{ row.from }}</td><td>{{ row.to }}</td><td class="numeric">{{ row.count }}</td></tr>
+      <tr><td>{{ row["from"] }}</td><td>{{ row["to"] }}</td><td class="numeric">{{ row.count }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -188,7 +188,7 @@
       {% if data.routing.shadow.tier_transitions.rows %}
       <table><tbody>
       {% for row in data.routing.shadow.tier_transitions.rows %}
-      <tr><td>{{ row.from }} → {{ row.to }}</td><td class="numeric">{{ row.count }}</td></tr>
+      <tr><td>{{ row["from"] }} → {{ row["to"] }}</td><td class="numeric">{{ row.count }}</td></tr>
       {% endfor %}
       </tbody></table>
       {% else %}<p class="muted">No shadow tier pairs.</p>{% endif %}
@@ -198,7 +198,7 @@
       {% if data.routing.shadow.search_transitions.rows %}
       <table><tbody>
       {% for row in data.routing.shadow.search_transitions.rows %}
-      <tr><td>{{ row.from }} → {{ row.to }}</td><td class="numeric">{{ row.count }}</td></tr>
+      <tr><td>{{ row["from"] }} → {{ row["to"] }}</td><td class="numeric">{{ row.count }}</td></tr>
       {% endfor %}
       </tbody></table>
       {% else %}<p class="muted">No shadow search pairs.</p>{% endif %}
@@ -266,8 +266,8 @@
         <td><code>{{ row.name }}</code></td>
         <td class="numeric">{{ row.calls }}</td>
         <td class="numeric">{{ row.errors }}</td>
-        <td class="numeric">{{ "{:,}".format(row.total_tokens.value) }}</td>
-        <td>{{ row.total_tokens.known }} / {{ row.calls }}</td>
+        <td class="numeric">{{ "{:,}".format(row["to"]tal_tokens.value) }}</td>
+        <td>{{ row["to"]tal_tokens.known }} / {{ row.calls }}</td>
         <td class="numeric">{{ row.latency.average if row.latency.average is not none else "—" }}</td>
         <td class="numeric">{{ row.latency.p95 if row.latency.p95 is not none else "—" }}</td>
         <td class="numeric">{{ row.web_search_calls.value }}</td>
@@ -304,7 +304,7 @@
       <tr>
         <td>{{ row.day }}</td><td>{{ row.provider }}</td><td><code>{{ row.model }}</code></td>
         <td class="numeric">{{ row.calls }}</td><td class="numeric">{{ row.errors }}</td>
-        <td class="numeric">{{ row.tokens.value }}</td><td>{{ row.tokens.known }} / {{ row.calls }}</td>
+        <td class="numeric">{{ row["to"]kens.value }}</td><td>{{ row["to"]kens.known }} / {{ row.calls }}</td>
         <td class="numeric">{{ row.latency.average if row.latency.average is not none else "—" }}</td>
       </tr>
       {% endfor %}
