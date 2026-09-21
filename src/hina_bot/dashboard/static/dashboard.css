@@ -34,7 +34,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   background: rgba(17, 19, 24, .96);
 }
 .topbar nav { display: flex; gap: 18px; }
-.brand { color: var(--text); font-weight: 700; }
+.brand { color: var(--text); font-weight: 700; white-space: nowrap; }
 .badge {
   margin-left: 8px;
   padding: 2px 7px;
@@ -266,6 +266,56 @@ code {
 }
 .button:hover {
   text-decoration: none;
+}
+
+/* Keep navigation in two rows before the rest of the layout enters phone mode.
+   Some mobile browsers expose an effective CSS viewport wider than 720px. */
+@media (max-width: 1000px) {
+  .topbar {
+    display: block;
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      8px
+      max(12px, env(safe-area-inset-left));
+  }
+  .topbar > div:first-child {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+  }
+  .topbar nav {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    margin-top: 9px;
+    padding: 2px 0 6px;
+    gap: 6px;
+    overflow-x: auto;
+  }
+  .topbar nav a {
+    flex: 0 0 auto;
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .topbar nav a:hover {
+    text-decoration: none;
+    background: var(--panel-2);
+  }
+  .badge {
+    margin-left: 0;
+    flex: 0 0 auto;
+  }
 }
 
 @media (max-width: 720px) {
