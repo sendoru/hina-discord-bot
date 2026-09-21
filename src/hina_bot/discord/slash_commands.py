@@ -16,7 +16,10 @@ log = logging.getLogger("hina")
 _ADMIN_MEMORY_COMMANDS = {"mode", "status", "overview", "purge"}
 _EMOJI_ALIAS_RE = re.compile(r"[a-z][a-z0-9_]{1,31}")
 
-HELP_TEXT = """일반 대화는 @멘션, 답장 핑, 또는 메시지 맨 앞의 `히나야`로 호출해 주세요.
+HELP_TEXT = """히나와 DM으로 대화하려면 이 도움말 메시지의 히나 프로필을 눌러 `메시지 보내기`를 선택해 주세요.
+DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니다.
+
+서버에서는 @멘션, 답장 핑, 또는 메시지 맨 앞의 `히나야`로 호출해 주세요.
 관리·설정 기능은 Discord 슬래시 명령으로만 사용합니다.
 
 자동 장기 기억
@@ -307,7 +310,9 @@ def install_slash_commands(client):
     client.tree.add_command(ChatLogCommands(client))
     client.tree.add_command(EmojiSlashCommands(client))
 
-    @app_commands.command(name="help", description="히나 봇 사용법과 관리 명령 보기")
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.command(name="help", description="히나 봇 사용법과 DM 시작 방법 보기")
     async def help_command(interaction: discord.Interaction):
         await interaction.response.send_message(HELP_TEXT, ephemeral=True)
 
