@@ -19,11 +19,24 @@ def write_rows(path, rows):
 def dashboard_client(tmp_path):
     database = tmp_path / "hina.sqlite3"
     store = Store(str(database))
+    scope = Scope(None, 10, 100)
     token = CURRENT_TURN_ID.set("trace-ui")
     try:
-        store.add(Scope(None, 10, 100), 55, "hello dashboard", "hello")
+        store.add(scope, 55, "hello dashboard", "hello")
     finally:
         CURRENT_TURN_ID.reset(token)
+    through = int(store.db.execute(
+        "SELECT id FROM turns WHERE message_id='55'"
+    ).fetchone()["id"])
+    store.save_summary(scope, "legacy dashboard summary", through)
+    store.add_memory_item(
+        scope,
+        "dashboard memory",
+        kind="fact",
+        disclosure="reference_gated",
+        source_message_ids=("55",),
+        confidence=0.95,
+    )
     store.close()
 
     usage = tmp_path / "usage.jsonl"
@@ -110,6 +123,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     traces = client.get("/traces?tier=fast")
     detail = client.get("/traces/trace-ui")
     conversations = client.get("/conversations?q=dashboard")
+    memory = client.get("/memory?q=dashboard")
+    memory_detail = client.get("/memory/1")
+    summaries = client.get("/summaries?q=dashboard")
+    cursors = client.get("/memory/cursors?user_id=100")
     static = client.get("/static/dashboard.css")
 
     assert overview.status_code == 200
@@ -117,6 +134,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "trace-ui" in traces.text
     assert "hello dashboard" in detail.text
     assert "hello dashboard" in conversations.text
+    assert "dashboard memory" in memory.text
+    assert "hello dashboard" in memory_detail.text
+    assert "legacy dashboard summary" in summaries.text
+    assert "Memory Extraction Cursors" in cursors.text
     assert static.status_code == 200
     assert "color-scheme" in static.text
 
@@ -125,5 +146,13 @@ def test_unknown_trace_returns_404(tmp_path):
     client = dashboard_client(tmp_path)
 
     response = client.get("/traces/not-found")
+
+    assert response.status_code == 404
+
+
+def test_unknown_memory_item_returns_404(tmp_path):
+    client = dashboard_client(tmp_path)
+
+    response = client.get("/memory/9999")
 
     assert response.status_code == 404
