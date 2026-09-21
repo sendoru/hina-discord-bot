@@ -23,11 +23,19 @@
   <input name="status" value="{{ data.filters.status }}" placeholder="status">
   <input name="tier" value="{{ data.filters.tier }}" placeholder="tier">
   <input name="model" value="{{ data.filters.model }}" placeholder="model">
+  <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
+  <select name="error">
+    <option value="">error: any</option>
+    <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>error: yes</option>
+    <option value="no" {% if data.filters.error == "no" %}selected{% endif %}>error: no</option>
+  </select>
   <select name="web_search">
     <option value="">search: any</option>
     <option value="yes" {% if data.filters.web_search == "yes" %}selected{% endif %}>search: used</option>
     <option value="no" {% if data.filters.web_search == "no" %}selected{% endif %}>search: not used</option>
   </select>
+  <input name="after" value="{{ data.filters.after }}" placeholder="after (ISO-8601 UTC)">
+  <input name="before" value="{{ data.filters.before }}" placeholder="before (ISO-8601 UTC)">
   <button type="submit">Filter</button>
   <a class="button secondary" href="/traces">Reset</a>
 </form>
