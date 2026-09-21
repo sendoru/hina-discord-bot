@@ -94,6 +94,12 @@ eight-turn cadence. This is intentionally a shadow path:
   malformed top-level JSON, or storage failures leave the batch pending for retry,
 - structured extraction, personal summary, and shared summary run as separate memory tasks so failures
   do not block each other,
+- the normal message path still waits for the fixed four-turn batch, but a background stale-tail sweep
+  checks hourly by default and may flush 2-3 pending turns once the oldest pending turn is at least eight
+  hours old; one-turn tails remain deferred to avoid turning every isolated message into an extraction,
+- the stale sweep shares the normal channel/user locks and model-concurrency semaphore, skips scopes whose
+  current memory mode does not allow writes, and leaves the cursor unchanged on failure so the next sweep
+  can retry,
 - API usage is visible as the `extract_memory_items_shadow` operation, with content-free
   `memory.shadow_extraction` lifecycle events alongside the existing summary telemetry.
 
