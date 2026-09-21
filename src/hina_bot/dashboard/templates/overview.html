@@ -24,6 +24,35 @@
 
 <div class="grid-2">
   <section class="panel">
+    <h2>Sources</h2>
+    <table>
+      <tbody>
+        <tr><td>SQLite</td><td>read-only · available</td></tr>
+        <tr><td>usage files</td><td class="numeric">{{ data.sources.usage_files }}</td></tr>
+        <tr><td>exchange files</td><td class="numeric">{{ data.sources.exchange_files }}</td></tr>
+        <tr><td>event files</td><td class="numeric">{{ data.sources.event_files }}</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Scopes</h2>
+    {% if data.scope_counts %}
+    <table>
+      <tbody>
+      {% for key, value in data.scope_counts.items() %}
+        <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No scope telemetry.</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
     <h2>Turn status</h2>
     {% if data.status_counts %}
     <table>
