@@ -193,6 +193,23 @@ class Store:
             params += (int(limit),)
         return self.db.execute(sql, params).fetchall()
 
+    def memory_extraction_evidence(
+        self,
+        scope: Scope,
+        *,
+        before_id: int,
+        limit: int = 4,
+    ):
+        """Return recent turns before the current extraction batch in chronological order."""
+
+        rows = self.db.execute(
+            """SELECT * FROM turns
+               WHERE scope=? AND id<?
+               ORDER BY id DESC LIMIT ?""",
+            (scope.conversation, int(before_id), max(0, int(limit))),
+        ).fetchall()
+        return list(reversed(rows))
+
     def save_memory_extraction_cursor(self, scope: Scope, through: int):
         with self.db:
             self.db.execute(
