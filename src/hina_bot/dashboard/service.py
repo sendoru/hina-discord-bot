@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from .analytics import build_analytics
 from .repository import AdminRepository
 from .telemetry import TelemetryReader, TelemetrySnapshot
 
@@ -86,6 +87,24 @@ class DashboardService:
         number = max(1, int(number))
         size = min(100, max(10, int(size)))
         return Page(number=number, size=size, total=max(0, int(total)))
+
+    def analytics(
+        self,
+        *,
+        operation: str = "",
+        model: str = "",
+        provider: str = "",
+        after: str = "",
+        before: str = "",
+    ) -> dict[str, object]:
+        return build_analytics(
+            self.telemetry.snapshot(),
+            operation=operation,
+            model=model,
+            provider=provider,
+            after=after,
+            before=before,
+        )
 
     def overview(self) -> dict[str, object]:
         snapshot = self.telemetry.snapshot()

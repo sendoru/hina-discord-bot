@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+{% block title %}Analytics · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Routing & Usage Analytics</h1>
+    <p>Retained content-free telemetry only. Missing usage fields stay missing instead of becoming zero.</p>
+  </div>
+  <div class="window">
+    <strong>Available telemetry</strong>
+    <span>{{ data.available.oldest_at or "none" }}</span>
+    <span>→ {{ data.available.newest_at or "none" }}</span>
+  </div>
+</section>
+
+<form class="filters" method="get">
+  <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
+  <input name="model" value="{{ data.filters.model }}" placeholder="model">
+  <input name="provider" value="{{ data.filters.provider }}" placeholder="provider">
+  <input name="after" value="{{ data.filters.after }}" placeholder="after (ISO-8601)">
+  <input name="before" value="{{ data.filters.before }}" placeholder="before (ISO-8601)">
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/analytics">Reset</a>
+</form>
+
+<section class="cards">
+  <article class="card"><span>API calls</span><strong>{{ data.usage.api_calls }}</strong></article>
+  <article class="card"><span>API errors</span><strong>{{ data.usage.errors }}</strong></article>
+  <article class="card">
+    <span>Total tokens</span>
+    <strong>{{ "{:,}".format(data.usage.tokens.total_tokens.value) }}</strong>
+    <small>{{ data.usage.tokens.total_tokens.known }} known / {{ data.usage.tokens.total_tokens.missing }} missing</small>
+  </article>
+  <article class="card">
+    <span>Latency p50 / p95</span>
+    <strong>{{ data.usage.latency.p50 if data.usage.latency.p50 is not none else "—" }} / {{ data.usage.latency.p95 if data.usage.latency.p95 is not none else "—" }} ms</strong>
+    <small>{{ data.usage.latency.known }} known</small>
+  </article>
+  <article class="card"><span>Memory API calls</span><strong>{{ data.usage.memory_calls }}</strong></article>
+  <article class="card"><span>Empty-response retries</span><strong>{{ data.usage.empty_response_retries }}</strong></article>
+</section>
+
+{% if data.usage.tokens.total_tokens.missing or data.exchanges.usage_completeness.get("partial", 0) or data.exchanges.usage_completeness.get("unknown", 0) %}
+<section class="notice">
+  Some retained rows have incomplete usage metadata.
+  Token sums below include only rows where that field is known.
+  Exchange completeness:
+  complete={{ data.exchanges.usage_completeness.get("complete", 0) }},
+  partial={{ data.exchanges.usage_completeness.get("partial", 0) }},
+  unknown={{ data.exchanges.usage_completeness.get("unknown", 0) }}.
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Token fields</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Sum of known values</th><th>Known rows</th><th>Missing rows</th></tr></thead>
+      <tbody>
+      {% for field, metric in data.usage.tokens.items() %}
+      <tr>
+        <td><code>{{ field }}</code></td>
+        <td class="numeric">{{ "{:,}".format(metric.value) }}</td>
+        <td class="numeric">{{ metric.known }}</td>
+        <td class="numeric">{{ metric.missing }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section-heading">
+  <h2>Model routing</h2>
+  <p class="muted">Routing/search panels use answer rows and ignore the operation filter; model/provider/time filters still apply.</p>
+</section>
+
+<section class="cards">
+  <article class="card"><span>Answer rows</span><strong>{{ data.routing.answer_rows }}</strong></article>
+  <article class="card"><span>FAST</span><strong>{{ data.routing.tiers.get("fast", 0) }}</strong></article>
+  <article class="card"><span>SMART</span><strong>{{ data.routing.tiers.get("smart", 0) }}</strong></article>
+  <article class="card"><span>Near threshold (±0.25)</span><strong>{{ data.routing.near_threshold }}</strong><small>{{ data.routing.known_margins }} known / {{ data.routing.missing_margins }} missing</small></article>
+  <article class="card"><span>Classifier calls</span><strong>{{ data.routing.classifier.calls }}</strong></article>
+  <article class="card"><span>Classifier errors</span><strong>{{ data.routing.classifier.errors }}</strong></article>
+</section>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Baseline → final tier</h2>
+    {% if data.routing.baseline_to_final.rows %}
+    <table>
+      <thead><tr><th>Baseline</th><th>Final</th><th>Count</th></tr></thead>
+      <tbody>
+      {% for row in data.routing.baseline_to_final.rows %}
+      <tr><td>{{ row["from"] }}</td><td>{{ row["to"] }}</td><td class="numeric">{{ row.count }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">No baseline/final pairs in this window.</p>{% endif %}
+    {% if data.routing.baseline_to_final.missing %}
+    <p class="muted">{{ data.routing.baseline_to_final.missing }} answer rows lack a complete pair.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Semantic routing</h2>
+    <table>
+      <thead><tr><th>Level</th><th>Count</th></tr></thead>
+      <tbody>
+      {% for key, value in data.routing.semantic_level.items() %}
+      <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <h3>Decision source</h3>
+    <table><tbody>
+    {% for key, value in data.routing.decision_source.items() %}
+    <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Threshold margins</h2>
+    <table>
+      <thead><tr><th>Margin bucket</th><th>Count</th></tr></thead>
+      <tbody>
+      {% for row in data.routing.margin_buckets %}
+      <tr><td>{{ row.label }}</td><td class="numeric">{{ row.count }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Route components</h2>
+    {% if data.routing.components %}
+    <table>
+      <thead><tr><th>Component</th><th>Avg</th><th>Max</th><th>Known</th></tr></thead>
+      <tbody>
+      {% for row in data.routing.components %}
+      <tr><td>{{ row.name }}</td><td class="numeric">{{ row.average }}</td><td class="numeric">{{ row.max }}</td><td class="numeric">{{ row.known }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">No component telemetry.</p>{% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Route reasons</h2>
+    {% if data.routing.reasons %}
+    <table><tbody>
+    {% for key, value in data.routing.reasons.items() %}
+    <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    {% else %}<p class="muted">No reason telemetry.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Classifier cost</h2>
+    <dl class="metadata compact">
+      <div><dt>Calls</dt><dd>{{ data.routing.classifier.calls }}</dd></div>
+      <div><dt>Errors</dt><dd>{{ data.routing.classifier.errors }}</dd></div>
+      <div><dt>Total tokens</dt><dd>{{ data.routing.classifier.tokens.value }} <span class="muted">({{ data.routing.classifier.tokens.known }} known / {{ data.routing.classifier.tokens.missing }} missing)</span></dd></div>
+      <div><dt>Avg latency</dt><dd>{{ data.routing.classifier.latency.average if data.routing.classifier.latency.average is not none else "—" }} ms</dd></div>
+    </dl>
+    {% if data.routing.classifier.providers %}
+    <table><tbody>
+    {% for key, value in data.routing.classifier.providers.items() %}
+    <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Shadow classifier proposals</h2>
+  <p class="muted">{{ data.routing.shadow.count }} retained <code>model_route_shadow</code> rows.</p>
+  <div class="grid-2 nested-grid">
+    <div>
+      <h3>Model baseline → proposal</h3>
+      {% if data.routing.shadow.tier_transitions.rows %}
+      <table><tbody>
+      {% for row in data.routing.shadow.tier_transitions.rows %}
+      <tr><td>{{ row["from"] }} → {{ row["to"] }}</td><td class="numeric">{{ row.count }}</td></tr>
+      {% endfor %}
+      </tbody></table>
+      {% else %}<p class="muted">No shadow tier pairs.</p>{% endif %}
+    </div>
+    <div>
+      <h3>Search baseline → proposal</h3>
+      {% if data.routing.shadow.search_transitions.rows %}
+      <table><tbody>
+      {% for row in data.routing.shadow.search_transitions.rows %}
+      <tr><td>{{ row["from"] }} → {{ row["to"] }}</td><td class="numeric">{{ row.count }}</td></tr>
+      {% endfor %}
+      </tbody></table>
+      {% else %}<p class="muted">No shadow search pairs.</p>{% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="section-heading">
+  <h2>Web-search routing</h2>
+</section>
+<div class="grid-2">
+  <section class="panel">
+    <h2>Final mode → actual use</h2>
+    {% if data.search.outcomes %}
+    <table><tbody>
+    {% for key, value in data.search.outcomes.items() %}
+    <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    {% else %}<p class="muted">No search outcome telemetry.</p>{% endif %}
+  </section>
+  <section class="panel">
+    <h2>Search decisions</h2>
+    <h3>Decision source</h3>
+    <table><tbody>
+    {% for key, value in data.search.decision_source.items() %}
+    <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    <h3>Semantic web need</h3>
+    <table><tbody>
+    {% for key, value in data.search.semantic_web_need.items() %}
+    <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Locked search reasons</h2>
+  {% if data.search.locked_reasons %}
+  <table><tbody>
+  {% for key, value in data.search.locked_reasons.items() %}
+  <tr><td><code>{{ key }}</code></td><td class="numeric">{{ value }}</td></tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}<p class="muted">No locked-reason telemetry.</p>{% endif %}
+</section>
+
+<section class="section-heading">
+  <h2>Usage breakdown</h2>
+  <p class="muted">These tables use the operation/model/provider/time filters above.</p>
+</section>
+
+{% for title, rows in [("By operation", data.usage.operations), ("By model", data.usage.models), ("By provider", data.usage.providers)] %}
+<section class="panel">
+  <h2>{{ title }}</h2>
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Calls</th><th>Errors</th><th>Total tokens</th><th>Usage coverage</th><th>Avg latency</th><th>p95</th><th>Search calls</th><th>Empty retries</th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+      <tr>
+        <td><code>{{ row.name }}</code></td>
+        <td class="numeric">{{ row.calls }}</td>
+        <td class="numeric">{{ row.errors }}</td>
+        <td class="numeric">{{ "{:,}".format(row.total_tokens.value) }}</td>
+        <td>{{ row.total_tokens.known }} / {{ row.calls }}</td>
+        <td class="numeric">{{ row.latency.average if row.latency.average is not none else "—" }}</td>
+        <td class="numeric">{{ row.latency.p95 if row.latency.p95 is not none else "—" }}</td>
+        <td class="numeric">{{ row.web_search_calls.value }}</td>
+        <td class="numeric">{{ row.empty_response_retries }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">No rows match this filter.</p>{% endif %}
+</section>
+{% endfor %}
+
+<section class="panel">
+  <h2>Discord exchange aggregates</h2>
+  <p class="muted">Exchange rows are filtered by time only and represent whole Discord turns, not the narrowed operation/provider subset.</p>
+  <dl class="metadata">
+    <div><dt>Exchanges</dt><dd>{{ data.exchanges.count }}</dd></div>
+    <div><dt>Calls</dt><dd>{{ data.exchanges.calls.value }} <span class="muted">({{ data.exchanges.calls.known }} known)</span></dd></div>
+    <div><dt>Total tokens</dt><dd>{{ data.exchanges.tokens.total_tokens.value }} <span class="muted">({{ data.exchanges.tokens.total_tokens.known }} known / {{ data.exchanges.tokens.total_tokens.missing }} missing)</span></dd></div>
+    <div><dt>Avg latency</dt><dd>{{ data.exchanges.latency.average if data.exchanges.latency.average is not none else "—" }} ms</dd></div>
+    <div><dt>p95 latency</dt><dd>{{ data.exchanges.latency.p95 if data.exchanges.latency.p95 is not none else "—" }} ms</dd></div>
+  </dl>
+</section>
+
+<section class="panel">
+  <h2>Daily provider / model breakdown</h2>
+  {% if data.usage.daily %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>UTC day</th><th>Provider</th><th>Model</th><th>Calls</th><th>Errors</th><th>Total tokens</th><th>Coverage</th><th>Avg latency</th></tr></thead>
+      <tbody>
+      {% for row in data.usage.daily %}
+      <tr>
+        <td>{{ row.day }}</td><td>{{ row.provider }}</td><td><code>{{ row.model }}</code></td>
+        <td class="numeric">{{ row.calls }}</td><td class="numeric">{{ row.errors }}</td>
+        <td class="numeric">{{ row.tokens.value }}</td><td>{{ row.tokens.known }} / {{ row.calls }}</td>
+        <td class="numeric">{{ row.latency.average if row.latency.average is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">No daily usage rows.</p>{% endif %}
+</section>
+{% endblock %}

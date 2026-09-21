@@ -137,6 +137,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
 
     overview = client.get("/")
     traces = client.get("/traces?tier=fast")
+    analytics = client.get("/analytics?operation=answer")
     detail = client.get("/traces/trace-ui")
     conversations = client.get("/conversations?q=dashboard")
     memory = client.get("/memory?q=dashboard")
@@ -149,7 +150,12 @@ def test_dashboard_read_only_pages_render(tmp_path):
 
     assert overview.status_code == 200
     assert "Hina Dashboard" in overview.text
+    assert 'aria-label="Dashboard sections"' in overview.text
+    assert "viewport-fit=cover" in overview.text
     assert "trace-ui" in traces.text
+    assert analytics.status_code == 200
+    assert "Routing & Usage Analytics" in analytics.text
+    assert "test-model" in analytics.text
     assert "hello dashboard" in detail.text
     assert "hello dashboard" in conversations.text
     assert "dashboard memory" in memory.text
@@ -161,6 +167,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "dashboard memory updated" in reconciliation_detail.text
     assert static.status_code == 200
     assert "color-scheme" in static.text
+    assert "@media (max-width: 720px)" in static.text
+    assert "@media (max-width: 480px)" in static.text
+    assert "overscroll-behavior-x: contain" in static.text
 
 
 def test_unknown_trace_returns_404(tmp_path):
