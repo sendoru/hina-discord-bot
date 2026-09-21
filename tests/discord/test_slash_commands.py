@@ -6,7 +6,7 @@ import pytest
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.discord.slash_commands import EmojiSlashCommands, _parse_emoji_import_items
+from hina_bot.discord.slash_commands import HELP_TEXT, EmojiSlashCommands, _parse_emoji_import_items
 from hina_bot.discord.web_bot import HinaClient
 
 
@@ -48,7 +48,11 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
 
     assert slash_bot.tree.get_command("instruction") is not None
     assert slash_bot.tree.get_command("knowledge") is not None
-    assert slash_bot.tree.get_command("help") is not None
+    help_command = slash_bot.tree.get_command("help")
+    assert help_command is not None
+    assert "DM" in HELP_TEXT
+    assert "메시지 보내기" in HELP_TEXT
+    assert "`히나야`" in HELP_TEXT
 
 
 def test_emoji_import_items_parser():
