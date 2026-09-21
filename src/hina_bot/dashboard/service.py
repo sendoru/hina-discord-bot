@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import Any
-
 from .repository import AdminRepository
 from .telemetry import TelemetryReader, TelemetrySnapshot
 
@@ -298,25 +296,21 @@ class DashboardService:
             received = next((row for row in events if row.get("event") == "turn.received"), None)
             exchange = exchanges[-1] if exchanges else None
             answer_rows = [row for row in usage if row.get("operation") == "answer"]
-            answer = answer_rows[-1] if answer_rows else None
 
             timestamps = [
                 value
                 for row in (*events, *usage, *exchanges)
                 if (value := _timestamp(row))
             ]
-            at = min(timestamps) if timestamps else str(stored_by_trace.get(trace_id, {}).get("created_at", ""))
-
+            at = (\n                min(timestamps)\n                if timestamps\n                else str(stored_by_trace.get(trace_id, {}).get("created_at", ""))\n            )\n
             status_value = (
                 terminal.get("status")
                 if terminal and terminal.get("status")
-                else terminal.get("event") if terminal else exchange.get("status") if exchange else "incomplete"
-            )
+                else (\n                    terminal.get("event")\n                    if terminal\n                    else exchange.get("status") if exchange else "incomplete"\n                )\n            )
             scope_value = (
                 terminal.get("scope")
                 if terminal and terminal.get("scope")
-                else received.get("scope") if received else exchange.get("scope") if exchange else ""
-            )
+                else (\n                    received.get("scope")\n                    if received\n                    else exchange.get("scope") if exchange else ""\n                )\n            )
 
             models: set[str] = set()
             if exchange and isinstance(exchange.get("models"), list):
