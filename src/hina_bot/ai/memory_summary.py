@@ -10,6 +10,7 @@ from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .memory_extraction import (
     SHADOW_EXTRACTION_POLICY,
     build_reconciliation_candidates,
+    build_shadow_evidence_context,
     build_shadow_turns,
     parse_shadow_extraction,
     persist_reconciliation_proposals,
@@ -160,10 +161,21 @@ class MemorySummaryMixin:
             source_public_at_capture,
         ) = build_shadow_turns(
             pending,
-            include_replies=scope.guild_id is None,
+            include_replies=True,
         )
         if not turns:
             return False
+        evidence_rows = []
+        evidence_reader = getattr(store, "memory_extraction_evidence", None)
+        if callable(evidence_reader):
+            evidence_rows = evidence_reader(
+                scope,
+                before_id=int(pending[0]["id"]),
+                limit=self.settings.structured_memory_every,
+            )
+        evidence_context, evidence_context_items = build_shadow_evidence_context(
+            evidence_rows
+        )
         candidate_items = []
         candidate_reader = getattr(store, "memory_reconciliation_candidates", None)
         if callable(candidate_reader):
@@ -181,6 +193,11 @@ class MemorySummaryMixin:
             },
             "turns": turns,
             **(
+                {"recent_evidence_context": evidence_context}
+                if evidence_context
+                else {}
+            ),
+            **(
                 {"existing_memory_candidates": reconciliation_candidates}
                 if reconciliation_candidates
                 else {}
@@ -197,10 +214,11 @@ class MemorySummaryMixin:
             pending_turns=len(pending),
             batch_turns=len(turns),
             payload=payload,
-            context_items=context_items,
+            context_items=context_items + evidence_context_items,
             old_memory="",
         )
         metrics["candidate_items"] = len(reconciliation_candidates)
+        metrics["evidence_turns"] = len(evidence_context)
         _record_shadow_extraction(self.usage, "requested", **metrics)
         try:
             response = await self._memory_request(
@@ -236,7 +254,21 @@ class MemorySummaryMixin:
                     parsed.items,
                     persisted.item_ids,
                 )
-            _record_shadow_extraction(self.usage, "completed", **metrics)
+            completed_metrics = {
+                **metrics,
+                "accepted_items": len(parsed.items),
+                "stored_items": persisted.stored,
+                "duplicate_items": persisted.duplicates,
+                "rejected_items": parsed.rejected_items,
+                "proposal_items": proposal_count,
+                "rejected_relations": parsed.rejected_relations,
+                "rejected_relationship_evidence": parsed.rejected_relationship_evidence,
+            }
+            _record_shadow_extraction(
+                self.usage,
+                "completed",
+                **completed_metrics,
+            )
             log.info(
                 "Structured memory shadow extraction completed: accepted=%d stored=%d "
                 "duplicates=%d rejected=%d proposals=%d rejected_relations=%d "
