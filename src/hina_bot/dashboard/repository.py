@@ -195,6 +195,10 @@ class AdminRepository:
         query: str = "",
         confidence_min: float | None = None,
         confidence_max: float | None = None,
+        created_after: str = "",
+        created_before: str = "",
+        updated_after: str = "",
+        updated_before: str = "",
     ) -> tuple[str, tuple[object, ...]]:
         columns = self._table_columns("memory_items")
         clauses: list[str] = []
@@ -226,6 +230,15 @@ class AdminRepository:
         if confidence_max is not None:
             clauses.append("confidence<=?")
             params.append(float(confidence_max))
+        for column, operator, value in (
+            ("created_at", ">=", created_after),
+            ("created_at", "<=", created_before),
+            ("updated_at", ">=", updated_after),
+            ("updated_at", "<=", updated_before),
+        ):
+            if value:
+                clauses.append(f"{column}{operator}?")
+                params.append(value)
         if query:
             escaped = self._like(query)
             pattern = f"%{escaped}%"
