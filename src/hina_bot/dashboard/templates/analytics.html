@@ -304,7 +304,7 @@
       <tr>
         <td>{{ row.day }}</td><td>{{ row.provider }}</td><td><code>{{ row.model }}</code></td>
         <td class="numeric">{{ row.calls }}</td><td class="numeric">{{ row.errors }}</td>
-        <td class="numeric">{{ row["to"]kens.value }}</td><td>{{ row["to"]kens.known }} / {{ row.calls }}</td>
+        <td class="numeric">{{ row.tokens.value }}</td><td>{{ row.tokens.known }} / {{ row.calls }}</td>
         <td class="numeric">{{ row.latency.average if row.latency.average is not none else "—" }}</td>
       </tr>
       {% endfor %}
