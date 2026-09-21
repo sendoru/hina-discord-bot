@@ -259,3 +259,130 @@ def test_summary_and_cursor_service_show_rollout_state(tmp_path):
     assert row["initialized"] == 0
     assert row["effective_through_id"] == row["summary_through_id"]
     assert row["cursor_delta"] is None
+
+
+def build_reconciliation_service(tmp_path):
+    database = tmp_path / "reconciliation.sqlite3"
+    store = Store(str(database))
+    scope = Scope(None, 10, 100)
+
+    token = CURRENT_TURN_ID.set("trace-old")
+    try:
+        store.add(scope, 101, "old source", "reply")
+    finally:
+        CURRENT_TURN_ID.reset(token)
+    token = CURRENT_TURN_ID.set("trace-extract")
+    try:
+        store.add(scope, 102, "new correction source", "reply")
+    finally:
+        CURRENT_TURN_ID.reset(token)
+
+    target_id = store.add_memory_item(
+        scope,
+        "old remembered value",
+        kind="fact",
+        disclosure="reference_gated",
+        source_message_ids=("101", "102"),
+        confidence=0.8,
+    )
+    new_id = store.add_memory_item(
+        scope,
+        "new remembered value",
+        kind="fact",
+        disclosure="reference_gated",
+        source_message_ids=("102", "101"),
+        confidence=0.95,
+    )
+    proposal_id = store.add_memory_reconciliation_proposal(
+        scope,
+        new_memory_item_id=new_id,
+        target_memory_item_id=target_id,
+        relation="corrects",
+        confidence=0.93,
+        source_message_ids=("102", "101"),
+    )
+    store.close()
+
+    usage = tmp_path / "logs" / "usage.jsonl"
+    events = tmp_path / "logs" / "events.jsonl"
+    write_rows(
+        usage,
+        [
+            {
+                "at": "2026-09-21T01:00:00+00:00",
+                "turn_id": "trace-extract",
+                "operation": "memory.shadow_extraction",
+                "status": "requested",
+                "memory_kind": "structured_shadow",
+                "pending_turns": 4,
+                "batch_turns": 4,
+            },
+            {
+                "at": "2026-09-21T01:00:01+00:00",
+                "turn_id": "trace-extract",
+                "operation": "extract_memory_items_shadow",
+                "model": "memory-model",
+                "status": "completed",
+                "total_tokens": 120,
+            },
+            {
+                "at": "2026-09-21T01:00:02+00:00",
+                "turn_id": "trace-extract",
+                "operation": "memory.shadow_extraction",
+                "status": "completed",
+                "memory_kind": "structured_shadow",
+                "pending_turns": 4,
+                "batch_turns": 4,
+            },
+        ],
+    )
+    write_rows(
+        events,
+        [
+            {
+                "at": "2026-09-21T01:00:03+00:00",
+                "turn_id": "trace-extract",
+                "event": "turn.completed",
+                "status": "completed",
+                "scope": "dm",
+            }
+        ],
+    )
+    return (
+        DashboardService(AdminRepository(database), TelemetryReader(usage, events)),
+        proposal_id,
+    )
+
+
+def test_reconciliation_service_list_stats_and_detail_context(tmp_path):
+    service, proposal_id = build_reconciliation_service(tmp_path)
+
+    listing = service.reconciliation_proposals(
+        relation="corrects",
+        kind="fact",
+        retry="yes",
+        confidence_min="0.9",
+        query="remembered",
+    )
+
+    assert listing["page"].total == 1
+    assert listing["stats"]["retry_suspects"] == 1
+    assert listing["rows"][0]["same_source_set"] is True
+    assert listing["rows"][0]["source_overlap_ids"] == ("101", "102")
+
+    detail = service.reconciliation_proposal(proposal_id)
+
+    assert detail is not None
+    assert detail["new_item"]["content"] == "new remembered value"
+    assert detail["target_item"]["content"] == "old remembered value"
+    assert {row["message_id"] for row in detail["sources"]} == {"101", "102"}
+    trace = next(
+        row for row in detail["extraction_traces"]
+        if row["turn_id"] == "trace-extract"
+    )
+    assert [row["operation"] for row in trace["usage"]] == [
+        "memory.shadow_extraction",
+        "extract_memory_items_shadow",
+        "memory.shadow_extraction",
+    ]
+    assert trace["events"][0]["event"] == "turn.completed"

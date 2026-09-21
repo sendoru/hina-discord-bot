@@ -445,6 +445,233 @@ class AdminRepository:
             ).fetchall()
         return self._dicts(rows)
 
+    @staticmethod
+    def _proposal_select() -> str:
+        return """
+            SELECT p.*,
+                   n.content AS new_content,
+                   n.kind AS new_kind,
+                   n.disclosure AS new_disclosure,
+                   n.confidence AS new_confidence,
+                   n.source_message_ids AS new_source_message_ids,
+                   n.relationship_evidence AS new_relationship_evidence,
+                   n.created_at AS new_created_at,
+                   n.updated_at AS new_updated_at,
+                   t.content AS target_content,
+                   t.kind AS target_kind,
+                   t.disclosure AS target_disclosure,
+                   t.confidence AS target_confidence,
+                   t.source_message_ids AS target_source_message_ids,
+                   t.relationship_evidence AS target_relationship_evidence,
+                   t.created_at AS target_created_at,
+                   t.updated_at AS target_updated_at,
+                   CASE
+                     WHEN json_array_length(n.source_message_ids)>0
+                          AND NOT EXISTS (
+                              SELECT value FROM json_each(n.source_message_ids)
+                              EXCEPT
+                              SELECT value FROM json_each(t.source_message_ids)
+                          )
+                          AND NOT EXISTS (
+                              SELECT value FROM json_each(t.source_message_ids)
+                              EXCEPT
+                              SELECT value FROM json_each(n.source_message_ids)
+                          )
+                     THEN 1 ELSE 0
+                   END AS retry_suspect
+            FROM memory_reconciliation_proposals p
+            JOIN memory_items n ON n.id=p.new_memory_item_id
+            JOIN memory_items t ON t.id=p.target_memory_item_id
+        """
+
+    def _proposal_filters(
+        self,
+        *,
+        user_id: str = "",
+        origin_realm: str = "",
+        origin_channel_id: str = "",
+        relation: str = "",
+        kind: str = "",
+        retry: str = "",
+        query: str = "",
+        confidence_min: float | None = None,
+        confidence_max: float | None = None,
+        created_after: str = "",
+        created_before: str = "",
+    ) -> tuple[str, tuple[object, ...]]:
+        clauses: list[str] = []
+        params: list[object] = []
+        exact = {
+            "p.user_id": user_id,
+            "p.origin_realm": origin_realm,
+            "p.origin_channel_id": origin_channel_id,
+            "p.relation": relation,
+        }
+        for column, value in exact.items():
+            if value:
+                clauses.append(f"{column}=?")
+                params.append(value)
+        if kind:
+            clauses.append("(n.kind=? OR t.kind=?)")
+            params.extend((kind, kind))
+        if confidence_min is not None:
+            clauses.append("p.confidence>=?")
+            params.append(float(confidence_min))
+        if confidence_max is not None:
+            clauses.append("p.confidence<=?")
+            params.append(float(confidence_max))
+        if created_after:
+            clauses.append("p.created_at>=?")
+            params.append(created_after)
+        if created_before:
+            clauses.append("p.created_at<=?")
+            params.append(created_before)
+        retry_expr = """
+            json_array_length(n.source_message_ids)>0
+            AND NOT EXISTS (
+                SELECT value FROM json_each(n.source_message_ids)
+                EXCEPT
+                SELECT value FROM json_each(t.source_message_ids)
+            )
+            AND NOT EXISTS (
+                SELECT value FROM json_each(t.source_message_ids)
+                EXCEPT
+                SELECT value FROM json_each(n.source_message_ids)
+            )
+        """
+        if retry == "yes":
+            clauses.append(f"({retry_expr})")
+        elif retry == "no":
+            clauses.append(f"NOT ({retry_expr})")
+        if query:
+            escaped = self._like(query)
+            pattern = f"%{escaped}%"
+            clauses.append(
+                """(
+                    n.content LIKE ? ESCAPE '\\'
+                    OR t.content LIKE ? ESCAPE '\\'
+                    OR p.source_message_ids LIKE ? ESCAPE '\\'
+                    OR CAST(p.id AS TEXT) LIKE ? ESCAPE '\\'
+                )"""
+            )
+            params.extend((pattern, pattern, pattern, pattern))
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        return where, tuple(params)
+
+    def reconciliation_schema(self) -> dict[str, object]:
+        proposal_columns = self._table_columns("memory_reconciliation_proposals")
+        memory_columns = self._table_columns("memory_items")
+        return {
+            "available": bool(proposal_columns and memory_columns),
+            "proposal_columns": tuple(sorted(proposal_columns)),
+            "memory_columns": tuple(sorted(memory_columns)),
+        }
+
+    def count_reconciliation_proposals(self, **filters) -> int:
+        if not self.reconciliation_schema()["available"]:
+            return 0
+        where, params = self._proposal_filters(**filters)
+        with self._connection() as db:
+            row = db.execute(
+                f"""SELECT COUNT(*) AS count
+                    FROM memory_reconciliation_proposals p
+                    JOIN memory_items n ON n.id=p.new_memory_item_id
+                    JOIN memory_items t ON t.id=p.target_memory_item_id
+                    {where}""",
+                params,
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def search_reconciliation_proposals(
+        self, *, limit: int = 50, offset: int = 0, **filters
+    ) -> list[dict[str, object]]:
+        if not self.reconciliation_schema()["available"]:
+            return []
+        limit = self._limit(limit)
+        offset = max(0, int(offset))
+        where, params = self._proposal_filters(**filters)
+        with self._connection() as db:
+            rows = db.execute(
+                f"""{self._proposal_select()}
+                    {where}
+                    ORDER BY p.id DESC LIMIT ? OFFSET ?""",
+                (*params, limit, offset),
+            ).fetchall()
+        return self._dicts(rows)
+
+    def reconciliation_proposal(self, proposal_id: int) -> dict[str, object] | None:
+        if not self.reconciliation_schema()["available"]:
+            return None
+        with self._connection() as db:
+            row = db.execute(
+                f"""{self._proposal_select()}
+                    WHERE p.id=?""",
+                (int(proposal_id),),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def reconciliation_stats(self, **filters) -> dict[str, object]:
+        if not self.reconciliation_schema()["available"]:
+            return {
+                "total": 0,
+                "average_confidence": None,
+                "retry_suspects": 0,
+                "relationship_proposals": 0,
+                "relations": {},
+            }
+        where, params = self._proposal_filters(**filters)
+        base = """
+            FROM memory_reconciliation_proposals p
+            JOIN memory_items n ON n.id=p.new_memory_item_id
+            JOIN memory_items t ON t.id=p.target_memory_item_id
+        """
+        retry_expr = """
+            json_array_length(n.source_message_ids)>0
+            AND NOT EXISTS (
+                SELECT value FROM json_each(n.source_message_ids)
+                EXCEPT
+                SELECT value FROM json_each(t.source_message_ids)
+            )
+            AND NOT EXISTS (
+                SELECT value FROM json_each(t.source_message_ids)
+                EXCEPT
+                SELECT value FROM json_each(n.source_message_ids)
+            )
+        """
+        with self._connection() as db:
+            summary = db.execute(
+                f"""SELECT COUNT(*) AS total,
+                           AVG(p.confidence) AS average_confidence,
+                           SUM(CASE WHEN {retry_expr} THEN 1 ELSE 0 END)
+                               AS retry_suspects,
+                           SUM(CASE WHEN n.kind='relationship' OR t.kind='relationship'
+                                    THEN 1 ELSE 0 END) AS relationship_proposals
+                    {base}
+                    {where}""",
+                params,
+            ).fetchone()
+            relations = db.execute(
+                f"""SELECT p.relation,COUNT(*) AS count
+                    {base}
+                    {where}
+                    GROUP BY p.relation ORDER BY p.relation""",
+                params,
+            ).fetchall()
+        return {
+            "total": int(summary["total"] or 0),
+            "average_confidence": (
+                float(summary["average_confidence"])
+                if summary["average_confidence"] is not None
+                else None
+            ),
+            "retry_suspects": int(summary["retry_suspects"] or 0),
+            "relationship_proposals": int(summary["relationship_proposals"] or 0),
+            "relations": {
+                str(row["relation"]): int(row["count"])
+                for row in relations
+            },
+        }
+
     def recent_reconciliation_proposals(
         self, *, limit: int = 100
     ) -> list[dict[str, object]]:

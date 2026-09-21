@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Proposal #{{ data.proposal.id }} · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <a class="back" href="/reconciliation">← Reconciliation</a>
+    <h1>Proposal #{{ data.proposal.id }}</h1>
+    <p>
+      <span class="relation relation-{{ data.proposal.relation }}">{{ data.proposal.relation }}</span>
+      · confidence {{ "%.3f"|format(data.proposal.confidence) }}
+      · {{ data.proposal.created_at }}
+    </p>
+  </div>
+  <div class="window">
+    <strong>Owner / origin</strong>
+    <span><code>{{ data.proposal.user_id }}</code></span>
+    <span>{{ data.proposal.origin_realm }} · #{{ data.proposal.origin_channel_id }}</span>
+  </div>
+</section>
+
+<section class="cards reconciliation-detail-stats">
+  <article class="card"><span>Proposal sources</span><strong>{{ data.proposal.source_message_ids_decoded|length }}</strong></article>
+  <article class="card"><span>Source overlap</span><strong>{{ data.proposal.source_overlap_ids|length }}</strong></article>
+  <article class="card"><span>Exact same source set</span><strong>{{ "yes" if data.proposal.same_source_set else "no" }}</strong></article>
+  <article class="card"><span>Extraction traces found</span><strong>{{ data.extraction_traces|length }}</strong></article>
+</section>
+
+<div class="compare-grid">
+  {% for label, item, side in [("Target / old", data.target_item, "target"), ("New", data.new_item, "new")] %}
+  <section class="panel compare-card {{ side }}">
+    <div class="panel-heading">
+      <h2>{{ label }}</h2>
+      <a href="/memory/{{ item.id }}">Memory #{{ item.id }}</a>
+    </div>
+    <dl class="metadata compact">
+      <div><dt>Kind</dt><dd>{{ item.kind }}</dd></div>
+      <div><dt>Disclosure</dt><dd>{{ item.disclosure }}</dd></div>
+      <div><dt>Confidence</dt><dd>{{ "%.3f"|format(item.confidence) }}</dd></div>
+      <div><dt>Origin</dt><dd>{{ item.origin_realm }} · #{{ item.origin_channel_id }}</dd></div>
+      <div><dt>Captured</dt><dd>{{ "public" if item.origin_public_at_capture else "private" }}</dd></div>
+      <div><dt>Created / updated</dt><dd>{{ item.created_at }}<br>{{ item.updated_at }}</dd></div>
+    </dl>
+    <h3>Content</h3>
+    <div class="message">{{ item.content }}</div>
+    <h3>Source message IDs</h3>
+    {% if item.source_message_ids_decoded %}
+      <div class="chips">
+      {% for source_id in item.source_message_ids_decoded %}<code class="chip">{{ source_id }}</code>{% endfor %}
+      </div>
+    {% else %}<p class="muted">None</p>{% endif %}
+    {% if item.relationship_evidence_decoded %}
+      <details><summary>Relationship evidence</summary><pre>{{ item.relationship_evidence_decoded | tojson(indent=2) }}</pre></details>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<section class="panel">
+  <h2>Source / provenance</h2>
+  <p class="muted">
+    Proposal sources: {{ data.proposal.source_message_ids_decoded | join(", ") or "none" }}.
+    Shared IDs between old and new: {{ data.proposal.source_overlap_ids | join(", ") or "none" }}.
+  </p>
+  {% if data.sources %}
+    {% for source in data.sources %}
+    <article class="source-card">
+      <div class="panel-heading">
+        <strong><code>{{ source.message_id }}</code></strong>
+        <div class="source-tags">
+          {% if source.message_id in data.new_item.source_message_ids_decoded %}<span class="tag">new</span>{% endif %}
+          {% if source.message_id in data.target_item.source_message_ids_decoded %}<span class="tag">target</span>{% endif %}
+          {% if source.message_id in data.proposal.source_message_ids_decoded %}<span class="tag">proposal</span>{% endif %}
+          {% if source.turn and source.turn.turn_id %}<a href="/traces/{{ source.turn.turn_id }}">Trace</a>{% endif %}
+        </div>
+      </div>
+      {% if source.turn %}
+      <dl class="metadata compact">
+        <div><dt>Scope</dt><dd>{{ source.turn.scope }}</dd></div>
+        <div><dt>Realm</dt><dd>{{ source.turn.realm }}</dd></div>
+        <div><dt>Created</dt><dd>{{ source.turn.created_at }}</dd></div>
+      </dl>
+      <div class="message">{{ source.turn.content }}</div>
+      {% else %}
+      <p class="muted">Raw turn expired from bounded retention or predates the retained dataset.</p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  {% else %}
+  <p class="muted">No source IDs are available.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Extraction / retry context</h2>
+  {% if data.proposal.same_source_set %}
+  <div class="notice inline-notice">
+    New and target memory have the same non-empty source-message set. Review this as a possible retry/extraction duplicate.
+  </div>
+  {% elif data.proposal.source_overlap_ids %}
+  <div class="notice inline-notice">
+    New and target memory partially overlap in source messages, but their source sets are not identical.
+  </div>
+  {% else %}
+  <p class="muted">New and target memory do not share retained source-message IDs.</p>
+  {% endif %}
+
+  {% if data.extraction_traces %}
+    {% for trace in data.extraction_traces %}
+    <details class="timeline-item" open>
+      <summary>Trace <code>{{ trace.turn_id }}</code> · {{ trace.usage|length }} memory telemetry rows</summary>
+      <p><a href="/traces/{{ trace.turn_id }}">Open full trace</a></p>
+      {% if trace.usage %}
+        {% for row in trace.usage %}
+        <pre>{{ row | tojson(indent=2) }}</pre>
+        {% endfor %}
+      {% else %}
+      <p class="muted">The source trace remains, but structured-memory usage rows have rotated out or were not recorded.</p>
+      {% endif %}
+      {% if trace.events %}
+      <details>
+        <summary>Discord lifecycle events</summary>
+        {% for row in trace.events %}<pre>{{ row | tojson(indent=2) }}</pre>{% endfor %}
+      </details>
+      {% endif %}
+    </details>
+    {% endfor %}
+  {% else %}
+  <p class="muted">No retained source trace can be correlated with this proposal's new memory item.</p>
+  {% endif %}
+</section>
+
+<div class="compare-grid">
+  <section class="panel">
+    <h2>Nearby target memory</h2>
+    {% if data.target_neighbors %}
+    <table>
+      <thead><tr><th>ID</th><th>Kind</th><th>Content</th></tr></thead>
+      <tbody>
+      {% for row in data.target_neighbors %}
+      <tr><td><a href="/memory/{{ row.id }}">#{{ row.id }}</a></td><td>{{ row.kind }}</td><td>{{ row.content }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">No nearby memory.</p>{% endif %}
+  </section>
+  <section class="panel">
+    <h2>Nearby new memory</h2>
+    {% if data.new_neighbors %}
+    <table>
+      <thead><tr><th>ID</th><th>Kind</th><th>Content</th></tr></thead>
+      <tbody>
+      {% for row in data.new_neighbors %}
+      <tr><td><a href="/memory/{{ row.id }}">#{{ row.id }}</a></td><td>{{ row.kind }}</td><td>{{ row.content }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">No nearby memory.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}
