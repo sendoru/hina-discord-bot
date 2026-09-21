@@ -5,7 +5,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hina_bot.ai.memory_extraction import (
+    SHADOW_EXTRACTION_POLICY,
     ExtractedMemoryItem,
+    build_shadow_evidence_context,
     build_shadow_turns,
     parse_shadow_extraction,
     persist_shadow_items,
@@ -205,6 +207,33 @@ def test_build_shadow_turns_preserves_causal_context_and_provenance():
     assert turns[0]["context"][0]["ownership"] == "assistant"
 
 
+def test_build_shadow_evidence_context_keeps_reply_but_omits_source_id():
+    rows = [{
+        "message_id": "100",
+        "created_at": "2026-09-17 09:00:00",
+        "content": "또 놀리는 거야?",
+        "reply": "조금은.",
+        "memory_context": "",
+    }]
+
+    evidence, context_items = build_shadow_evidence_context(rows)
+
+    assert context_items == 0
+    assert evidence == [{
+        "at": "2026-09-17 09:00:00",
+        "user": "또 놀리는 거야?",
+        "hina": "조금은.",
+    }]
+    assert "message_id" not in evidence[0]
+
+
+def test_extraction_policy_allows_stable_personal_preference_without_future_marker():
+    assert "난 커피를 못 마셔" in SHADOW_EXTRACTION_POLICY
+    assert "오늘은 커피 싫어" in SHADOW_EXTRACTION_POLICY
+    assert "봇의 미래 행동" in SHADOW_EXTRACTION_POLICY
+    assert "recent_evidence_context" in SHADOW_EXTRACTION_POLICY
+
+
 def test_persist_shadow_items_suppresses_exact_retry_duplicates():
     store = Store(":memory:")
     scope = Scope(None, 10, 100)
@@ -339,6 +368,112 @@ async def test_structured_extraction_processes_fixed_size_batches():
     await harness.extract_structured_memory(store, scope)
     assert store.memory_extraction_cursor(scope) > first_cursor
     assert store.pending_memory_extraction(scope) == []
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_second_batch_includes_previous_turns_as_read_only_evidence():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 8)
+    harness = _harness(
+        _response('{"items":[]}'),
+        _response('{"items":[]}'),
+    )
+
+    await harness.extract_structured_memory(store, scope)
+    await harness.extract_structured_memory(store, scope)
+
+    payload = json.loads(harness.usage.request.await_args_list[-1].kwargs["input"])
+    assert [row["message_id"] for row in payload["turns"]] == [
+        "105", "106", "107", "108"
+    ]
+    assert [row["user"] for row in payload["recent_evidence_context"]] == [
+        "message-101", "message-102", "message-103", "message-104"
+    ]
+    assert all("message_id" not in row for row in payload["recent_evidence_context"])
+    assert payload["recent_evidence_context"][0]["hina"] == "reply-101"
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_server_structured_extraction_includes_hina_replies_as_context():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(20, 10, 100, True)
+    _add_turns(store, scope, 201, 4)
+    harness = _harness(_response('{"items":[]}'))
+
+    await harness.extract_structured_memory(store, scope)
+
+    payload = json.loads(harness.usage.request.await_args.kwargs["input"])
+    assert payload["turns"][0]["hina"] == "reply-201"
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_previous_evidence_message_id_cannot_be_used_as_new_memory_source():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 8)
+    harness = _harness(
+        _response('{"items":[]}'),
+        _response(json.dumps({
+            "items": [{
+                "content": "이전 batch 사실을 잘못 새 기억으로 저장하려 한다.",
+                "kind": "fact",
+                "disclosure": "local",
+                "confidence": 0.9,
+                "source_message_ids": ["101"],
+            }]
+        }, ensure_ascii=False)),
+    )
+
+    await harness.extract_structured_memory(store, scope)
+    await harness.extract_structured_memory(store, scope)
+
+    assert store.memory_items(100) == []
+    assert store.memory_extraction_cursor(scope) == store.history(scope)[-1]["id"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_completed_shadow_event_records_result_counts_and_evidence_turns():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 8)
+    extraction = json.dumps({
+        "items": [{
+            "content": "사용자는 커피를 마시지 못한다.",
+            "kind": "preference",
+            "disclosure": "local",
+            "confidence": 0.95,
+            "source_message_ids": ["105"],
+        }]
+    }, ensure_ascii=False)
+    harness = _harness(
+        _response('{"items":[]}'),
+        _response(extraction),
+    )
+    events = []
+    harness.usage.routing_event = lambda operation, **metadata: events.append(
+        (operation, metadata)
+    )
+
+    await harness.extract_structured_memory(store, scope)
+    await harness.extract_structured_memory(store, scope)
+
+    completed = [
+        metadata
+        for operation, metadata in events
+        if operation == "memory.shadow_extraction"
+        and metadata.get("status") == "completed"
+    ][-1]
+    assert completed["evidence_turns"] == 4
+    assert completed["accepted_items"] == 1
+    assert completed["stored_items"] == 1
+    assert completed["duplicate_items"] == 0
+    assert completed["rejected_items"] == 0
+    assert completed["proposal_items"] == 0
     store.close()
 
 
