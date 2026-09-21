@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from .repository import AdminRepository
 from .telemetry import TelemetryReader, TelemetrySnapshot
@@ -22,6 +23,19 @@ def _timestamp(row: dict[str, object]) -> str:
 def _turn_id(row: dict[str, object]) -> str | None:
     value = row.get("turn_id")
     return value if isinstance(value, str) and value else None
+
+
+def _parse_time(value: str) -> datetime | None:
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 @dataclass(frozen=True)
@@ -115,7 +129,11 @@ class DashboardService:
         status: str = "",
         tier: str = "",
         model: str = "",
+        operation: str = "",
+        error: str = "",
         web_search: str = "",
+        after: str = "",
+        before: str = "",
         query: str = "",
     ) -> dict[str, object]:
         snapshot = self.telemetry.snapshot()
@@ -125,8 +143,14 @@ class DashboardService:
         status = status.strip().lower()
         tier = tier.strip().lower()
         model = model.strip().lower()
+        operation = operation.strip().lower()
+        error = error.strip().lower()
         web_search = web_search.strip().lower()
+        after = after.strip()
+        before = before.strip()
         query = query.strip().lower()
+        after_dt = _parse_time(after)
+        before_dt = _parse_time(before)
 
         def keep(row: dict[str, object]) -> bool:
             if scope and str(row.get("scope", "")).lower() != scope:
@@ -138,9 +162,21 @@ class DashboardService:
             models = tuple(str(value) for value in row.get("models", ()))
             if model and model not in " ".join(models).lower():
                 return False
+            operations = tuple(str(value) for value in row.get("operations", ()))
+            if operation and operation not in " ".join(operations).lower():
+                return False
+            if error == "yes" and not row.get("error"):
+                return False
+            if error == "no" and row.get("error"):
+                return False
             if web_search == "yes" and not row.get("web_search"):
                 return False
             if web_search == "no" and row.get("web_search"):
+                return False
+            row_dt = _parse_time(str(row.get("at", "")))
+            if after_dt and (row_dt is None or row_dt < after_dt):
+                return False
+            if before_dt and (row_dt is None or row_dt > before_dt):
                 return False
             if query:
                 haystack = " ".join(
@@ -150,6 +186,7 @@ class DashboardService:
                         str(row.get("scope", "")),
                         str(row.get("model_tier", "")),
                         " ".join(models),
+                        " ".join(operations),
                         str(row.get("error_fingerprint", "")),
                     )
                 ).lower()
@@ -175,7 +212,11 @@ class DashboardService:
                 "status": status,
                 "tier": tier,
                 "model": model,
+                "operation": operation,
+                "error": error,
                 "web_search": web_search,
+                "after": after,
+                "before": before,
                 "q": query,
             },
         }
@@ -326,6 +367,15 @@ class DashboardService:
                 scope_value = ""
 
             models: set[str] = set()
+            operations = tuple(
+                sorted(
+                    {
+                        str(row["operation"])
+                        for row in usage
+                        if isinstance(row.get("operation"), str) and row.get("operation")
+                    }
+                )
+            )
             if exchange and isinstance(exchange.get("models"), list):
                 models.update(str(value) for value in exchange["models"])
             models.update(
@@ -375,6 +425,7 @@ class DashboardService:
                     "scope": str(scope_value or ""),
                     "status": str(status_value or "incomplete"),
                     "models": tuple(sorted(models)),
+                    "operations": operations,
                     "model_tier": model_tier,
                     "total_tokens": total_tokens,
                     "elapsed_ms": elapsed_ms,
