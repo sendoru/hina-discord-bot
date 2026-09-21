@@ -129,6 +129,25 @@ The conversations page only queries the existing `turns` table. Search and pagin
 SQLite through the read-only repository. Starting the dashboard still does not change
 `HISTORY_TURNS` or preserve old messages.
 
+## Responsive/mobile layout
+
+The dashboard uses the same server-rendered HTML on desktop and mobile. No separate mobile app or
+JavaScript navigation layer is required.
+
+On narrow screens:
+
+- the sticky section navigation becomes a horizontally scrollable touch row,
+- metric cards collapse from six columns to two and then one,
+- filter controls collapse from wrapped desktop controls to a two-column and then one-column form,
+- metadata and comparison grids collapse to one column where needed,
+- wide data tables scroll inside their own table container instead of widening the whole page,
+- message/provenance content wraps while code/JSON remains locally scrollable,
+- controls use mobile-friendly touch heights and the page respects safe-area insets.
+
+The dashboard remains intended for administrative inspection rather than dense mobile editing, so
+large analytical tables keep their column structure and use local horizontal scrolling instead of
+hiding fields.
+
 ## Routing and usage analytics
 
 `/analytics` reads only retained `usage.jsonl` and `discord-usage.jsonl` telemetry. It does not
