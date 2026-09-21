@@ -164,3 +164,40 @@ pre {
   background: var(--panel-2);
 }
 .source-card .message { background: var(--panel); }
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+.compare-card.target { border-top: 3px solid var(--warn); }
+.compare-card.new { border-top: 3px solid var(--good); }
+.relation {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.relation-duplicate { color: var(--accent); }
+.relation-corrects { color: var(--good); }
+.relation-conflicts { color: var(--warn); }
+.chips, .source-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.chip, .tag {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel-2);
+  font-size: 12px;
+}
+.inline-notice { margin: 10px 0; }
+@media (max-width: 1000px) {
+  .compare-grid { grid-template-columns: 1fr; }
+}
