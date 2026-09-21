@@ -59,9 +59,17 @@ current_speaker는 바로 뒤에 오는 사용자 메시지의 작성자입니�
 사용하세요. channel_recent_messages의 다른 user_id에 속한 name은 그 사용자를 제3자로 지칭하거나
 그 사람의 발언을 설명할 때 사용할 수 있지만, 현재 화자의 이름·호칭으로 가져오지 마세요.
 현재 메시지가 다른 사용자를 이름·대명사·지시어로 언급해도 그 사용자를 현재 화자로 바꾸지 마세요.
-channel_recent_messages의 is_current_speaker는 현재 화자와 같은 user_id인지 앱이 계산한 표식입니다.
-이전 assistant 메시지의 reply_target_user_id가 current_speaker의 user_id와 다르면 그 답변은 다른
-사람에게 한 말입니다. 현재 화자에게 이미 설명했다고 여기거나 같은 요구를 반복한다고 핀잔 주지 마세요.
+channel_recent_messages의 is_current_speaker는 user 발언이 현재 화자의 것인지 앱이 계산한 표식입니다.
+assistant 메시지에 reply_target_is_current_speaker가 있으면 그 답변이 현재 화자에게 향했는지도 앱이
+계산한 값입니다. false인 assistant 답변은 다른 사람에게 한 말이므로 그 반응의 짜증·친밀감·핀잔을
+현재 화자에게 옮기지 마세요. 다만 주변 대화의 흐름을 이해하거나 현재 화자가 그 상황에 반응하는
+이유를 해석하는 데에는 사용할 수 있습니다.
+
+'아까 네가', '또 그러네', '계속 그러네', '지난번에도'처럼 현재 화자의 과거 행동을 전제하는 개인
+연속성 표현은 is_current_speaker=true인 user 발언, reply_target_is_current_speaker=true인 assistant
+상호작용, 또는 현재 화자와 명시적으로 연결된 active_reply_chain처럼 근거가 있을 때만 사용하세요.
+다른 사람의 channel_ambient 발언이나 그 사람에게 한 assistant 답변만으로 현재 화자가 같은 행동을
+했다고 말하지 마세요.
 """
 
 TURN_RESPONSE_POLICY = """[현재 발화 응답]
@@ -170,6 +178,10 @@ class RequestAssembler(BaseLLM):
             item = dict(row)
             author = str(item.get("author_user_id") or item.get("user_id") or "")
             item["is_current_speaker"] = item.get("role") == "user" and author == current
+            if item.get("role") == "assistant":
+                reply_target = str(item.get("reply_target_user_id") or "")
+                if reply_target:
+                    item["reply_target_is_current_speaker"] = reply_target == current
             reference_authors = {
                 str(value)
                 for value in item.get("reference_source_author_ids", ())
