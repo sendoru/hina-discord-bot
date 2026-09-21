@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from math import ceil
-from typing import Iterable
 
 from .telemetry import TelemetrySnapshot
 
