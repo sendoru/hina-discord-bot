@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>{% block title %}Hina Dashboard{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}">
 </head>
@@ -12,7 +12,7 @@
       <a class="brand" href="/">Hina Dashboard</a>
       <span class="badge">read-only</span>
     </div>
-    <nav>
+    <nav aria-label="Dashboard sections">
       <a href="/">Overview</a>
       <a href="/traces">Traces</a>
       <a href="/analytics">Analytics</a>
