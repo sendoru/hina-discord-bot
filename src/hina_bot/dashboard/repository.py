@@ -625,10 +625,19 @@ class AdminRepository:
             JOIN memory_items n ON n.id=p.new_memory_item_id
             JOIN memory_items t ON t.id=p.target_memory_item_id
         """
-        retry_expr = (
-            "n.source_message_ids=t.source_message_ids "
-            "AND n.source_message_ids NOT IN ('[]','')"
-        )
+        retry_expr = """
+            json_array_length(n.source_message_ids)>0
+            AND NOT EXISTS (
+                SELECT value FROM json_each(n.source_message_ids)
+                EXCEPT
+                SELECT value FROM json_each(t.source_message_ids)
+            )
+            AND NOT EXISTS (
+                SELECT value FROM json_each(t.source_message_ids)
+                EXCEPT
+                SELECT value FROM json_each(n.source_message_ids)
+            )
+        """
         with self._connection() as db:
             summary = db.execute(
                 f"""SELECT COUNT(*) AS total,
