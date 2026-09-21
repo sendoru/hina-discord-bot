@@ -301,6 +301,50 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.llm.summarize.assert_awaited_once()
         self.llm.summarize_shared.assert_awaited_once()
 
+    async def test_stale_memory_sweep_uses_partial_extraction_for_writable_scope(self):
+        scope = Scope(1, 10, 100)
+        self.store.stale_memory_extraction_scopes = MagicMock(return_value=[scope])
+        self.llm.extract_structured_memory.return_value = True
+
+        await self.bot._sweep_stale_structured_memory()
+
+        self.store.stale_memory_extraction_scopes.assert_called_once_with(
+            min_pending=2,
+            stale_after_seconds=8 * 60 * 60,
+        )
+        self.llm.extract_structured_memory.assert_awaited_once_with(
+            self.store,
+            scope,
+            min_turns=2,
+        )
+        rows = [json.loads(line) for line in self.event_path.read_text().splitlines()]
+        self.assertTrue(any(row["event"] == "memory.stale_sweep_completed" for row in rows))
+
+    async def test_stale_memory_sweep_skips_non_writable_scope(self):
+        scope = Scope(1, 10, 100)
+        self.store.set_memory_mode(scope, "read_only")
+        self.store.stale_memory_extraction_scopes = MagicMock(return_value=[scope])
+
+        await self.bot._sweep_stale_structured_memory()
+
+        self.llm.extract_structured_memory.assert_not_awaited()
+
+    async def test_stale_memory_sweep_isolates_scope_failure(self):
+        first = Scope(1, 10, 100)
+        second = Scope(1, 20, 200)
+        self.store.stale_memory_extraction_scopes = MagicMock(return_value=[first, second])
+        self.llm.extract_structured_memory.side_effect = [RuntimeError("secret"), True]
+
+        await self.bot._sweep_stale_structured_memory()
+
+        self.assertEqual(self.llm.extract_structured_memory.await_count, 2)
+        raw = self.event_path.read_text()
+        self.assertNotIn("secret", raw)
+        rows = [json.loads(line) for line in raw.splitlines()]
+        failed = next(row for row in rows if row["event"] == "memory.extraction_failed")
+        self.assertEqual(failed["memory_kind"], "structured_stale")
+        self.assertTrue(any(row["event"] == "memory.stale_sweep_completed" for row in rows))
+
     async def test_unhandled_discord_event_records_safe_exception_location(self):
         secret = "private-discord-event-marker"
         try:
