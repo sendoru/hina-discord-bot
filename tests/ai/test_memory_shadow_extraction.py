@@ -350,6 +350,72 @@ async def test_structured_extraction_runs_at_four_turns_without_legacy_summary()
 
 
 @pytest.mark.asyncio
+async def test_partial_structured_extraction_requires_explicit_min_turns():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 2)
+    harness = _harness(_response('{"items":[]}'))
+
+    committed = await harness.extract_structured_memory(store, scope)
+
+    assert committed is False
+    harness.usage.request.assert_not_awaited()
+    assert len(store.pending_memory_extraction(scope)) == 2
+
+    committed = await harness.extract_structured_memory(store, scope, min_turns=2)
+
+    assert committed is True
+    harness.usage.request.assert_awaited_once()
+    assert store.pending_memory_extraction(scope) == []
+    store.close()
+
+
+def test_stale_extraction_scope_query_uses_age_and_pending_count():
+    store = Store(":memory:", history_turns=12)
+    stale = Scope(None, 10, 100)
+    fresh = Scope(None, 20, 200)
+    single = Scope(None, 30, 300)
+    _add_turns(store, stale, 101, 2)
+    _add_turns(store, fresh, 201, 2)
+    _add_turns(store, single, 301, 1)
+    with store.db:
+        store.db.execute(
+            "UPDATE turns SET created_at=datetime('now','-9 hours') WHERE scope IN (?,?)",
+            (stale.conversation, single.conversation),
+        )
+
+    scopes = store.stale_memory_extraction_scopes(
+        min_pending=2,
+        stale_after_seconds=8 * 60 * 60,
+    )
+
+    assert scopes == [stale]
+    store.close()
+
+
+def test_stale_extraction_scope_query_respects_legacy_summary_baseline():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 4)
+    history = store.history(scope)
+    store.save_summary(scope, "legacy", history[1]["id"])
+    with store.db:
+        store.db.execute(
+            "UPDATE turns SET created_at=datetime('now','-9 hours') WHERE scope=?",
+            (scope.conversation,),
+        )
+
+    scopes = store.stale_memory_extraction_scopes(
+        min_pending=2,
+        stale_after_seconds=8 * 60 * 60,
+    )
+
+    assert scopes == [scope]
+    assert store.memory_extraction_cursor(scope) == history[1]["id"]
+    store.close()
+
+
+@pytest.mark.asyncio
 async def test_structured_extraction_processes_fixed_size_batches():
     store = Store(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
