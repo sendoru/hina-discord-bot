@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Memory #{{ data.item.id }} · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <a class="back" href="/memory">← Memory</a>
+    <h1>Memory #{{ data.item.id }}</h1>
+  </div>
+</section>
+
+<section class="panel">
+  <dl class="metadata">
+    <div><dt>User</dt><dd><code>{{ data.item.user_id }}</code></dd></div>
+    <div><dt>Kind</dt><dd>{{ data.item.kind }}</dd></div>
+    <div><dt>Disclosure</dt><dd>{{ data.item.disclosure }}</dd></div>
+    <div><dt>Confidence</dt><dd>{{ "%.3f"|format(data.item.confidence) }}</dd></div>
+    <div><dt>Captured</dt><dd>{{ "public" if data.item.origin_public_at_capture else "private" }}</dd></div>
+    <div><dt>Origin realm</dt><dd><code>{{ data.item.origin_realm }}</code></dd></div>
+    <div><dt>Origin channel</dt><dd><code>{{ data.item.origin_channel_id }}</code></dd></div>
+    <div><dt>Created</dt><dd>{{ data.item.created_at }}</dd></div>
+    <div><dt>Updated</dt><dd>{{ data.item.updated_at }}</dd></div>
+    {% if data.schema.has_lifecycle %}
+    <div><dt>Status</dt><dd>{{ data.item.status or "—" }}</dd></div>
+    {% endif %}
+    {% if data.schema.has_superseded_by %}
+    <div><dt>Superseded by</dt><dd>{% if data.item.superseded_by %}<a href="/memory/{{ data.item.superseded_by }}">#{{ data.item.superseded_by }}</a>{% else %}—{% endif %}</dd></div>
+    {% endif %}
+  </dl>
+  <h3>Content</h3>
+  <div class="message">{{ data.item.content }}</div>
+</section>
+
+<section class="panel">
+  <h2>Source messages</h2>
+  {% if data.sources %}
+    {% for source in data.sources %}
+      <article class="source-card">
+        <div class="panel-heading">
+          <strong><code>{{ source.message_id }}</code></strong>
+          {% if source.turn and source.turn.turn_id %}<a href="/traces/{{ source.turn.turn_id }}">Trace</a>{% endif %}
+        </div>
+        {% if source.turn %}
+          <dl class="metadata compact">
+            <div><dt>Scope</dt><dd>{{ source.turn.scope }}</dd></div>
+            <div><dt>Realm</dt><dd>{{ source.turn.realm }}</dd></div>
+            <div><dt>Created</dt><dd>{{ source.turn.created_at }}</dd></div>
+          </dl>
+          <div class="message">{{ source.turn.content }}</div>
+        {% else %}
+          <p class="muted">The raw turn is no longer present in bounded retention.</p>
+        {% endif %}
+      </article>
+    {% endfor %}
+  {% else %}
+  <p class="muted">No source message IDs were stored.</p>
+  {% endif %}
+</section>
+
+{% if data.item.relationship_evidence_decoded %}
+<section class="panel">
+  <h2>Relationship evidence</h2>
+  <pre>{{ data.item.relationship_evidence_decoded | tojson(indent=2) }}</pre>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Nearby memory in the same owner/origin space</h2>
+  {% if data.neighbors %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Kind</th><th>Disclosure</th><th>Confidence</th><th>Content</th></tr></thead>
+      <tbody>
+      {% for row in data.neighbors %}
+      <tr>
+        <td><a href="/memory/{{ row.id }}">#{{ row.id }}</a></td>
+        <td>{{ row.kind }}</td>
+        <td>{{ row.disclosure }}</td>
+        <td class="numeric">{{ "%.2f"|format(row.confidence) }}</td>
+        <td>{{ row.content }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No nearby items in this disclosure space.</p>
+  {% endif %}
+</section>
+{% endblock %}
