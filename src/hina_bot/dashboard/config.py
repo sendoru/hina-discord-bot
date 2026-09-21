@@ -16,7 +16,7 @@ class DashboardSettings:
     port: int = 8765
 
     @classmethod
-    def load(cls) -> "DashboardSettings":
+    def load(cls) -> DashboardSettings:
         load_dotenv(Path.cwd() / ".env.local", override=False)
         load_dotenv(Path.cwd() / ".env", override=False)
 
