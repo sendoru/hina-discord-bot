@@ -68,6 +68,84 @@ class AdminRepository:
             ).fetchall()
         return self._dicts(rows)
 
+    @staticmethod
+    def _like(value: str) -> str:
+        return (
+            value.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+
+    def _turn_filters(
+        self,
+        *,
+        scope: str = "",
+        realm: str = "",
+        user_id: str = "",
+        query: str = "",
+    ) -> tuple[str, tuple[object, ...]]:
+        clauses: list[str] = []
+        params: list[object] = []
+        if scope:
+            clauses.append("scope=?")
+            params.append(scope)
+        if realm:
+            clauses.append("realm=?")
+            params.append(realm)
+        if user_id:
+            clauses.append("user_id=?")
+            params.append(user_id)
+        if query:
+            escaped = self._like(query)
+            clauses.append(
+                "(content LIKE ? ESCAPE '\\' OR reply LIKE ? ESCAPE '\\' "
+                "OR message_id LIKE ? ESCAPE '\\')"
+            )
+            pattern = f"%{escaped}%"
+            params.extend((pattern, pattern, pattern))
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        return where, tuple(params)
+
+    def count_turns(
+        self,
+        *,
+        scope: str = "",
+        realm: str = "",
+        user_id: str = "",
+        query: str = "",
+    ) -> int:
+        where, params = self._turn_filters(
+            scope=scope, realm=realm, user_id=user_id, query=query
+        )
+        with self._connection() as db:
+            row = db.execute(f"SELECT COUNT(*) AS count FROM turns{where}", params).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def search_turns(
+        self,
+        *,
+        scope: str = "",
+        realm: str = "",
+        user_id: str = "",
+        query: str = "",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        limit = self._limit(limit)
+        offset = max(0, int(offset))
+        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
+        where, params = self._turn_filters(
+            scope=scope, realm=realm, user_id=user_id, query=query
+        )
+        with self._connection() as db:
+            rows = db.execute(
+                f"""SELECT id,scope,realm,user_id,message_id,content,reply,exportable,
+                           {turn_id},memory_context,created_at
+                    FROM turns{where} ORDER BY id DESC LIMIT ? OFFSET ?""",
+                (*params, limit, offset),
+            ).fetchall()
+        return self._dicts(rows)
+
     def turn_for_trace(self, turn_id: str) -> dict[str, object] | None:
         trace_id = turn_id.strip()
         if not trace_id or not self._has_column("turns", "turn_id"):

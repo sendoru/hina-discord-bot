@@ -35,8 +35,16 @@ Keep `DASHBOARD_HOST=127.0.0.1` unless access is protected by a trusted tunnel o
 reverse proxy. This service is intended to expose private conversation/memory diagnostics in later
 phases and does not provide its own authentication yet.
 
-The foundation currently exposes only `/healthz`. User-facing inspection pages are added in the
-next dashboard phase.
+The dashboard currently exposes the following read-only routes:
+
+- `/`: retained telemetry overview and recent traces
+- `/traces`: server-side filtered/paginated turn traces
+- `/traces/{turn_id}`: correlated stored turn + event/usage/exchange timeline
+- `/conversations`: bounded raw-turn inspection with server-side filters
+- `/healthz`: database/telemetry source health
+
+The HTML surface is intentionally desktop-oriented and server-rendered. It uses no client-side
+application state and does not add new content telemetry.
 
 ## Read-only boundary
 
@@ -80,13 +88,42 @@ The reader derives `discord-usage.jsonl` from the configured usage-log directory
 Telemetry retention remains file-rotation based. A future UI must report the actual oldest/newest
 available timestamps instead of promising a fixed number of retained days.
 
+## Current UI semantics
+
+### Overview
+
+The overview reports the actual retained telemetry window, source-file availability, trace/status
+counts, model-tier counts, aggregate exchange token usage, web-search usage, memory post-processing
+failures, and recent safe error fingerprints.
+
+Totals come from `discord-usage.jsonl` where possible so per-call rows are not double-counted.
+
+### Traces
+
+A trace combines all retained rows sharing one opaque `turn_id`:
+
+```text
+turn.received / turn.completed / turn.failed
+        +
+usage.jsonl answer/classifier/memory rows
+        +
+discord-usage.jsonl exchange aggregate
+        +
+bounded SQLite turn, when still retained
+```
+
+Missing sources are expected. Rotation can remove telemetry before a raw turn expires, and bounded
+raw retention can remove the stored message before telemetry rotates. The UI shows correlation
+availability rather than treating either case as corruption.
+
+### Conversations
+
+The conversations page only queries the existing `turns` table. Search and pagination happen in
+SQLite through the read-only repository. Starting the dashboard still does not change
+`HISTORY_TURNS` or preserve old messages.
+
 ## Next phase
 
-The next dashboard PR can build read-only pages on these primitives:
-
-- overview and available telemetry window,
-- trace list and per-`turn_id` detail,
-- bounded raw conversation inspection,
-- structured memory, summaries, and reconciliation proposal inspection.
-
-Write actions remain out of scope until the structured-memory lifecycle is stable.
+The next dashboard work adds structured memory, legacy summaries, extraction cursors, and
+reconciliation-proposal inspection. Write actions remain out of scope until the structured-memory
+lifecycle is stable.

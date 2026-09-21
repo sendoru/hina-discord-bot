@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Conversations · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Conversations</h1>
+    <p>현재 bounded retention 안에 남아 있는 {{ data.page.total }} raw turns입니다.</p>
+  </div>
+</section>
+
+<form class="filters" method="get">
+  <input name="q" value="{{ data.filters.query }}" placeholder="message id / input / reply">
+  <input name="scope" value="{{ data.filters.scope }}" placeholder="scope">
+  <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
+  <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/conversations">Reset</a>
+</form>
+
+{% if data.rows %}
+  {% for row in data.rows %}
+  <article class="panel conversation">
+    <div class="conversation-head">
+      <div>
+        <strong>{{ row.scope }}</strong>
+        <span>{{ row.created_at }}</span>
+      </div>
+      <div>
+        {% if row.turn_id %}<a href="/traces/{{ row.turn_id }}">trace</a>{% else %}<span class="muted">no trace id</span>{% endif %}
+        <code>msg {{ row.message_id }}</code>
+      </div>
+    </div>
+    <dl class="metadata compact">
+      <div><dt>Realm</dt><dd>{{ row.realm }}</dd></div>
+      <div><dt>User</dt><dd><code>{{ row.user_id }}</code></dd></div>
+      <div><dt>Exportable</dt><dd>{{ row.exportable }}</dd></div>
+    </dl>
+    <h3>Input</h3>
+    <div class="message">{{ row.content }}</div>
+    <h3>Reply</h3>
+    <div class="message assistant">{{ row.reply }}</div>
+    {% if row.memory_context %}
+    <details><summary>memory_context</summary><pre>{{ row.memory_context }}</pre></details>
+    {% endif %}
+  </article>
+  {% endfor %}
+{% else %}
+<section class="panel"><p class="empty">No retained turns match this filter.</p></section>
+{% endif %}
+
+<nav class="pagination">
+  {% if data.page.has_previous %}<a href="{{ request.url.include_query_params(page=data.page.number - 1) }}">← Previous</a>{% endif %}
+  <span>Page {{ data.page.number }} / {{ data.page.pages }}</span>
+  {% if data.page.has_next %}<a href="{{ request.url.include_query_params(page=data.page.number + 1) }}">Next →</a>{% endif %}
+</nav>
+{% endblock %}

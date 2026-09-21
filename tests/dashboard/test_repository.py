@@ -89,3 +89,16 @@ def test_repository_handles_pre_turn_id_database_without_migrating_it(tmp_path):
     finally:
         verify.close()
     assert "turn_id" not in columns
+
+
+def test_repository_search_turns_filters_without_writes(tmp_path):
+    path = tmp_path / "hina.sqlite3"
+    populated_database(path)
+    repository = AdminRepository(path)
+
+    assert repository.count_turns(query="question") == 1
+    assert repository.count_turns(query="missing") == 0
+
+    rows = repository.search_turns(user_id="100", query="answer", limit=10)
+    assert len(rows) == 1
+    assert rows[0]["message_id"] == "55"

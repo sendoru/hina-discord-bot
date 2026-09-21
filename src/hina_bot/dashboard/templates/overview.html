@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Overview · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Overview</h1>
+    <p>현재 보존된 telemetry와 SQLite read model의 요약입니다.</p>
+  </div>
+  <div class="window">
+    <strong>Available telemetry</strong>
+    <span>{{ data.available.oldest_at or "none" }}</span>
+    <span>→ {{ data.available.newest_at or "none" }}</span>
+  </div>
+</section>
+
+<section class="cards">
+  <article class="card"><span>Traces</span><strong>{{ data.trace_count }}</strong></article>
+  <article class="card"><span>Stored turns</span><strong>{{ data.stored_turn_count }}</strong></article>
+  <article class="card"><span>API calls</span><strong>{{ data.api_calls }}</strong></article>
+  <article class="card"><span>Total tokens</span><strong>{{ "{:,}".format(data.tokens.total_tokens) }}</strong></article>
+  <article class="card"><span>Web searches</span><strong>{{ data.web_search_calls }}</strong></article>
+  <article class="card"><span>Memory failures</span><strong>{{ data.memory_failures }}</strong></article>
+</section>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Sources</h2>
+    <table>
+      <tbody>
+        <tr><td>SQLite</td><td>read-only · available</td></tr>
+        <tr><td>usage files</td><td class="numeric">{{ data.sources.usage_files }}</td></tr>
+        <tr><td>exchange files</td><td class="numeric">{{ data.sources.exchange_files }}</td></tr>
+        <tr><td>event files</td><td class="numeric">{{ data.sources.event_files }}</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Scopes</h2>
+    {% if data.scope_counts %}
+    <table>
+      <tbody>
+      {% for key, value in data.scope_counts.items() %}
+        <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No scope telemetry.</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Turn status</h2>
+    {% if data.status_counts %}
+    <table>
+      <tbody>
+      {% for key, value in data.status_counts.items() %}
+        <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No trace telemetry.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Model tiers</h2>
+    {% if data.tier_counts %}
+    <table>
+      <tbody>
+      {% for key, value in data.tier_counts.items() %}
+        <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No model-tier telemetry.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <div class="panel-heading">
+    <h2>Recent traces</h2>
+    <a href="/traces">View all</a>
+  </div>
+  {% if data.recent_traces %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>Scope</th><th>Status</th><th>Tier</th><th>Model</th><th>Tokens</th><th>Search</th><th>Stored</th></tr></thead>
+      <tbody>
+      {% for row in data.recent_traces %}
+        <tr>
+          <td><a href="/traces/{{ row.turn_id }}">{{ row.at }}</a></td>
+          <td>{{ row.scope or "—" }}</td>
+          <td><span class="status">{{ row.status }}</span></td>
+          <td>{{ row.model_tier or "—" }}</td>
+          <td>{{ row.models | join(", ") or "—" }}</td>
+          <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "?" }}</td>
+          <td>{{ "yes" if row.web_search else "no" }}</td>
+          <td>{{ "yes" if row.stored else "no" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No traces are available in the retained telemetry window.</p>
+  {% endif %}
+</section>
+
+{% if data.error_fingerprints %}
+<section class="panel">
+  <h2>Recent error fingerprints</h2>
+  <table>
+    <thead><tr><th>Fingerprint</th><th>Count</th></tr></thead>
+    <tbody>
+    {% for fingerprint, count in data.error_fingerprints %}
+      <tr><td><code>{{ fingerprint }}</code></td><td class="numeric">{{ count }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}
