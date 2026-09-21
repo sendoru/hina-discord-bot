@@ -20,6 +20,7 @@ Discord에서 검증하고 있으며, 검증 전에는 버그 수정과 문서 �
 - 현재 호출 메시지의 이미지 첨부, 커스텀 이모지, 래스터 스티커 해석
 - Discord slash command 기반 기억/설정/이모지 관리
 - usage/error logging, 테스트, Docker Compose
+- SQLite/telemetry를 읽기 전용으로 조회하는 dashboard foundation
 
 ## 빠른 실행
 
@@ -298,6 +299,10 @@ Discord 호출의 접수, 처리 제외 사유, 응답 생성·전송, 기억 �
 `store=False`를 사용하더라도 provider의 모든 데이터 보관 정책에서 제외된다는 의미는 아닙니다.
 운영자는 사용하는 provider의 데이터 정책을 별도로 확인해야 합니다.
 
+새 dashboard foundation은 production `Store`를 공유하지 않고 SQLite를 read-only로 열며,
+rotated usage/event JSONL을 별도로 읽습니다. 현재는 `/healthz`만 제공하고 inspection UI는 후속 단계입니다.
+설치·보안 경계와 `turn_id` correlation은 [`docs/dashboard.md`](docs/dashboard.md)를 참고하세요.
+
 ## 테스트 전략
 
 일반 CI에서는 네트워크를 mock하고 다음 경계를 결정적으로 테스트합니다.
@@ -326,6 +331,7 @@ Discord 호출의 접수, 처리 제외 사유, 응답 생성·전송, 기억 �
 - [비전 입력](docs/vision-input.md)
 - [runtime 웹 검색](docs/runtime-web-search.md)
 - [slash commands](docs/slash-commands.md)
+- [read-only dashboard](docs/dashboard.md)
 - [프로젝트 구조](docs/project-layout.md)
 - [lore 정제](docs/lore/README.md)
 

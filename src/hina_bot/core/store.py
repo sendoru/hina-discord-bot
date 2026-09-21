@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .memory_context import CURRENT_MEMORY_CONTEXT
 from .memory_items import MemoryDisclosure, MemoryItem, MemoryKind, RelationshipEvidence
+from .observability import current_turn_id
 from .routing import Scope
 
 
@@ -25,6 +26,7 @@ class Store:
                 scope TEXT NOT NULL, realm TEXT NOT NULL, user_id TEXT NOT NULL,
                 message_id TEXT NOT NULL UNIQUE,
                 content TEXT NOT NULL, reply TEXT NOT NULL, exportable INTEGER NOT NULL,
+                turn_id TEXT,
                 memory_context TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -113,6 +115,11 @@ class Store:
                 self.db.execute(
                     "ALTER TABLE turns ADD COLUMN memory_context TEXT NOT NULL DEFAULT ''"
                 )
+        if "turn_id" not in columns:
+            with self.db:
+                self.db.execute("ALTER TABLE turns ADD COLUMN turn_id TEXT")
+        with self.db:
+            self.db.execute("CREATE INDEX IF NOT EXISTS turns_turn_id ON turns(turn_id)")
         memory_columns = {
             row["name"] for row in self.db.execute("PRAGMA table_info(memory_items)")
         }
@@ -225,7 +232,7 @@ class Store:
         with self.db:
             self.db.execute(
                 "INSERT INTO turns(scope,realm,user_id,message_id,content,reply,exportable,"
-                "memory_context) VALUES (?,?,?,?,?,?,?,?)",
+                "turn_id,memory_context) VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     scope.conversation,
                     scope.realm,
@@ -234,6 +241,7 @@ class Store:
                     content,
                     reply,
                     int(exportable),
+                    current_turn_id(),
                     encoded_context,
                 ),
             )
