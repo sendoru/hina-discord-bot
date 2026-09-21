@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Trace {{ data.turn_id }} · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <a class="back" href="/traces">← Traces</a>
+    <h1>Trace <code>{{ data.turn_id }}</code></h1>
+  </div>
+</section>
+
+{% if data.summary %}
+<section class="cards">
+  <article class="card"><span>Status</span><strong>{{ data.summary.status }}</strong></article>
+  <article class="card"><span>Scope</span><strong>{{ data.summary.scope or "—" }}</strong></article>
+  <article class="card"><span>Tier</span><strong>{{ data.summary.model_tier or "—" }}</strong></article>
+  <article class="card"><span>Tokens</span><strong>{{ data.summary.total_tokens if data.summary.total_tokens is not none else "?" }}</strong></article>
+  <article class="card"><span>Latency</span><strong>{{ data.summary.elapsed_ms ~ " ms" if data.summary.elapsed_ms is not none else "—" }}</strong></article>
+  <article class="card"><span>Web search</span><strong>{{ "yes" if data.summary.web_search else "no" }}</strong></article>
+</section>
+{% endif %}
+
+{% if data.stored %}
+<section class="panel">
+  <h2>Stored turn</h2>
+  <dl class="metadata">
+    <div><dt>Scope</dt><dd>{{ data.stored.scope }}</dd></div>
+    <div><dt>Realm</dt><dd>{{ data.stored.realm }}</dd></div>
+    <div><dt>User</dt><dd><code>{{ data.stored.user_id }}</code></dd></div>
+    <div><dt>Message</dt><dd><code>{{ data.stored.message_id }}</code></dd></div>
+    <div><dt>Created</dt><dd>{{ data.stored.created_at }}</dd></div>
+  </dl>
+  <h3>Input</h3>
+  <div class="message">{{ data.stored.content }}</div>
+  <h3>Reply</h3>
+  <div class="message assistant">{{ data.stored.reply }}</div>
+  {% if data.memory_context %}
+  <details>
+    <summary>Stored memory context</summary>
+    <pre>{{ data.memory_context | tojson(indent=2) }}</pre>
+  </details>
+  {% endif %}
+</section>
+{% else %}
+<section class="notice">No retained raw turn is correlated with this trace. It may have expired from bounded retention or predate turn_id persistence.</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Timeline</h2>
+  {% if data.timeline %}
+    {% for item in data.timeline %}
+    <details class="timeline-item" {% if item.source == "event" %}open{% endif %}>
+      <summary><span class="source {{ item.source }}">{{ item.source }}</span> {{ item.at }}</summary>
+      <pre>{{ item.row | tojson(indent=2) }}</pre>
+    </details>
+    {% endfor %}
+  {% else %}
+  <p class="muted">No telemetry rows remain for this trace.</p>
+  {% endif %}
+</section>
+{% endblock %}
