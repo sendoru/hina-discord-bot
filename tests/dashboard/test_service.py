@@ -194,3 +194,68 @@ def test_conversations_use_bounded_repository_filters(tmp_path):
     assert data["page"].total == 1
     assert data["rows"][0]["reply"] == "answer"
     assert service.conversations(query="not-found")["page"].total == 0
+
+
+def build_memory_service(tmp_path):
+    database = tmp_path / "memory.sqlite3"
+    store = Store(str(database))
+    scope = Scope(1, 10, 100, True)
+    token = CURRENT_TURN_ID.set("memory-trace")
+    try:
+        store.add(scope, 700, "source for memory", "reply")
+    finally:
+        CURRENT_TURN_ID.reset(token)
+    source_turn_id = int(store.db.execute(
+        "SELECT id FROM turns WHERE message_id='700'"
+    ).fetchone()["id"])
+    store.save_summary(scope, "legacy personal summary", source_turn_id)
+    item_id = store.add_memory_item(
+        scope,
+        "remembered fact",
+        kind="fact",
+        disclosure="reference_gated",
+        source_message_ids=("700",),
+        confidence=0.91,
+    )
+    store.close()
+    return (
+        DashboardService(
+            AdminRepository(database),
+            TelemetryReader("", ""),
+        ),
+        item_id,
+        scope,
+    )
+
+
+def test_memory_service_filters_and_source_drilldown(tmp_path):
+    service, item_id, _ = build_memory_service(tmp_path)
+
+    listing = service.memory_items(
+        user_id="100",
+        kind="fact",
+        disclosure="reference_gated",
+        confidence_min="0.9",
+        query="remembered",
+    )
+    assert listing["page"].total == 1
+    assert listing["rows"][0]["source_message_ids_decoded"] == ("700",)
+
+    detail = service.memory_item(item_id)
+    assert detail is not None
+    assert detail["item"]["content"] == "remembered fact"
+    assert detail["sources"][0]["turn"]["turn_id"] == "memory-trace"
+
+
+def test_summary_and_cursor_service_show_rollout_state(tmp_path):
+    service, _, scope = build_memory_service(tmp_path)
+
+    summaries = service.summaries(user_id="100")
+    assert len(summaries["personal"]) == 1
+    assert summaries["personal"][0]["structured_memory_count"] == 1
+
+    cursors = service.extraction_cursors(user_id="100")
+    row = next(row for row in cursors["rows"] if row["scope"] == scope.conversation)
+    assert row["initialized"] == 0
+    assert row["effective_through_id"] == row["summary_through_id"]
+    assert row["cursor_delta"] is None
