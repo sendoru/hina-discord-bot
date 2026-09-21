@@ -210,9 +210,12 @@ class AdminRepository:
             if value:
                 clauses.append(f"{column}=?")
                 params.append(value)
-        if status and "status" in columns:
-            clauses.append("status=?")
-            params.append(status)
+        if status:
+            if "status" in columns:
+                clauses.append("status=?")
+                params.append(status)
+            else:
+                clauses.append("1=0")
         if relationship == "yes":
             clauses.append("kind='relationship'")
         elif relationship == "no":
@@ -329,14 +332,23 @@ class AdminRepository:
     def shared_summary_status(self) -> list[dict[str, object]]:
         if not self._table_exists("shared_summaries"):
             return []
+        has_calls = self._table_exists("shared_calls")
+        pending = (
+            """(SELECT COUNT(*) FROM shared_calls c
+                 WHERE c.scope=s.scope AND c.id>s.through_id)"""
+            if has_calls
+            else "0"
+        )
+        latest = (
+            "(SELECT MAX(id) FROM shared_calls c WHERE c.scope=s.scope)"
+            if has_calls
+            else "NULL"
+        )
         with self._connection() as db:
             rows = db.execute(
-                """SELECT s.*,
-                          (SELECT COUNT(*) FROM shared_calls c
-                           WHERE c.scope=s.scope AND c.id>s.through_id) AS pending_calls,
-                          (SELECT MAX(id) FROM shared_calls c WHERE c.scope=s.scope)
-                              AS latest_call_id
-                   FROM shared_summaries s ORDER BY s.rowid DESC"""
+                f"""SELECT s.*, {pending} AS pending_calls,
+                           {latest} AS latest_call_id
+                    FROM shared_summaries s ORDER BY s.rowid DESC"""
             ).fetchall()
         return self._dicts(rows)
 
@@ -345,14 +357,27 @@ class AdminRepository:
             return []
         has_cursors = self._table_exists("memory_extraction_cursors")
         has_summaries = self._table_exists("summaries")
+
+        scope_parts = ["SELECT scope, realm, user_id FROM turns"]
+        if has_summaries:
+            scope_parts.append("SELECT scope, realm, user_id FROM summaries")
+        if has_cursors:
+            scope_parts.append(
+                "SELECT scope, realm, user_id FROM memory_extraction_cursors"
+            )
+        scopes_sql = " UNION ".join(scope_parts)
+
         cursor_join = (
             "LEFT JOIN memory_extraction_cursors c ON c.scope=sc.scope"
             if has_cursors
             else ""
         )
-        summary_join = "LEFT JOIN summaries s ON s.scope=sc.scope" if has_summaries else ""
+        summary_join = (
+            "LEFT JOIN summaries s ON s.scope=sc.scope" if has_summaries else ""
+        )
         cursor_fields = (
-            "c.through_id AS extraction_through_id, c.updated_at AS extraction_updated_at,"
+            "c.through_id AS extraction_through_id, "
+            "c.updated_at AS extraction_updated_at,"
             if has_cursors
             else "NULL AS extraction_through_id, NULL AS extraction_updated_at,"
         )
@@ -361,23 +386,26 @@ class AdminRepository:
             if has_summaries
             else "NULL AS summary_through_id,"
         )
+        if has_cursors and has_summaries:
+            effective = "COALESCE(c.through_id,s.through_id,0)"
+        elif has_cursors:
+            effective = "COALESCE(c.through_id,0)"
+        elif has_summaries:
+            effective = "COALESCE(s.through_id,0)"
+        else:
+            effective = "0"
+        initialized = "CASE WHEN c.scope IS NULL THEN 0 ELSE 1 END" if has_cursors else "0"
+
         with self._connection() as db:
             rows = db.execute(
-                f"""WITH scopes AS (
-                        SELECT scope, realm, user_id FROM turns
-                        UNION
-                        SELECT scope, realm, user_id FROM summaries
-                        UNION
-                        SELECT scope, realm, user_id FROM memory_extraction_cursors
-                    )
+                f"""WITH scopes AS ({scopes_sql})
                     SELECT sc.scope,sc.realm,sc.user_id,
                            {cursor_fields}
                            {summary_fields}
-                           COALESCE(c.through_id,s.through_id,0) AS effective_through_id,
-                           CASE WHEN c.scope IS NULL THEN 0 ELSE 1 END AS initialized,
+                           {effective} AS effective_through_id,
+                           {initialized} AS initialized,
                            (SELECT COUNT(*) FROM turns t
-                            WHERE t.scope=sc.scope
-                              AND t.id>COALESCE(c.through_id,s.through_id,0)) AS pending_turns,
+                            WHERE t.scope=sc.scope AND t.id>{effective}) AS pending_turns,
                            (SELECT MAX(id) FROM turns t WHERE t.scope=sc.scope) AS latest_turn_id
                     FROM scopes sc
                     {cursor_join}
