@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Reconciliation · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Reconciliation Review</h1>
+    <p>{{ data.page.total }} shadow proposals in the current filter.</p>
+  </div>
+  <div class="window">
+    <strong>Read-only rollout review</strong>
+    <span>No proposal or memory state is modified here.</span>
+  </div>
+</section>
+
+<section class="cards reconciliation-stats">
+  <article class="card"><span>Proposals</span><strong>{{ data.stats.total }}</strong></article>
+  <article class="card"><span>Avg confidence</span><strong>{{ "%.3f"|format(data.stats.average_confidence) if data.stats.average_confidence is not none else "—" }}</strong></article>
+  <article class="card"><span>Exact-source retry suspects</span><strong>{{ data.stats.retry_suspects }}</strong></article>
+  <article class="card"><span>Relationship proposals</span><strong>{{ data.stats.relationship_proposals }}</strong></article>
+  <article class="card"><span>Duplicate</span><strong>{{ data.stats.relations.get("duplicate", 0) }}</strong></article>
+  <article class="card"><span>Corrects / conflicts</span><strong>{{ data.stats.relations.get("corrects", 0) }} / {{ data.stats.relations.get("conflicts", 0) }}</strong></article>
+</section>
+
+<form class="filters" method="get">
+  <input name="q" value="{{ data.filters.q }}" placeholder="proposal id / memory content / source id">
+  <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
+  <input name="origin_realm" value="{{ data.filters.origin_realm }}" placeholder="origin realm">
+  <input name="origin_channel_id" value="{{ data.filters.origin_channel_id }}" placeholder="channel id">
+  <select name="relation">
+    <option value="">all relations</option>
+    {% for value in ["duplicate","corrects","conflicts"] %}
+    <option value="{{ value }}" {% if data.filters.relation == value %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select name="kind">
+    <option value="">all memory kinds</option>
+    {% for value in ["fact","event","preference","relationship","boundary","task"] %}
+    <option value="{{ value }}" {% if data.filters.kind == value %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <select name="retry">
+    <option value="">retry suspect: any</option>
+    <option value="yes" {% if data.filters.retry == "yes" %}selected{% endif %}>exact same source set</option>
+    <option value="no" {% if data.filters.retry == "no" %}selected{% endif %}>different source set</option>
+  </select>
+  <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥">
+  <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤">
+  <input type="datetime-local" name="created_after" value="{{ data.filters.created_after }}">
+  <input type="datetime-local" name="created_before" value="{{ data.filters.created_before }}">
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/reconciliation">Reset</a>
+</form>
+
+<section class="notice">
+  <strong>Retry suspect</strong> means the new and target memory items have the exact same non-empty
+  <code>source_message_ids</code> set. It is a review heuristic, not a conclusion that the extractor retried incorrectly.
+</section>
+
+<section class="panel flush">
+  {% if data.rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Relation</th><th>Confidence</th><th>Owner / origin</th>
+          <th>Target / old</th><th>New</th><th>Proposal sources</th><th>Retry?</th><th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in data.rows %}
+      <tr>
+        <td><a href="/reconciliation/{{ row.id }}">#{{ row.id }}</a></td>
+        <td><span class="relation relation-{{ row.relation }}">{{ row.relation }}</span></td>
+        <td class="numeric">{{ "%.3f"|format(row.confidence) }}</td>
+        <td>
+          <code>{{ row.user_id }}</code><br>
+          <span class="muted">{{ row.origin_realm }} · #{{ row.origin_channel_id }}</span>
+        </td>
+        <td>
+          <a href="/memory/{{ row.target_memory_item_id }}">#{{ row.target_memory_item_id }}</a>
+          · {{ row.target_kind }} / {{ row.target_disclosure }}
+          <div class="memory-preview">{{ row.target_content }}</div>
+        </td>
+        <td>
+          <a href="/memory/{{ row.new_memory_item_id }}">#{{ row.new_memory_item_id }}</a>
+          · {{ row.new_kind }} / {{ row.new_disclosure }}
+          <div class="memory-preview">{{ row.new_content }}</div>
+        </td>
+        <td class="numeric">{{ row.source_message_ids_decoded|length }}</td>
+        <td>{{ "yes" if row.retry_suspect else "—" }}</td>
+        <td>{{ row.created_at }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">No reconciliation proposals match this filter.</p>
+  {% endif %}
+</section>
+
+<nav class="pagination">
+  {% if data.page.has_previous %}<a href="{{ request.url.include_query_params(page=data.page.number - 1) }}">← Previous</a>{% endif %}
+  <span>Page {{ data.page.number }} / {{ data.page.pages }}</span>
+  {% if data.page.has_next %}<a href="{{ request.url.include_query_params(page=data.page.number + 1) }}">Next →</a>{% endif %}
+</nav>
+{% endblock %}

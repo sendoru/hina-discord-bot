@@ -45,6 +45,8 @@ The dashboard currently exposes the following read-only routes:
 - `/memory/{id}`: memory provenance/source-turn detail
 - `/summaries`: personal/shared legacy summary state
 - `/memory/cursors`: structured extraction cursor/pending state
+- `/reconciliation`: shadow reconciliation proposal review
+- `/reconciliation/{id}`: old/new memory comparison and extraction context
 - `/healthz`: database/telemetry source health
 
 The HTML surface is intentionally desktop-oriented and server-rendered. It uses no client-side
@@ -154,7 +156,27 @@ the legacy personal summary `through_id` is shown as the effective baseline, but
 does **not** initialize or write that cursor. Pending counts are computed against currently retained
 turns only.
 
+## Reconciliation review
+
+`/reconciliation` is a read-only workbench over `memory_reconciliation_proposals`. The list joins
+each proposal with its target/old and new memory items, supports relation/confidence/kind/origin/date
+filters, and reports current-filter rollout metrics such as relation counts and relationship-memory
+proposal counts.
+
+The **retry suspect** filter is deliberately conservative: it is true only when the target and new
+memory items have the same non-empty source-message ID set. Source order does not matter. This is a
+review heuristic, not a conclusion that a retry or extractor bug occurred.
+
+Proposal detail compares old/new content and provenance side by side, resolves source message IDs
+against bounded raw turns when still available, and follows retained source `turn_id` values into
+`extract_memory_items_shadow` and `memory.shadow_extraction` usage rows. Telemetry rotation or raw
+retention can make some of this context unavailable; the UI treats that as normal partial evidence.
+
+No approve/reject decision, proposal mutation, supersede operation, or human-review label is stored
+by this phase.
+
 ## Next phase
 
-The next dashboard work adds reconciliation-proposal inspection for #76 rollout review. Write
-actions remain out of scope until the structured-memory lifecycle is stable.
+The reconciliation workbench is intended to support the #76 lifecycle rollout decision. Dashboard
+write actions remain out of scope until authentication/authorization and the audited write framework
+are introduced.

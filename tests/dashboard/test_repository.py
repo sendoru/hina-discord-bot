@@ -211,3 +211,95 @@ def test_repository_summary_and_extraction_cursor_status(tmp_path):
     assert cursors[other.conversation]["initialized"] == 0
     assert cursors[other.conversation]["effective_through_id"] == 0
     assert cursors[other.conversation]["pending_turns"] == 1
+
+
+def test_repository_reconciliation_review_filters_stats_and_source_sets(tmp_path):
+    path = tmp_path / "hina.sqlite3"
+    store = Store(str(path))
+    scope = Scope(None, 10, 100)
+    store.add(scope, 101, "first source", "reply")
+    store.add(scope, 102, "second source", "reply")
+
+    target_id = store.add_memory_item(
+        scope,
+        "old value",
+        kind="fact",
+        disclosure="reference_gated",
+        source_message_ids=("101", "102"),
+        confidence=0.8,
+    )
+    new_id = store.add_memory_item(
+        scope,
+        "corrected value",
+        kind="fact",
+        disclosure="reference_gated",
+        source_message_ids=("102", "101"),
+        confidence=0.95,
+    )
+    proposal_id = store.add_memory_reconciliation_proposal(
+        scope,
+        new_memory_item_id=new_id,
+        target_memory_item_id=target_id,
+        relation="corrects",
+        confidence=0.92,
+        source_message_ids=("102", "101"),
+    )
+    relationship_id = store.add_memory_item(
+        scope,
+        "relationship state",
+        kind="relationship",
+        disclosure="implicit",
+        source_message_ids=("102",),
+        confidence=0.7,
+        relationship_evidence={"familiarity": 2},
+    )
+    store.add_memory_reconciliation_proposal(
+        scope,
+        new_memory_item_id=relationship_id,
+        target_memory_item_id=target_id,
+        relation="conflicts",
+        confidence=0.65,
+        source_message_ids=("102",),
+    )
+    store.close()
+
+    repository = AdminRepository(path)
+
+    assert repository.count_reconciliation_proposals() == 2
+    assert repository.count_reconciliation_proposals(retry="yes") == 1
+    assert repository.count_reconciliation_proposals(relation="corrects", kind="fact") == 1
+    assert repository.count_reconciliation_proposals(kind="relationship") == 1
+    assert repository.count_reconciliation_proposals(query="corrected") == 1
+
+    rows = repository.search_reconciliation_proposals(retry="yes")
+    assert len(rows) == 1
+    assert rows[0]["id"] == proposal_id
+    assert rows[0]["retry_suspect"] == 1
+    assert rows[0]["new_content"] == "corrected value"
+    assert rows[0]["target_content"] == "old value"
+
+    detail = repository.reconciliation_proposal(proposal_id)
+    assert detail is not None
+    assert detail["new_memory_item_id"] == new_id
+    assert detail["target_memory_item_id"] == target_id
+
+    stats = repository.reconciliation_stats()
+    assert stats["total"] == 2
+    assert stats["retry_suspects"] == 1
+    assert stats["relationship_proposals"] == 1
+    assert stats["relations"] == {"conflicts": 1, "corrects": 1}
+
+
+def test_repository_reconciliation_review_handles_missing_tables(tmp_path):
+    path = tmp_path / "old.sqlite3"
+    db = sqlite3.connect(path)
+    db.execute("CREATE TABLE turns (id INTEGER PRIMARY KEY)")
+    db.commit()
+    db.close()
+
+    repository = AdminRepository(path)
+
+    assert repository.reconciliation_schema()["available"] is False
+    assert repository.count_reconciliation_proposals() == 0
+    assert repository.search_reconciliation_proposals() == []
+    assert repository.reconciliation_proposal(1) is None
