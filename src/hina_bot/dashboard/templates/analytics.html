@@ -266,8 +266,8 @@
         <td><code>{{ row.name }}</code></td>
         <td class="numeric">{{ row.calls }}</td>
         <td class="numeric">{{ row.errors }}</td>
-        <td class="numeric">{{ "{:,}".format(row["to"]tal_tokens.value) }}</td>
-        <td>{{ row["to"]tal_tokens.known }} / {{ row.calls }}</td>
+        <td class="numeric">{{ "{:,}".format(row.total_tokens.value) }}</td>
+        <td>{{ row.total_tokens.known }} / {{ row.calls }}</td>
         <td class="numeric">{{ row.latency.average if row.latency.average is not none else "—" }}</td>
         <td class="numeric">{{ row.latency.p95 if row.latency.p95 is not none else "—" }}</td>
         <td class="numeric">{{ row.web_search_calls.value }}</td>
