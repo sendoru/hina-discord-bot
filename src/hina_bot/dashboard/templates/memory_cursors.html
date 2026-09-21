@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Extraction Cursors · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Memory Extraction Cursors</h1>
+    <p>Structured extraction progress against currently retained turns.</p>
+  </div>
+</section>
+
+<form class="filters" method="get">
+  <input name="q" value="{{ data.filters.q }}" placeholder="scope">
+  <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
+  <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
+  <select name="pending">
+    <option value="">pending: any</option>
+    <option value="yes" {% if data.filters.pending == "yes" %}selected{% endif %}>pending only</option>
+    <option value="no" {% if data.filters.pending == "no" %}selected{% endif %}>caught up</option>
+  </select>
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/memory/cursors">Reset</a>
+</form>
+
+<section class="notice">
+  An uninitialized cursor uses the current legacy summary <code>through_id</code> as its effective baseline, matching Store migration semantics. This page never initializes it.
+</section>
+
+<section class="panel flush">
+  {% if data.rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Scope</th><th>User</th><th>Initialized</th><th>Extraction through</th><th>Summary through</th><th>Δ</th><th>Effective through</th><th>Latest retained</th><th>Pending</th><th>Updated</th></tr>
+      </thead>
+      <tbody>
+      {% for row in data.rows %}
+      <tr>
+        <td><code>{{ row.scope }}</code><br><span class="muted">{{ row.realm }}</span></td>
+        <td><code>{{ row.user_id }}</code></td>
+        <td>{{ "yes" if row.initialized else "no" }}</td>
+        <td class="numeric">{{ row.extraction_through_id if row.extraction_through_id is not none else "—" }}</td>
+        <td class="numeric">{{ row.summary_through_id if row.summary_through_id is not none else "—" }}</td>
+        <td class="numeric">{{ row.cursor_delta if row.cursor_delta is not none else "—" }}</td>
+        <td class="numeric">{{ row.effective_through_id }}</td>
+        <td class="numeric">{{ row.latest_turn_id or "—" }}</td>
+        <td class="numeric">{{ row.pending_turns }}</td>
+        <td>{{ row.extraction_updated_at or "—" }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="empty">No cursor states match this filter.</p>{% endif %}
+</section>
+{% endblock %}
