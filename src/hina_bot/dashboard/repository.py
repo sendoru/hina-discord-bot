@@ -221,9 +221,9 @@ class AdminRepository:
             else:
                 clauses.append("1=0")
         if relationship == "yes":
-            clauses.append("kind='relationship'")
+            clauses.append("relationship_evidence NOT IN ('{}','')")
         elif relationship == "no":
-            clauses.append("kind!='relationship'")
+            clauses.append("relationship_evidence IN ('{}','')")
         if confidence_min is not None:
             clauses.append("confidence>=?")
             params.append(float(confidence_min))
