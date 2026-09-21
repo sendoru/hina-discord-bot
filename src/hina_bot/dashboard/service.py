@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+
 from .repository import AdminRepository
 from .telemetry import TelemetryReader, TelemetrySnapshot
 
@@ -134,7 +135,8 @@ class DashboardService:
                 return False
             if tier and str(row.get("model_tier", "")).lower() != tier:
                 return False
-            if model and model not in " ".join(row.get("models", ())).lower():
+            models = tuple(str(value) for value in row.get("models", ()))
+            if model and model not in " ".join(models).lower():
                 return False
             if web_search == "yes" and not row.get("web_search"):
                 return False
@@ -142,14 +144,14 @@ class DashboardService:
                 return False
             if query:
                 haystack = " ".join(
-                    [
+                    (
                         str(row.get("turn_id", "")),
                         str(row.get("status", "")),
                         str(row.get("scope", "")),
                         str(row.get("model_tier", "")),
-                        " ".join(row.get("models", ())),
+                        " ".join(models),
                         str(row.get("error_fingerprint", "")),
-                    ]
+                    )
                 ).lower()
                 if query not in haystack:
                     return False
@@ -302,15 +304,26 @@ class DashboardService:
                 for row in (*events, *usage, *exchanges)
                 if (value := _timestamp(row))
             ]
-            at = (\n                min(timestamps)\n                if timestamps\n                else str(stored_by_trace.get(trace_id, {}).get("created_at", ""))\n            )\n
-            status_value = (
-                terminal.get("status")
-                if terminal and terminal.get("status")
-                else (\n                    terminal.get("event")\n                    if terminal\n                    else exchange.get("status") if exchange else "incomplete"\n                )\n            )
-            scope_value = (
-                terminal.get("scope")
-                if terminal and terminal.get("scope")
-                else (\n                    received.get("scope")\n                    if received\n                    else exchange.get("scope") if exchange else ""\n                )\n            )
+            if timestamps:
+                at = min(timestamps)
+            else:
+                at = str(stored_by_trace.get(trace_id, {}).get("created_at", ""))
+
+            if terminal:
+                status_value = terminal.get("status") or terminal.get("event") or "incomplete"
+            elif exchange:
+                status_value = exchange.get("status") or "incomplete"
+            else:
+                status_value = "incomplete"
+
+            if terminal and terminal.get("scope"):
+                scope_value = terminal.get("scope")
+            elif received and received.get("scope"):
+                scope_value = received.get("scope")
+            elif exchange:
+                scope_value = exchange.get("scope") or ""
+            else:
+                scope_value = ""
 
             models: set[str] = set()
             if exchange and isinstance(exchange.get("models"), list):
@@ -321,23 +334,24 @@ class DashboardService:
                 if isinstance(row.get("model"), str) and row.get("model")
             )
 
-            total_tokens = (
-                exchange.get("total_tokens")
-                if exchange and isinstance(exchange.get("total_tokens"), int)
-                else sum(_as_int(row.get("total_tokens")) for row in usage)
-            )
-            elapsed_ms = (
-                terminal.get("elapsed_ms")
-                if terminal and isinstance(terminal.get("elapsed_ms"), int)
-                else exchange.get("elapsed_ms")
-                if exchange and isinstance(exchange.get("elapsed_ms"), int)
-                else None
-            )
-            web_search_calls = (
-                _as_int(exchange.get("web_search_calls"))
-                if exchange
-                else sum(_as_int(row.get("web_search_calls")) for row in usage)
-            )
+            if exchange and isinstance(exchange.get("total_tokens"), int):
+                total_tokens = exchange["total_tokens"]
+            else:
+                total_tokens = sum(_as_int(row.get("total_tokens")) for row in usage)
+
+            if terminal and isinstance(terminal.get("elapsed_ms"), int):
+                elapsed_ms = terminal["elapsed_ms"]
+            elif exchange and isinstance(exchange.get("elapsed_ms"), int):
+                elapsed_ms = exchange["elapsed_ms"]
+            else:
+                elapsed_ms = None
+
+            if exchange:
+                web_search_calls = _as_int(exchange.get("web_search_calls"))
+            else:
+                web_search_calls = sum(
+                    _as_int(row.get("web_search_calls")) for row in usage
+                )
 
             error_row = next(
                 (
@@ -347,6 +361,7 @@ class DashboardService:
                 ),
                 None,
             )
+
             model_tier = ""
             for row in reversed(answer_rows):
                 if isinstance(row.get("model_tier"), str):
@@ -361,7 +376,7 @@ class DashboardService:
                     "status": str(status_value or "incomplete"),
                     "models": tuple(sorted(models)),
                     "model_tier": model_tier,
-                    "total_tokens": total_tokens if isinstance(total_tokens, int) else None,
+                    "total_tokens": total_tokens,
                     "elapsed_ms": elapsed_ms,
                     "web_search": web_search_calls > 0,
                     "web_search_calls": web_search_calls,
@@ -369,7 +384,9 @@ class DashboardService:
                     "error_fingerprint": (
                         str(error_row.get("error_fingerprint", "")) if error_row else ""
                     ),
-                    "memory_failures": _as_int(terminal.get("memory_failures")) if terminal else 0,
+                    "memory_failures": (
+                        _as_int(terminal.get("memory_failures")) if terminal else 0
+                    ),
                     "stored": trace_id in stored_by_trace,
                 }
             )
