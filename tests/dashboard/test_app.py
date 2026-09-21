@@ -169,6 +169,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "color-scheme" in static.text
     assert "@media (max-width: 720px)" in static.text
     assert "@media (max-width: 480px)" in static.text
+    assert "Some mobile browsers expose an effective CSS viewport wider than 720px" in static.text
+    assert "white-space: nowrap" in static.text
     assert "overscroll-behavior-x: contain" in static.text
 
 
