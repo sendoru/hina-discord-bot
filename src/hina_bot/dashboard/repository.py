@@ -497,12 +497,14 @@ class AdminRepository:
             "p.origin_realm": origin_realm,
             "p.origin_channel_id": origin_channel_id,
             "p.relation": relation,
-            "n.kind": kind,
         }
         for column, value in exact.items():
             if value:
                 clauses.append(f"{column}=?")
                 params.append(value)
+        if kind:
+            clauses.append("(n.kind=? OR t.kind=?)")
+            params.extend((kind, kind))
         if confidence_min is not None:
             clauses.append("p.confidence>=?")
             params.append(float(confidence_min))
