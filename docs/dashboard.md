@@ -40,6 +40,7 @@ The dashboard currently exposes the following read-only routes:
 - `/`: retained telemetry overview and recent traces
 - `/traces`: server-side filtered/paginated turn traces
 - `/traces/{turn_id}`: correlated stored turn + event/usage/exchange timeline
+- `/analytics`: model/search routing and API usage analytics
 - `/conversations`: bounded raw-turn inspection with server-side filters
 - `/memory`: structured-memory list/filter view
 - `/memory/{id}`: memory provenance/source-turn detail
@@ -127,6 +128,56 @@ availability rather than treating either case as corruption.
 The conversations page only queries the existing `turns` table. Search and pagination happen in
 SQLite through the read-only repository. Starting the dashboard still does not change
 `HISTORY_TURNS` or preserve old messages.
+
+## Responsive/mobile layout
+
+The dashboard uses the same server-rendered HTML on desktop and mobile. No separate mobile app or
+JavaScript navigation layer is required.
+
+On narrow screens:
+
+- the sticky section navigation becomes a horizontally scrollable touch row,
+- metric cards collapse from six columns to two and then one,
+- filter controls collapse from wrapped desktop controls to a two-column and then one-column form,
+- metadata and comparison grids collapse to one column where needed,
+- wide data tables scroll inside their own table container instead of widening the whole page,
+- message/provenance content wraps while code/JSON remains locally scrollable,
+- controls use mobile-friendly touch heights and the page respects safe-area insets.
+
+The dashboard remains intended for administrative inspection rather than dense mobile editing, so
+large analytical tables keep their column structure and use local horizontal scrolling instead of
+hiding fields.
+
+## Routing and usage analytics
+
+`/analytics` reads only retained `usage.jsonl` and `discord-usage.jsonl` telemetry. It does not
+persist aggregates or copy prompts/messages into an analytics store.
+
+The page separates several different questions instead of mixing them into one total:
+
+- answer routing: FAST/SMART, deterministic baseline -> final tier, semantic status/level,
+  decision source, score margin, components, reasons, and policy,
+- classifier overhead: `model_route_classify` calls, tokens, errors, latency, and provider,
+- shadow evaluation: retained `model_route_shadow` baseline -> proposed tier/search transitions,
+- web routing: baseline/final search modes, lock reason, semantic web need, and actual
+  `web_search_used`,
+- API usage: operation/model/provider calls, token fields, errors, latency, search calls, and
+  empty-response retries,
+- daily UTC provider/model breakdown for before/after deployment comparisons.
+
+Operation/model/provider/time filters apply to per-call usage tables. Routing/search always operate
+on answer rows; the operation filter deliberately does not hide answer-routing evidence. Model,
+provider, and time filters still apply there. Discord exchange aggregates represent whole turns and
+therefore use only the time window rather than pretending an operation/provider-specific exchange
+total exists.
+
+Token fields are never defaulted to zero when absent. Each aggregate reports known and missing row
+counts. `discord-usage.jsonl` also exposes `usage_complete`, and the UI separates complete,
+partial, and older/unknown exchange rows. This makes partial provider telemetry visible instead of
+silently undercounting it.
+
+No provider price table is embedded in the dashboard. Cost conversion can be added later as a
+configurable layer if needed.
 
 ## Memory inspection
 

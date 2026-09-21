@@ -44,6 +44,28 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
             context={"data": service.overview()},
         )
 
+    @app.get("/analytics", response_class=HTMLResponse)
+    def analytics(
+        request: Request,
+        operation: str = "",
+        model: str = "",
+        provider: str = "",
+        after: str = "",
+        before: str = "",
+    ):
+        data = service.analytics(
+            operation=operation,
+            model=model,
+            provider=provider,
+            after=after,
+            before=before,
+        )
+        return templates.TemplateResponse(
+            request=request,
+            name="analytics.html",
+            context={"data": data},
+        )
+
     @app.get("/traces", response_class=HTMLResponse)
     def traces(
         request: Request,
