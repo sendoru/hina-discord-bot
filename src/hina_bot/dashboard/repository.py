@@ -466,8 +466,17 @@ class AdminRepository:
                    t.created_at AS target_created_at,
                    t.updated_at AS target_updated_at,
                    CASE
-                     WHEN n.source_message_ids=t.source_message_ids
-                          AND n.source_message_ids NOT IN ('[]','')
+                     WHEN json_array_length(n.source_message_ids)>0
+                          AND NOT EXISTS (
+                              SELECT value FROM json_each(n.source_message_ids)
+                              EXCEPT
+                              SELECT value FROM json_each(t.source_message_ids)
+                          )
+                          AND NOT EXISTS (
+                              SELECT value FROM json_each(t.source_message_ids)
+                              EXCEPT
+                              SELECT value FROM json_each(n.source_message_ids)
+                          )
                      THEN 1 ELSE 0
                    END AS retry_suspect
             FROM memory_reconciliation_proposals p
@@ -517,10 +526,19 @@ class AdminRepository:
         if created_before:
             clauses.append("p.created_at<=?")
             params.append(created_before)
-        retry_expr = (
-            "n.source_message_ids=t.source_message_ids "
-            "AND n.source_message_ids NOT IN ('[]','')"
-        )
+        retry_expr = """
+            json_array_length(n.source_message_ids)>0
+            AND NOT EXISTS (
+                SELECT value FROM json_each(n.source_message_ids)
+                EXCEPT
+                SELECT value FROM json_each(t.source_message_ids)
+            )
+            AND NOT EXISTS (
+                SELECT value FROM json_each(t.source_message_ids)
+                EXCEPT
+                SELECT value FROM json_each(n.source_message_ids)
+            )
+        """
         if retry == "yes":
             clauses.append(f"({retry_expr})")
         elif retry == "no":
