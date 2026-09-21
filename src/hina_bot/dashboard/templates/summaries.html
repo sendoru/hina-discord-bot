@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Summaries · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Legacy Summaries</h1>
+    <p>Legacy summary state alongside structured-memory rollout.</p>
+  </div>
+</section>
+
+<form class="filters" method="get">
+  <input name="q" value="{{ data.filters.q }}" placeholder="scope / name / summary text">
+  <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
+  <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/summaries">Reset</a>
+</form>
+
+<section class="panel">
+  <h2>Personal summaries</h2>
+  {% if data.personal %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Scope</th><th>User</th><th>Through</th><th>Latest retained</th><th>Pending</th><th>Exportable</th><th>Structured items</th><th>Extraction cursor</th></tr></thead>
+      <tbody>
+      {% for row in data.personal %}
+      <tr>
+        <td><code>{{ row.scope }}</code><br><span class="muted">{{ row.realm }}</span></td>
+        <td><code>{{ row.user_id }}</code></td>
+        <td class="numeric">{{ row.through_id }}</td>
+        <td class="numeric">{{ row.latest_turn_id or "—" }}</td>
+        <td class="numeric">{{ row.pending_turns }}</td>
+        <td>{{ "yes" if row.exportable else "no" }}</td>
+        <td class="numeric">{{ row.structured_memory_count }}</td>
+        <td>
+          {% if row.extraction_cursor %}
+            {{ row.extraction_cursor.extraction_through_id if row.extraction_cursor.extraction_through_id is not none else "not initialized" }}
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      <tr class="content-row"><td></td><td colspan="7"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">No personal summaries match this filter.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>Shared summaries</h2>
+  {% if data.shared %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Scope</th><th>User</th><th>Name</th><th>Through</th><th>Latest retained call</th><th>Pending calls</th></tr></thead>
+      <tbody>
+      {% for row in data.shared %}
+      <tr>
+        <td><code>{{ row.scope }}</code><br><span class="muted">{{ row.realm }}</span></td>
+        <td><code>{{ row.user_id }}</code></td>
+        <td>{{ row.name }}</td>
+        <td class="numeric">{{ row.through_id }}</td>
+        <td class="numeric">{{ row.latest_call_id or "—" }}</td>
+        <td class="numeric">{{ row.pending_calls }}</td>
+      </tr>
+      <tr class="content-row"><td></td><td colspan="5"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">No shared summaries match this filter.</p>{% endif %}
+</section>
+{% endblock %}

@@ -102,3 +102,112 @@ def test_repository_search_turns_filters_without_writes(tmp_path):
     rows = repository.search_turns(user_id="100", query="answer", limit=10)
     assert len(rows) == 1
     assert rows[0]["message_id"] == "55"
+
+
+def test_repository_memory_inspection_and_future_lifecycle_columns(tmp_path):
+    path = tmp_path / "hina.sqlite3"
+    store = Store(str(path))
+    scope = Scope(1, 10, 100, True)
+    token = CURRENT_TURN_ID.set("memory-source-trace")
+    try:
+        store.add(scope, 700, "source message", "reply")
+    finally:
+        CURRENT_TURN_ID.reset(token)
+    first_id = store.add_memory_item(
+        scope,
+        "first memory",
+        kind="fact",
+        disclosure="reference_gated",
+        source_message_ids=("700",),
+        confidence=0.8,
+    )
+    store.add_memory_item(
+        scope,
+        "second memory",
+        kind="preference",
+        disclosure="implicit",
+        confidence=0.9,
+    )
+    store.close()
+
+    repository = AdminRepository(path)
+    assert repository.memory_schema()["has_lifecycle"] is False
+    assert repository.count_memory_items(user_id="100") == 2
+    assert repository.count_memory_items(query="first") == 1
+    assert repository.count_memory_items(relationship="yes") == 0
+
+    item = repository.memory_item(first_id)
+    assert item is not None
+    assert item["content"] == "first memory"
+    assert len(repository.neighboring_memory_items(item)) == 1
+    sources = repository.turns_for_message_ids(["700", "missing"])
+    assert len(sources) == 1
+    assert sources[0]["turn_id"] == "memory-source-trace"
+
+    writable = sqlite3.connect(path)
+    writable.execute("ALTER TABLE memory_items ADD COLUMN status TEXT")
+    writable.execute("ALTER TABLE memory_items ADD COLUMN superseded_by INTEGER")
+    writable.execute("UPDATE memory_items SET status='active'")
+    writable.commit()
+    writable.close()
+
+    repository = AdminRepository(path)
+    schema = repository.memory_schema()
+    assert schema["has_lifecycle"] is True
+    assert schema["has_superseded_by"] is True
+    assert repository.count_memory_items(status="active") == 2
+    assert repository.count_memory_items(status="superseded") == 0
+
+
+def test_repository_summary_and_extraction_cursor_status(tmp_path):
+    path = tmp_path / "hina.sqlite3"
+    store = Store(str(path))
+    scope = Scope(None, 10, 100)
+    store.add(scope, 1, "first", "reply")
+    first_id = int(store.db.execute(
+        "SELECT id FROM turns WHERE message_id='1'"
+    ).fetchone()["id"])
+    store.save_summary(scope, "legacy summary", first_id)
+    store.add(scope, 2, "second", "reply")
+    store.save_memory_extraction_cursor(scope, first_id)
+
+    other = Scope(None, 20, 200)
+    store.add(other, 3, "uninitialized", "reply")
+    store.save_summary(other, "baseline summary", 0)
+
+    with store.db:
+        store.db.execute(
+            """INSERT INTO shared_calls(scope,realm,user_id,message_id,name,content)
+               VALUES (?,?,?,?,?,?)""",
+            (scope.conversation, scope.realm, "100", "900", "User", "shared one"),
+        )
+        shared_first = int(store.db.execute(
+            "SELECT id FROM shared_calls WHERE message_id='900'"
+        ).fetchone()["id"])
+        store.db.execute(
+            """INSERT INTO shared_calls(scope,realm,user_id,message_id,name,content)
+               VALUES (?,?,?,?,?,?)""",
+            (scope.conversation, scope.realm, "100", "901", "User", "shared two"),
+        )
+        store.db.execute(
+            """INSERT INTO shared_summaries(scope,realm,user_id,name,text,through_id)
+               VALUES (?,?,?,?,?,?)""",
+            (scope.conversation, scope.realm, "100", "User", "shared summary", shared_first),
+        )
+    store.close()
+
+    repository = AdminRepository(path)
+    personal = {row["scope"]: row for row in repository.personal_summary_status()}
+    assert personal[scope.conversation]["pending_turns"] == 1
+    assert personal[other.conversation]["pending_turns"] == 1
+
+    shared = repository.shared_summary_status()
+    assert len(shared) == 1
+    assert shared[0]["pending_calls"] == 1
+
+    cursors = {row["scope"]: row for row in repository.extraction_cursor_status()}
+    assert cursors[scope.conversation]["initialized"] == 1
+    assert cursors[scope.conversation]["pending_turns"] == 1
+    assert cursors[other.conversation]["initialized"] == 0
+    assert cursors[other.conversation]["effective_through_id"] == 0
+    assert cursors[other.conversation]["pending_turns"] == 1

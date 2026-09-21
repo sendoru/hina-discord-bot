@@ -41,6 +41,10 @@ The dashboard currently exposes the following read-only routes:
 - `/traces`: server-side filtered/paginated turn traces
 - `/traces/{turn_id}`: correlated stored turn + event/usage/exchange timeline
 - `/conversations`: bounded raw-turn inspection with server-side filters
+- `/memory`: structured-memory list/filter view
+- `/memory/{id}`: memory provenance/source-turn detail
+- `/summaries`: personal/shared legacy summary state
+- `/memory/cursors`: structured extraction cursor/pending state
 - `/healthz`: database/telemetry source health
 
 The HTML surface is intentionally desktop-oriented and server-rendered. It uses no client-side
@@ -122,8 +126,35 @@ The conversations page only queries the existing `turns` table. Search and pagin
 SQLite through the read-only repository. Starting the dashboard still does not change
 `HISTORY_TURNS` or preserve old messages.
 
+## Memory inspection
+
+The memory pages expose structured items without changing visibility or lifecycle state.
+
+The list supports owner/origin/kind/disclosure/confidence/time/source-content filters. Relationship
+evidence and source message IDs are decoded only in the dashboard read model. Memory detail tries
+to resolve each source message ID against the currently retained `turns` rows and links to the
+correlated trace when available. A missing raw source is displayed as expired bounded retention,
+not as missing provenance.
+
+The repository detects optional `status` and `superseded_by` columns on `memory_items`.
+They are displayed when present so the #76 lifecycle migration can be absorbed by the dashboard
+query/service boundary instead of leaking schema checks into templates.
+
+## Legacy summary and extraction state
+
+`/summaries` reports:
+
+- personal summary `through_id`, latest retained turn, and pending retained turns,
+- shared summary `through_id`, latest retained shared call, and pending shared calls,
+- per-owner structured-memory item count,
+- the corresponding structured extraction cursor when available.
+
+`/memory/cursors` mirrors Store migration semantics. If a scope has no persisted extraction cursor,
+the legacy personal summary `through_id` is shown as the effective baseline, but the dashboard
+does **not** initialize or write that cursor. Pending counts are computed against currently retained
+turns only.
+
 ## Next phase
 
-The next dashboard work adds structured memory, legacy summaries, extraction cursors, and
-reconciliation-proposal inspection. Write actions remain out of scope until the structured-memory
-lifecycle is stable.
+The next dashboard work adds reconciliation-proposal inspection for #76 rollout review. Write
+actions remain out of scope until the structured-memory lifecycle is stable.

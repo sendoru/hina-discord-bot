@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -156,6 +157,284 @@ class AdminRepository:
                 (trace_id,),
             ).fetchone()
         return dict(row) if row is not None else None
+
+    def _table_exists(self, table: str) -> bool:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+        return row is not None
+
+    def _table_columns(self, table: str) -> set[str]:
+        if not self._table_exists(table):
+            return set()
+        with self._connection() as db:
+            rows = db.execute(f"PRAGMA table_info({table})").fetchall()
+        return {str(row["name"]) for row in rows}
+
+    @staticmethod
+    def _decode_json(value: object, default):
+        if not isinstance(value, str) or not value:
+            return default
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return default
+
+    def _memory_filters(
+        self,
+        *,
+        user_id: str = "",
+        origin_realm: str = "",
+        origin_channel_id: str = "",
+        kind: str = "",
+        disclosure: str = "",
+        status: str = "",
+        relationship: str = "",
+        query: str = "",
+        confidence_min: float | None = None,
+        confidence_max: float | None = None,
+        created_after: str = "",
+        created_before: str = "",
+        updated_after: str = "",
+        updated_before: str = "",
+    ) -> tuple[str, tuple[object, ...]]:
+        columns = self._table_columns("memory_items")
+        clauses: list[str] = []
+        params: list[object] = []
+        exact = {
+            "user_id": user_id,
+            "origin_realm": origin_realm,
+            "origin_channel_id": origin_channel_id,
+            "kind": kind,
+            "disclosure": disclosure,
+        }
+        for column, value in exact.items():
+            if value:
+                clauses.append(f"{column}=?")
+                params.append(value)
+        if status:
+            if "status" in columns:
+                clauses.append("status=?")
+                params.append(status)
+            else:
+                clauses.append("1=0")
+        if relationship == "yes":
+            clauses.append("relationship_evidence NOT IN ('{}','')")
+        elif relationship == "no":
+            clauses.append("relationship_evidence IN ('{}','')")
+        if confidence_min is not None:
+            clauses.append("confidence>=?")
+            params.append(float(confidence_min))
+        if confidence_max is not None:
+            clauses.append("confidence<=?")
+            params.append(float(confidence_max))
+        for column, operator, value in (
+            ("created_at", ">=", created_after),
+            ("created_at", "<=", created_before),
+            ("updated_at", ">=", updated_after),
+            ("updated_at", "<=", updated_before),
+        ):
+            if value:
+                clauses.append(f"{column}{operator}?")
+                params.append(value)
+        if query:
+            escaped = self._like(query)
+            pattern = f"%{escaped}%"
+            clauses.append(
+                "(content LIKE ? ESCAPE '\\' OR source_message_ids LIKE ? ESCAPE '\\')"
+            )
+            params.extend((pattern, pattern))
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        return where, tuple(params)
+
+    def memory_schema(self) -> dict[str, object]:
+        columns = self._table_columns("memory_items")
+        return {
+            "available": bool(columns),
+            "columns": tuple(sorted(columns)),
+            "has_lifecycle": "status" in columns,
+            "has_superseded_by": "superseded_by" in columns,
+        }
+
+    def count_memory_items(self, **filters) -> int:
+        if not self._table_exists("memory_items"):
+            return 0
+        where, params = self._memory_filters(**filters)
+        with self._connection() as db:
+            row = db.execute(
+                f"SELECT COUNT(*) AS count FROM memory_items{where}", params
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def search_memory_items(
+        self, *, limit: int = 50, offset: int = 0, **filters
+    ) -> list[dict[str, object]]:
+        if not self._table_exists("memory_items"):
+            return []
+        limit = self._limit(limit)
+        offset = max(0, int(offset))
+        where, params = self._memory_filters(**filters)
+        with self._connection() as db:
+            rows = db.execute(
+                f"SELECT * FROM memory_items{where} ORDER BY id DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
+            ).fetchall()
+        return self._dicts(rows)
+
+    def memory_item(self, item_id: int) -> dict[str, object] | None:
+        if not self._table_exists("memory_items"):
+            return None
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT * FROM memory_items WHERE id=?", (int(item_id),)
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def neighboring_memory_items(
+        self, item: dict[str, object], *, limit: int = 8
+    ) -> list[dict[str, object]]:
+        if not self._table_exists("memory_items"):
+            return []
+        limit = self._limit(limit, maximum=50)
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT * FROM memory_items
+                   WHERE id!=? AND user_id=? AND origin_realm=? AND origin_channel_id=?
+                   ORDER BY ABS(id-?) ASC LIMIT ?""",
+                (
+                    int(item["id"]),
+                    str(item["user_id"]),
+                    str(item["origin_realm"]),
+                    str(item["origin_channel_id"]),
+                    int(item["id"]),
+                    limit,
+                ),
+            ).fetchall()
+        return self._dicts(rows)
+
+    def turns_for_message_ids(self, message_ids: list[str]) -> list[dict[str, object]]:
+        values = tuple(dict.fromkeys(str(value) for value in message_ids if str(value)))
+        if not values or not self._table_exists("turns"):
+            return []
+        placeholders = ",".join("?" for _ in values)
+        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
+        with self._connection() as db:
+            rows = db.execute(
+                f"""SELECT id,scope,realm,user_id,message_id,content,reply,exportable,
+                           {turn_id},memory_context,created_at
+                    FROM turns WHERE message_id IN ({placeholders}) ORDER BY id""",
+                values,
+            ).fetchall()
+        return self._dicts(rows)
+
+    def memory_counts_by_user(self) -> dict[str, int]:
+        if not self._table_exists("memory_items"):
+            return {}
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT user_id,COUNT(*) AS count FROM memory_items GROUP BY user_id"
+            ).fetchall()
+        return {str(row["user_id"]): int(row["count"]) for row in rows}
+
+    def personal_summary_status(self) -> list[dict[str, object]]:
+        if not self._table_exists("summaries"):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT s.*,
+                          (SELECT COUNT(*) FROM turns t
+                           WHERE t.scope=s.scope AND t.id>s.through_id) AS pending_turns,
+                          (SELECT MAX(id) FROM turns t WHERE t.scope=s.scope) AS latest_turn_id
+                   FROM summaries s ORDER BY s.rowid DESC"""
+            ).fetchall()
+        return self._dicts(rows)
+
+    def shared_summary_status(self) -> list[dict[str, object]]:
+        if not self._table_exists("shared_summaries"):
+            return []
+        has_calls = self._table_exists("shared_calls")
+        pending = (
+            """(SELECT COUNT(*) FROM shared_calls c
+                 WHERE c.scope=s.scope AND c.id>s.through_id)"""
+            if has_calls
+            else "0"
+        )
+        latest = (
+            "(SELECT MAX(id) FROM shared_calls c WHERE c.scope=s.scope)"
+            if has_calls
+            else "NULL"
+        )
+        with self._connection() as db:
+            rows = db.execute(
+                f"""SELECT s.*, {pending} AS pending_calls,
+                           {latest} AS latest_call_id
+                    FROM shared_summaries s ORDER BY s.rowid DESC"""
+            ).fetchall()
+        return self._dicts(rows)
+
+    def extraction_cursor_status(self) -> list[dict[str, object]]:
+        if not self._table_exists("turns"):
+            return []
+        has_cursors = self._table_exists("memory_extraction_cursors")
+        has_summaries = self._table_exists("summaries")
+
+        scope_parts = ["SELECT scope, realm, user_id FROM turns"]
+        if has_summaries:
+            scope_parts.append("SELECT scope, realm, user_id FROM summaries")
+        if has_cursors:
+            scope_parts.append(
+                "SELECT scope, realm, user_id FROM memory_extraction_cursors"
+            )
+        scopes_sql = " UNION ".join(scope_parts)
+
+        cursor_join = (
+            "LEFT JOIN memory_extraction_cursors c ON c.scope=sc.scope"
+            if has_cursors
+            else ""
+        )
+        summary_join = (
+            "LEFT JOIN summaries s ON s.scope=sc.scope" if has_summaries else ""
+        )
+        cursor_fields = (
+            "c.through_id AS extraction_through_id, "
+            "c.updated_at AS extraction_updated_at,"
+            if has_cursors
+            else "NULL AS extraction_through_id, NULL AS extraction_updated_at,"
+        )
+        summary_fields = (
+            "s.through_id AS summary_through_id,"
+            if has_summaries
+            else "NULL AS summary_through_id,"
+        )
+        if has_cursors and has_summaries:
+            effective = "COALESCE(c.through_id,s.through_id,0)"
+        elif has_cursors:
+            effective = "COALESCE(c.through_id,0)"
+        elif has_summaries:
+            effective = "COALESCE(s.through_id,0)"
+        else:
+            effective = "0"
+        initialized = "CASE WHEN c.scope IS NULL THEN 0 ELSE 1 END" if has_cursors else "0"
+
+        with self._connection() as db:
+            rows = db.execute(
+                f"""WITH scopes AS ({scopes_sql})
+                    SELECT sc.scope,sc.realm,sc.user_id,
+                           {cursor_fields}
+                           {summary_fields}
+                           {effective} AS effective_through_id,
+                           {initialized} AS initialized,
+                           (SELECT COUNT(*) FROM turns t
+                            WHERE t.scope=sc.scope AND t.id>{effective}) AS pending_turns,
+                           (SELECT MAX(id) FROM turns t WHERE t.scope=sc.scope) AS latest_turn_id
+                    FROM scopes sc
+                    {cursor_join}
+                    {summary_join}
+                    ORDER BY pending_turns DESC, sc.scope"""
+            ).fetchall()
+        return self._dicts(rows)
 
     def recent_memory_items(self, *, limit: int = 100) -> list[dict[str, object]]:
         limit = self._limit(limit)
