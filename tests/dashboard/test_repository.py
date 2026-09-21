@@ -48,9 +48,8 @@ def test_repository_connection_is_sqlite_read_only(tmp_path):
     populated_database(path)
     repository = AdminRepository(path)
 
-    with repository._connection() as db:
-        with pytest.raises(sqlite3.OperationalError):
-            db.execute("DELETE FROM turns")
+    with repository._connection() as db, pytest.raises(sqlite3.OperationalError):
+        db.execute("DELETE FROM turns")
 
     writable = sqlite3.connect(path)
     try:
