@@ -29,13 +29,29 @@ def dashboard_client(tmp_path):
         "SELECT id FROM turns WHERE message_id='55'"
     ).fetchone()["id"])
     store.save_summary(scope, "legacy dashboard summary", through)
-    store.add_memory_item(
+    target_id = store.add_memory_item(
         scope,
         "dashboard memory",
         kind="fact",
         disclosure="reference_gated",
         source_message_ids=("55",),
         confidence=0.95,
+    )
+    new_id = store.add_memory_item(
+        scope,
+        "dashboard memory updated",
+        kind="fact",
+        disclosure="reference_gated",
+        source_message_ids=("55",),
+        confidence=0.97,
+    )
+    store.add_memory_reconciliation_proposal(
+        scope,
+        new_memory_item_id=new_id,
+        target_memory_item_id=target_id,
+        relation="corrects",
+        confidence=0.9,
+        source_message_ids=("55",),
     )
     store.close()
 
@@ -127,6 +143,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     memory_detail = client.get("/memory/1")
     summaries = client.get("/summaries?q=dashboard")
     cursors = client.get("/memory/cursors?user_id=100")
+    reconciliation = client.get("/reconciliation?relation=corrects")
+    reconciliation_detail = client.get("/reconciliation/1")
     static = client.get("/static/dashboard.css")
 
     assert overview.status_code == 200
@@ -138,6 +156,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "hello dashboard" in memory_detail.text
     assert "legacy dashboard summary" in summaries.text
     assert "Memory Extraction Cursors" in cursors.text
+    assert "dashboard memory updated" in reconciliation.text
+    assert "Target / old" in reconciliation_detail.text
+    assert "dashboard memory updated" in reconciliation_detail.text
     assert static.status_code == 200
     assert "color-scheme" in static.text
 
@@ -154,5 +175,13 @@ def test_unknown_memory_item_returns_404(tmp_path):
     client = dashboard_client(tmp_path)
 
     response = client.get("/memory/9999")
+
+    assert response.status_code == 404
+
+
+def test_unknown_reconciliation_proposal_returns_404(tmp_path):
+    client = dashboard_client(tmp_path)
+
+    response = client.get("/reconciliation/9999")
 
     assert response.status_code == 404
