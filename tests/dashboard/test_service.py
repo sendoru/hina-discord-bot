@@ -152,12 +152,21 @@ def test_overview_aggregates_trace_and_exchange_metrics(tmp_path):
 def test_trace_filters_and_pagination_are_server_side(tmp_path):
     service = build_service(tmp_path)
 
-    data = service.traces(scope="guild", tier="smart", web_search="yes")
+    data = service.traces(
+        scope="guild",
+        tier="smart",
+        operation="answer",
+        error="no",
+        web_search="yes",
+        after="2026-09-20T23:59:00+00:00",
+        before="2026-09-21T00:00:30+00:00",
+    )
 
     assert data["page"].total == 1
     assert [row["turn_id"] for row in data["rows"]] == ["trace-1"]
     assert data["rows"][0]["stored"] is True
     assert data["rows"][0]["models"] == ("smart-model",)
+    assert data["rows"][0]["operations"] == ("answer",)
 
 
 def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
