@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Memory · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -15,10 +16,15 @@
 <form class="filters search-filter" method="get">
   <div class="search-primary">
     <label for="memory-search">Content search</label>
-    <input id="memory-search" class="search-input" name="q" value="{{ data.filters.q }}" placeholder="memory content / source message id 검색">
+    <div class="search-primary-row">
+      <input id="memory-search" class="search-input" name="q" value="{{ data.filters.q }}" placeholder="memory content / source message id 검색">
+      <button type="submit">Search</button>
+    </div>
   </div>
-  <div class="filter-row">
-    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
+  <details class="advanced-filters" {% if data.filters.user_id or data.filters.origin_realm or data.filters.origin_channel_id or data.filters.kind or data.filters.disclosure or data.filters.status or data.filters.relationship or data.filters.confidence_min or data.filters.confidence_max or data.filters.created_after or data.filters.created_before or data.filters.updated_after or data.filters.updated_before %}open{% endif %}>
+    <summary>Advanced filters</summary>
+    <div class="filter-row">
+    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
     <input name="origin_realm" value="{{ data.filters.origin_realm }}" placeholder="origin realm">
     <input name="origin_channel_id" value="{{ data.filters.origin_channel_id }}" placeholder="channel id">
     <select name="kind">
@@ -55,15 +61,16 @@
     <label class="time-field">Updated before
       <input type="datetime-local" name="updated_before" value="{{ data.filters.updated_before }}">
     </label>
-    <button type="submit">Filter</button>
-    <a class="button secondary" href="/memory">Reset</a>
-  </div>
+      <button type="submit">Apply filters</button>
+    </div>
+  </details>
   <div class="quick-ranges" aria-label="Quick created-time ranges">
     <span>Created:</span>
     {% for preset in data.time_ranges %}
     <a href="{{ request.url.include_query_params(created_after=preset.after, created_before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
   </div>
+  {{ active_filter_chips(request, "/memory") }}
 </form>
 
 <section class="panel flush">
