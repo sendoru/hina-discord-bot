@@ -32,7 +32,7 @@
     </div>
     <dl class="metadata compact">
       <div><dt>Realm</dt><dd>{{ row.realm }}</dd></div>
-      <div><dt>User</dt><dd><code>{{ row.user_id }}</code></dd></div>
+      <div><dt>User</dt><dd>{% if row.name %}{{ row.name }} · {% endif %}<code>{{ row.user_id }}</code></dd></div>
       <div><dt>Exportable</dt><dd>{{ row.exportable }}</dd></div>
     </dl>
     <h3>Input</h3>
