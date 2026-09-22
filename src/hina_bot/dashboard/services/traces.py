@@ -7,6 +7,8 @@ from ..repository import AdminRepository
 from ..telemetry import TelemetryReader, TelemetrySnapshot
 from .base import Page, ReadService, _as_int, _parse_time, _timestamp, _turn_id
 
+_TERMINAL_EVENTS = {"turn.completed", "turn.failed", "turn.dropped"}
+
 
 class TraceService(ReadService):
     def __init__(self, repository: AdminRepository, telemetry: TelemetryReader):
@@ -346,7 +348,6 @@ class TraceService(ReadService):
         )
         return {"rows": rows, "page": pagination, "filters": filters}
 
-    @staticmethod
     def _trace_summaries(
         self,
         snapshot: TelemetrySnapshot,
