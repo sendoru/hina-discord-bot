@@ -298,3 +298,31 @@ def test_repository_reconciliation_review_handles_missing_tables(tmp_path):
     assert repository.count_reconciliation_proposals() == 0
     assert repository.search_reconciliation_proposals() == []
     assert repository.reconciliation_proposal(1) is None
+
+
+def test_repository_filters_turn_time_and_reads_neighbor_context(tmp_path):
+    path = tmp_path / "turn-time.sqlite3"
+    store = Store(str(path))
+    scope = Scope(None, 10, 100)
+    store.add(scope, 1, "first", "reply one")
+    store.add(scope, 2, "second", "reply two")
+    store.add(scope, 3, "third", "reply three")
+    with store.db:
+        store.db.execute("UPDATE turns SET created_at='2026-09-22 12:00:00' WHERE message_id='1'")
+        store.db.execute("UPDATE turns SET created_at='2026-09-22 13:00:00' WHERE message_id='2'")
+        store.db.execute("UPDATE turns SET created_at='2026-09-22 14:00:00' WHERE message_id='3'")
+    selected_id = int(
+        store.db.execute("SELECT id FROM turns WHERE message_id='2'").fetchone()["id"]
+    )
+    store.close()
+
+    repository = AdminRepository(path)
+
+    rows = repository.search_turns(
+        created_after="2026-09-22 12:30:00",
+        created_before="2026-09-22 13:30:00",
+    )
+    assert [row["message_id"] for row in rows] == ["2"]
+
+    context = repository.turn_context(selected_id, before=1, after=1)
+    assert [row["message_id"] for row in context] == ["1", "2", "3"]
