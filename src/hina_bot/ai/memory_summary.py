@@ -288,15 +288,20 @@ class MemorySummaryMixin:
             log.warning("Structured memory shadow extraction failed (%s)", type(exc).__name__)
             return False
 
-    async def extract_structured_memory(self, store, scope):
-        """Run the shadow extractor on its own cursor/cadence, independent of summaries."""
+    async def extract_structured_memory(self, store, scope, *, min_turns: int | None = None):
+        """Run one bounded structured-memory batch and report whether it committed."""
 
         batch_size = self.settings.structured_memory_every
+        required_turns = batch_size if min_turns is None else max(
+            1, min(int(min_turns), batch_size)
+        )
         pending = store.pending_memory_extraction(scope, limit=batch_size)
-        if len(pending) < batch_size:
-            return
+        if len(pending) < required_turns:
+            return False
         if await self._extract_memory_items_shadow(store, scope, pending):
             store.save_memory_extraction_cursor(scope, pending[-1]["id"])
+            return True
+        return False
 
     async def summarize(self, store, scope):
         pending = store.pending(scope)

@@ -133,6 +133,41 @@ def test_structured_memory_cadence_cannot_exceed_summary_cadence(monkeypatch, tm
         _load_settings(monkeypatch, tmp_path, None)
 
 
+def test_structured_memory_stale_sweep_defaults_and_overrides(monkeypatch, tmp_path):
+    defaults = _load_settings(monkeypatch, tmp_path, None)
+    assert defaults.structured_memory_stale_after_seconds == 8 * 60 * 60
+    assert defaults.structured_memory_sweep_interval_seconds == 60 * 60
+
+    monkeypatch.setenv("STRUCTURED_MEMORY_STALE_AFTER_SECONDS", "7200")
+    monkeypatch.setenv("STRUCTURED_MEMORY_SWEEP_INTERVAL_SECONDS", "300")
+    overridden = _load_settings(monkeypatch, tmp_path, None)
+    assert overridden.structured_memory_stale_after_seconds == 7200
+    assert overridden.structured_memory_sweep_interval_seconds == 300
+
+
+def test_structured_memory_stale_sweep_can_be_disabled(monkeypatch, tmp_path):
+    monkeypatch.setenv("STRUCTURED_MEMORY_SWEEP_INTERVAL_SECONDS", "0")
+    value = _load_settings(monkeypatch, tmp_path, None)
+    assert value.structured_memory_sweep_interval_seconds == 0
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("STRUCTURED_MEMORY_STALE_AFTER_SECONDS", "59"),
+        ("STRUCTURED_MEMORY_STALE_AFTER_SECONDS", str(7 * 24 * 60 * 60 + 1)),
+        ("STRUCTURED_MEMORY_SWEEP_INTERVAL_SECONDS", "59"),
+        ("STRUCTURED_MEMORY_SWEEP_INTERVAL_SECONDS", str(24 * 60 * 60 + 1)),
+    ],
+)
+def test_structured_memory_stale_sweep_rejects_out_of_range_values(
+    monkeypatch, tmp_path, variable, value,
+):
+    monkeypatch.setenv(variable, value)
+    with pytest.raises(ValueError):
+        _load_settings(monkeypatch, tmp_path, None)
+
+
 @pytest.mark.parametrize("value", ["127", "65537"])
 def test_memory_generation_budget_rejects_out_of_range_values(monkeypatch, tmp_path, value):
     with pytest.raises(ValueError):
