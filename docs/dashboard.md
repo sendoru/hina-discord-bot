@@ -304,3 +304,26 @@ The reconciliation workbench remains the review surface for tuning the automatic
 whether currently deferred relationship/conflict cases ever need stronger lifecycle semantics. Dashboard
 write actions remain out of scope until authentication/authorization and the audited write framework
 are introduced.
+
+## Internal module boundaries
+
+The dashboard remains part of the same repository as the Discord runtime, but the application boundary is
+explicit:
+
+- `dashboard/app.py` is the composition root: settings, read-only repository/telemetry construction,
+  templates/static setup, router registration, and health checks.
+- `dashboard/routes/` owns FastAPI request/response wiring by domain.
+- `dashboard/services/` owns trace, memory, and reconciliation read models. The legacy
+  `DashboardService` name remains as a compatibility facade so callers do not need to change all at once.
+- `dashboard/analytics.py` and `dashboard/identity.py` remain pure read-model builders instead of being
+  wrapped in unnecessary service classes.
+- `dashboard/repository.py` remains the explicit SQLite read boundary. It still opens the database
+  read-only and does not construct the production `Store`.
+
+The intended dependency direction is runtime and dashboard code depending on shared contracts/data, not
+the dashboard importing Discord transport details. Regression tests reject direct `dashboard -> discord`
+imports, dashboard use of the runtime `Store`, and reverse `core -> dashboard/FastAPI` dependencies.
+
+This layout is the extension point for #99-#101: authentication dependencies can be composed at router/app
+boundaries, while future audited write services can remain separate from the existing read repository.
+
