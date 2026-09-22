@@ -872,6 +872,58 @@ async def test_partial_retry_does_not_offer_same_batch_item_as_reconciliation_ca
     store.close()
 
 
+@pytest.mark.asyncio
+async def test_reconciliation_apply_failure_retries_existing_proposal():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    old_id = store.add_memory_item(
+        scope,
+        "사용자는 키위를 키운다.",
+        kind=MemoryKind.FACT,
+        disclosure=MemoryDisclosure.LOCAL,
+        source_message_ids=("90",),
+    )
+    _add_turns(store, scope, 101, 4)
+    extraction = json.dumps({
+        "items": [{
+            "content": "사용자는 웅을 키운다.",
+            "kind": "fact",
+            "disclosure": "local",
+            "confidence": 0.99,
+            "source_message_ids": ["101"],
+            "relation": {
+                "type": "corrects",
+                "target_item_id": old_id,
+                "confidence": 0.99,
+            },
+        }]
+    }, ensure_ascii=False)
+    harness = _harness(_response(extraction), _response(extraction))
+
+    original_apply = store.apply_memory_reconciliation_proposal
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("lifecycle write failed")
+        return original_apply(*args, **kwargs)
+
+    store.apply_memory_reconciliation_proposal = fail_once
+    await harness.extract_structured_memory(store, scope)
+    assert store.memory_extraction_cursor(scope) == 0
+    assert len(store.memory_reconciliation_proposals(100)) == 1
+
+    await harness.extract_structured_memory(store, scope)
+
+    assert store.memory_extraction_cursor(scope) == store.history(scope)[-1]["id"]
+    active = store.memory_items(100)
+    assert [item.content for item in active] == ["사용자는 웅을 키운다."]
+    assert len(store.memory_reconciliation_proposals(100)) == 1
+    store.close()
+
+
 def test_forget_removes_reconciliation_proposals_with_memory():
     store = Store(":memory:")
     scope = Scope(None, 10, 100)
