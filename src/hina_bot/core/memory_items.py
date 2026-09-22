@@ -100,6 +100,7 @@ class MemoryItem:
     created_at: str
     updated_at: str
     relationship_evidence: RelationshipEvidence = field(default_factory=RelationshipEvidence)
+    user_name: str = ""
 
 
 def _same_disclosure_space(item: MemoryItem, current_scope: Scope) -> bool:
