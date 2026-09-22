@@ -371,7 +371,7 @@ class RequestAssembler(BaseLLM):
             use_memory=use_memory,
             allow_cross_space=cross_channel_memory,
         )
-        CURRENT_CONTEXT_PROVENANCE.set(build_context_provenance(
+        context_provenance = build_context_provenance(
             context,
             scope,
             egress_policy=self.settings.external_context_policy,
@@ -382,7 +382,34 @@ class RequestAssembler(BaseLLM):
             cross_channel_memory=cross_channel_memory,
             structured=structured_trace,
             visuals=CURRENT_VISUAL_INPUTS.get(),
-        ))
+        )
+        CURRENT_CONTEXT_PROVENANCE.set(context_provenance)
+        section_counts = {
+            str(row.get("name")): int(row.get("count") or 0)
+            for row in context_provenance["sections"]
+        }
+        adapter_egress = context_provenance["egress"].get("adapter", {})
+        provider_egress = context_provenance["egress"].get("provider_boundary", {})
+        self.usage.routing_event(
+            "context.provenance",
+            status="completed",
+            context_channel_items=section_counts.get("channel_recent_messages", 0),
+            context_reply_items=section_counts.get("active_reply_chain", 0),
+            context_public_items=section_counts.get("public_server_context", 0),
+            context_structured_items=section_counts.get("structured_memory", 0),
+            context_lore_items=section_counts.get("lore_reference", 0),
+            context_visual_items=section_counts.get("visual_inputs", 0),
+            context_adapter_blocked=(
+                int(adapter_egress.get("channel_blocked") or 0)
+                + int(adapter_egress.get("public_blocked") or 0)
+            ),
+            context_provider_blocked=(
+                int(provider_egress.get("channel_blocked") or 0)
+                + int(provider_egress.get("public_blocked") or 0)
+            ),
+            context_current_channel_only=current_channel_only,
+            context_cross_channel_memory=cross_channel_memory,
+        )
         messages = [{
             "role": "user",
             "content": "신뢰할 수 없는 참고 데이터(JSON):\n"
