@@ -6,10 +6,11 @@ from datetime import timedelta
 import discord
 
 from hina_bot.ai.egress_policy import strict_policy
-from hina_bot.ai.identity_resolution import identity_resolution_needed
+from hina_bot.ai.identity_resolution import identity_group, identity_resolution_needed
 from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
+from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 
 from .bot import HinaClient as BaseHinaClient
@@ -112,6 +113,47 @@ class HinaClient(BaseHinaClient):
         self.vision_limits = VisionLimits.from_settings(settings)
         install_slash_commands(self)
 
+    def _emit_identity_resolution(
+        self,
+        scope: Scope,
+        *,
+        outcome: str,
+        resolver_invoked: bool,
+        candidate_count: int = 0,
+        raw_candidate_count: int = 0,
+        reference: str = "",
+        resolved_user_id: str = "",
+        blocked_reason: str = "",
+    ) -> None:
+        fields: dict[str, object] = {
+            "outcome": outcome,
+            "resolver_invoked": resolver_invoked,
+            "candidate_count": int(candidate_count),
+            "raw_candidate_count": int(raw_candidate_count),
+            "evidence_source": "resolver_derived" if resolver_invoked else "policy",
+        }
+        if blocked_reason:
+            fields["blocked_reason"] = blocked_reason
+        if scope.guild_id is not None and reference:
+            group = identity_group(
+                reference,
+                guild_id=scope.guild_id,
+                secret=self.settings.discord_token,
+                kind="reference",
+            )
+            if group:
+                fields["reference_group"] = group
+        if scope.guild_id is not None and resolved_user_id:
+            group = identity_group(
+                resolved_user_id,
+                guild_id=scope.guild_id,
+                secret=self.settings.discord_token,
+                kind="user",
+            )
+            if group:
+                fields["resolved_user_group"] = group
+        self.events.emit("identity.resolution", **fields)
+
     async def _resolve_text_targets(
         self,
         message,
@@ -121,14 +163,32 @@ class HinaClient(BaseHinaClient):
         strict_egress: bool,
         third_party_mention: bool,
     ):
-        if (
-            text is None
-            or scope.guild_id is None
-            or strict_egress
-            or third_party_mention
-            or not identity_resolution_needed(text)
-            or not hasattr(self.llm, "resolve_speaker_identity")
-        ):
+        if text is None or scope.guild_id is None or not identity_resolution_needed(text):
+            return [], ()
+
+        if strict_egress:
+            self._emit_identity_resolution(
+                scope,
+                outcome="blocked",
+                resolver_invoked=False,
+                blocked_reason="strict_egress",
+            )
+            return [], ()
+        if third_party_mention:
+            self._emit_identity_resolution(
+                scope,
+                outcome="blocked",
+                resolver_invoked=False,
+                blocked_reason="explicit_third_party_mention",
+            )
+            return [], ()
+        if not hasattr(self.llm, "resolve_speaker_identity"):
+            self._emit_identity_resolution(
+                scope,
+                outcome="blocked",
+                resolver_invoked=False,
+                blocked_reason="resolver_unavailable",
+            )
             return [], ()
 
         raw_candidates = self.store.identity_candidates(
@@ -168,7 +228,27 @@ class HinaClient(BaseHinaClient):
                         names.append(value[:100])
             candidates.append(candidate)
 
+        if not candidates:
+            self._emit_identity_resolution(
+                scope,
+                outcome="blocked",
+                resolver_invoked=False,
+                candidate_count=0,
+                raw_candidate_count=len(raw_candidates),
+                blocked_reason="no_visible_candidates",
+            )
+            return [], ()
+
         resolution = await self.llm.resolve_speaker_identity(text, candidates)
+        self._emit_identity_resolution(
+            scope,
+            outcome=resolution.status,
+            resolver_invoked=True,
+            candidate_count=len(candidates),
+            raw_candidate_count=len(raw_candidates),
+            reference=getattr(resolution, "reference", ""),
+            resolved_user_id=resolution.user_id if resolution.resolved else "",
+        )
         if not resolution.resolved:
             return [], ()
         candidate = next(
@@ -334,13 +414,29 @@ class HinaClient(BaseHinaClient):
             for user in getattr(message, "mentions", ())
         )
 
-        resolved_targets, resolved_user_ids = await self._resolve_text_targets(
-            message,
-            scope,
-            text,
-            strict_egress=strict_egress,
-            third_party_mention=third_party_mention,
+        identity_turn_id = (
+            new_turn_id()
+            if text is not None
+            and scope.guild_id is not None
+            and identity_resolution_needed(text)
+            else None
         )
+        identity_token = (
+            CURRENT_TURN_ID.set(identity_turn_id)
+            if identity_turn_id is not None
+            else None
+        )
+        try:
+            resolved_targets, resolved_user_ids = await self._resolve_text_targets(
+                message,
+                scope,
+                text,
+                strict_egress=strict_egress,
+                third_party_mention=third_party_mention,
+            )
+        finally:
+            if identity_token is not None:
+                CURRENT_TURN_ID.reset(identity_token)
 
         target_visibility = _target_history_visibility(
             self.store,
@@ -451,9 +547,16 @@ class HinaClient(BaseHinaClient):
         if augmented_content is not None:
             original_content = message.content
             message.content = augmented_content
+        correlation_token = (
+            CURRENT_TURN_ID.set(identity_turn_id)
+            if identity_turn_id is not None
+            else None
+        )
         try:
             return await super().on_message(message)
         finally:
+            if correlation_token is not None:
+                CURRENT_TURN_ID.reset(correlation_token)
             if original_content is not None:
                 message.content = original_content
             CURRENT_DIRECT_TRIGGER.reset(direct_token)
