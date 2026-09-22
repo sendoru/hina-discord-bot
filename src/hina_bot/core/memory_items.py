@@ -28,6 +28,11 @@ class MemoryAccess(StrEnum):
     FULL = "full"
 
 
+class MemoryStatus(StrEnum):
+    ACTIVE = "active"
+    SUPERSEDED = "superseded"
+
+
 RELATIONSHIP_EVIDENCE_AXES = (
     "familiarity",
     "comfort",
@@ -101,6 +106,8 @@ class MemoryItem:
     updated_at: str
     relationship_evidence: RelationshipEvidence = field(default_factory=RelationshipEvidence)
     user_name: str = ""
+    status: MemoryStatus = MemoryStatus.ACTIVE
+    superseded_by: int | None = None
 
 
 def _same_disclosure_space(item: MemoryItem, current_scope: Scope) -> bool:
