@@ -513,6 +513,30 @@ class Store:
         ).fetchall()
         return [self._decode_memory_item(row) for row in rows]
 
+    def reference_gated_memory_candidates(self, scope: Scope, *, limit: int = 24):
+        """Return recent active owner memories whose cross-space access is reference-gated."""
+
+        if scope.guild_id is None:
+            return []
+        rows = self.db.execute(
+            """SELECT * FROM memory_items
+               WHERE user_id=? AND status='active'
+                 AND disclosure='reference_gated'
+                 AND kind<>'relationship'
+                 AND NOT (
+                     origin_realm=?
+                     AND (origin_public_at_capture=1 OR origin_channel_id=?)
+                 )
+               ORDER BY id DESC LIMIT ?""",
+            (
+                str(scope.user_id),
+                scope.realm,
+                str(scope.channel_id),
+                max(0, int(limit)),
+            ),
+        ).fetchall()
+        return [self._decode_memory_item(row) for row in rows]
+
     def memory_reconciliation_candidates(self, scope: Scope, *, limit: int = 24):
         """Return recent candidates without crossing another user's privacy boundary."""
 

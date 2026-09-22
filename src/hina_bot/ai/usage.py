@@ -318,6 +318,8 @@ class UsageLogger:
             "context_structured_items", "context_lore_items", "context_visual_items",
             "context_adapter_blocked", "context_provider_blocked",
             "context_current_channel_only", "context_cross_channel_memory",
+            "factual_recall_detected", "factual_recall_candidates",
+            "factual_recall_selected", "factual_recall_status",
         }
         row = {
             "at": datetime.now(UTC).isoformat(),
