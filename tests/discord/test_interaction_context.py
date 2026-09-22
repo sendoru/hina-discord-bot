@@ -60,3 +60,20 @@ def test_duplicate_mentions_are_bounded_and_deduplicated():
 
     assert len(context["mentions"]) == 1
     assert context["reply_target"] is None
+
+def test_strict_metadata_can_omit_third_party_mention_names():
+    hina = user(99, "히나", bot=True)
+    rio = user(200, "리오", bot=True)
+    message = NS(author=user(100, "사용자"), mentions=[rio, hina])
+
+    context = build_interaction_context(
+        message,
+        99,
+        include_mention_names=False,
+    )
+
+    assert context["mentions"][0]["user_id"] == "200"
+    assert context["mentions"][0]["name"] == ""
+    assert context["mentions"][1]["user_id"] == "99"
+    assert context["mentions"][1]["name"] == "히나"
+
