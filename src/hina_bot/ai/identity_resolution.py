@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 
 _IDENTITY_QUERY = re.compile(
@@ -25,14 +28,16 @@ transliteration between scripts, harmless nickname shortening, or common leetspe
 Do not infer identity from facts, personality, message contents, or outside knowledge.
 
 Return exactly one compact JSON object and no markdown:
-{"status":"resolved","user_id":"..."}
+{"status":"resolved","user_id":"...","reference":"..."}
 or
-{"status":"ambiguous","user_id":""}
+{"status":"ambiguous","user_id":"","reference":"..."}
 or
-{"status":"none","user_id":""}
+{"status":"none","user_id":"","reference":"..."}
 
 Rules:
 - user_id must be copied exactly from one supplied candidate.
+- reference must be copied exactly from the request and should be the shortest span that names the
+  person being resolved. If no such span can be identified, use an empty string.
 - Resolve only when one candidate is clearly the intended person.
 - If multiple candidates are plausible, return ambiguous.
 - If no candidate is a credible name match, return none.
@@ -42,6 +47,7 @@ Rules:
 _MAX_CANDIDATES = 32
 _MAX_NAMES_PER_CANDIDATE = 4
 _MAX_NAME_CHARS = 100
+_MAX_REFERENCE_CHARS = 120
 
 
 @dataclass(frozen=True)
@@ -54,6 +60,7 @@ class SpeakerIdentityCandidate:
 class SpeakerIdentityResolution:
     status: str
     user_id: str = ""
+    reference: str = ""
 
     @property
     def resolved(self) -> bool:
@@ -64,9 +71,30 @@ def identity_resolution_needed(text: str) -> bool:
     return bool(_IDENTITY_QUERY.search(text or ""))
 
 
+def normalize_identity_reference(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value or "").casefold().strip()
+    return re.sub(r"[\W_]+", "", normalized, flags=re.UNICODE)
+
+
+def identity_group(value: str, *, guild_id: int, secret: str, kind: str) -> str:
+    normalized = normalize_identity_reference(value) if kind == "reference" else str(value).strip()
+    if not normalized or not secret:
+        return ""
+    payload = f"hina-identity-observability-v1|{kind}|{guild_id}|{normalized}".encode()
+    return hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()[:16]
+
+
+def _validated_reference(value: object, request: str) -> str:
+    reference = str(value or "")[:_MAX_REFERENCE_CHARS]
+    if not reference or reference not in (request or ""):
+        return ""
+    return reference
+
+
 def parse_identity_resolution(
     raw: str,
     candidates: tuple[SpeakerIdentityCandidate, ...] | list[SpeakerIdentityCandidate],
+    request: str = "",
 ) -> SpeakerIdentityResolution:
     try:
         payload = json.loads(raw)
@@ -77,13 +105,14 @@ def parse_identity_resolution(
     status = str(payload.get("status") or "")
     if status not in {"resolved", "ambiguous", "none"}:
         return SpeakerIdentityResolution("none")
+    reference = _validated_reference(payload.get("reference"), request)
     user_id = str(payload.get("user_id") or "")
     allowed = {candidate.user_id for candidate in candidates}
     if status == "resolved":
         if user_id not in allowed:
-            return SpeakerIdentityResolution("none")
-        return SpeakerIdentityResolution("resolved", user_id)
-    return SpeakerIdentityResolution(status)
+            return SpeakerIdentityResolution("none", reference=reference)
+        return SpeakerIdentityResolution("resolved", user_id, reference)
+    return SpeakerIdentityResolution(status, reference=reference)
 
 
 class SpeakerIdentityResolver:
@@ -135,13 +164,19 @@ class SpeakerIdentityResolver:
             return SpeakerIdentityResolution("none")
         if getattr(response, "status", None) != "completed":
             return SpeakerIdentityResolution("none")
-        return parse_identity_resolution(getattr(response, "output_text", ""), bounded)
+        return parse_identity_resolution(
+            getattr(response, "output_text", ""),
+            bounded,
+            request=request,
+        )
 
 
 __all__ = [
     "SpeakerIdentityCandidate",
     "SpeakerIdentityResolution",
     "SpeakerIdentityResolver",
+    "identity_group",
     "identity_resolution_needed",
+    "normalize_identity_reference",
     "parse_identity_resolution",
 ]
