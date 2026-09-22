@@ -7,6 +7,9 @@ from collections.abc import Iterable
 from hina_bot.core.routing import Scope
 
 
+_MAX_SOURCES = 96
+_MAX_STRUCTURED_ITEMS = 96
+
 _REFERENCE_KINDS = {
     "replied_message",
     "reply_reference_source",
@@ -150,7 +153,8 @@ def build_context_provenance(
     lore = list(context.get("lore_reference", ()) or ())
     visual_rows = list(visuals or ())
     structured = dict(structured or {})
-    structured_items = list(structured.get("items", ()) or ())
+    all_structured_items = list(structured.get("items", ()) or ())
+    structured_items = all_structured_items[-_MAX_STRUCTURED_ITEMS:]
     relationship_axes = list(structured.get("relationship_axes", ()) or ())
 
     adapter = dict(adapter_egress or {})
@@ -172,13 +176,13 @@ def build_context_provenance(
             blocked=provider.get("channel_blocked", 0),
         ),
         _section("active_reply_chain", active_reply),
-        _section("structured_memory", structured_items),
+        _section("structured_memory", all_structured_items),
         _section("relationship_projection", relationship_axes),
         _section("lore_reference", lore),
         _section("visual_inputs", visual_rows),
     ]
 
-    sources = [
+    all_sources = [
         *(
             _message_source(
                 row,
@@ -199,6 +203,7 @@ def build_context_provenance(
         *(_lore_source(row) for row in lore),
         *(_visual_source(visual) for visual in visual_rows),
     ]
+    sources = all_sources[-_MAX_SOURCES:]
 
     return {
         "version": 1,
@@ -218,6 +223,13 @@ def build_context_provenance(
         "sources": sources,
         "structured_memory": structured_items,
         "relationship_axes": relationship_axes,
+        "truncated": {
+            "sources": max(0, len(all_sources) - len(sources)),
+            "structured_memory": max(
+                0,
+                len(all_structured_items) - len(structured_items),
+            ),
+        },
     }
 
 
