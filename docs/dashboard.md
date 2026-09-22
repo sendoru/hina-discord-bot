@@ -189,9 +189,11 @@ to resolve each source message ID against the currently retained `turns` rows an
 correlated trace when available. A missing raw source is displayed as expired bounded retention,
 not as missing provenance.
 
-The repository detects optional `status` and `superseded_by` columns on `memory_items`.
-They are displayed when present so the #76 lifecycle migration can be absorbed by the dashboard
-query/service boundary instead of leaking schema checks into templates.
+Structured memory now has an `active` / `superseded` lifecycle and an optional
+`superseded_by` link. Normal bot retrieval uses active rows only, while the dashboard intentionally
+queries the full table so operators can inspect superseded history and follow replacement links.
+The repository still detects these columns dynamically so older/pre-migration read-only database copies
+remain viewable without dashboard-side schema writes.
 
 ## Legacy summary and extraction state
 
@@ -223,11 +225,14 @@ against bounded raw turns when still available, and follows retained source `tur
 `extract_memory_items_shadow` and `memory.shadow_extraction` usage rows. Telemetry rotation or raw
 retention can make some of this context unavailable; the UI treats that as normal partial evidence.
 
-No approve/reject decision, proposal mutation, supersede operation, or human-review label is stored
-by this phase.
+The runtime may now automatically apply the conservative #76 lifecycle policy to eligible
+high-confidence `duplicate` / `corrects` proposals. The workbench itself remains read-only: it does
+not approve/reject proposals or mutate lifecycle state. Memory detail pages expose the resulting
+`status` and `superseded_by` values for audit.
 
 ## Next phase
 
-The reconciliation workbench is intended to support the #76 lifecycle rollout decision. Dashboard
+The reconciliation workbench remains the review surface for tuning the automatic threshold and deciding
+whether currently deferred relationship/conflict cases ever need stronger lifecycle semantics. Dashboard
 write actions remain out of scope until authentication/authorization and the audited write framework
 are introduced.
