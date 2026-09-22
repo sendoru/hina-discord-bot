@@ -458,6 +458,13 @@ class HinaClient(discord.Client):
                         (time.perf_counter() - delivery_started) * 1000
                     )
                     self.events.emit(
+                        "turn.reply_delivered",
+                        scope=scope_kind,
+                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                        delivery_ms=timings["delivery_ms"],
+                        delivery_chunks=1,
+                    )
+                    self.events.emit(
                         "turn.completed",
                         scope=scope_kind,
                         status="completed",
@@ -469,7 +476,11 @@ class HinaClient(discord.Client):
                     return
                 if guild_id is not None and use_chat_log:
                     stage = "recent_history"
+                    recent_history_started = time.perf_counter()
                     await self.hydrate_recent_history(message, scope)
+                    timings["recent_history_ms"] = round(
+                        (time.perf_counter() - recent_history_started) * 1000
+                    )
                 usage = getattr(self.llm, "usage", None)
                 exchange = (usage.exchange("guild" if guild_id is not None else "dm")
                             if usage is not None and hasattr(usage, "exchange") else nullcontext())
@@ -516,6 +527,15 @@ class HinaClient(discord.Client):
                             reply_delivered = True
                             timings["delivery_ms"] = round(
                                 (time.perf_counter() - delivery_started) * 1000
+                            )
+                            self.events.emit(
+                                "turn.reply_delivered",
+                                scope=scope_kind,
+                                elapsed_ms=round(
+                                    (time.perf_counter() - turn_started) * 1000
+                                ),
+                                delivery_ms=timings["delivery_ms"],
+                                delivery_chunks=len(parts),
                             )
                             if guild_id is not None and use_chat_log:
                                 assistant_name = getattr(self.user, "display_name", "assistant")[:100]
