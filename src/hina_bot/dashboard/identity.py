@@ -25,9 +25,7 @@ def _in_window(row: dict[str, object], after: str, before: str) -> bool:
     before_dt = _parse_time(before)
     if after_dt and (row_dt is None or row_dt < after_dt):
         return False
-    if before_dt and (row_dt is None or row_dt > before_dt):
-        return False
-    return True
+    return not (before_dt and (row_dt is None or row_dt > before_dt))
 
 
 def _percentile(values: list[int], fraction: float) -> int | None:
