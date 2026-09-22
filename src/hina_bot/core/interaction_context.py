@@ -2,7 +2,6 @@
 
 from contextvars import ContextVar
 
-
 CURRENT_INTERACTION_CONTEXT: ContextVar[dict | None] = ContextVar(
     "current_interaction_context",
     default=None,
