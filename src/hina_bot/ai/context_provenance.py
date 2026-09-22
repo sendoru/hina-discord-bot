@@ -1,7 +1,5 @@
 """Content-free provenance snapshots for the final model context."""
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 
 
