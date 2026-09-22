@@ -2,7 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from .memory_context import CURRENT_MEMORY_CONTEXT
+from .memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_CONTEXT
 from .memory_items import (
     MemoryDisclosure,
     MemoryItem,
@@ -35,6 +35,7 @@ class Store:
                 content TEXT NOT NULL, reply TEXT NOT NULL, exportable INTEGER NOT NULL,
                 turn_id TEXT,
                 memory_context TEXT NOT NULL DEFAULT '',
+                context_provenance TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS turns_scope ON turns(scope, id);
@@ -127,6 +128,11 @@ class Store:
             with self.db:
                 self.db.execute(
                     "ALTER TABLE turns ADD COLUMN memory_context TEXT NOT NULL DEFAULT ''"
+                )
+        if "context_provenance" not in columns:
+            with self.db:
+                self.db.execute(
+                    "ALTER TABLE turns ADD COLUMN context_provenance TEXT NOT NULL DEFAULT ''"
                 )
         if "turn_id" not in columns:
             with self.db:
@@ -338,6 +344,7 @@ class Store:
         *,
         name: str = "",
         memory_context=None,
+        context_provenance=None,
     ):
         exportable = scope.public_at_capture and self.summary_exportable(scope)
         exportable = exportable and all(row["exportable"] for row in self.history(scope))
@@ -349,10 +356,18 @@ class Store:
             if memory_context
             else ""
         )
+        if context_provenance is None:
+            context_provenance = CURRENT_CONTEXT_PROVENANCE.get()
+            CURRENT_CONTEXT_PROVENANCE.set(None)
+        encoded_provenance = (
+            json.dumps(context_provenance, ensure_ascii=False, separators=(",", ":"))
+            if context_provenance
+            else ""
+        )
         with self.db:
             self.db.execute(
                 "INSERT INTO turns(scope,realm,user_id,name,message_id,content,reply,exportable,"
-                "turn_id,memory_context) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "turn_id,memory_context,context_provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     scope.conversation,
                     scope.realm,
@@ -364,6 +379,7 @@ class Store:
                     int(exportable),
                     current_turn_id(),
                     encoded_context,
+                    encoded_provenance,
                 ),
             )
             # Bound raw retention even if the summary API keeps failing.
