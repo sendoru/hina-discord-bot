@@ -8,6 +8,7 @@ import discord
 import pytest
 
 from hina_bot.core.config import Settings
+from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.observability import current_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.store import Store
@@ -222,9 +223,11 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
         text="히나야 안녕",
     )
     forwarded_turn_ids = []
+    forwarded_interactions = []
 
     async def capture_forwarded(_message):
         forwarded_turn_ids.append(current_turn_id())
+        forwarded_interactions.append(CURRENT_INTERACTION_CONTEXT.get())
 
     with (
         patch("hina_bot.discord.web_bot.collect", new=AsyncMock(return_value=[])),
@@ -234,6 +237,15 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
     ):
         await client.on_message(direct)
         assert forwarded.await_count == 1
+        interaction = forwarded_interactions[0]
+        assert interaction["speaker"]["user_id"] == "300"
+        assert interaction["speaker"]["is_bot"] is True
+        assert interaction["mentions"] == [{
+            "user_id": "99",
+            "name": "",
+            "is_bot": False,
+            "is_self": True,
+        }]
         await client.on_message(passive)
         assert forwarded.await_count == 1
 
