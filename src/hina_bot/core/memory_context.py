@@ -65,6 +65,9 @@ def build_memory_context(
             author_id = str(row.get("author_user_id") or row.get("user_id") or "")
             if author_id:
                 item["author_user_id"] = author_id
+            author_name = str(row.get("author_name") or row.get("name") or "").strip()
+            if author_name:
+                item["author_name"] = author_name[:100]
             provenance_class = str(row.get("provenance_class") or "")
             if provenance_class:
                 item["provenance_class"] = provenance_class
