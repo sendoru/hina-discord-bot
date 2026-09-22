@@ -472,6 +472,7 @@ class RequestAssembler(BaseLLM):
             structured_memory["structured_owner_memory"]
             or structured_memory["structured_relationship_memory"]
             or structured_memory["cross_space_relationship"]
+            or structured_memory["authorized_factual_memory"]
         ):
             instruction_parts.append(STRUCTURED_MEMORY_POLICY)
         if current_channel_only:
