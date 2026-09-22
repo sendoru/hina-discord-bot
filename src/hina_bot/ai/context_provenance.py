@@ -138,6 +138,7 @@ def build_context_provenance(
     current_channel_only: bool,
     cross_channel_memory: bool,
     structured: dict | None = None,
+    factual_recall: dict | None = None,
     visuals=None,
     conversation_history_message_ids=None,
 ) -> dict:
@@ -246,6 +247,7 @@ def build_context_provenance(
         "sources": sources,
         "structured_memory": structured_items,
         "relationship_axes": relationship_axes,
+        "factual_recall": dict(factual_recall or {}),
         "truncated": {
             "sources": max(0, len(all_sources) - len(sources)),
             "structured_memory": max(

@@ -156,6 +156,35 @@
   </div>
   {% endif %}
 
+  {% set recall = data.context_provenance.factual_recall %}
+  {% if recall %}
+  <h3>Reference-gated factual recall</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Detected</th><th>Detector</th><th>Status</th><th>Candidates</th><th>Relevant</th><th>Selected</th><th>Authorization</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>{{ "yes" if recall.get("detected") else "no" }}</td>
+          <td><code>{{ recall.get("detector_reason") or "—" }}</code></td>
+          <td><code>{{ recall.get("status") or "—" }}</code></td>
+          <td class="numeric">{{ recall.get("candidate_count", 0) }}</td>
+          <td class="numeric">{{ recall.get("relevant_count", 0) }}</td>
+          <td>
+            {% if recall.get("selected_item_ids") %}
+              {% for item_id in recall.get("selected_item_ids") %}
+                <a href="/memory/{{ item_id }}">#{{ item_id }}</a>{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td><code>{{ recall.get("authorization_reason") or "—" }}</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   {% if data.context_provenance.structured_memory %}
   <h3>Structured memory admitted</h3>
   <div class="table-wrap">
@@ -206,6 +235,10 @@
   <p class="muted">
     Adapter blocked {{ data.context_telemetry.context_adapter_blocked or 0 }} rows;
     provider boundary blocked {{ data.context_telemetry.context_provider_blocked or 0 }} rows.
+    Factual recall: {{ data.context_telemetry.factual_recall_status or "unknown" }}
+    (detected={{ "yes" if data.context_telemetry.factual_recall_detected else "no" }},
+    candidates={{ data.context_telemetry.factual_recall_candidates or 0 }},
+    selected={{ data.context_telemetry.factual_recall_selected or 0 }}).
   </p>
 </section>
 {% endif %}

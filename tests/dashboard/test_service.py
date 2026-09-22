@@ -107,6 +107,15 @@ def build_service(tmp_path):
                     "access": "full",
                 }],
                 "relationship_axes": [],
+                "factual_recall": {
+                    "detected": True,
+                    "detector_reason": "past_reference",
+                    "status": "no_candidates",
+                    "candidate_count": 0,
+                    "relevant_count": 0,
+                    "selected_item_ids": [],
+                    "authorization_reason": "",
+                },
                 "truncated": {"sources": 0, "structured_memory": 0},
             },
         )
@@ -147,6 +156,10 @@ def build_service(tmp_path):
                 "context_provider_blocked": 0,
                 "context_current_channel_only": False,
                 "context_cross_channel_memory": True,
+                "factual_recall_detected": True,
+                "factual_recall_candidates": 2,
+                "factual_recall_selected": 0,
+                "factual_recall_status": "ambiguous_single_anchor",
             },
             {
                 "at": "2026-09-21T00:01:01+00:00",
@@ -283,6 +296,8 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
     assert data["summary"]["status"] == "completed"
     assert data["context_provenance"]["egress_policy"] == "bot_interactions_only"
     assert data["context_provenance"]["egress"]["adapter"]["channel_blocked"] == 1
+    assert data["context_provenance"]["factual_recall"]["detector_reason"] == "past_reference"
+    assert data["context_provenance"]["factual_recall"]["status"] == "no_candidates"
     source = data["context_provenance"]["sources"][0]
     assert source["provenance_class"] == "reference_material"
     assert source["causal_context"]["content"] == "quoted source"
@@ -307,6 +322,8 @@ def test_failed_trace_keeps_content_free_context_telemetry(tmp_path):
     assert data["context_provenance"] is None
     assert data["context_telemetry"]["context_reply_items"] == 1
     assert data["context_telemetry"]["context_adapter_blocked"] == 1
+    assert data["context_telemetry"]["factual_recall_detected"] is True
+    assert data["context_telemetry"]["factual_recall_status"] == "ambiguous_single_anchor"
 
 
 def test_conversations_use_bounded_repository_filters(tmp_path):

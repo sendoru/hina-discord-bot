@@ -336,6 +336,7 @@ class DashboardService:
             "relationship_axes": tuple(
                 str(value) for value in raw.get("relationship_axes", ()) or ()
             ),
+            "factual_recall": dict(raw.get("factual_recall") or {}),
             "truncated": dict(raw.get("truncated") or {}),
         }
 

@@ -265,6 +265,10 @@ def test_context_provenance_routing_event_keeps_counts_but_not_unknown_content(t
             context_provider_blocked=0,
             context_current_channel_only=False,
             context_cross_channel_memory=True,
+            factual_recall_detected=True,
+            factual_recall_candidates=3,
+            factual_recall_selected=1,
+            factual_recall_status="authorized",
             content="must-not-log",
         )
     finally:
@@ -279,3 +283,7 @@ def test_context_provenance_routing_event_keeps_counts_but_not_unknown_content(t
     assert row["context_structured_items"] == 4
     assert row["context_adapter_blocked"] == 2
     assert row["context_cross_channel_memory"] is True
+    assert row["factual_recall_detected"] is True
+    assert row["factual_recall_candidates"] == 3
+    assert row["factual_recall_selected"] == 1
+    assert row["factual_recall_status"] == "authorized"

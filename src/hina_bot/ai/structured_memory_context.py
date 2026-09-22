@@ -122,6 +122,7 @@ def structured_memory_provenance(
     *,
     use_memory: bool,
     allow_cross_space: bool,
+    authorized_factual_items: Iterable[MemoryItem] = (),
 ) -> dict:
     """Return content-free provenance for the structured memory admitted to a response."""
 
@@ -132,6 +133,11 @@ def structured_memory_provenance(
         return {"items": [], "relationship_axes": []}
 
     items = _owned(reader(scope.user_id), scope)
+    authorized_ids = {
+        item.id
+        for item in authorized_factual_items
+        if item.user_id == str(scope.user_id)
+    }
     selected: list[dict] = []
     if scope.guild_id is None:
         for item in items:
@@ -188,6 +194,20 @@ def structured_memory_provenance(
             "access": MemoryAccess.IMPLICIT.value,
         })
 
+    for item in items:
+        if item.id not in authorized_ids:
+            continue
+        selected.append({
+            "item_id": item.id,
+            "projection": "authorized_factual_recall",
+            "kind": item.kind.value,
+            "disclosure": item.disclosure.value,
+            "origin_realm": item.origin_realm,
+            "origin_channel_id": item.origin_channel_id,
+            "access": MemoryAccess.FULL.value,
+            "authorization_reason": "owner_explicit_reference",
+        })
+
     profile = aggregate_relationship_evidence(items, scope)
     return {
         "items": selected,
@@ -201,6 +221,7 @@ def structured_memory_context(
     *,
     use_memory: bool,
     allow_cross_space: bool,
+    authorized_factual_items: Iterable[MemoryItem] = (),
 ) -> dict:
     """Build structured fields safe to serialize into the response request."""
 
@@ -208,6 +229,7 @@ def structured_memory_context(
         "structured_owner_memory": [],
         "structured_relationship_memory": [],
         "cross_space_relationship": {},
+        "authorized_factual_memory": [],
     }
     if not use_memory:
         return empty
@@ -217,6 +239,19 @@ def structured_memory_context(
         return empty
 
     items = reader(scope.user_id)
+    authorized_ids = {
+        item.id
+        for item in authorized_factual_items
+        if item.user_id == str(scope.user_id)
+    }
+    authorized = [
+        {
+            **_serialize_memory_item(item),
+            "authorization": "owner_explicit_reference",
+        }
+        for item in items
+        if item.id in authorized_ids
+    ]
     return {
         "structured_owner_memory": owner_dm_memory(items, scope),
         "structured_relationship_memory": full_relationship_memory(items, scope),
@@ -225,6 +260,7 @@ def structured_memory_context(
             if allow_cross_space
             else {}
         ),
+        "authorized_factual_memory": authorized,
     }
 
 

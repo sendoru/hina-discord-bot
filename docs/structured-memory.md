@@ -183,13 +183,47 @@ active items only, so successfully superseded factual observations do not remain
 Deferred conflicts and relationship proposals intentionally remain active until a later policy can resolve
 them safely.
 
+## Phase 4: reference-gated factual recall
+
+Shared-space factual recall is now a separate one-turn authorization path rather than an always-injected
+projection.
+
+The gate is deliberately conservative:
+
+- the current speaker must own the memory item,
+- only active, non-`relationship`, `reference_gated` items are candidates,
+- items already FULL in the current disclosure space are not treated as cross-space recall candidates,
+- current-channel-only requests disable this cross-space path,
+- a strong explicit self-reference must be present in the current user turn,
+- topical overlap without an explicit self-reference does not open the gate,
+- candidate retrieval is bounded to the 24 newest eligible items,
+- relevance selection is lexical in v1 and authorizes at most two best-matching items,
+- if the current message supplies only one topic anchor and several memories match it, recall is rejected
+  as ambiguous rather than choosing the newest memory,
+- a bare recall cue such as `기억나?` can open the detector but does not expose any item without a usable
+  topic anchor.
+
+Examples accepted by the detector include forms such as `전에 말했던 ...`, `저번에 얘기했던 ...`,
+`DM에서 말한 ...`, `내가 말했던 그 ...`, and a standalone `그거 기억나?`. Third-party forms
+such as `철수가 전에 말했던 ...` are not treated as the current speaker referencing their own memory.
+
+Selected rows enter the request only through `authorized_factual_memory`, tagged with
+`authorization=owner_explicit_reference`. The response model is told that these rows were already
+authorized by Python for the current turn; it does not decide whether hidden factual memory should be
+opened.
+
+The same decision is visible in trace provenance without copying memory text into telemetry:
+`detector_reason`, candidate/relevant counts, selected item ids, authorization reason, and terminal
+status are persisted with the bounded context provenance snapshot. Failed turns still emit only the
+content-free counts/status through the `context.provenance` lifecycle row.
+
 ## Still out of scope
 
 Shadow extraction still does not:
 
 - replace `summaries` or `shared_summaries`,
 - make structured memory the primary replacement for legacy summaries,
-- detect cross-space references,
+- replace the conservative lexical reference matcher with embedding/vector retrieval,
 - automatically resolve `conflicts` or relationship-memory reconciliation proposals.
 
 Those steps should be enabled incrementally after shadow classifications have been inspected against

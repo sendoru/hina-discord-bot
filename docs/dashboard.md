@@ -152,9 +152,11 @@ The detailed snapshot is bounded independently from provider context. If its sou
 reached, the trace shows omitted counts instead of silently implying that the displayed metadata is
 complete.
 
-This schema is also the extension point for #77: reference-gated factual recall can add detector,
-candidate, selected-item, and authorization metadata without moving factual memory contents into
-telemetry.
+Reference-gated factual recall now uses this same schema. Trace detail shows the detector reason,
+terminal status, bounded candidate/relevant counts, selected memory item ids, and authorization reason
+without copying factual memory contents into telemetry. The corresponding structured-memory rows use the
+`authorized_factual_recall` projection so operators can drill into the selected items through the
+existing memory inspector.
 
 ### Conversations
 
