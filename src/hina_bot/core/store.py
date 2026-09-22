@@ -3,7 +3,13 @@ import sqlite3
 from pathlib import Path
 
 from .memory_context import CURRENT_MEMORY_CONTEXT
-from .memory_items import MemoryDisclosure, MemoryItem, MemoryKind, RelationshipEvidence
+from .memory_items import (
+    MemoryDisclosure,
+    MemoryItem,
+    MemoryKind,
+    MemoryStatus,
+    RelationshipEvidence,
+)
 from .observability import current_turn_id
 from .routing import Scope
 
@@ -67,8 +73,12 @@ class Store:
                 source_message_ids TEXT NOT NULL DEFAULT '[]',
                 confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0 AND confidence <= 1),
                 relationship_evidence TEXT NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK(status IN ('active','superseded')),
+                superseded_by INTEGER,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(superseded_by IS NULL OR superseded_by != id)
             );
             CREATE INDEX IF NOT EXISTS memory_items_owner ON memory_items(user_id, id);
             CREATE INDEX IF NOT EXISTS memory_items_origin
@@ -148,6 +158,20 @@ class Store:
                 self.db.execute(
                     "ALTER TABLE memory_items ADD COLUMN user_name TEXT NOT NULL DEFAULT ''"
                 )
+        if "status" not in memory_columns:
+            with self.db:
+                self.db.execute(
+                    "ALTER TABLE memory_items ADD COLUMN status TEXT NOT NULL DEFAULT 'active' "
+                    "CHECK(status IN ('active','superseded'))"
+                )
+        if "superseded_by" not in memory_columns:
+            with self.db:
+                self.db.execute("ALTER TABLE memory_items ADD COLUMN superseded_by INTEGER")
+        with self.db:
+            self.db.execute(
+                "CREATE INDEX IF NOT EXISTS memory_items_owner_status "
+                "ON memory_items(user_id,status,id)"
+            )
 
     def close(self):
         try:
@@ -392,6 +416,12 @@ class Store:
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
             relationship_evidence=relationship_evidence,
+            status=MemoryStatus(row["status"]),
+            superseded_by=(
+                int(row["superseded_by"])
+                if row["superseded_by"] is not None
+                else None
+            ),
         )
 
     def add_memory_item(
@@ -447,9 +477,17 @@ class Store:
             )
         return int(cursor.lastrowid)
 
-    def memory_items(self, user_id: int | str, *, origin_realm: str | None = None):
+    def memory_items(
+        self,
+        user_id: int | str,
+        *,
+        origin_realm: str | None = None,
+        include_superseded: bool = False,
+    ):
         params: list[str] = [str(user_id)]
         where = "user_id=?"
+        if not include_superseded:
+            where += " AND status='active'"
         if origin_realm is not None:
             where += " AND origin_realm=?"
             params.append(origin_realm)
@@ -465,14 +503,14 @@ class Store:
         if scope.guild_id is None:
             rows = self.db.execute(
                 """SELECT * FROM memory_items
-                   WHERE user_id=?
+                   WHERE user_id=? AND status='active'
                    ORDER BY id DESC LIMIT ?""",
                 (str(scope.user_id), int(limit)),
             ).fetchall()
         else:
             rows = self.db.execute(
                 """SELECT * FROM memory_items
-                   WHERE user_id=? AND origin_realm=?
+                   WHERE user_id=? AND status='active' AND origin_realm=?
                      AND (origin_public_at_capture=1 OR origin_channel_id=?)
                    ORDER BY id DESC LIMIT ?""",
                 (str(scope.user_id), scope.realm, str(scope.channel_id), int(limit)),
@@ -545,12 +583,130 @@ class Store:
             )
         return int(cursor.lastrowid) if cursor.rowcount else None
 
+    def memory_reconciliation_proposal_id(
+        self,
+        *,
+        new_memory_item_id: int,
+        target_memory_item_id: int,
+        relation: str,
+    ) -> int | None:
+        row = self.db.execute(
+            """SELECT id FROM memory_reconciliation_proposals
+               WHERE new_memory_item_id=? AND target_memory_item_id=? AND relation=?""",
+            (int(new_memory_item_id), int(target_memory_item_id), str(relation)),
+        ).fetchone()
+        return int(row["id"]) if row is not None else None
+
     def memory_reconciliation_proposals(self, user_id: int | str):
         return self.db.execute(
             """SELECT * FROM memory_reconciliation_proposals
                WHERE user_id=? ORDER BY id""",
             (str(user_id),),
         ).fetchall()
+
+    def apply_memory_reconciliation_proposal(
+        self,
+        proposal_id: int,
+        *,
+        min_confidence: float = 0.95,
+    ) -> str:
+        """Apply one conservative lifecycle transition and return its outcome."""
+
+        threshold = float(min_confidence)
+        if not 0 <= threshold <= 1:
+            raise ValueError("Reconciliation confidence threshold must be between 0 and 1")
+        row = self.db.execute(
+            """SELECT p.*,
+                      n.kind AS new_kind,n.status AS new_status,
+                      n.superseded_by AS new_superseded_by,
+                      n.origin_realm AS new_origin_realm,
+                      n.origin_channel_id AS new_origin_channel_id,
+                      t.kind AS target_kind,t.status AS target_status,
+                      t.superseded_by AS target_superseded_by,
+                      t.origin_realm AS target_origin_realm,
+                      t.origin_channel_id AS target_origin_channel_id,
+                      t.origin_public_at_capture AS target_public
+               FROM memory_reconciliation_proposals p
+               JOIN memory_items n
+                 ON n.id=p.new_memory_item_id AND n.user_id=p.user_id
+               JOIN memory_items t
+                 ON t.id=p.target_memory_item_id AND t.user_id=p.user_id
+               WHERE p.id=?""",
+            (int(proposal_id),),
+        ).fetchone()
+        if row is None:
+            return "missing"
+        relation = str(row["relation"])
+        if relation == "conflicts":
+            return "conflict_deferred"
+        if float(row["confidence"]) < threshold:
+            return "below_threshold"
+        if (
+            str(row["new_kind"]) == MemoryKind.RELATIONSHIP.value
+            or str(row["target_kind"]) == MemoryKind.RELATIONSHIP.value
+        ):
+            return "relationship_deferred"
+        if str(row["new_kind"]) != str(row["target_kind"]):
+            return "kind_mismatch"
+
+        if (
+            str(row["new_origin_realm"]) != str(row["origin_realm"])
+            or str(row["new_origin_channel_id"]) != str(row["origin_channel_id"])
+        ):
+            return "invalid_origin"
+        if str(row["origin_realm"]).startswith("guild:") and not (
+            str(row["target_origin_realm"]) == str(row["origin_realm"])
+            and (
+                bool(row["target_public"])
+                or str(row["target_origin_channel_id"]) == str(row["origin_channel_id"])
+            )
+        ):
+            return "invalid_target_space"
+
+        new_id = int(row["new_memory_item_id"])
+        target_id = int(row["target_memory_item_id"])
+        new_status = str(row["new_status"])
+        target_status = str(row["target_status"])
+        new_superseded_by = row["new_superseded_by"]
+        target_superseded_by = row["target_superseded_by"]
+
+        if relation == "duplicate":
+            if (
+                new_status == MemoryStatus.SUPERSEDED.value
+                and new_superseded_by is not None
+                and int(new_superseded_by) == target_id
+            ):
+                return "already_applied"
+            if new_status != MemoryStatus.ACTIVE.value or target_status != MemoryStatus.ACTIVE.value:
+                return "stale_items"
+            with self.db:
+                cursor = self.db.execute(
+                    """UPDATE memory_items
+                       SET status='superseded',superseded_by=?,updated_at=CURRENT_TIMESTAMP
+                       WHERE id=? AND user_id=? AND status='active'""",
+                    (target_id, new_id, str(row["user_id"])),
+                )
+            return "applied" if cursor.rowcount else "stale_items"
+
+        if relation == "corrects":
+            if (
+                target_status == MemoryStatus.SUPERSEDED.value
+                and target_superseded_by is not None
+                and int(target_superseded_by) == new_id
+            ):
+                return "already_applied"
+            if new_status != MemoryStatus.ACTIVE.value or target_status != MemoryStatus.ACTIVE.value:
+                return "stale_items"
+            with self.db:
+                cursor = self.db.execute(
+                    """UPDATE memory_items
+                       SET status='superseded',superseded_by=?,updated_at=CURRENT_TIMESTAMP
+                       WHERE id=? AND user_id=? AND status='active'""",
+                    (new_id, target_id, str(row["user_id"])),
+                )
+            return "applied" if cursor.rowcount else "stale_items"
+
+        return "unsupported_relation"
 
     def forget(self, scope: Scope):
         """Delete this user's automatically accumulated memory in the current realm."""
