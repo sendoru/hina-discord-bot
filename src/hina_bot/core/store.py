@@ -81,8 +81,6 @@ class Store:
                 CHECK(superseded_by IS NULL OR superseded_by != id)
             );
             CREATE INDEX IF NOT EXISTS memory_items_owner ON memory_items(user_id, id);
-            CREATE INDEX IF NOT EXISTS memory_items_owner_status
-                ON memory_items(user_id, status, id);
             CREATE INDEX IF NOT EXISTS memory_items_origin
                 ON memory_items(origin_realm, origin_channel_id, user_id);
             CREATE TABLE IF NOT EXISTS memory_extraction_cursors (
