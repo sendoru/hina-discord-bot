@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
 from hina_bot.core.config import Settings
+from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 
@@ -226,3 +227,66 @@ async def test_other_users_taunt_cannot_become_current_speakers_personal_continu
     finally:
         await llm.close()
         store.close()
+
+@pytest.mark.asyncio
+async def test_current_interaction_metadata_reaches_existing_answer_request():
+    calls = []
+
+    def handler(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json=_response())
+
+    client = AsyncOpenAI(
+        api_key="test-not-a-real-key",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100, True)
+    interaction = {
+        "speaker": {
+            "user_id": "100",
+            "name": "사용자",
+            "is_bot": False,
+            "is_self": False,
+        },
+        "mentions": [{
+            "user_id": "200",
+            "name": "리오",
+            "is_bot": True,
+            "is_self": False,
+        }, {
+            "user_id": "99",
+            "name": "히나",
+            "is_bot": True,
+            "is_self": True,
+        }],
+        "reply_target": {
+            "user_id": "300",
+            "name": "아리스",
+            "role": "bot",
+            "is_self": False,
+        },
+    }
+    token = CURRENT_INTERACTION_CONTEXT.set(interaction)
+    try:
+        await llm.answer(
+            store,
+            scope,
+            "사용자",
+            "<@200>야, <@99> 좀 쓰다듬어줘",
+        )
+        payload = calls[-1]
+        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+
+        assert reference["current_interaction"] == interaction
+        assert "mention되었다는 사실만으로" in payload["instructions"]
+        assert "요청이 반드시 히나에게 향한 것은" in payload["instructions"]
+        assert "문장의 호격 표현" in payload["instructions"]
+        assert "reply_target도 강한 대화 연결 신호" in payload["instructions"]
+        assert payload["input"][1]["content"] == "<@200>야, <@99> 좀 쓰다듬어줘"
+    finally:
+        CURRENT_INTERACTION_CONTEXT.reset(token)
+        await llm.close()
+        store.close()
+
