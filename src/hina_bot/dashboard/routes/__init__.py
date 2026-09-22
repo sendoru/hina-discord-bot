@@ -2,7 +2,16 @@ from fastapi import APIRouter
 from fastapi.templating import Jinja2Templates
 
 from ..service import DashboardService
-from . import analytics, conversations, identity, memory, overview, reconciliation, summaries, traces
+from . import (
+    analytics,
+    conversations,
+    identity,
+    memory,
+    overview,
+    reconciliation,
+    summaries,
+    traces,
+)
 
 
 def build_routers(
