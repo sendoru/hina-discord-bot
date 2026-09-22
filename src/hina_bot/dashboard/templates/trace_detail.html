@@ -116,7 +116,7 @@
         <tr>
           <td>
             <code>{{ source.source_type }}</code>
-            {% if source.reference %}<br><span class="tag">reference</span>{% endif %}
+            {% if source.is_reference %}<br><span class="tag">reference</span>{% endif %}
             {% if source.has_visual %}<br><span class="tag">visual</span>{% endif %}
           </td>
           <td>
@@ -136,7 +136,7 @@
             {% if source.message_id %}<code>msg {{ source.message_id }}</code>{% endif %}
             {% if source.source_turn_message_id %}<br><code>turn-msg {{ source.source_turn_message_id }}</code>{% endif %}
             {% if source.source %}<br><code>{{ source.source }}</code>{% endif %}
-            {% if source.reference %}{% if source.reference is string %}<br><code>{{ source.reference }}</code>{% endif %}{% endif %}
+            {% if source.reference_id %}<br><code>{{ source.reference_id }}</code>{% endif %}
             {% if source.stored_turn and source.stored_turn.turn_id %}<br><a href="/traces/{{ source.stored_turn.turn_id }}">stored trace</a>{% endif %}
           </td>
         </tr>
