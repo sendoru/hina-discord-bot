@@ -133,6 +133,22 @@ def build_service(tmp_path):
                 "status": "completed",
             },
             {
+                "at": "2026-09-21T00:01:00.500000+00:00",
+                "turn_id": "trace-2",
+                "operation": "context.provenance",
+                "status": "completed",
+                "context_channel_items": 2,
+                "context_reply_items": 1,
+                "context_public_items": 0,
+                "context_structured_items": 1,
+                "context_lore_items": 0,
+                "context_visual_items": 0,
+                "context_adapter_blocked": 1,
+                "context_provider_blocked": 0,
+                "context_current_channel_only": False,
+                "context_cross_channel_memory": True,
+            },
+            {
                 "at": "2026-09-21T00:01:01+00:00",
                 "turn_id": "trace-2",
                 "operation": "answer",
@@ -279,6 +295,18 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
         "event",
     ]
     assert service.trace("missing") is None
+
+
+def test_failed_trace_keeps_content_free_context_telemetry(tmp_path):
+    service = build_service(tmp_path)
+
+    data = service.trace("trace-2")
+
+    assert data is not None
+    assert data["stored"] is None
+    assert data["context_provenance"] is None
+    assert data["context_telemetry"]["context_reply_items"] == 1
+    assert data["context_telemetry"]["context_adapter_blocked"] == 1
 
 
 def test_conversations_use_bounded_repository_filters(tmp_path):
