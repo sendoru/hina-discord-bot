@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-
 RAW_TABLES = ("turns", "shared_calls")
 PRESERVED_TABLES = (
     "memory_items",
