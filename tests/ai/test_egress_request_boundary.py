@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.core.config import Settings
+from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 
@@ -150,6 +151,31 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
         ):
             assert blocked not in serialized
         assert payload["input"][-1]["content"] == "히나야 지금 뭐해?"
+
+        provenance = CURRENT_CONTEXT_PROVENANCE.get()
+        assert provenance is not None
+        assert provenance["egress_policy"] == "bot_interactions_only"
+        assert provenance["egress"]["adapter"] == {
+            "policy": "bot_interactions_only",
+            "channel_input": 7,
+            "channel_allowed": 5,
+            "channel_blocked": 2,
+            "public_input": 2,
+            "public_allowed": 1,
+            "public_blocked": 1,
+        }
+        assert provenance["egress"]["provider_boundary"]["channel_blocked"] == 0
+        assert provenance["egress"]["provider_boundary"]["public_blocked"] == 0
+        assert {row["message_id"] for row in provenance["sources"] if row.get("message_id")} == {
+            "10", "12", "13", "14", "15",
+        }
+        assert not any("content" in row for row in provenance["sources"])
+
+        store.add(scope, 2, "current question", "current answer")
+        stored = store.history(scope)[-1]
+        persisted = json.loads(stored["context_provenance"])
+        assert persisted["egress"]["adapter"]["channel_blocked"] == 2
+        assert persisted["egress"]["adapter"]["public_blocked"] == 1
     finally:
         await llm.close()
         store.close()

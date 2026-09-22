@@ -259,6 +259,86 @@ class DashboardService:
             },
         }
 
+    def _context_provenance_view(
+        self,
+        raw,
+        *,
+        memory_context,
+    ) -> dict[str, object] | None:
+        if not isinstance(raw, dict):
+            return None
+
+        context_by_message: dict[str, dict] = {}
+        if isinstance(memory_context, list):
+            for item in memory_context:
+                if not isinstance(item, dict):
+                    continue
+                message_id = str(item.get("message_id") or "")
+                if message_id:
+                    context_by_message[message_id] = item
+
+        source_rows = []
+        source_message_ids = []
+        for source in raw.get("sources", ()) or ():
+            if not isinstance(source, dict):
+                continue
+            row = dict(source)
+            message_id = str(row.get("message_id") or "")
+            if message_id:
+                source_message_ids.append(message_id)
+                causal = context_by_message.get(message_id)
+                if causal is not None:
+                    row["causal_context"] = causal
+            source_rows.append(row)
+
+        stored_turns = self.repository.turns_for_message_ids(source_message_ids)
+        turn_by_message = {
+            str(row["message_id"]): row
+            for row in stored_turns
+        }
+        for row in source_rows:
+            message_id = str(row.get("message_id") or "")
+            if message_id and message_id in turn_by_message:
+                row["stored_turn"] = turn_by_message[message_id]
+
+        structured_rows = []
+        for item in raw.get("structured_memory", ()) or ():
+            if not isinstance(item, dict):
+                continue
+            row = dict(item)
+            try:
+                item_id = int(row.get("item_id"))
+            except (TypeError, ValueError):
+                item_id = 0
+            if item_id:
+                current = self.repository.memory_item(item_id)
+                if current is not None:
+                    row["current_status"] = current.get("status") or "active"
+                    row["superseded_by"] = current.get("superseded_by")
+                    row["user_name"] = current.get("user_name") or ""
+            structured_rows.append(row)
+
+        sections = [
+            dict(row)
+            for row in raw.get("sections", ()) or ()
+            if isinstance(row, dict)
+        ]
+        return {
+            "version": raw.get("version"),
+            "scope": raw.get("scope"),
+            "current_user_id": raw.get("current_user_id"),
+            "egress_policy": raw.get("egress_policy"),
+            "decisions": dict(raw.get("decisions") or {}),
+            "egress": dict(raw.get("egress") or {}),
+            "sections": sections,
+            "sources": source_rows,
+            "structured_memory": structured_rows,
+            "relationship_axes": tuple(
+                str(value) for value in raw.get("relationship_axes", ()) or ()
+            ),
+            "truncated": dict(raw.get("truncated") or {}),
+        }
+
     def trace(self, turn_id: str) -> dict[str, object] | None:
         trace_id = turn_id.strip()
         if not trace_id:
@@ -287,6 +367,27 @@ class DashboardService:
                 except json.JSONDecodeError:
                     memory_context = raw
 
+        context_provenance_raw: object = None
+        if stored and stored.get("context_provenance"):
+            raw = stored["context_provenance"]
+            if isinstance(raw, str):
+                try:
+                    context_provenance_raw = json.loads(raw)
+                except json.JSONDecodeError:
+                    context_provenance_raw = None
+        context_provenance = self._context_provenance_view(
+            context_provenance_raw,
+            memory_context=memory_context,
+        )
+        context_telemetry = next(
+            (
+                row
+                for row in reversed(telemetry.usage)
+                if row.get("operation") == "context.provenance"
+            ),
+            None,
+        )
+
         snapshot = TelemetrySnapshot(
             usage=telemetry.usage,
             exchanges=telemetry.exchanges,
@@ -300,6 +401,8 @@ class DashboardService:
             "summary": summary[0] if summary else None,
             "stored": stored,
             "memory_context": memory_context,
+            "context_provenance": context_provenance,
+            "context_telemetry": context_telemetry,
             "timeline": timeline,
             "events": telemetry.events,
             "usage": telemetry.usage,

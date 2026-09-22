@@ -19,9 +19,97 @@ def write_rows(path, rows):
 def build_service(tmp_path):
     database = tmp_path / "hina.sqlite3"
     store = Store(str(database))
+    scope = Scope(1, 10, 100, True)
+    memory_id = store.add_memory_item(
+        scope,
+        "trace relationship memory",
+        kind="relationship",
+        disclosure="implicit",
+        source_message_ids=("44",),
+        relationship_evidence={"familiarity": 2},
+    )
     token = CURRENT_TURN_ID.set("trace-1")
     try:
-        store.add(Scope(1, 10, 100, True), 55, "question", "answer")
+        store.add(
+            scope,
+            55,
+            "question",
+            "answer",
+            memory_context=[{
+                "kind": "reply_reference_source",
+                "message_id": "44",
+                "role": "user",
+                "ownership": "external",
+                "author_user_id": "200",
+                "content": "quoted source",
+                "provenance_class": "reference_material",
+            }],
+            context_provenance={
+                "version": 1,
+                "scope": "guild",
+                "current_user_id": "100",
+                "egress_policy": "bot_interactions_only",
+                "decisions": {
+                    "use_memory": True,
+                    "current_channel_only": False,
+                    "cross_channel_memory": True,
+                },
+                "egress": {
+                    "adapter": {
+                        "channel_input": 3,
+                        "channel_allowed": 2,
+                        "channel_blocked": 1,
+                        "public_input": 1,
+                        "public_allowed": 1,
+                        "public_blocked": 0,
+                    },
+                    "provider_boundary": {
+                        "channel_input": 2,
+                        "channel_allowed": 2,
+                        "channel_blocked": 0,
+                        "public_input": 1,
+                        "public_allowed": 1,
+                        "public_blocked": 0,
+                    },
+                },
+                "sections": [
+                    {
+                        "name": "active_reply_chain",
+                        "included": True,
+                        "count": 1,
+                        "blocked_count": 0,
+                    },
+                    {
+                        "name": "structured_memory",
+                        "included": True,
+                        "count": 1,
+                        "blocked_count": 0,
+                    },
+                ],
+                "sources": [{
+                    "source_type": "active_reply_chain",
+                    "context_kind": "reply_reference_source",
+                    "role": "user",
+                    "owner_relation": "other",
+                    "access": "full",
+                    "is_reference": True,
+                    "message_id": "44",
+                    "author_user_id": "200",
+                    "provenance_class": "reference_material",
+                }],
+                "structured_memory": [{
+                    "item_id": memory_id,
+                    "projection": "relationship_full",
+                    "kind": "relationship",
+                    "disclosure": "implicit",
+                    "origin_realm": scope.realm,
+                    "origin_channel_id": str(scope.channel_id),
+                    "access": "full",
+                }],
+                "relationship_axes": [],
+                "truncated": {"sources": 0, "structured_memory": 0},
+            },
+        )
     finally:
         CURRENT_TURN_ID.reset(token)
     store.close()
@@ -43,6 +131,22 @@ def build_service(tmp_path):
                 "web_search_used": True,
                 "elapsed_ms": 800,
                 "status": "completed",
+            },
+            {
+                "at": "2026-09-21T00:01:00.500000+00:00",
+                "turn_id": "trace-2",
+                "operation": "context.provenance",
+                "status": "completed",
+                "context_channel_items": 2,
+                "context_reply_items": 1,
+                "context_public_items": 0,
+                "context_structured_items": 1,
+                "context_lore_items": 0,
+                "context_visual_items": 0,
+                "context_adapter_blocked": 1,
+                "context_provider_blocked": 0,
+                "context_current_channel_only": False,
+                "context_cross_channel_memory": True,
             },
             {
                 "at": "2026-09-21T00:01:01+00:00",
@@ -177,6 +281,13 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
     assert data is not None
     assert data["stored"]["content"] == "question"
     assert data["summary"]["status"] == "completed"
+    assert data["context_provenance"]["egress_policy"] == "bot_interactions_only"
+    assert data["context_provenance"]["egress"]["adapter"]["channel_blocked"] == 1
+    source = data["context_provenance"]["sources"][0]
+    assert source["provenance_class"] == "reference_material"
+    assert source["causal_context"]["content"] == "quoted source"
+    memory = data["context_provenance"]["structured_memory"][0]
+    assert memory["current_status"] == "active"
     assert [item["source"] for item in data["timeline"]] == [
         "event",
         "usage",
@@ -184,6 +295,18 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
         "event",
     ]
     assert service.trace("missing") is None
+
+
+def test_failed_trace_keeps_content_free_context_telemetry(tmp_path):
+    service = build_service(tmp_path)
+
+    data = service.trace("trace-2")
+
+    assert data is not None
+    assert data["stored"] is None
+    assert data["context_provenance"] is None
+    assert data["context_telemetry"]["context_reply_items"] == 1
+    assert data["context_telemetry"]["context_adapter_blocked"] == 1
 
 
 def test_conversations_use_bounded_repository_filters(tmp_path):

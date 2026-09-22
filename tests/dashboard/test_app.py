@@ -22,7 +22,37 @@ def dashboard_client(tmp_path):
     scope = Scope(None, 10, 100)
     token = CURRENT_TURN_ID.set("trace-ui")
     try:
-        store.add(scope, 55, "hello dashboard", "hello")
+        store.add(
+            scope,
+            55,
+            "hello dashboard",
+            "hello",
+            context_provenance={
+                "version": 1,
+                "scope": "dm",
+                "current_user_id": "100",
+                "egress_policy": "full",
+                "decisions": {
+                    "use_memory": True,
+                    "current_channel_only": False,
+                    "cross_channel_memory": True,
+                },
+                "egress": {
+                    "adapter": {},
+                    "provider_boundary": {},
+                },
+                "sections": [{
+                    "name": "conversation_history",
+                    "included": False,
+                    "count": 0,
+                    "blocked_count": 0,
+                }],
+                "sources": [],
+                "structured_memory": [],
+                "relationship_axes": [],
+                "truncated": {"sources": 0, "structured_memory": 0},
+            },
+        )
     finally:
         CURRENT_TURN_ID.reset(token)
     through = int(store.db.execute(
@@ -157,6 +187,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Routing & Usage Analytics" in analytics.text
     assert "test-model" in analytics.text
     assert "hello dashboard" in detail.text
+    assert "Context &amp; provenance" in detail.text
+    assert "Egress policy" in detail.text
     assert "hello dashboard" in conversations.text
     assert "dashboard memory" in memory.text
     assert "hello dashboard" in memory_detail.text

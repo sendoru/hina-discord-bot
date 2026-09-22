@@ -9,6 +9,14 @@ CURRENT_MEMORY_CONTEXT: ContextVar[tuple[dict, ...]] = ContextVar(
     "current_memory_context",
     default=(),
 )
+CURRENT_CONTEXT_PROVENANCE: ContextVar[dict | None] = ContextVar(
+    "current_context_provenance",
+    default=None,
+)
+CURRENT_EGRESS_DECISION: ContextVar[dict | None] = ContextVar(
+    "current_egress_decision",
+    default=None,
+)
 
 _MEMORY_CONTEXT_KINDS = (
     "replied_message",
@@ -62,6 +70,9 @@ def build_memory_context(
                 "ownership": _ownership(row, current_user_id),
                 "content": clipped,
             }
+            message_id = str(row.get("message_id") or "")
+            if message_id:
+                item["message_id"] = message_id
             author_id = str(row.get("author_user_id") or row.get("user_id") or "")
             if author_id:
                 item["author_user_id"] = author_id
@@ -92,6 +103,8 @@ def decode_memory_context(value: str) -> list[dict]:
 
 
 __all__ = [
+    "CURRENT_CONTEXT_PROVENANCE",
+    "CURRENT_EGRESS_DECISION",
     "CURRENT_MEMORY_CONTEXT",
     "build_memory_context",
     "decode_memory_context",

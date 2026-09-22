@@ -245,3 +245,37 @@ async def test_turn_id_connects_detail_and_exchange_rows(tmp_path):
     assert detail['turn_id'] == 'opaque-turn-id'
     assert exchange['turn_id'] == 'opaque-turn-id'
     assert 'secret' not in path.read_text()
+
+
+def test_context_provenance_routing_event_keeps_counts_but_not_unknown_content(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    token = CURRENT_TURN_ID.set("trace-context")
+    try:
+        logger.routing_event(
+            "context.provenance",
+            status="completed",
+            context_channel_items=3,
+            context_reply_items=1,
+            context_public_items=2,
+            context_structured_items=4,
+            context_lore_items=1,
+            context_visual_items=0,
+            context_adapter_blocked=2,
+            context_provider_blocked=0,
+            context_current_channel_only=False,
+            context_cross_channel_memory=True,
+            content="must-not-log",
+        )
+    finally:
+        CURRENT_TURN_ID.reset(token)
+        logger.close()
+
+    text = path.read_text()
+    assert "must-not-log" not in text
+    row = json.loads(text)
+    assert row["turn_id"] == "trace-context"
+    assert row["operation"] == "context.provenance"
+    assert row["context_structured_items"] == 4
+    assert row["context_adapter_blocked"] == 2
+    assert row["context_cross_channel_memory"] is True

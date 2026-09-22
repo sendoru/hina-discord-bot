@@ -123,6 +123,39 @@ Missing sources are expected. Rotation can remove telemetry before a raw turn ex
 raw retention can remove the stored message before telemetry rotates. The UI shows correlation
 availability rather than treating either case as corruption.
 
+### Context / provenance
+
+Each successfully stored turn may include a bounded `context_provenance` snapshot describing the
+context that Python admitted to the answer request. The snapshot is metadata-only: it records section
+counts, message/memory identifiers, ownership relation, provenance class, access/projection, visual
+reference metadata, and adapter/provider egress decisions, but it does not copy channel messages,
+memory contents, lore bodies, or image bytes.
+
+Trace detail renders this as:
+
+- current-channel / cross-channel-memory decisions,
+- adapter and final provider-boundary allowed/blocked counts,
+- admitted channel/reply/public/lore/visual sources,
+- structured-memory item ids with projection/access and current lifecycle state,
+- the bounded causal `memory_context` excerpt when that already-retained data can be correlated by
+  message id.
+
+DM conversation-history and server personal-recent slices record the exact source message ids without
+copying their text. Structured-memory provenance is derived from the same access rules as request
+projection and defaults to active Store items only.
+
+If generation fails before the turn can be stored, a content-free `context.provenance` usage event
+still records section counts, scope flags, and blocked-row counts for the trace. It deliberately does
+not carry source contents or structured-memory text.
+
+The detailed snapshot is bounded independently from provider context. If its source/item cap is
+reached, the trace shows omitted counts instead of silently implying that the displayed metadata is
+complete.
+
+This schema is also the extension point for #77: reference-gated factual recall can add detector,
+candidate, selected-item, and authorization metadata without moving factual memory contents into
+telemetry.
+
 ### Conversations
 
 The conversations page only queries the existing `turns` table. Search and pagination happen in
