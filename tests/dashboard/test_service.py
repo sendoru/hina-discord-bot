@@ -22,10 +22,11 @@ def build_service(tmp_path):
     scope = Scope(1, 10, 100, True)
     memory_id = store.add_memory_item(
         scope,
-        "trace memory",
-        kind="fact",
-        disclosure="local",
+        "trace relationship memory",
+        kind="relationship",
+        disclosure="implicit",
         source_message_ids=("44",),
+        relationship_evidence={"familiarity": 2},
     )
     token = CURRENT_TURN_ID.set("trace-1")
     try:
@@ -99,8 +100,8 @@ def build_service(tmp_path):
                 "structured_memory": [{
                     "item_id": memory_id,
                     "projection": "relationship_full",
-                    "kind": "fact",
-                    "disclosure": "local",
+                    "kind": "relationship",
+                    "disclosure": "implicit",
                     "origin_realm": scope.realm,
                     "origin_channel_id": str(scope.channel_id),
                     "access": "full",
