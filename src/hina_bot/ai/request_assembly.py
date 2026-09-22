@@ -519,9 +519,6 @@ class RequestAssembler(BaseLLM):
             "context_summary_chars": _serialized_chars(
                 context.get("conversation_memory", "")
             ),
-            "context_interaction_chars": _serialized_chars(
-                context.get("current_interaction", {})
-            ),
             "context_structured_memory_chars": _serialized_chars({
                 key: context.get(key)
                 for key in (
