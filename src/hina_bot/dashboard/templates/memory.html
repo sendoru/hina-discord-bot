@@ -63,7 +63,7 @@
       {% for row in data.rows %}
         <tr>
           <td><a href="/memory/{{ row.id }}">#{{ row.id }}</a></td>
-          <td><code>{{ row.user_id }}</code></td>
+          <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
           <td>{{ row.kind }}</td>
           <td>{{ row.disclosure }}</td>
           <td><code>{{ row.origin_realm }}</code><br><span class="muted">#{{ row.origin_channel_id }} · {{ "public" if row.origin_public_at_capture else "private" }}</span></td>
