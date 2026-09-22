@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from hina_bot.tooling.eval_runner import (
+    attach_routing_results,
     case_turns,
     eval_settings,
     read_cases,
@@ -79,6 +80,7 @@ class EvalRunnerTests(unittest.TestCase):
             model="gemini-3.5-flash-lite",
             usage_log="",
             gemini_thinking_level="minimal",
+            routing_mode="fixed",
         )
         with patch.dict(
             "os.environ",
@@ -96,12 +98,49 @@ class EvalRunnerTests(unittest.TestCase):
         self.assertEqual(settings.gemini_thinking_level, "minimal")
         self.assertFalse(settings.chat_web_search)
 
+    def test_eval_settings_can_reproduce_adaptive_runtime_routing(self):
+        args = SimpleNamespace(
+            provider="gemini",
+            model=None,
+            usage_log="eval-usage.jsonl",
+            gemini_thinking_level=None,
+            gemini_fast_thinking_level="minimal",
+            gemini_smart_thinking_level="medium",
+            routing_mode="adaptive",
+            fast_model="gemini-fast",
+            smart_model="gemini-smart",
+            smart_threshold=1.75,
+            routing_classifier_mode="active",
+            routing_classifier_provider="gemini",
+            routing_classifier_model="gemini-classifier",
+        )
+        with patch.dict(
+            "os.environ",
+            {
+                "GEMINI_API_KEY": "test-key",
+                "CHAT_WEB_SEARCH": "false",
+                "COMMUNITY_LORE": "true",
+            },
+            clear=False,
+        ):
+            settings = eval_settings(args)
+
+        self.assertEqual(settings.model_routing_mode, "adaptive")
+        self.assertEqual(settings.fast_model, "gemini-fast")
+        self.assertEqual(settings.smart_model, "gemini-smart")
+        self.assertEqual(settings.model_routing_smart_threshold, 1.75)
+        self.assertEqual(settings.routing_classifier_mode, "active")
+        self.assertEqual(settings.routing_classifier_model, "gemini-classifier")
+        self.assertEqual(settings.gemini_fast_thinking_level, "minimal")
+        self.assertEqual(settings.gemini_smart_thinking_level, "medium")
+
     def test_eval_settings_rejects_invalid_web_search_flag(self):
         args = SimpleNamespace(
             provider="gemini",
             model="gemini-3.5-flash-lite",
             usage_log="",
             gemini_thinking_level=None,
+            routing_mode="fixed",
         )
         with patch.dict(
             "os.environ",
@@ -159,6 +198,69 @@ class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["responses"], ["ok"])
         self.assertEqual(result["error"], "")
         self.assertEqual(result["validation_errors"], [])
+        self.assertEqual(len(result["turn_ids"]), 1)
+        self.assertTrue(result["turn_ids"][0])
+        self.assertEqual(result["routing"], [])
+
+
+def test_attach_routing_results_reports_actual_answer_model_and_tier(tmp_path):
+    usage = tmp_path / "usage.jsonl"
+    usage.write_text(
+        json.dumps({
+            "turn_id": "turn-a",
+            "operation": "model_route_classify",
+            "model": "classifier",
+            "model_tier": "fast",
+        }) + "\n" +
+        json.dumps({
+            "turn_id": "turn-a",
+            "operation": "answer",
+            "provider": "gemini",
+            "model": "gemini-smart",
+            "model_tier": "smart",
+            "model_route_baseline_tier": "fast",
+            "model_route_decision_source": "semantic",
+            "semantic_route_status": "completed",
+            "semantic_route_level": "medium",
+            "model_route_margin": 0.5,
+            "requested_thinking_level": "medium",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    results = [{"turn_ids": ["turn-a"], "routing": []}]
+
+    attach_routing_results(results, str(usage))
+
+    assert results[0]["routing"] == [{
+        "turn_id": "turn-a",
+        "provider": "gemini",
+        "model": "gemini-smart",
+        "model_tier": "smart",
+        "model_route_baseline_tier": "fast",
+        "model_route_decision_source": "semantic",
+        "semantic_route_status": "completed",
+        "semantic_route_level": "medium",
+        "model_route_margin": 0.5,
+        "requested_thinking_level": "medium",
+    }]
+
+
+def test_production_quality_cases_are_sanitized_and_cover_live_failure_shapes():
+    cases = read_cases(Path("evals/production_quality_cases.jsonl"))
+    ids = {case["id"] for case in cases}
+    assert ids == {
+        "production_temporal_continuity_same_session",
+        "production_profane_game_complaint_not_policed",
+        "production_unknown_meme_sequence_not_scolded",
+        "production_multilingual_partial_understanding",
+        "production_world_followup_answers_hypothetical",
+        "production_multi_bot_addressee_not_self",
+        "production_ambiguous_deictic_does_not_invent",
+    }
+    raw = Path("evals/production_quality_cases.jsonl").read_text(encoding="utf-8")
+    assert "478976784881287178" not in raw
+    assert "135336096480493568" not in raw
+    assert "1548019497628082196" not in raw
 
 
 def test_tone_cases_include_valid_speaker_switches():

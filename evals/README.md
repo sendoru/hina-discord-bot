@@ -90,3 +90,49 @@ python scripts/run_prompt_injection_eval.py --repeat 2
 모델 평가는 확률적이며 평가기 자체도 틀릴 수 있어요. 실패 결과와 경계 사례는 사람이
 확인하고, 재현 가치가 있으면 JSONL에 회귀 사례로 추가해요. 모델이나 프롬프트를 변경하면
 같은 데이터셋으로 다시 실행해 이전 결과와 비교해요.
+
+## 실서비스 유래 대화 품질 회귀
+
+`production_quality_cases.jsonl`은 실제 대화에서 발견된 실패 모양을 개인정보가 남지 않도록
+익명화·재서술한 작은 회귀 세트입니다. 원본 사용자 ID, 메시지 ID, 첨부 URL이나 대화 원문 전체를
+복사하지 않고 다음과 같은 실패 구조만 보존합니다.
+
+- 근거 없는 과거 연속성·약속 확정
+- 가벼운 표현을 훈계로 전환
+- 낯선 밈/조어에 반복적으로 대화 중단 요구
+- 다국어 입력의 이해 가능한 부분까지 버림
+- 짧지만 맥락 해석이 필요한 세계관 follow-up 회피
+- 멀티봇 문장에서 호격 대상과 언급 대상을 혼동
+- 근거 없는 지시어 보완
+
+고정 FAST/SMART 비교만으로는 운영 routing 자체의 실패를 구분할 수 없으므로
+`hina-eval`에 adaptive mode도 제공합니다.
+
+```bash
+CHAT_WEB_SEARCH=false hina-eval \
+  --cases evals/production_quality_cases.jsonl \
+  --routing-mode adaptive \
+  --provider gemini \
+  --fast-model gemini-3.5-flash-lite \
+  --smart-model gemini-3.6-flash \
+  --routing-classifier-mode active \
+  --routing-classifier-provider gemini \
+  --routing-classifier-model gemini-3.5-flash-lite
+```
+
+adaptive eval에서는 각 turn에 opaque `turn_id`를 부여하고 usage telemetry의 실제 `answer` row를
+결과에 다시 연결합니다. Markdown 결과의 각 turn에는 선택된 tier/model, semantic level,
+decision source가 표시됩니다. 따라서 같은 사례가 실패했을 때 다음처럼 구분할 수 있습니다.
+
+- SMART에서는 괜찮고 adaptive가 FAST를 골라 실패: routing 후보
+- FAST/SMART 모두 같은 방식으로 실패: prompt/context representation 후보
+- adaptive가 SMART를 골라도 실패: 단순 tier 승격보다 context/policy 검토 우선
+
+GitHub Actions의 `Live production quality eval` workflow는
+`evals/suites/production-quality.txt`를 baseline/candidate 양쪽에 같은 adaptive 설정으로 실행합니다.
+이 workflow의 새 CLI 옵션을 사용하므로 baseline과 candidate ref 모두 이 eval infrastructure를 포함한
+커밋 이후를 사용해야 합니다. 결과 artifact에는 JSONL, Markdown report, usage log가 함께 남습니다.
+
+이 세트는 운영 로그를 그대로 저장하는 archive가 아닙니다. 새로운 실패를 발견해도 재현에 필요한
+최소 형태로 일반화할 수 있을 때만 case를 추가합니다.
+

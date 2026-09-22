@@ -1,0 +1,9 @@
+# Sanitized regressions derived from live conversation failures.
+# Keep this suite small enough to run repeatedly with adaptive routing.
+production_temporal_continuity_same_session
+production_profane_game_complaint_not_policed
+production_unknown_meme_sequence_not_scolded
+production_multilingual_partial_understanding
+production_world_followup_answers_hypothetical
+production_multi_bot_addressee_not_self
+production_ambiguous_deictic_does_not_invent
