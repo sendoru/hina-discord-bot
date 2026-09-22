@@ -165,6 +165,28 @@ The conversations page only queries the existing `turns` table. Search and pagin
 SQLite through the read-only repository. Starting the dashboard still does not change
 `HISTORY_TURNS` or preserve old messages.
 
+## Search and local-time UX
+
+The dashboard has one display/search timezone. It is resolved as:
+
+1. `DASHBOARD_TIMEZONE`
+2. `RUNTIME_TIMEZONE`
+3. `Asia/Seoul`
+
+SQLite and telemetry timestamps remain stored in UTC. Dashboard `datetime-local` controls are
+interpreted in the configured dashboard timezone and converted to UTC at the query boundary.
+Rendered timestamps are converted back to the dashboard timezone.
+
+High-traffic inspection views expose quick local-time windows such as Today, 1h, 24h, 7d and 30d.
+
+`/conversations` and `/memory` expose content search as a primary control rather than hiding it
+among metadata filters. Matching fields are shown with a short escaped snippet and highlighted match.
+Conversation search covers input, reply and message ID; memory search covers content and source
+message IDs.
+
+Conversation results also link to a bounded same-scope context view showing nearby turns around the
+selected result. This is a read-only inspection helper and does not expand runtime retention.
+
 ## Responsive/mobile layout
 
 The dashboard uses the same server-rendered HTML on desktop and mobile. No separate mobile app or
