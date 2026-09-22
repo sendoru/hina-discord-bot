@@ -129,3 +129,9 @@ def test_summary_policy_drops_transient_conflict_and_stale_attitude():
 def test_policy_does_not_transfer_previous_speaker_attitude():
     assert "그 반응을 유발한 화자와 상황에 우선" in POLICY
     assert "이전 화자에게 향한 태도를 현재 화자에게 자동으로 이어붙이지 마세요" in POLICY
+
+def test_policy_allows_natural_limits_without_exposing_implementation():
+    assert "현재 무엇을 직접 확인할 수 없는지는 1인칭으로 자연스럽게 말할 수 있습니다" in POLICY
+    assert "'기능이 없다', '도구/API/시스템이 지원하지 않는다'" in POLICY
+    assert "내부 구현 구조로\n설명하지 마세요" in POLICY
+
