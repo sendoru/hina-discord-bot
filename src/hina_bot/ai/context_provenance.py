@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from hina_bot.core.routing import Scope
-
 
 _MAX_SOURCES = 96
 _MAX_STRUCTURED_ITEMS = 96
@@ -119,10 +117,7 @@ def _visual_source(visual) -> dict:
 
 
 def _section(name: str, value, *, blocked: int = 0) -> dict:
-    if isinstance(value, dict):
-        count = len(value)
-        included = bool(value)
-    elif isinstance(value, (list, tuple)):
+    if isinstance(value, (dict, list, tuple)):
         count = len(value)
         included = bool(value)
     else:
@@ -138,7 +133,7 @@ def _section(name: str, value, *, blocked: int = 0) -> dict:
 
 def build_context_provenance(
     context: dict,
-    scope: Scope,
+    scope,
     *,
     egress_policy: str,
     adapter_egress: dict | None,
