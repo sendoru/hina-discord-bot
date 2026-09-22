@@ -585,6 +585,20 @@ class Store:
             )
         return int(cursor.lastrowid) if cursor.rowcount else None
 
+    def memory_reconciliation_proposal_id(
+        self,
+        *,
+        new_memory_item_id: int,
+        target_memory_item_id: int,
+        relation: str,
+    ) -> int | None:
+        row = self.db.execute(
+            """SELECT id FROM memory_reconciliation_proposals
+               WHERE new_memory_item_id=? AND target_memory_item_id=? AND relation=?""",
+            (int(new_memory_item_id), int(target_memory_item_id), str(relation)),
+        ).fetchone()
+        return int(row["id"]) if row is not None else None
+
     def memory_reconciliation_proposals(self, user_id: int | str):
         return self.db.execute(
             """SELECT * FROM memory_reconciliation_proposals
