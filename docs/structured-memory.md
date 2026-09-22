@@ -107,30 +107,45 @@ The extractor classifies `kind`, `disclosure`, and `confidence`; these classific
 not trusted by the response layer yet. Real stored rows can therefore be reviewed before deciding
 thresholds, reconciliation rules, or read-path behavior.
 
-## Phase 2.6: shadow reconciliation
+## Phase 2.6: reconciliation lifecycle
 
-Before structured memories affect replies, new extraction batches are compared with a bounded set of
-recent existing items. In a server, candidates stay inside the current user's disclosure space. In the
-owner's DM, candidates may come from any realm/channel owned by that user. The extractor may propose exactly one
-relationship for a new item:
+New extraction batches are compared with a bounded set of recent **active** items. In a server,
+candidates stay inside the current user's disclosure space. In the owner's DM, candidates may come from
+any realm/channel owned by that user. The extractor may propose exactly one relationship for a new item:
 
 - `duplicate`: materially the same fact/preference was extracted again,
 - `corrects`: the current turns explicitly correct, replace, or fix an earlier item,
 - `conflicts`: both claims cannot comfortably be true, but the current batch does not clearly establish
   which one should replace the other.
 
-These are observation-only proposals. New items are still stored normally, existing items are not edited,
-deleted, hidden, or superseded, and proposals are written separately to
-`memory_reconciliation_proposals`.
+Every proposal is still retained in `memory_reconciliation_proposals` for inspection. The first
+automatic lifecycle policy is intentionally conservative:
+
+- only non-`relationship` items with matching `kind` are eligible,
+- relation confidence must be at least `0.95`,
+- high-confidence `duplicate` supersedes the newly extracted duplicate and keeps the existing target
+  active,
+- high-confidence explicit `corrects` supersedes the old target and keeps the new item active,
+- `conflicts`, relationship-memory proposals, lower-confidence proposals, and kind mismatches remain
+  observation-only.
+
+`memory_items.status` is either `active` or `superseded`. A superseded item keeps its full content,
+source provenance, timestamps, and proposal history, and `superseded_by` records the active replacement
+or canonical duplicate target. Normal Store retrieval and reconciliation candidate selection return
+active items only; audit/dashboard paths can still inspect superseded rows.
 
 Candidate ids are accepted only when they were actually supplied to the model. The Store independently
-verifies ownership and origin rules: DM reconciliation may target any item owned by the current user,
-while server reconciliation targets only the current disclosure space. Items written by a
-partially failed retry batch are excluded from the next candidate set by source-message provenance, so a
-retry cannot accidentally reconcile an item with itself.
+re-checks ownership and origin rules when applying a lifecycle transition: DM reconciliation may target
+any item owned by the current user, while server reconciliation targets only the current disclosure
+space. A proposal can therefore never widen memory visibility merely by superseding another item.
 
-This shadow period is intended to measure how often `duplicate`, `corrects`, and `conflicts` are right
-before any automatic supersede behavior is enabled.
+Exact retry suppression deliberately scans active and superseded history. If item storage or proposal
+application partially succeeds but the extraction cursor cannot advance, the retry reuses the existing
+item/proposal instead of creating another row. Lifecycle application is idempotent and failures leave the
+batch pending for retry.
+
+`memory.shadow_extraction` completion telemetry reports both
+`applied_reconciliations` and `deferred_reconciliations` without logging memory content.
 
 ## Phase 3: owner-DM memory and numeric relationship projection
 
@@ -163,8 +178,10 @@ reconstructing concrete past events, locations, names, or conversation content f
 - The structured-memory fields are included in routing context-size accounting so model routing sees the
   same dynamic context that request assembly will serialize.
 
-Because DM full-memory reads and numeric aggregation can still include stale/conflicting shadow items,
-this PR remains draft until reconciliation/supersede behavior is validated before production rollout.
+Owner-DM reads, same-space relationship reads, and cross-space relationship aggregation now consume
+active items only, so successfully superseded factual observations do not remain simultaneously visible.
+Deferred conflicts and relationship proposals intentionally remain active until a later policy can resolve
+them safely.
 
 ## Still out of scope
 
@@ -173,7 +190,7 @@ Shadow extraction still does not:
 - replace `summaries` or `shared_summaries`,
 - make structured memory the primary replacement for legacy summaries,
 - detect cross-space references,
-- apply reconciliation proposals or mark old items as superseded.
+- automatically resolve `conflicts` or relationship-memory reconciliation proposals.
 
 Those steps should be enabled incrementally after shadow classifications have been inspected against
 real conversation data.
