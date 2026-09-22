@@ -249,8 +249,7 @@ def test_production_quality_cases_are_sanitized_and_cover_live_failure_shapes():
     cases = read_cases(Path("evals/production_quality_cases.jsonl"))
     ids = {case["id"] for case in cases}
     assert ids == {
-        "production_false_continuity_first_meeting",
-        "production_claimed_prior_promise_not_confirmed",
+        "production_temporal_continuity_same_session",
         "production_profane_game_complaint_not_policed",
         "production_unknown_meme_sequence_not_scolded",
         "production_multilingual_partial_understanding",
