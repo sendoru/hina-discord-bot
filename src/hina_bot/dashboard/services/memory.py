@@ -4,6 +4,7 @@ from .base import Page, ReadService, _db_timestamp, _decode_json
 
 
 class MemoryService(ReadService):
+    @staticmethod
     def _memory_row(row: dict[str, object]) -> dict[str, object]:
         value = dict(row)
         sources = _decode_json(value.get("source_message_ids"), [])
@@ -216,5 +217,3 @@ class MemoryService(ReadService):
                 "q": query,
             },
         }
-
-    @staticmethod
