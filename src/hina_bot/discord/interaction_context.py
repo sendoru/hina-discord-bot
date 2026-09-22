@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 _MAX_MENTIONS = 12
 
 
