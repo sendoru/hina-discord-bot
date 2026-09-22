@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
 
@@ -5,6 +6,7 @@ import discord
 import pytest
 
 from hina_bot.core.config import Settings
+from hina_bot.core.observability import CURRENT_TURN_ID
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.discord.config_commands import ConfigCommands
@@ -161,3 +163,78 @@ async def test_strict_egress_skips_textual_cross_user_identity_resolution():
     assert targets == []
     assert ids == ()
     resolver.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_identity_observability_never_logs_raw_reference_or_candidate_names(tmp_path):
+    store = Store(":memory:")
+    store.add_shared_call(Scope(1, 10, 200, True), 1, "tag : sendol", "public")
+    resolver = AsyncMock(
+        return_value=NS(
+            resolved=True,
+            status="resolved",
+            user_id="200",
+            reference="센돌",
+        )
+    )
+    llm = NS(close=AsyncMock(), resolve_speaker_identity=resolver)
+    event_path = tmp_path / "events.jsonl"
+    client = HinaClient(
+        Settings(
+            "test",
+            "deployment-secret-token",
+            cooldown=0,
+            external_context_policy="full",
+            event_log_path=str(event_path),
+        ),
+        store=store,
+        llm=llm,
+    )
+    client._connection.user = NS(id=99)
+
+    visible = MagicMock(spec=discord.TextChannel)
+    visible.permissions_for.return_value = NS(
+        view_channel=True,
+        read_message_history=True,
+    )
+    guild = NS(
+        id=1,
+        default_role=NS(),
+        get_channel=lambda channel_id: visible,
+        get_member=lambda user_id: NS(
+            id=200,
+            display_name="tag : sendol",
+            global_name="Sendol",
+            name="sendol",
+        ),
+    )
+    message = NS(guild=guild, author=NS(id=100), mentions=[])
+    token = CURRENT_TURN_ID.set("opaque-identity-turn")
+    try:
+        targets, ids = await client._resolve_text_targets(
+            message,
+            Scope(1, 10, 100),
+            "센돌이 누군지 알아?",
+            strict_egress=False,
+            third_party_mention=False,
+        )
+    finally:
+        CURRENT_TURN_ID.reset(token)
+        await client.close()
+
+    assert ids == (200,)
+    assert targets == [{"user_id": "200", "name": "tag : sendol"}]
+    raw = event_path.read_text(encoding="utf-8")
+    assert "센돌" not in raw
+    assert "sendol" not in raw.lower()
+
+    row = json.loads(raw)
+    assert row["event"] == "identity.resolution"
+    assert row["turn_id"] == "opaque-identity-turn"
+    assert row["outcome"] == "resolved"
+    assert row["resolver_invoked"] is True
+    assert row["candidate_count"] == 1
+    assert row["raw_candidate_count"] == 1
+    assert len(row["reference_group"]) == 16
+    assert len(row["resolved_user_group"]) == 16
+    assert row["evidence_source"] == "resolver_derived"

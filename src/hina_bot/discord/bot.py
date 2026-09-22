@@ -355,7 +355,7 @@ class HinaClient(discord.Client):
             )
         if text is None:
             return
-        turn_token = CURRENT_TURN_ID.set(new_turn_id())
+        turn_token = CURRENT_TURN_ID.set(current_turn_id() or new_turn_id())
         turn_started = time.perf_counter()
         scope_kind = "guild" if guild_id is not None else "dm"
         self.events.emit(
