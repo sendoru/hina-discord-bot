@@ -6,19 +6,28 @@ from __future__ import annotations
 _MAX_MENTIONS = 12
 
 
-def _identity(user, bot_id: int) -> dict:
+def _identity(user, bot_id: int, *, include_name: bool = True) -> dict:
     user_id = str(getattr(user, "id", "") or "")
+    is_self = user_id == str(bot_id)
     return {
         "user_id": user_id,
-        "name": str(
-            getattr(user, "display_name", getattr(user, "name", "")) or ""
-        )[:100],
+        "name": (
+            str(getattr(user, "display_name", getattr(user, "name", "")) or "")[:100]
+            if include_name or is_self
+            else ""
+        ),
         "is_bot": bool(getattr(user, "bot", False)),
-        "is_self": user_id == str(bot_id),
+        "is_self": is_self,
     }
 
 
-def build_interaction_context(message, bot_id: int, replied=()) -> dict:
+def build_interaction_context(
+    message,
+    bot_id: int,
+    replied=(),
+    *,
+    include_mention_names: bool = True,
+) -> dict:
     """Return only Discord-known structure; semantic roles stay model-owned."""
     author = getattr(message, "author", None)
     mentions = []
@@ -28,7 +37,9 @@ def build_interaction_context(message, bot_id: int, replied=()) -> dict:
         if not user_id or user_id in seen:
             continue
         seen.add(user_id)
-        mentions.append(_identity(user, bot_id))
+        mentions.append(
+            _identity(user, bot_id, include_name=include_mention_names)
+        )
         if len(mentions) >= _MAX_MENTIONS:
             break
 
