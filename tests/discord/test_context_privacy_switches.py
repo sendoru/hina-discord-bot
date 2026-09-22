@@ -1,5 +1,4 @@
 import json
-
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
 
