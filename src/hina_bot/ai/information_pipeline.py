@@ -336,8 +336,8 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             assembly_store,
             scope,
             routing.visible_content,
-            use_memory=assembly_use_memory,
-            allow_cross_space=assembly_use_memory and not current_channel_only,
+            use_memory=use_memory,
+            allow_cross_space=use_memory and not current_channel_only,
         )
         visual_inputs = CURRENT_VISUAL_INPUTS.get()
         context_chars = self._routing_context_chars(
