@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Conversations · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -11,27 +12,33 @@
 <form class="filters search-filter" method="get">
   <div class="search-primary">
     <label for="conversation-search">Content search</label>
-    <input id="conversation-search" class="search-input" name="q" value="{{ data.filters.query }}" placeholder="input / reply / message id 검색">
+    <div class="search-primary-row">
+      <input id="conversation-search" class="search-input" name="q" value="{{ data.filters.query }}" placeholder="input / reply / message id 검색">
+      <button type="submit">Search</button>
+    </div>
   </div>
-  <div class="filter-row">
-    <input name="scope" value="{{ data.filters.scope }}" placeholder="scope">
-    <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
-    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
-    <label class="time-field">After
-      <input type="datetime-local" name="after" value="{{ data.filters.after }}">
-    </label>
-    <label class="time-field">Before
-      <input type="datetime-local" name="before" value="{{ data.filters.before }}">
-    </label>
-    <button type="submit">Filter</button>
-    <a class="button secondary" href="/conversations">Reset</a>
-  </div>
+  <details class="advanced-filters" {% if data.filters.scope or data.filters.realm or data.filters.user_id or data.filters.after or data.filters.before %}open{% endif %}>
+    <summary>Advanced filters</summary>
+    <div class="filter-row">
+      <input name="scope" value="{{ data.filters.scope }}" placeholder="scope">
+      <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
+      <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
+      <label class="time-field">After
+        <input type="datetime-local" name="after" value="{{ data.filters.after }}">
+      </label>
+      <label class="time-field">Before
+        <input type="datetime-local" name="before" value="{{ data.filters.before }}">
+      </label>
+      <button type="submit">Apply filters</button>
+    </div>
+  </details>
   <div class="quick-ranges" aria-label="Quick time ranges">
     <span>Time:</span>
     {% for preset in data.time_ranges %}
     <a href="{{ request.url.include_query_params(after=preset.after, before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
   </div>
+  {{ active_filter_chips(request, "/conversations") }}
 </form>
 
 {% if data.rows %}

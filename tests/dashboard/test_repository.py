@@ -326,3 +326,38 @@ def test_repository_filters_turn_time_and_reads_neighbor_context(tmp_path):
 
     context = repository.turn_context(selected_id, before=1, after=1)
     assert [row["message_id"] for row in context] == ["1", "2", "3"]
+
+
+
+def test_repository_user_filter_accepts_stored_human_readable_name(tmp_path):
+    path = tmp_path / "identity-filter.sqlite3"
+    store = Store(str(path))
+    target = Scope(None, 10, 100)
+    other = Scope(None, 11, 200)
+    store.add(target, 101, "target turn", "reply", name="Dashboard User")
+    store.add(other, 102, "other turn", "reply", name="Other User")
+    store.add_memory_item(
+        target,
+        "target memory",
+        kind="fact",
+        disclosure="reference_gated",
+        user_name="Dashboard User",
+    )
+    store.add_memory_item(
+        other,
+        "other memory",
+        kind="fact",
+        disclosure="reference_gated",
+        user_name="Other User",
+    )
+    store.close()
+
+    repository = AdminRepository(path)
+
+    turns = repository.search_turns(user_id="dashboard")
+    assert [row["user_id"] for row in turns] == ["100"]
+    assert repository.count_turns(user_id="Dashboard User") == 1
+
+    memories = repository.search_memory_items(user_id="board user")
+    assert [row["user_id"] for row in memories] == ["100"]
+    assert repository.count_memory_items(user_id="100") == 1

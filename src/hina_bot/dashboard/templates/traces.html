@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Traces · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -13,37 +14,48 @@
   </div>
 </section>
 
-<form class="filters" method="get">
-  <input name="q" value="{{ data.filters.q }}" placeholder="turn id / error / model">
-  <select name="scope">
-    <option value="">all scopes</option>
-    <option value="guild" {% if data.filters.scope == "guild" %}selected{% endif %}>guild</option>
-    <option value="dm" {% if data.filters.scope == "dm" %}selected{% endif %}>dm</option>
-  </select>
-  <input name="status" value="{{ data.filters.status }}" placeholder="status">
-  <input name="tier" value="{{ data.filters.tier }}" placeholder="tier">
-  <input name="model" value="{{ data.filters.model }}" placeholder="model">
-  <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
-  <select name="error">
-    <option value="">error: any</option>
-    <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>error: yes</option>
-    <option value="no" {% if data.filters.error == "no" %}selected{% endif %}>error: no</option>
-  </select>
-  <select name="web_search">
-    <option value="">search: any</option>
-    <option value="yes" {% if data.filters.web_search == "yes" %}selected{% endif %}>search: used</option>
-    <option value="no" {% if data.filters.web_search == "no" %}selected{% endif %}>search: not used</option>
-  </select>
-  <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
-  <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
-  <button type="submit">Filter</button>
-  <a class="button secondary" href="/traces">Reset</a>
+<form class="filters search-filter" method="get">
+  <div class="search-primary">
+    <label for="trace-search">Trace search</label>
+    <div class="search-primary-row">
+      <input id="trace-search" class="search-input" name="q" value="{{ data.filters.q }}" placeholder="turn id / error / model">
+      <button type="submit">Search</button>
+    </div>
+  </div>
+  <details class="advanced-filters" {% if data.filters.scope or data.filters.status or data.filters.tier or data.filters.model or data.filters.operation or data.filters.error or data.filters.web_search or data.filters.after or data.filters.before %}open{% endif %}>
+    <summary>Advanced filters</summary>
+    <div class="filter-row">
+      <select name="scope">
+        <option value="">all scopes</option>
+        <option value="guild" {% if data.filters.scope == "guild" %}selected{% endif %}>guild</option>
+        <option value="dm" {% if data.filters.scope == "dm" %}selected{% endif %}>dm</option>
+      </select>
+      <input name="status" value="{{ data.filters.status }}" placeholder="status">
+      <input name="tier" value="{{ data.filters.tier }}" placeholder="tier">
+      <input name="model" value="{{ data.filters.model }}" placeholder="model">
+      <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
+      <select name="error">
+        <option value="">error: any</option>
+        <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>error: yes</option>
+        <option value="no" {% if data.filters.error == "no" %}selected{% endif %}>error: no</option>
+      </select>
+      <select name="web_search">
+        <option value="">search: any</option>
+        <option value="yes" {% if data.filters.web_search == "yes" %}selected{% endif %}>search: used</option>
+        <option value="no" {% if data.filters.web_search == "no" %}selected{% endif %}>search: not used</option>
+      </select>
+      <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
+      <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
+      <button type="submit">Apply filters</button>
+    </div>
+  </details>
   <div class="quick-ranges" aria-label="Quick time ranges">
     <span>Time:</span>
     {% for preset in data.time_ranges %}
     <a href="{{ request.url.include_query_params(after=preset.after, before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
   </div>
+  {{ active_filter_chips(request, "/traces") }}
 </form>
 
 <section class="panel flush">

@@ -27,6 +27,7 @@ def dashboard_client(tmp_path):
             55,
             "hello dashboard",
             "hello",
+            name="Dashboard User",
             context_provenance={
                 "version": 1,
                 "scope": "dm",
@@ -171,8 +172,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     identity = client.get("/identity")
     detail = client.get("/traces/trace-ui")
     conversations = client.get("/conversations?q=dashboard")
+    conversations_by_name = client.get("/conversations?user_id=Dashboard%20User")
     conversation_context = client.get("/conversations/1/context")
     memory = client.get("/memory?q=dashboard")
+    memory_by_name = client.get("/memory?user_id=Dashboard%20User")
     memory_detail = client.get("/memory/1")
     summaries = client.get("/summaries?q=dashboard")
     cursors = client.get("/memory/cursors?user_id=100")
@@ -187,6 +190,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Asia/Seoul" in overview.text
     assert "2026-09-21 09:00:00 KST" in overview.text
     assert "trace-ui" in traces.text
+    assert "Advanced filters" in traces.text
+    assert 'aria-label="Active filters"' in traces.text
     assert analytics.status_code == 200
     assert "Routing & Usage Analytics" in analytics.text
     assert "test-model" in analytics.text
@@ -197,13 +202,21 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Egress policy" in detail.text
     assert "hello dashboard" in conversations.text
     assert "Content search" in conversations.text
+    assert "Advanced filters" in conversations.text
+    assert 'aria-label="Active filters"' in conversations.text
     assert 'type="datetime-local"' in conversations.text
     assert "<mark>dashboard</mark>" in conversations.text
+    assert conversations_by_name.status_code == 200
+    assert "hello dashboard" in conversations_by_name.text
     assert conversation_context.status_code == 200
     assert "Conversation Context" in conversation_context.text
     assert "dashboard memory" in memory.text
     assert "Content search" in memory.text
+    assert "Advanced filters" in memory.text
+    assert 'aria-label="Active filters"' in memory.text
     assert "<mark>dashboard</mark>" in memory.text
+    assert memory_by_name.status_code == 200
+    assert "dashboard memory" in memory_by_name.text
     assert "hello dashboard" in memory_detail.text
     assert "legacy dashboard summary" in summaries.text
     assert "Memory Extraction Cursors" in cursors.text

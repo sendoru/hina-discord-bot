@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Reconciliation · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -21,8 +22,17 @@
   <article class="card"><span>Corrects / conflicts</span><strong>{{ data.stats.relations.get("corrects", 0) }} / {{ data.stats.relations.get("conflicts", 0) }}</strong></article>
 </section>
 
-<form class="filters" method="get">
-  <input name="q" value="{{ data.filters.q }}" placeholder="proposal id / memory content / source id">
+<form class="filters search-filter" method="get">
+  <div class="search-primary">
+    <label for="reconciliation-search">Proposal search</label>
+    <div class="search-primary-row">
+      <input id="reconciliation-search" class="search-input" name="q" value="{{ data.filters.q }}" placeholder="proposal id / memory content / source id">
+      <button type="submit">Search</button>
+    </div>
+  </div>
+  <details class="advanced-filters" {% if data.filters.user_id or data.filters.origin_realm or data.filters.origin_channel_id or data.filters.relation or data.filters.kind or data.filters.retry or data.filters.confidence_min or data.filters.confidence_max or data.filters.created_after or data.filters.created_before %}open{% endif %}>
+    <summary>Advanced filters</summary>
+    <div class="filter-row">
   <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
   <input name="origin_realm" value="{{ data.filters.origin_realm }}" placeholder="origin realm">
   <input name="origin_channel_id" value="{{ data.filters.origin_channel_id }}" placeholder="channel id">
@@ -47,14 +57,16 @@
   <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤">
   <input type="datetime-local" name="created_after" value="{{ data.filters.created_after }}">
   <input type="datetime-local" name="created_before" value="{{ data.filters.created_before }}">
-  <button type="submit">Filter</button>
-  <a class="button secondary" href="/reconciliation">Reset</a>
+      <button type="submit">Apply filters</button>
+    </div>
+  </details>
   <div class="quick-ranges" aria-label="Quick created-time ranges">
     <span>Created:</span>
     {% for preset in data.time_ranges %}
     <a href="{{ request.url.include_query_params(created_after=preset.after, created_before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
   </div>
+  {{ active_filter_chips(request, "/reconciliation") }}
 </form>
 
 <section class="notice">

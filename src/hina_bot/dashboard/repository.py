@@ -97,8 +97,15 @@ class AdminRepository:
             clauses.append("realm=?")
             params.append(realm)
         if user_id:
-            clauses.append("user_id=?")
-            params.append(user_id)
+            if self._has_column("turns", "name"):
+                escaped_user = self._like(user_id)
+                clauses.append(
+                    "(user_id=? OR name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
+                )
+                params.extend((user_id, f"%{escaped_user}%"))
+            else:
+                clauses.append("user_id=?")
+                params.append(user_id)
         if query:
             escaped = self._like(query)
             clauses.append(
@@ -279,8 +286,17 @@ class AdminRepository:
         columns = self._table_columns("memory_items")
         clauses: list[str] = []
         params: list[object] = []
+        if user_id:
+            if "user_name" in columns:
+                escaped_user = self._like(user_id)
+                clauses.append(
+                    "(user_id=? OR user_name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
+                )
+                params.extend((user_id, f"%{escaped_user}%"))
+            else:
+                clauses.append("user_id=?")
+                params.append(user_id)
         exact = {
-            "user_id": user_id,
             "origin_realm": origin_realm,
             "origin_channel_id": origin_channel_id,
             "kind": kind,
