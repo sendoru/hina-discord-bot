@@ -414,8 +414,10 @@ def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
         f"- provider: `{results[0]['provider'] if results else ''}`",
         f"- model: `{results[0]['model'] if results else ''}`",
         f"- routing mode: `{results[0]['routing_mode'] if results else ''}`",
-        f"- FAST / SMART: `{results[0]['fast_model'] if results else ''}` / "
-        f"`{results[0]['smart_model'] if results else ''}`",
+        (
+            f"- FAST / SMART: `{results[0]['fast_model'] if results else ''}` / "
+            f"`{results[0]['smart_model'] if results else ''}`"
+        ),
         f"- thinking level: `{results[0]['thinking_level'] if results else ''}`",
         f"- errors: {sum(bool(row['error']) for row in results)}",
         f"- validator failures: {sum(bool(row['validation_errors']) for row in results)}",
