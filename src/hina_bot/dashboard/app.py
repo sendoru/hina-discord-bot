@@ -66,6 +66,26 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
             context={"data": data},
         )
 
+    @app.get("/identity", response_class=HTMLResponse)
+    def identity_observability(
+        request: Request,
+        outcome: str = "",
+        blocked_reason: str = "",
+        after: str = "",
+        before: str = "",
+    ):
+        data = service.identity_observability(
+            outcome=outcome,
+            blocked_reason=blocked_reason,
+            after=after,
+            before=before,
+        )
+        return templates.TemplateResponse(
+            request=request,
+            name="identity.html",
+            context={"data": data},
+        )
+
     @app.get("/traces", response_class=HTMLResponse)
     def traces(
         request: Request,

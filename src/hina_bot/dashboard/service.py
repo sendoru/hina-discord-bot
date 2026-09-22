@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from .analytics import build_analytics
+from .identity import build_identity_observability
 from .repository import AdminRepository
 from .telemetry import TelemetryReader, TelemetrySnapshot
 
@@ -102,6 +103,22 @@ class DashboardService:
             operation=operation,
             model=model,
             provider=provider,
+            after=after,
+            before=before,
+        )
+
+    def identity_observability(
+        self,
+        *,
+        outcome: str = "",
+        blocked_reason: str = "",
+        after: str = "",
+        before: str = "",
+    ) -> dict[str, object]:
+        return build_identity_observability(
+            self.telemetry.snapshot(),
+            outcome=outcome,
+            blocked_reason=blocked_reason,
             after=after,
             before=before,
         )

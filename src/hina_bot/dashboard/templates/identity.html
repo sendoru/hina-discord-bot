@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Identity · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Speaker Identity Observability</h1>
+    <p>Resolver telemetry only. Raw references and candidate names are not persisted here.</p>
+  </div>
+  <div class="window">
+    <strong>Available telemetry</strong>
+    <span>{{ data.available.oldest_at or "none" }}</span>
+    <span>→ {{ data.available.newest_at or "none" }}</span>
+  </div>
+</section>
+
+<form class="filters" method="get">
+  <select name="outcome">
+    <option value="">outcome: any</option>
+    {% for value in ["resolved","ambiguous","none","blocked"] %}
+    <option value="{{ value }}" {% if data.filters.outcome == value %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <input name="blocked_reason" value="{{ data.filters.blocked_reason }}" placeholder="blocked reason">
+  <input name="after" value="{{ data.filters.after }}" placeholder="after (ISO-8601)">
+  <input name="before" value="{{ data.filters.before }}" placeholder="before (ISO-8601)">
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/identity">Reset</a>
+</form>
+
+<section class="cards">
+  <article class="card"><span>Resolver invoked</span><strong>{{ data.summary.invoked }}</strong></article>
+  <article class="card"><span>Resolved</span><strong>{{ data.summary.resolved }}</strong></article>
+  <article class="card"><span>Ambiguous</span><strong>{{ data.summary.ambiguous }}</strong></article>
+  <article class="card"><span>None</span><strong>{{ data.summary.none }}</strong></article>
+  <article class="card"><span>Blocked</span><strong>{{ data.summary.blocked }}</strong></article>
+  <article class="card"><span>Potential cache hit rate</span><strong>{{ data.summary.potential_hit_rate }}%</strong><small>{{ data.summary.potential_cache_hits }} estimated hits</small></article>
+</section>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Outcome distribution</h2>
+    {% if data.outcomes %}
+    <table><tbody>
+    {% for key, value in data.outcomes.items() %}
+      <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    {% else %}<p class="muted">No identity telemetry yet.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Candidate count</h2>
+    <table>
+      <thead><tr><th>Visible candidates</th><th>Calls</th></tr></thead>
+      <tbody>
+      {% for row in data.candidate_buckets %}
+      <tr><td>{{ row.label }}</td><td class="numeric">{{ row.count }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Blocked reasons</h2>
+    {% if data.blocked_reasons %}
+    <table><tbody>
+    {% for key, value in data.blocked_reasons.items() %}
+      <tr><td><code>{{ key }}</code></td><td class="numeric">{{ value }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    {% else %}<p class="muted">No blocked identity queries.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Resolver API usage</h2>
+    <dl class="metadata compact">
+      <div><dt>Calls</dt><dd>{{ data.usage.calls }}</dd></div>
+      <div><dt>Errors</dt><dd>{{ data.usage.errors }}</dd></div>
+      <div><dt>Total tokens</dt><dd>{{ data.usage.total_tokens }} <span class="muted">({{ data.usage.token_known }} known / {{ data.usage.token_missing }} missing)</span></dd></div>
+      <div><dt>Avg latency</dt><dd>{{ data.usage.latency_average if data.usage.latency_average is not none else "—" }} ms</dd></div>
+      <div><dt>p50 / p95</dt><dd>{{ data.usage.latency_p50 if data.usage.latency_p50 is not none else "—" }} / {{ data.usage.latency_p95 if data.usage.latency_p95 is not none else "—" }} ms</dd></div>
+    </dl>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Repeat reference groups</h2>
+  <p class="muted">
+    Reference groups are deployment-keyed hashes of a validated request substring. They are not raw nicknames.
+    Ambiguous/none outcomes invalidate the simulated cache state.
+  </p>
+  {% if data.repeat_groups %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Reference group</th><th>Events</th><th>Resolved</th><th>Ambiguous</th><th>None</th><th>Potential hits</th><th>Conflicts</th><th>Distinct users</th><th>Stable?</th></tr></thead>
+      <tbody>
+      {% for row in data.repeat_groups %}
+      <tr>
+        <td><code>ref:{{ row.reference_group[:10] }}</code></td>
+        <td class="numeric">{{ row.events }}</td>
+        <td class="numeric">{{ row.resolved }}</td>
+        <td class="numeric">{{ row.ambiguous }}</td>
+        <td class="numeric">{{ row.none }}</td>
+        <td class="numeric">{{ row.potential_hits }}</td>
+        <td class="numeric">{{ row.conflicts }}</td>
+        <td class="numeric">{{ row.distinct_users }}</td>
+        <td>{{ "yes" if row.stable else "no" }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">No repeated hashed reference groups yet.</p>{% endif %}
+</section>
+
+<section class="cards">
+  <article class="card"><span>Repeat groups</span><strong>{{ data.summary.repeat_groups }}</strong></article>
+  <article class="card"><span>Stable groups</span><strong>{{ data.summary.stable_repeat_groups }}</strong></article>
+  <article class="card"><span>Conflicting groups</span><strong>{{ data.summary.conflicting_groups }}</strong></article>
+  <article class="card"><span>Mapping conflicts</span><strong>{{ data.summary.mapping_conflicts }}</strong></article>
+  <article class="card"><span>assistant_generated evidence</span><strong>{{ data.summary.assistant_generated_evidence }}</strong><small>must remain 0 before/after #84</small></article>
+</section>
+
+<section class="panel">
+  <h2>Recent resolver / policy cases</h2>
+  {% if data.recent %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>Outcome</th><th>Candidates</th><th>Raw candidates</th><th>Blocked reason</th><th>Reference group</th><th>Resolved user group</th><th>Trace</th></tr></thead>
+      <tbody>
+      {% for row in data.recent %}
+      <tr>
+        <td>{{ row.at }}</td>
+        <td>{{ row.outcome }}</td>
+        <td class="numeric">{{ row.candidate_count }}</td>
+        <td class="numeric">{{ row.raw_candidate_count }}</td>
+        <td><code>{{ row.blocked_reason or "—" }}</code></td>
+        <td>{% if row.reference_group %}<code>ref:{{ row.reference_group[:10] }}</code>{% else %}—{% endif %}</td>
+        <td>{% if row.resolved_user_group %}<code>user:{{ row.resolved_user_group[:10] }}</code>{% else %}—{% endif %}</td>
+        <td>{% if row.turn_id %}<a href="/traces/{{ row.turn_id }}">open</a>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="muted">No cases match this filter.</p>{% endif %}
+</section>
+{% endblock %}

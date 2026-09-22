@@ -7,7 +7,9 @@ import pytest
 from hina_bot.ai.identity_resolution import (
     SpeakerIdentityCandidate,
     SpeakerIdentityResolver,
+    identity_group,
     identity_resolution_needed,
+    normalize_identity_reference,
     parse_identity_resolution,
 )
 from hina_bot.core.config import Settings
@@ -80,3 +82,73 @@ async def test_semantic_resolver_handles_transliteration_without_app_rules():
         "user_id": "200",
         "names": ["tag : sendol"],
     }
+
+
+def test_reference_must_be_copied_from_request_and_group_is_keyed():
+    candidates = [candidate(200, "sendol")]
+    result = parse_identity_resolution(
+        '{"status":"resolved","user_id":"200","reference":"센돌"}',
+        candidates,
+        request="센돌이 누군지 알아?",
+    )
+    invalid = parse_identity_resolution(
+        '{"status":"resolved","user_id":"200","reference":"invented"}',
+        candidates,
+        request="센돌이 누군지 알아?",
+    )
+
+    assert result.reference == "센돌"
+    assert invalid.resolved
+    assert invalid.reference == ""
+    assert normalize_identity_reference(" Sendol! ") == "sendol"
+    assert identity_group(
+        "Sendol!",
+        guild_id=1,
+        secret="deployment-secret",
+        kind="reference",
+    ) == identity_group(
+        " sendol ",
+        guild_id=1,
+        secret="deployment-secret",
+        kind="reference",
+    )
+    assert identity_group(
+        "sendol",
+        guild_id=2,
+        secret="deployment-secret",
+        kind="reference",
+    ) != identity_group(
+        "sendol",
+        guild_id=1,
+        secret="deployment-secret",
+        kind="reference",
+    )
+
+
+@pytest.mark.asyncio
+async def test_semantic_resolver_preserves_validated_reference_span():
+    response = NS(
+        status="completed",
+        output_text='{"status":"resolved","user_id":"200","reference":"센돌"}',
+        output=[],
+        usage=None,
+    )
+    client = NS(provider_name="gemini", responses=NS(create=AsyncMock()))
+    usage = NS(request=AsyncMock(return_value=response))
+    settings = Settings(
+        "token",
+        "key",
+        provider="gemini",
+        model="gemini-model",
+        fast_model="gemini-fast",
+        routing_classifier_timeout_seconds=5,
+    )
+    resolver = SpeakerIdentityResolver(settings, client, usage)
+
+    result = await resolver.resolve(
+        "센돌이 누군지 알아?",
+        [candidate(200, "sendol")],
+    )
+
+    assert result.resolved
+    assert result.reference == "센돌"
