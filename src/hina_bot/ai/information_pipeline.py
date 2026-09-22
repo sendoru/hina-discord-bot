@@ -22,6 +22,7 @@ from .information_routing import (
 from .memory_summary import MemorySummaryMixin
 from .model_routing import baseline_route_state, build_model_plan
 from .note_context import NoteContextStore
+from .reference_gated_recall import plan_reference_gated_recall
 from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
@@ -236,6 +237,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         public_context,
         channel_context,
         use_memory: bool,
+        factual_recall_plan=None,
     ) -> int:
         """Measure the dynamic text admitted by the same memory/context policies as assembly."""
         summary, summary_through = store.summary(scope) if use_memory else ("", 0)
@@ -269,6 +271,11 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             scope,
             use_memory=use_memory,
             allow_cross_space=cross_channel_memory,
+            authorized_factual_items=(
+                factual_recall_plan.selected
+                if factual_recall_plan is not None
+                else ()
+            ),
         )
         context = {
             "server_note": (
@@ -321,6 +328,17 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
 
         channel_rows = channel_context or ()
         CURRENT_MEMORY_CONTEXT.set(tuple(build_memory_context(channel_rows, scope.user_id)))
+        current_channel_only = self._current_channel_scope_only(
+            scope,
+            routing.routing_query,
+        )
+        factual_recall_plan = plan_reference_gated_recall(
+            assembly_store,
+            scope,
+            routing.visible_content,
+            use_memory=assembly_use_memory,
+            allow_cross_space=assembly_use_memory and not current_channel_only,
+        )
         visual_inputs = CURRENT_VISUAL_INPUTS.get()
         context_chars = self._routing_context_chars(
             assembly_store,
@@ -329,6 +347,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             public_context=assembly_public_context,
             channel_context=channel_rows,
             use_memory=assembly_use_memory,
+            factual_recall_plan=factual_recall_plan,
         )
         baseline_score, baseline_tier, local_level = baseline_route_state(
             self.settings,
@@ -407,6 +426,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 use_memory=assembly_use_memory,
                 information_plan=information,
                 model_plan=model_plan,
+                factual_recall_plan=factual_recall_plan,
             )
         finally:
             CURRENT_AMBIENT_WEATHER.reset(token)
