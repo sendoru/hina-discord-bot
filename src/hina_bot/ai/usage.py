@@ -320,6 +320,11 @@ class UsageLogger:
             "context_current_channel_only", "context_cross_channel_memory",
             "factual_recall_detected", "factual_recall_candidates",
             "factual_recall_selected", "factual_recall_status",
+            "context_chars_total", "context_summary_chars",
+            "context_structured_memory_chars", "context_recent_chars",
+            "context_public_chars", "context_channel_chars", "context_reply_chars",
+            "context_history_chars", "context_lore_chars", "context_emoji_chars",
+            "instruction_chars", "visible_input_chars",
         }
         row = {
             "at": datetime.now(UTC).isoformat(),

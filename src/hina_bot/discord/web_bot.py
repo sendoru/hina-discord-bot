@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 from contextvars import ContextVar
 from datetime import timedelta
 
@@ -412,6 +413,9 @@ class HinaClient(BaseHinaClient):
                 )
             return
 
+        preflight_started = time.perf_counter() if text is not None else None
+        preflight_turn_id = new_turn_id() if text is not None else None
+
         strict_egress = strict_policy(self.settings.external_context_policy)
         third_party_mention = any(
             getattr(user, "id", None) not in {self.user.id, scope.user_id}
@@ -419,16 +423,10 @@ class HinaClient(BaseHinaClient):
             for user in getattr(message, "mentions", ())
         )
 
-        identity_turn_id = (
-            new_turn_id()
-            if text is not None
-            and scope.guild_id is not None
-            and identity_resolution_needed(text)
-            else None
-        )
+        identity_started = time.perf_counter()
         identity_token = (
-            CURRENT_TURN_ID.set(identity_turn_id)
-            if identity_turn_id is not None
+            CURRENT_TURN_ID.set(preflight_turn_id)
+            if preflight_turn_id is not None
             else None
         )
         try:
@@ -442,12 +440,14 @@ class HinaClient(BaseHinaClient):
         finally:
             if identity_token is not None:
                 CURRENT_TURN_ID.reset(identity_token)
+        identity_ms = round((time.perf_counter() - identity_started) * 1000)
 
         target_visibility = _target_history_visibility(
             self.store,
             scope,
             strict_egress=strict_egress,
         )
+        target_context_started = time.perf_counter()
         sampled = (
             await collect(
                 message,
@@ -460,6 +460,9 @@ class HinaClient(BaseHinaClient):
             if text is not None
             else []
         )
+        target_context_ms = round((time.perf_counter() - target_context_started) * 1000)
+
+        reply_context_started = time.perf_counter()
         replied = (
             await collect_reply_context(
                 message,
@@ -469,6 +472,7 @@ class HinaClient(BaseHinaClient):
             if text is not None
             else []
         )
+        reply_context_ms = round((time.perf_counter() - reply_context_started) * 1000)
         reply_chain_visual_ids = self.recent.reply_chain_visual_ids(scope, replied)
 
         visual_capture_mode = capture_mode(self.store, scope)
@@ -499,6 +503,7 @@ class HinaClient(BaseHinaClient):
                 return direct
             return True
 
+        visual_context_started = time.perf_counter()
         visuals = (
             await collect_visual_inputs(
                 message,
@@ -514,6 +519,7 @@ class HinaClient(BaseHinaClient):
             )
             if text is not None else []
         )
+        visual_context_ms = round((time.perf_counter() - visual_context_started) * 1000)
         public_request = (
             (
                 (False, ())
@@ -529,6 +535,21 @@ class HinaClient(BaseHinaClient):
             if text is not None
             else (False, ())
         )
+        if preflight_started is not None and preflight_turn_id is not None:
+            event_token = CURRENT_TURN_ID.set(preflight_turn_id)
+            try:
+                self.events.emit(
+                    "turn.preflight",
+                    scope="guild" if scope.guild_id is not None else "dm",
+                    preflight_ms=round((time.perf_counter() - preflight_started) * 1000),
+                    identity_ms=identity_ms,
+                    target_context_ms=target_context_ms,
+                    reply_context_ms=reply_context_ms,
+                    visual_context_ms=visual_context_ms,
+                )
+            finally:
+                CURRENT_TURN_ID.reset(event_token)
+
         target_token = TARGET_CONTEXT.set(tuple(sampled))
         reply_token = REPLY_CONTEXT.set(tuple(replied))
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
@@ -553,8 +574,8 @@ class HinaClient(BaseHinaClient):
             original_content = message.content
             message.content = augmented_content
         correlation_token = (
-            CURRENT_TURN_ID.set(identity_turn_id)
-            if identity_turn_id is not None
+            CURRENT_TURN_ID.set(preflight_turn_id)
+            if preflight_turn_id is not None
             else None
         )
         try:

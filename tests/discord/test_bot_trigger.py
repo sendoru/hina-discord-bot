@@ -8,6 +8,7 @@ import discord
 import pytest
 
 from hina_bot.core.config import Settings
+from hina_bot.core.observability import current_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.store import Store
 from hina_bot.discord.bot import BOT_TRIGGER_CHAIN_LIMIT
@@ -191,10 +192,15 @@ async def test_consecutive_bot_trigger_guard_resets_after_human_activity(base_cl
 
 
 @pytest.mark.asyncio
-async def test_production_wrapper_forwards_only_explicit_bot_calls():
+async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
     store = Store(":memory:")
     llm = NS(close=AsyncMock())
-    client = ProductionHinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
+    event_path = tmp_path / "events.jsonl"
+    client = ProductionHinaClient(
+        Settings("test", "test", cooldown=0, event_log_path=str(event_path)),
+        store=store,
+        llm=llm,
+    )
     client._connection.user = NS(id=99)
     channel = NS(id=10)
     guild = NS(id=1)
@@ -215,16 +221,32 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls():
         author=bot_author,
         text="히나야 안녕",
     )
+    forwarded_turn_ids = []
+
+    async def capture_forwarded(_message):
+        forwarded_turn_ids.append(current_turn_id())
 
     with (
         patch("hina_bot.discord.web_bot.collect", new=AsyncMock(return_value=[])),
         patch("hina_bot.discord.web_bot.collect_reply_context", new=AsyncMock(return_value=[])),
         patch("hina_bot.discord.web_bot.collect_visual_inputs", new=AsyncMock(return_value=[])),
-        patch.object(BaseHinaClient, "on_message", new=AsyncMock(return_value=None)) as forwarded,
+        patch.object(BaseHinaClient, "on_message", new=AsyncMock(side_effect=capture_forwarded)) as forwarded,
     ):
         await client.on_message(direct)
         assert forwarded.await_count == 1
         await client.on_message(passive)
         assert forwarded.await_count == 1
+
+    rows = [json.loads(line) for line in event_path.read_text().splitlines()]
+    preflight = [row for row in rows if row["event"] == "turn.preflight"]
+    assert len(preflight) == 1
+    assert preflight[0]["turn_id"] == forwarded_turn_ids[0]
+    assert set(preflight[0]) >= {
+        "preflight_ms",
+        "identity_ms",
+        "target_context_ms",
+        "reply_context_ms",
+        "visual_context_ms",
+    }
 
     await client.close()

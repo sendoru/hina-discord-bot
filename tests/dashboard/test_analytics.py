@@ -84,11 +84,29 @@ def snapshot():
         {
             "at": "2026-09-21T00:02:00+00:00",
             "turn_id": "c",
-            "operation": "summarize_memory",
+            "operation": "summarize",
             "provider": "openai",
             "model": "memory-model",
             "status": "error",
             "elapsed_ms": 500,
+        },
+        {
+            "at": "2026-09-21T00:01:01+00:00",
+            "turn_id": "a",
+            "operation": "context.size",
+            "status": "completed",
+            "context_chars_total": 1000,
+            "context_summary_chars": 100,
+            "context_structured_memory_chars": 200,
+            "context_recent_chars": 150,
+            "context_public_chars": 50,
+            "context_channel_chars": 120,
+            "context_reply_chars": 80,
+            "context_history_chars": 60,
+            "context_lore_chars": 90,
+            "context_emoji_chars": 20,
+            "instruction_chars": 1400,
+            "visible_input_chars": 30,
         },
         {
             "at": "2026-09-21T00:03:00+00:00",
@@ -121,10 +139,72 @@ def snapshot():
             "elapsed_ms": 400,
         },
     )
+    events = (
+        {
+            "at": "2026-09-21T00:00:00+00:00",
+            "turn_id": "a",
+            "event": "turn.preflight",
+            "preflight_ms": 100,
+            "identity_ms": 20,
+            "target_context_ms": 10,
+            "reply_context_ms": 15,
+            "visual_context_ms": 40,
+        },
+        {
+            "at": "2026-09-21T00:00:02+00:00",
+            "turn_id": "a",
+            "event": "turn.reply_delivered",
+            "elapsed_ms": 1500,
+            "delivery_ms": 50,
+            "delivery_chunks": 1,
+        },
+        {
+            "at": "2026-09-21T00:00:03+00:00",
+            "turn_id": "a",
+            "event": "turn.completed",
+            "elapsed_ms": 1800,
+            "lock_wait_ms": 10,
+            "slot_wait_ms": 20,
+            "recent_history_ms": 30,
+            "context_ms": 100,
+            "generation_ms": 1200,
+            "delivery_ms": 50,
+            "memory_ms": 280,
+        },
+        {
+            "at": "2026-09-21T00:01:00+00:00",
+            "turn_id": "b",
+            "event": "turn.preflight",
+            "preflight_ms": 50,
+            "identity_ms": 1,
+            "target_context_ms": 4,
+            "reply_context_ms": 5,
+            "visual_context_ms": 10,
+        },
+        {
+            "at": "2026-09-21T00:01:01+00:00",
+            "turn_id": "b",
+            "event": "turn.reply_delivered",
+            "elapsed_ms": 400,
+            "delivery_ms": 20,
+            "delivery_chunks": 1,
+        },
+        {
+            "at": "2026-09-21T00:01:02+00:00",
+            "turn_id": "b",
+            "event": "turn.completed",
+            "elapsed_ms": 450,
+            "lock_wait_ms": 5,
+            "slot_wait_ms": 10,
+            "context_ms": 50,
+            "generation_ms": 350,
+            "delivery_ms": 20,
+        },
+    )
     return TelemetrySnapshot(
         usage=usage,
         exchanges=exchanges,
-        events=(),
+        events=events,
         oldest_at="2026-09-21T00:00:00+00:00",
         newest_at="2026-09-21T00:03:00+00:00",
     )
@@ -149,7 +229,7 @@ def test_analytics_preserves_missing_usage_and_breaks_down_calls():
     by_operation = {row["name"]: row for row in data["usage"]["operations"]}
     assert by_operation["answer"]["calls"] == 2
     assert by_operation["answer"]["total_tokens"]["known"] == 1
-    assert by_operation["summarize_memory"]["errors"] == 1
+    assert by_operation["summarize"]["errors"] == 1
 
 
 def test_analytics_exposes_model_routing_classifier_and_shadow_deltas():
@@ -200,3 +280,33 @@ def test_analytics_filters_per_call_usage_but_keeps_routing_answer_scope():
     # Operation filtering is intentionally usage-only; routing still evaluates answer rows.
     assert data["routing"]["answer_rows"] == 2
     assert data["routing"]["classifier"]["calls"] == 1
+
+
+def test_analytics_exposes_user_visible_latency_and_generation_residual():
+    data = build_analytics(snapshot())
+
+    assert data["performance"]["reply_latency"] == {
+        "known": 2,
+        "missing": 0,
+        "average": 1025,
+        "p50": 450,
+        "p95": 1600,
+        "max": 1600,
+    }
+    assert data["performance"]["turn_latency"]["p95"] == 1900
+    assert data["performance"]["post_reply"]["average"] == 175
+    assert data["performance"]["stages"]["recent_history_ms"]["known"] == 1
+    assert data["performance"]["stages"]["recent_history_ms"]["missing"] == 1
+    assert data["performance"]["generation"]["api_time"]["average"] == 700
+    assert data["performance"]["generation"]["residual"]["average"] == 75
+
+
+def test_analytics_exposes_api_categories_and_context_char_attribution():
+    data = build_analytics(snapshot())
+
+    assert data["usage"]["memory_calls"] == 1
+    assert data["performance"]["api_categories"]["answer"]["calls"] == 2
+    assert data["performance"]["api_categories"]["routing"]["calls"] == 1
+    assert data["performance"]["api_categories"]["memory"]["calls"] == 1
+    assert data["performance"]["context_chars"]["context_chars_total"]["average"] == 1000
+    assert data["performance"]["context_chars"]["instruction_chars"]["average"] == 1400

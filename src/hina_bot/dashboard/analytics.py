@@ -15,10 +15,11 @@ _TOKEN_FIELDS = (
     "reasoning_tokens",
 )
 _MEMORY_OPERATIONS = {
+    "summarize",
+    "summarize_shared",
     "summarize_memory",
     "summarize_shared_memory",
     "extract_memory_items_shadow",
-    "memory.shadow_extraction",
 }
 _NEAR_THRESHOLD = 0.25
 
@@ -93,6 +94,54 @@ def _latency(rows: list[dict[str, object]]) -> dict[str, int | None]:
         "p50": _percentile(values, 0.50),
         "p95": _percentile(values, 0.95),
         "max": max(values) if values else None,
+    }
+
+
+def _field_latency(
+    rows: list[dict[str, object]],
+    field: str,
+) -> dict[str, int | None]:
+    values = [
+        value
+        for row in rows
+        if isinstance((value := row.get(field)), int) and not isinstance(value, bool)
+    ]
+    return {
+        "known": len(values),
+        "missing": len(rows) - len(values),
+        "average": round(sum(values) / len(values)) if values else None,
+        "p50": _percentile(values, 0.50),
+        "p95": _percentile(values, 0.95),
+        "max": max(values) if values else None,
+    }
+
+
+def _distribution(values: list[int], *, total: int | None = None) -> dict[str, int | None]:
+    total = len(values) if total is None else total
+    return {
+        "known": len(values),
+        "missing": max(0, total - len(values)),
+        "average": round(sum(values) / len(values)) if values else None,
+        "p50": _percentile(values, 0.50),
+        "p95": _percentile(values, 0.95),
+        "max": max(values) if values else None,
+    }
+
+
+def _by_turn(rows: Iterable[dict[str, object]]) -> dict[str, list[dict[str, object]]]:
+    result: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for row in rows:
+        turn_id = row.get("turn_id")
+        if isinstance(turn_id, str) and turn_id:
+            result[turn_id].append(row)
+    return result
+
+
+def _category_usage(rows: list[dict[str, object]]) -> dict[str, object]:
+    return {
+        "calls": len(rows),
+        "tokens": _metric(rows, "total_tokens"),
+        "latency": _latency(rows),
     }
 
 
@@ -278,7 +327,6 @@ def build_analytics(
         if row.get("operation") == "model_route_shadow"
         and _matches_text(row.get("routing_classifier_provider"), provider)
     ]
-
     tokens = {field: _metric(filtered_api, field) for field in _TOKEN_FIELDS}
     known_route_margins = [
         float(row["model_route_margin"])
@@ -317,6 +365,202 @@ def build_analytics(
         or "memory" in str(row.get("operation") or "")
         or "summary" in str(row.get("operation") or "")
     ]
+    time_events = _filter_time(snapshot.events, after, before)
+    answer_turn_ids = {
+        str(row["turn_id"])
+        for row in answer_rows
+        if isinstance(row.get("turn_id"), str) and row.get("turn_id")
+    }
+    performance_api_rows = (
+        [
+            row
+            for row in api_rows
+            if str(row.get("turn_id") or "") in answer_turn_ids
+        ]
+        if model or provider
+        else api_rows
+    )
+    performance_classifier_rows = [
+        row
+        for row in performance_api_rows
+        if row.get("operation") == "model_route_classify"
+    ]
+    identity_rows = [
+        row for row in performance_api_rows if row.get("operation") == "identity_resolve"
+    ]
+    performance_memory_rows = [
+        row
+        for row in performance_api_rows
+        if str(row.get("operation") or "") in _MEMORY_OPERATIONS
+        or "memory" in str(row.get("operation") or "")
+        or "summary" in str(row.get("operation") or "")
+    ]
+    performance_events = (
+        [
+            row
+            for row in time_events
+            if str(row.get("turn_id") or "") in answer_turn_ids
+        ]
+        if model or provider
+        else time_events
+    )
+    preflight_rows = [
+        row for row in performance_events if row.get("event") == "turn.preflight"
+    ]
+    reply_rows = [
+        row for row in performance_events if row.get("event") == "turn.reply_delivered"
+    ]
+    completed_rows = [
+        row for row in performance_events if row.get("event") == "turn.completed"
+    ]
+
+    preflight_by_turn = {
+        turn_id: rows[-1]
+        for turn_id, rows in _by_turn(preflight_rows).items()
+    }
+    reply_by_turn = {
+        turn_id: rows[-1]
+        for turn_id, rows in _by_turn(reply_rows).items()
+    }
+    usage_by_turn = _by_turn(performance_api_rows)
+
+    observed_reply_values = []
+    for row in reply_rows:
+        turn_id = str(row.get("turn_id") or "")
+        preflight = preflight_by_turn.get(turn_id)
+        base_elapsed = row.get("elapsed_ms")
+        preflight_elapsed = preflight.get("preflight_ms") if preflight else None
+        if (
+            isinstance(base_elapsed, int)
+            and not isinstance(base_elapsed, bool)
+            and isinstance(preflight_elapsed, int)
+            and not isinstance(preflight_elapsed, bool)
+        ):
+            observed_reply_values.append(base_elapsed + preflight_elapsed)
+
+    observed_total_values = []
+    post_reply_values = []
+    generation_api_values = []
+    generation_residual_values = []
+    for row in completed_rows:
+        turn_id = str(row.get("turn_id") or "")
+        base_elapsed = row.get("elapsed_ms")
+        preflight = preflight_by_turn.get(turn_id)
+        preflight_elapsed = preflight.get("preflight_ms") if preflight else None
+        if (
+            isinstance(base_elapsed, int)
+            and not isinstance(base_elapsed, bool)
+            and isinstance(preflight_elapsed, int)
+            and not isinstance(preflight_elapsed, bool)
+        ):
+            observed_total_values.append(base_elapsed + preflight_elapsed)
+
+        reply = reply_by_turn.get(turn_id)
+        reply_elapsed = reply.get("elapsed_ms") if reply else None
+        if (
+            isinstance(base_elapsed, int)
+            and not isinstance(base_elapsed, bool)
+            and isinstance(reply_elapsed, int)
+            and not isinstance(reply_elapsed, bool)
+            and base_elapsed >= reply_elapsed
+        ):
+            post_reply_values.append(base_elapsed - reply_elapsed)
+
+        generation_ms = row.get("generation_ms")
+        critical_api = [
+            api_row
+            for api_row in usage_by_turn.get(turn_id, ())
+            if api_row.get("operation") == "answer"
+            or (
+                api_row.get("operation") == "model_route_classify"
+                and api_row.get("semantic_route_mode") != "shadow"
+            )
+        ]
+        api_latencies = [
+            value
+            for api_row in critical_api
+            if isinstance((value := api_row.get("elapsed_ms")), int)
+            and not isinstance(value, bool)
+        ]
+        if (
+            isinstance(generation_ms, int)
+            and not isinstance(generation_ms, bool)
+            and critical_api
+            and len(api_latencies) == len(critical_api)
+        ):
+            api_total = sum(api_latencies)
+            generation_api_values.append(api_total)
+            generation_residual_values.append(max(0, generation_ms - api_total))
+
+    context_size_rows = [
+        row
+        for row in time_usage
+        if row.get("operation") == "context.size"
+        and (
+            not (model or provider)
+            or str(row.get("turn_id") or "") in answer_turn_ids
+        )
+    ]
+    context_fields = (
+        "context_chars_total",
+        "context_summary_chars",
+        "context_structured_memory_chars",
+        "context_recent_chars",
+        "context_public_chars",
+        "context_channel_chars",
+        "context_reply_chars",
+        "context_history_chars",
+        "context_lore_chars",
+        "context_emoji_chars",
+        "instruction_chars",
+        "visible_input_chars",
+    )
+
+    performance = {
+        "reply_latency": _distribution(
+            observed_reply_values,
+            total=len(reply_rows),
+        ),
+        "turn_latency": _distribution(
+            observed_total_values,
+            total=len(completed_rows),
+        ),
+        "post_reply": _distribution(post_reply_values, total=len(completed_rows)),
+        "stages": {
+            "preflight_ms": _field_latency(preflight_rows, "preflight_ms"),
+            "identity_ms": _field_latency(preflight_rows, "identity_ms"),
+            "target_context_ms": _field_latency(preflight_rows, "target_context_ms"),
+            "reply_context_ms": _field_latency(preflight_rows, "reply_context_ms"),
+            "visual_context_ms": _field_latency(preflight_rows, "visual_context_ms"),
+            "lock_wait_ms": _field_latency(completed_rows, "lock_wait_ms"),
+            "slot_wait_ms": _field_latency(completed_rows, "slot_wait_ms"),
+            "recent_history_ms": _field_latency(completed_rows, "recent_history_ms"),
+            "context_ms": _field_latency(completed_rows, "context_ms"),
+            "generation_ms": _field_latency(completed_rows, "generation_ms"),
+            "delivery_ms": _field_latency(completed_rows, "delivery_ms"),
+            "memory_ms": _field_latency(completed_rows, "memory_ms"),
+        },
+        "generation": {
+            "api_time": _distribution(
+                generation_api_values,
+                total=len(completed_rows),
+            ),
+            "residual": _distribution(
+                generation_residual_values,
+                total=len(completed_rows),
+            ),
+        },
+        "api_categories": {
+            "answer": _category_usage(answer_rows),
+            "routing": _category_usage(performance_classifier_rows),
+            "identity": _category_usage(identity_rows),
+            "memory": _category_usage(performance_memory_rows),
+        },
+        "context_chars": {
+            field: _field_latency(context_size_rows, field)
+            for field in context_fields
+        },
+    }
 
     return {
         "available": {
@@ -390,6 +634,7 @@ def build_analytics(
                 "semantic_web_need": _counter(shadow_rows, "semantic_web_need"),
             },
         },
+        "performance": performance,
         "search": {
             "answer_rows": len(answer_rows),
             "baseline_mode": _counter(answer_rows, "search_route_baseline_mode"),

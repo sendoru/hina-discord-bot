@@ -280,7 +280,11 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(secret, raw)
         rows = [json.loads(line) for line in raw.splitlines()]
         failed = next(row for row in rows if row["event"] == "memory.summary_failed")
+        delivered = next(row for row in rows if row["event"] == "turn.reply_delivered")
         completed = next(row for row in rows if row["event"] == "turn.completed")
+        self.assertLess(rows.index(delivered), rows.index(failed))
+        self.assertEqual(delivered["turn_id"], completed["turn_id"])
+        self.assertEqual(delivered["delivery_chunks"], 1)
         self.assertEqual(failed["memory_kind"], "personal")
         self.assertEqual(completed["status"], "partial_success")
         self.assertEqual(completed["memory_failures"], 1)

@@ -287,3 +287,39 @@ def test_context_provenance_routing_event_keeps_counts_but_not_unknown_content(t
     assert row["factual_recall_candidates"] == 3
     assert row["factual_recall_selected"] == 1
     assert row["factual_recall_status"] == "authorized"
+
+
+def test_context_size_event_keeps_only_numeric_attribution(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    token = CURRENT_TURN_ID.set("trace-size")
+    try:
+        logger.routing_event(
+            "context.size",
+            status="completed",
+            context_chars_total=1200,
+            context_summary_chars=100,
+            context_structured_memory_chars=200,
+            context_recent_chars=150,
+            context_public_chars=50,
+            context_channel_chars=120,
+            context_reply_chars=80,
+            context_history_chars=60,
+            context_lore_chars=90,
+            context_emoji_chars=20,
+            instruction_chars=1400,
+            visible_input_chars=30,
+            content="must-not-log",
+        )
+    finally:
+        CURRENT_TURN_ID.reset(token)
+        logger.close()
+
+    text = path.read_text()
+    assert "must-not-log" not in text
+    row = json.loads(text)
+    assert row["turn_id"] == "trace-size"
+    assert row["operation"] == "context.size"
+    assert row["context_chars_total"] == 1200
+    assert row["instruction_chars"] == 1400
+    assert row["visible_input_chars"] == 30
