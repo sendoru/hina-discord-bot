@@ -104,7 +104,7 @@ def test_repository_search_turns_filters_without_writes(tmp_path):
     assert rows[0]["message_id"] == "55"
 
 
-def test_repository_memory_inspection_and_future_lifecycle_columns(tmp_path):
+def test_repository_memory_inspection_and_lifecycle_columns(tmp_path):
     path = tmp_path / "hina.sqlite3"
     store = Store(str(path))
     scope = Scope(1, 10, 100, True)
@@ -131,7 +131,9 @@ def test_repository_memory_inspection_and_future_lifecycle_columns(tmp_path):
     store.close()
 
     repository = AdminRepository(path)
-    assert repository.memory_schema()["has_lifecycle"] is False
+    schema = repository.memory_schema()
+    assert schema["has_lifecycle"] is True
+    assert schema["has_superseded_by"] is True
     assert repository.count_memory_items(user_id="100") == 2
     assert repository.count_memory_items(query="first") == 1
     assert repository.count_memory_items(relationship="yes") == 0
@@ -139,20 +141,13 @@ def test_repository_memory_inspection_and_future_lifecycle_columns(tmp_path):
     item = repository.memory_item(first_id)
     assert item is not None
     assert item["content"] == "first memory"
+    assert item["status"] == "active"
+    assert item["superseded_by"] is None
     assert len(repository.neighboring_memory_items(item)) == 1
     sources = repository.turns_for_message_ids(["700", "missing"])
     assert len(sources) == 1
     assert sources[0]["turn_id"] == "memory-source-trace"
 
-    writable = sqlite3.connect(path)
-    writable.execute("ALTER TABLE memory_items ADD COLUMN status TEXT")
-    writable.execute("ALTER TABLE memory_items ADD COLUMN superseded_by INTEGER")
-    writable.execute("UPDATE memory_items SET status='active'")
-    writable.commit()
-    writable.close()
-
-    repository = AdminRepository(path)
-    schema = repository.memory_schema()
     assert schema["has_lifecycle"] is True
     assert schema["has_superseded_by"] is True
     assert repository.count_memory_items(status="active") == 2

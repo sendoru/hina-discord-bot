@@ -18,6 +18,7 @@ from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, Relationshi
 _MAX_ITEMS_PER_BATCH = 24
 _MAX_CONTENT_CHARS = 600
 _RECONCILIATION_RELATIONS = frozenset({"duplicate", "corrects", "conflicts"})
+AUTO_RECONCILIATION_MIN_CONFIDENCE = 0.95
 _CODE_FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.IGNORECASE | re.DOTALL)
 
 SHADOW_EXTRACTION_POLICY = """
@@ -144,6 +145,13 @@ class ShadowPersistResult:
     stored: int
     duplicates: int
     item_ids: tuple[int | None, ...]
+
+
+@dataclass(frozen=True)
+class ReconciliationPersistResult:
+    stored: int
+    applied: int
+    deferred: int
 
 
 def _row_value(row, key: str, default=""):
@@ -357,7 +365,11 @@ def persist_shadow_items_detailed(
 ) -> ShadowPersistResult:
     """Append validated items and return ids aligned with the parsed item order."""
 
-    existing = store.memory_items(scope.user_id, origin_realm=scope.realm)
+    existing = store.memory_items(
+        scope.user_id,
+        origin_realm=scope.realm,
+        include_superseded=True,
+    )
     signatures = {
         (
             item.content,
@@ -431,10 +443,14 @@ def persist_reconciliation_proposals(
     scope,
     items: tuple[ExtractedMemoryItem, ...],
     item_ids: tuple[int | None, ...],
-) -> int:
-    """Persist model relation proposals without mutating any memory item."""
+) -> ReconciliationPersistResult:
+    """Persist proposals and conservatively apply safe lifecycle transitions."""
 
     stored = 0
+    applied = 0
+    deferred = 0
+    finder = getattr(store, "memory_reconciliation_proposal_id", None)
+    applier = getattr(store, "apply_memory_reconciliation_proposal", None)
     for item, item_id in zip(items, item_ids, strict=True):
         if item_id is None or item.relation is None:
             continue
@@ -448,15 +464,34 @@ def persist_reconciliation_proposals(
             confidence=item.relation.confidence,
             source_message_ids=item.source_message_ids,
         )
-        stored += int(proposal_id is not None)
-    return stored
+        if proposal_id is not None:
+            stored += 1
+        elif callable(finder):
+            proposal_id = finder(
+                new_memory_item_id=item_id,
+                target_memory_item_id=item.relation.target_item_id,
+                relation=item.relation.relation,
+            )
+        if proposal_id is None or not callable(applier):
+            continue
+        outcome = applier(
+            proposal_id,
+            min_confidence=AUTO_RECONCILIATION_MIN_CONFIDENCE,
+        )
+        if outcome == "applied":
+            applied += 1
+        elif outcome != "already_applied":
+            deferred += 1
+    return ReconciliationPersistResult(stored, applied, deferred)
 
 
 __all__ = [
+    "AUTO_RECONCILIATION_MIN_CONFIDENCE",
     "SHADOW_EXTRACTION_POLICY",
     "ExtractedMemoryItem",
     "ExtractionParseResult",
     "MemoryRelationProposal",
+    "ReconciliationPersistResult",
     "ShadowPersistResult",
     "build_reconciliation_candidates",
     "build_shadow_evidence_context",

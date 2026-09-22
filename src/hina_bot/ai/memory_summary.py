@@ -255,14 +255,19 @@ class MemorySummaryMixin:
                 source_public_at_capture=source_public_at_capture,
             )
             proposal_count = 0
+            applied_reconciliations = 0
+            deferred_reconciliations = 0
             proposal_writer = getattr(store, "add_memory_reconciliation_proposal", None)
             if callable(proposal_writer):
-                proposal_count = persist_reconciliation_proposals(
+                reconciliation = persist_reconciliation_proposals(
                     store,
                     scope,
                     parsed.items,
                     persisted.item_ids,
                 )
+                proposal_count = reconciliation.stored
+                applied_reconciliations = reconciliation.applied
+                deferred_reconciliations = reconciliation.deferred
             completed_metrics = {
                 **metrics,
                 "accepted_items": len(parsed.items),
@@ -270,6 +275,8 @@ class MemorySummaryMixin:
                 "duplicate_items": persisted.duplicates,
                 "rejected_items": parsed.rejected_items,
                 "proposal_items": proposal_count,
+                "applied_reconciliations": applied_reconciliations,
+                "deferred_reconciliations": deferred_reconciliations,
                 "rejected_relations": parsed.rejected_relations,
                 "rejected_relationship_evidence": parsed.rejected_relationship_evidence,
             }
@@ -280,13 +287,15 @@ class MemorySummaryMixin:
             )
             log.info(
                 "Structured memory shadow extraction completed: accepted=%d stored=%d "
-                "duplicates=%d rejected=%d proposals=%d rejected_relations=%d "
-                "rejected_relationship_evidence=%d candidates=%d",
+                "duplicates=%d rejected=%d proposals=%d applied=%d deferred=%d "
+                "rejected_relations=%d rejected_relationship_evidence=%d candidates=%d",
                 len(parsed.items),
                 persisted.stored,
                 persisted.duplicates,
                 parsed.rejected_items,
                 proposal_count,
+                applied_reconciliations,
+                deferred_reconciliations,
                 parsed.rejected_relations,
                 parsed.rejected_relationship_evidence,
                 len(reconciliation_candidates),
