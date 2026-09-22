@@ -44,6 +44,172 @@
 <section class="notice">No retained raw turn is correlated with this trace. It may have expired from bounded retention or predate turn_id persistence.</section>
 {% endif %}
 
+{% if data.context_provenance %}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Context &amp; provenance</h2>
+      <p class="muted">Content-free snapshot of the context Python admitted to this answer request.</p>
+    </div>
+  </div>
+
+  <div class="cards">
+    <article class="card"><span>Egress policy</span><strong>{{ data.context_provenance.egress_policy or "—" }}</strong></article>
+    <article class="card"><span>Current-channel only</span><strong>{{ "yes" if data.context_provenance.decisions.current_channel_only else "no" }}</strong></article>
+    <article class="card"><span>Cross-channel memory</span><strong>{{ "yes" if data.context_provenance.decisions.cross_channel_memory else "no" }}</strong></article>
+    <article class="card"><span>Memory enabled</span><strong>{{ "yes" if data.context_provenance.decisions.use_memory else "no" }}</strong></article>
+  </div>
+
+  {% set adapter = data.context_provenance.egress.get("adapter", {}) %}
+  {% set provider = data.context_provenance.egress.get("provider_boundary", {}) %}
+  <h3>Privacy / egress decisions</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Boundary</th><th>Channel input</th><th>Allowed</th><th>Blocked</th><th>Public input</th><th>Allowed</th><th>Blocked</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Adapter</td>
+          <td>{{ adapter.get("channel_input", "—") }}</td>
+          <td>{{ adapter.get("channel_allowed", "—") }}</td>
+          <td>{{ adapter.get("channel_blocked", "—") }}</td>
+          <td>{{ adapter.get("public_input", "—") }}</td>
+          <td>{{ adapter.get("public_allowed", "—") }}</td>
+          <td>{{ adapter.get("public_blocked", "—") }}</td>
+        </tr>
+        <tr>
+          <td>Provider boundary</td>
+          <td>{{ provider.get("channel_input", "—") }}</td>
+          <td>{{ provider.get("channel_allowed", "—") }}</td>
+          <td>{{ provider.get("channel_blocked", "—") }}</td>
+          <td>{{ provider.get("public_input", "—") }}</td>
+          <td>{{ provider.get("public_allowed", "—") }}</td>
+          <td>{{ provider.get("public_blocked", "—") }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Context sections</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Section</th><th>Included</th><th>Items / fields</th><th>Blocked</th></tr></thead>
+      <tbody>
+      {% for section in data.context_provenance.sections %}
+        <tr>
+          <td><code>{{ section.name }}</code></td>
+          <td>{{ "yes" if section.included else "no" }}</td>
+          <td class="numeric">{{ section.count }}</td>
+          <td class="numeric">{{ section.blocked_count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if data.context_provenance.sources %}
+  <h3>Admitted sources</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Source</th><th>Kind / role</th><th>Ownership</th><th>Provenance</th><th>Identifiers</th></tr></thead>
+      <tbody>
+      {% for source in data.context_provenance.sources %}
+        <tr>
+          <td>
+            <code>{{ source.source_type }}</code>
+            {% if source.is_reference %}<br><span class="tag">reference</span>{% endif %}
+            {% if source.has_visual %}<br><span class="tag">visual</span>{% endif %}
+          </td>
+          <td>
+            {{ source.context_kind or "—" }}<br>
+            <span class="muted">{{ source.role or "—" }} · access={{ source.access or "—" }}</span>
+          </td>
+          <td>
+            {{ source.owner_relation or "—" }}
+            {% if source.author_name or source.name %}<br>{{ source.author_name or source.name }}{% endif %}
+            {% if source.author_user_id %}<br><code>{{ source.author_user_id }}</code>{% endif %}
+          </td>
+          <td>
+            {{ source.provenance_class or "—" }}
+            {% if source.reference_strength %}<br><span class="muted">{{ source.reference_strength }}</span>{% endif %}
+          </td>
+          <td>
+            {% if source.message_id %}<code>msg {{ source.message_id }}</code>{% endif %}
+            {% if source.source_turn_message_id %}<br><code>turn-msg {{ source.source_turn_message_id }}</code>{% endif %}
+            {% if source.source %}<br><code>{{ source.source }}</code>{% endif %}
+            {% if source.reference_id %}<br><code>{{ source.reference_id }}</code>{% endif %}
+            {% if source.stored_turn and source.stored_turn.turn_id %}<br><a href="/traces/{{ source.stored_turn.turn_id }}">stored trace</a>{% endif %}
+          </td>
+        </tr>
+        {% if source.causal_context %}
+        <tr class="content-row">
+          <td></td>
+          <td colspan="4">
+            <div class="memory-preview">
+              <strong>Stored causal excerpt:</strong> {{ source.causal_context.content }}
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if data.context_provenance.structured_memory %}
+  <h3>Structured memory admitted</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Projection</th><th>Kind / disclosure</th><th>Origin</th><th>Access / current state</th></tr></thead>
+      <tbody>
+      {% for item in data.context_provenance.structured_memory %}
+        <tr>
+          <td><a href="/memory/{{ item.item_id }}">#{{ item.item_id }}</a></td>
+          <td>{{ item.projection }}</td>
+          <td>{{ item.kind }}<br><span class="muted">{{ item.disclosure }}</span></td>
+          <td><code>{{ item.origin_realm }}</code><br><span class="muted">#{{ item.origin_channel_id }}</span></td>
+          <td>
+            {{ item.access }}
+            {% if item.current_status %}<br><span class="muted">now: {{ item.current_status }}</span>{% endif %}
+            {% if item.superseded_by %}<br><a href="/memory/{{ item.superseded_by }}">superseded by #{{ item.superseded_by }}</a>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if data.context_provenance.relationship_axes %}
+  <p><strong>Cross-space relationship axes:</strong> {{ data.context_provenance.relationship_axes | join(", ") }}</p>
+  {% endif %}
+
+  {% if data.context_provenance.truncated.get("sources", 0) or data.context_provenance.truncated.get("structured_memory", 0) %}
+  <div class="notice inline-notice">
+    Snapshot was bounded: {{ data.context_provenance.truncated.get("sources", 0) }} source rows and
+    {{ data.context_provenance.truncated.get("structured_memory", 0) }} structured-memory rows were omitted.
+  </div>
+  {% endif %}
+</section>
+{% elif data.context_telemetry %}
+<section class="panel">
+  <h2>Context &amp; provenance</h2>
+  <p class="muted">The raw turn was not retained, but content-free request telemetry is still available.</p>
+  <div class="cards">
+    <article class="card"><span>Channel</span><strong>{{ data.context_telemetry.context_channel_items or 0 }}</strong></article>
+    <article class="card"><span>Reply chain</span><strong>{{ data.context_telemetry.context_reply_items or 0 }}</strong></article>
+    <article class="card"><span>Public context</span><strong>{{ data.context_telemetry.context_public_items or 0 }}</strong></article>
+    <article class="card"><span>Structured memory</span><strong>{{ data.context_telemetry.context_structured_items or 0 }}</strong></article>
+    <article class="card"><span>Lore</span><strong>{{ data.context_telemetry.context_lore_items or 0 }}</strong></article>
+    <article class="card"><span>Visuals</span><strong>{{ data.context_telemetry.context_visual_items or 0 }}</strong></article>
+  </div>
+  <p class="muted">
+    Adapter blocked {{ data.context_telemetry.context_adapter_blocked or 0 }} rows;
+    provider boundary blocked {{ data.context_telemetry.context_provider_blocked or 0 }} rows.
+  </p>
+</section>
+{% endif %}
+
 <section class="panel">
   <h2>Timeline</h2>
   {% if data.timeline %}

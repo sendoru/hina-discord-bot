@@ -116,6 +116,85 @@ def aggregate_relationship_evidence(
     return profile
 
 
+def structured_memory_provenance(
+    store,
+    scope: Scope,
+    *,
+    use_memory: bool,
+    allow_cross_space: bool,
+) -> dict:
+    """Return content-free provenance for the structured memory admitted to a response."""
+
+    if not use_memory:
+        return {"items": [], "relationship_axes": []}
+    reader = getattr(store, "memory_items", None)
+    if not callable(reader):
+        return {"items": [], "relationship_axes": []}
+
+    items = _owned(reader(scope.user_id), scope)
+    selected: list[dict] = []
+    if scope.guild_id is None:
+        for item in items:
+            if memory_access(item, scope) != MemoryAccess.FULL:
+                continue
+            selected.append({
+                "item_id": item.id,
+                "projection": "owner_dm",
+                "kind": item.kind.value,
+                "disclosure": item.disclosure.value,
+                "origin_realm": item.origin_realm,
+                "origin_channel_id": item.origin_channel_id,
+                "access": MemoryAccess.FULL.value,
+            })
+        return {"items": selected, "relationship_axes": []}
+
+    full_items = [
+        item
+        for item in items
+        if item.kind == MemoryKind.RELATIONSHIP
+        and memory_access(item, scope) == MemoryAccess.FULL
+    ][-RELATIONSHIP_MAX_OBSERVATIONS:]
+    for item in full_items:
+        selected.append({
+            "item_id": item.id,
+            "projection": "relationship_full",
+            "kind": item.kind.value,
+            "disclosure": item.disclosure.value,
+            "origin_realm": item.origin_realm,
+            "origin_channel_id": item.origin_channel_id,
+            "access": MemoryAccess.FULL.value,
+        })
+
+    if not allow_cross_space:
+        return {"items": selected, "relationship_axes": []}
+
+    implicit_items = [
+        item
+        for item in items
+        if item.kind == MemoryKind.RELATIONSHIP
+        and item.disclosure == MemoryDisclosure.IMPLICIT
+        and item.confidence >= RELATIONSHIP_MIN_ITEM_CONFIDENCE
+        and item.relationship_evidence
+        and memory_access(item, scope) == MemoryAccess.IMPLICIT
+    ][-RELATIONSHIP_MAX_OBSERVATIONS:]
+    for item in implicit_items:
+        selected.append({
+            "item_id": item.id,
+            "projection": "relationship_evidence",
+            "kind": item.kind.value,
+            "disclosure": item.disclosure.value,
+            "origin_realm": item.origin_realm,
+            "origin_channel_id": item.origin_channel_id,
+            "access": MemoryAccess.IMPLICIT.value,
+        })
+
+    profile = aggregate_relationship_evidence(items, scope)
+    return {
+        "items": selected,
+        "relationship_axes": sorted(profile),
+    }
+
+
 def structured_memory_context(
     store,
     scope: Scope,
@@ -157,4 +236,5 @@ __all__ = [
     "full_relationship_memory",
     "owner_dm_memory",
     "structured_memory_context",
+    "structured_memory_provenance",
 ]

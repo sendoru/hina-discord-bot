@@ -1,3 +1,5 @@
+from hina_bot.core.memory_context import CURRENT_EGRESS_DECISION
+
 from .egress_policy import filter_channel_context, filter_public_context
 from .information_pipeline import InformationPipeline
 from .memory_summary import SHARED_SUMMARY_POLICY, SUMMARY_POLICY
@@ -62,18 +64,37 @@ class LLM(InformationPipeline):
         use_memory: bool = True,
     ) -> str:
         policy = self.settings.external_context_policy
-        safe_channel_context = filter_channel_context(channel_context, scope.user_id, policy)
-        safe_public_context = filter_public_context(public_context, scope.user_id, policy)
-        plan = build_routing_plan(
-            store,
-            scope,
-            content,
-            safe_channel_context,
-            use_memory=use_memory,
-            classifier_context_policy=policy,
+        raw_channel_context = list(channel_context or ())
+        raw_public_context = list(public_context or ())
+        safe_channel_context = filter_channel_context(
+            raw_channel_context,
+            scope.user_id,
+            policy,
         )
+        safe_public_context = filter_public_context(
+            raw_public_context,
+            scope.user_id,
+            policy,
+        )
+        egress_token = CURRENT_EGRESS_DECISION.set({
+            "policy": policy,
+            "channel_input": len(raw_channel_context),
+            "channel_allowed": len(safe_channel_context),
+            "channel_blocked": len(raw_channel_context) - len(safe_channel_context),
+            "public_input": len(raw_public_context),
+            "public_allowed": len(safe_public_context),
+            "public_blocked": len(raw_public_context) - len(safe_public_context),
+        })
         vision_token = VISION_REQUEST_ACTIVE.set(True)
         try:
+            plan = build_routing_plan(
+                store,
+                scope,
+                content,
+                safe_channel_context,
+                use_memory=use_memory,
+                classifier_context_policy=policy,
+            )
             return await super().answer(
                 store,
                 scope,
@@ -87,6 +108,7 @@ class LLM(InformationPipeline):
             )
         finally:
             VISION_REQUEST_ACTIVE.reset(vision_token)
+            CURRENT_EGRESS_DECISION.reset(egress_token)
 
 
 __all__ = [
