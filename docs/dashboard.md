@@ -41,6 +41,7 @@ The dashboard currently exposes the following read-only routes:
 - `/traces`: server-side filtered/paginated turn traces
 - `/traces/{turn_id}`: correlated stored turn + event/usage/exchange timeline
 - `/analytics`: model/search routing and API usage analytics
+- `/identity`: speaker identity resolver outcomes and repeat-pattern observability
 - `/conversations`: bounded raw-turn inspection with server-side filters
 - `/memory`: structured-memory list/filter view
 - `/memory/{id}`: memory provenance/source-turn detail
@@ -213,6 +214,38 @@ silently undercounting it.
 
 No provider price table is embedded in the dashboard. Cost conversion can be added later as a
 configurable layer if needed.
+
+## Speaker identity observability
+
+`/identity` observes the existing query-time speaker resolver without creating an alias database or
+changing memory visibility.
+
+For an identity query, the Discord preflight and the final response share one opaque `turn_id`.
+This lets `identity.resolution` events, `identity_resolve` API usage, and the final answer trace be
+correlated without storing Discord message IDs in telemetry.
+
+Identity events contain only bounded metadata:
+
+- `resolved` / `ambiguous` / `none` / `blocked`,
+- visible and pre-visibility candidate counts,
+- policy block reason,
+- opaque reference/user groups,
+- whether the resolver API was invoked.
+
+The resolver may return a short `reference` span only when it is copied verbatim from the current
+request. Python validates that constraint, normalizes the span, and immediately replaces it with a
+deployment-local HMAC group before event logging. The Discord token is used only as a secret key
+with an identity-observability domain separator; neither the token nor the raw nickname/reference
+is written to telemetry. User IDs used for repeat-mapping analysis are grouped the same way.
+
+The dashboard simulates a conservative cache over these opaque groups. A second stable
+reference-group -> user-group resolution counts as a potential cache hit. `ambiguous` and `none`
+clear the simulated mapping; a different resolved user is counted as a conflict. These numbers are
+planning data for #84, not a runtime cache.
+
+Until #84 exists, no identity event is alias-learning evidence. The dashboard still tracks the
+`evidence_source` field and surfaces any `assistant_generated` count so a future feedback-loop
+regression is visible.
 
 ## Memory inspection
 
