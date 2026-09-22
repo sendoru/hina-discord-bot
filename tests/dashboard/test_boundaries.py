@@ -1,5 +1,5 @@
-import ast
 from pathlib import Path
+import ast
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
