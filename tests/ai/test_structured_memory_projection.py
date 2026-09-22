@@ -189,6 +189,39 @@ def test_low_confidence_relationship_evidence_does_not_project():
     store.close()
 
 
+def test_superseded_memory_is_excluded_from_owner_projection():
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    try:
+        old_id = store.add_memory_item(
+            dm,
+            "OLD_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        new_id = store.add_memory_item(
+            dm,
+            "NEW_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        proposal_id = store.add_memory_reconciliation_proposal(
+            dm,
+            new_memory_item_id=new_id,
+            target_memory_item_id=old_id,
+            relation="corrects",
+            confidence=0.99,
+        )
+        assert proposal_id is not None
+        assert store.apply_memory_reconciliation_proposal(proposal_id) == "applied"
+
+        projected = owner_dm_memory(store.memory_items(100), dm)
+
+        assert [row["content"] for row in projected] == ["NEW_FACT"]
+    finally:
+        store.close()
+
+
 def test_same_disclosure_space_gets_raw_relationship_memory_not_cross_space_profile():
     store = Store(":memory:")
     source = Scope(1, 20, 100, True)
