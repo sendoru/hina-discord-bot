@@ -312,7 +312,8 @@ class UsageLogger:
             "memory_kind", "pending_turns", "batch_turns", "payload_chars",
             "context_items", "old_memory_chars", "candidate_items", "evidence_turns",
             "accepted_items", "stored_items", "duplicate_items", "rejected_items",
-            "proposal_items", "rejected_relations", "rejected_relationship_evidence",
+            "proposal_items", "applied_reconciliations", "deferred_reconciliations",
+            "rejected_relations", "rejected_relationship_evidence",
         }
         row = {
             "at": datetime.now(UTC).isoformat(),
