@@ -23,7 +23,7 @@ from .memory_summary import MemorySummaryMixin
 from .model_routing import baseline_route_state, build_model_plan
 from .note_context import NoteContextStore
 from .reference_gated_recall import plan_reference_gated_recall
-from .request_assembly import RequestAssembler, _context_timestamp
+from .request_assembly import RequestAssembler
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
 from .semantic_model_routing import (
@@ -244,23 +244,15 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         channel_rows = self._bind_current_speaker(channel_context or [], scope.user_id)
         current_channel_only = self._current_channel_scope_only(scope, routing_content)
 
-        history = []
-        if use_memory and scope.guild_id is None:
-            used = 0
-            turns = []
-            for turn in reversed(store.history(scope)):
-                size = len(turn["content"]) + len(turn["reply"])
-                if used + size > self.settings.history_max_chars:
-                    break
-                turns.append(turn)
-                used += size
-            for turn in reversed(turns):
-                at = _context_timestamp(turn["created_at"])
-                history.extend((
-                    {"role": "user", "at": at, "content": turn["content"]},
-                    {"role": "assistant", "at": at, "content": turn["reply"]},
-                ))
-
+        history, _history_message_ids = (
+            self._dm_conversation_history(
+                store,
+                scope,
+                self.settings.history_max_chars,
+            )
+            if use_memory
+            else ([], [])
+        )
         server_recent = (
             self._server_recent_conversation(store, scope, channel_rows)
             if use_memory
