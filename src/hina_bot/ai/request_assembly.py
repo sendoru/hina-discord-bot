@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import UTC, datetime
 
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
@@ -29,6 +30,18 @@ from .web_search_text import response_text
 
 def _serialized_chars(value) -> int:
     return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+
+
+def _context_timestamp(value) -> str:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return datetime.fromtimestamp(float(value), UTC).isoformat()
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    normalized = text.replace(" ", "T", 1)
+    if normalized.endswith("Z") or re.search(r"[+-]\d\d:\d\d$", normalized):
+        return normalized
+    return normalized + "Z"
 
 
 REFERENCE_CONTINUITY_POLICY = """[인용 원문과 후속 질문]
@@ -198,6 +211,11 @@ class RequestAssembler(BaseLLM):
         bound = []
         for row in channel_context:
             item = dict(row)
+            at = _context_timestamp(item.get("unix_time") or item.get("at"))
+            if at:
+                item["at"] = at
+            item.pop("unix_time", None)
+            item.pop("received_at", None)
             author = str(item.get("author_user_id") or item.get("user_id") or "")
             item["is_current_speaker"] = item.get("role") == "user" and author == current
             if item.get("role") == "assistant":
@@ -218,9 +236,9 @@ class RequestAssembler(BaseLLM):
     def _server_recent_conversation(
         store,
         scope,
-        summary_through: int,
         channel_context: list[dict],
     ) -> list[dict]:
+        """Keep a bounded exact tail independent of long-term summary advancement."""
         if scope.guild_id is None:
             return []
         seen_ids = {
@@ -231,8 +249,6 @@ class RequestAssembler(BaseLLM):
         selected = []
         used = 0
         for turn in reversed(store.history(scope)):
-            if int(turn["id"]) <= int(summary_through):
-                break
             if str(turn["message_id"]) in seen_ids:
                 continue
             size = len(turn["content"]) + len(turn["reply"])
@@ -240,7 +256,7 @@ class RequestAssembler(BaseLLM):
                 break
             selected.append({
                 "message_id": str(turn["message_id"]),
-                "at": turn["created_at"],
+                "at": _context_timestamp(turn["created_at"]),
                 "user": turn["content"],
                 "hina": turn["reply"],
             })
@@ -271,7 +287,7 @@ class RequestAssembler(BaseLLM):
         visible_content = routing.visible_content
         routing_content = routing.routing_query
 
-        summary, summary_through = store.summary(scope) if use_memory else ("", 0)
+        summary, _summary_through = store.summary(scope) if use_memory else ("", 0)
         channel_context = self._bind_current_speaker(channel_context or [], scope.user_id)
         current_channel_only = self._current_channel_scope_only(scope, routing_content)
         history = []
@@ -287,12 +303,13 @@ class RequestAssembler(BaseLLM):
                 used += size
             for turn in reversed(turns):
                 history_message_ids.append(str(turn["message_id"]))
+                at = _context_timestamp(turn["created_at"])
                 history.extend((
-                    {"role": "user", "content": turn["content"]},
-                    {"role": "assistant", "content": turn["reply"]},
+                    {"role": "user", "at": at, "content": turn["content"]},
+                    {"role": "assistant", "at": at, "content": turn["reply"]},
                 ))
         server_recent = (
-            self._server_recent_conversation(store, scope, summary_through, channel_context)
+            self._server_recent_conversation(store, scope, channel_context)
             if use_memory
             else []
         )
