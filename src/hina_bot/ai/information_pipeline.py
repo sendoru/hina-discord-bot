@@ -23,7 +23,7 @@ from .memory_summary import MemorySummaryMixin
 from .model_routing import baseline_route_state, build_model_plan
 from .note_context import NoteContextStore
 from .reference_gated_recall import plan_reference_gated_recall
-from .request_assembly import RequestAssembler
+from .request_assembly import RequestAssembler, _context_timestamp
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
 from .semantic_model_routing import (
@@ -240,7 +240,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         factual_recall_plan=None,
     ) -> int:
         """Measure the dynamic text admitted by the same memory/context policies as assembly."""
-        summary, summary_through = store.summary(scope) if use_memory else ("", 0)
+        summary, _ = store.summary(scope) if use_memory else ("", 0)
         channel_rows = self._bind_current_speaker(channel_context or [], scope.user_id)
         current_channel_only = self._current_channel_scope_only(scope, routing_content)
 
@@ -255,13 +255,14 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 turns.append(turn)
                 used += size
             for turn in reversed(turns):
+                at = _context_timestamp(turn["created_at"])
                 history.extend((
-                    {"role": "user", "content": turn["content"]},
-                    {"role": "assistant", "content": turn["reply"]},
+                    {"role": "user", "at": at, "content": turn["content"]},
+                    {"role": "assistant", "at": at, "content": turn["reply"]},
                 ))
 
         server_recent = (
-            self._server_recent_conversation(store, scope, summary_through, channel_rows)
+            self._server_recent_conversation(store, scope, channel_rows)
             if use_memory
             else []
         )
