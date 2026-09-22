@@ -240,9 +240,14 @@ class HinaClient(BaseHinaClient):
             return [], ()
 
         resolution = await self.llm.resolve_speaker_identity(text, candidates)
+        resolution_outcome = getattr(
+            resolution,
+            "status",
+            "resolved" if resolution.resolved else "none",
+        )
         self._emit_identity_resolution(
             scope,
-            outcome=resolution.status,
+            outcome=resolution_outcome,
             resolver_invoked=True,
             candidate_count=len(candidates),
             raw_candidate_count=len(raw_candidates),
