@@ -380,7 +380,7 @@ def build_analytics(
         or "memory" in str(row.get("operation") or "")
         or "summary" in str(row.get("operation") or "")
     ]
-    time_events = _filter_time(snapshot.events, after, before)
+    time_events = _filter_time(snapshot.events, after, before, timezone)
     answer_turn_ids = {
         str(row["turn_id"])
         for row in answer_rows
