@@ -525,7 +525,13 @@ class HinaClient(discord.Client):
                         if save_memory:
                             stage = "memory"
                             memory_started = time.perf_counter()
-                            self.store.add(scope, message.id, text, answer)
+                            self.store.add(
+                                scope,
+                                message.id,
+                                text,
+                                answer,
+                                name=message.author.display_name,
+                            )
                             self.store.add_shared_call(scope, message.id, message.author.display_name, text)
                             for memory_kind, update, failure_event in (
                                 (
