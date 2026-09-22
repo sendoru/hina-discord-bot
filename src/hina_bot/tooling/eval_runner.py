@@ -186,10 +186,14 @@ def eval_settings(args) -> Settings:
             raise ValueError(f"{variable}은 {allowed} 중 하나여야 합니다.")
 
     classifier_mode = (
-        _arg(args, "routing_classifier_mode", None)
-        or os.getenv("ROUTING_CLASSIFIER_MODE", "")
-        or ("active" if routing_mode == "adaptive" else "off")
-    ).strip().lower()
+        (
+            _arg(args, "routing_classifier_mode", None)
+            or os.getenv("ROUTING_CLASSIFIER_MODE", "")
+            or "active"
+        ).strip().lower()
+        if routing_mode == "adaptive"
+        else "off"
+    )
     if classifier_mode not in {"off", "shadow", "active"}:
         raise ValueError("--routing-classifier-mode는 off, shadow, active 중 하나여야 합니다.")
     classifier_provider = (
