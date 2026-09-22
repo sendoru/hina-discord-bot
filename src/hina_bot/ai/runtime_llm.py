@@ -85,16 +85,16 @@ class LLM(InformationPipeline):
             "public_allowed": len(safe_public_context),
             "public_blocked": len(raw_public_context) - len(safe_public_context),
         })
-        plan = build_routing_plan(
-            store,
-            scope,
-            content,
-            safe_channel_context,
-            use_memory=use_memory,
-            classifier_context_policy=policy,
-        )
         vision_token = VISION_REQUEST_ACTIVE.set(True)
         try:
+            plan = build_routing_plan(
+                store,
+                scope,
+                content,
+                safe_channel_context,
+                use_memory=use_memory,
+                classifier_context_policy=policy,
+            )
             return await super().answer(
                 store,
                 scope,
