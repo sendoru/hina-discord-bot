@@ -193,6 +193,53 @@ class Store:
             params += (int(limit),)
         return self.db.execute(sql, params).fetchall()
 
+    def stale_memory_extraction_scopes(
+        self,
+        *,
+        min_pending: int = 2,
+        stale_after_seconds: int = 8 * 60 * 60,
+        limit: int = 32,
+    ) -> list[Scope]:
+        """Return oldest scopes whose structured-memory tail has gone stale."""
+
+        minimum = max(1, int(min_pending))
+        maximum = max(1, int(limit))
+        modifier = f"-{max(0, int(stale_after_seconds))} seconds"
+        rows = self.db.execute(
+            """SELECT t.scope,t.realm,t.user_id,
+                      COUNT(*) AS pending_turns,
+                      MIN(t.created_at) AS oldest_created_at
+               FROM turns t
+               LEFT JOIN memory_extraction_cursors c ON c.scope=t.scope
+               LEFT JOIN summaries s ON s.scope=t.scope
+               WHERE t.id > COALESCE(c.through_id,s.through_id,0)
+               GROUP BY t.scope,t.realm,t.user_id
+               HAVING COUNT(*) >= ?
+                  AND MIN(t.created_at) <= datetime('now', ?)
+               ORDER BY oldest_created_at,t.scope
+               LIMIT ?""",
+            (minimum, modifier, maximum),
+        ).fetchall()
+
+        scopes: list[Scope] = []
+        for row in rows:
+            parts = str(row["scope"]).split(":")
+            if len(parts) != 6 or parts[2] != "channel" or parts[4] != "user":
+                continue
+            try:
+                if parts[0] == "guild":
+                    guild_id: int | None = int(parts[1])
+                elif parts[0] == "dm":
+                    guild_id = None
+                else:
+                    continue
+                channel_id = int(parts[3])
+                user_id = int(row["user_id"])
+            except (TypeError, ValueError):
+                continue
+            scopes.append(Scope(guild_id, channel_id, user_id))
+        return scopes
+
     def memory_extraction_evidence(
         self,
         scope: Scope,

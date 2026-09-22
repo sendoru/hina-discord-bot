@@ -79,6 +79,7 @@ class HinaClient(discord.Client):
         self.slots = asyncio.Semaphore(settings.concurrency)
         self.pending_count = 0
         self.active_tasks = set()
+        self.memory_sweep_task = None
         self.stopping = False
         self.events = EventLogger(getattr(settings, "event_log_path", ""))
 
@@ -88,6 +89,14 @@ class HinaClient(discord.Client):
         if lock is None:
             lock = asyncio.Lock()
             self.channel_locks[key] = lock
+        return lock
+
+    def memory_lock(self, scope):
+        key = scope.user_note
+        lock = self.locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self.locks[key] = lock
         return lock
 
     @staticmethod
@@ -118,6 +127,12 @@ class HinaClient(discord.Client):
         self.emoji_admin_ids.add(owner_id)
         await self.emoji_registry.catalog()
         await self.tree.sync()
+        interval = self.settings.structured_memory_sweep_interval_seconds
+        if interval > 0 and self.memory_sweep_task is None:
+            self.memory_sweep_task = asyncio.create_task(
+                self._memory_sweep_loop(),
+                name="structured-memory-sweep",
+            )
 
     async def on_ready(self):
         log.info("Bot connected (id=%s)", self.user.id)
@@ -141,6 +156,11 @@ class HinaClient(discord.Client):
 
     async def close(self):
         self.stopping = True
+        sweep_task = self.memory_sweep_task
+        self.memory_sweep_task = None
+        if sweep_task is not None:
+            sweep_task.cancel()
+            await asyncio.gather(sweep_task, return_exceptions=True)
         try:
             if self.active_tasks:
                 _, pending = await asyncio.wait(list(self.active_tasks), timeout=50)
@@ -152,6 +172,72 @@ class HinaClient(discord.Client):
             self.store.close()
             self.events.close()
             await super().close()
+
+    async def _memory_sweep_loop(self):
+        interval = self.settings.structured_memory_sweep_interval_seconds
+        while not self.stopping:
+            await asyncio.sleep(interval)
+            if self.stopping:
+                return
+            try:
+                await self._sweep_stale_structured_memory()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - isolate background maintenance failures
+                error = safe_exception_fields(exc, "memory_stale_sweep")
+                self.events.emit(
+                    "memory.stale_sweep_failed",
+                    level="warning",
+                    **error,
+                )
+                log.warning(
+                    "Structured memory stale sweep failed (%s, fingerprint=%s)",
+                    type(exc).__name__,
+                    error["error_fingerprint"],
+                )
+
+    async def _sweep_stale_structured_memory(self):
+        scopes = self.store.stale_memory_extraction_scopes(
+            min_pending=2,
+            stale_after_seconds=self.settings.structured_memory_stale_after_seconds,
+        )
+        for scope in scopes:
+            if self.stopping:
+                return
+            channel_lock = self.channel_lock(scope)
+            memory_lock = self.memory_lock(scope)
+            try:
+                async with channel_lock, memory_lock:
+                    mode = MemoryMode(self.store.memory_mode(scope))
+                    if not mode.writes:
+                        continue
+                    async with self.slots:
+                        committed = await self.llm.extract_structured_memory(
+                            self.store,
+                            scope,
+                            min_turns=2,
+                        )
+                if committed:
+                    self.events.emit(
+                        "memory.stale_sweep_completed",
+                        scope="guild" if scope.guild_id is not None else "dm",
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - isolate one stale scope from the rest
+                error = safe_exception_fields(exc, "memory_stale_scope")
+                self.events.emit(
+                    "memory.extraction_failed",
+                    level="warning",
+                    scope="guild" if scope.guild_id is not None else "dm",
+                    memory_kind="structured_stale",
+                    **error,
+                )
+                log.warning(
+                    "Stale structured memory update deferred (%s, fingerprint=%s)",
+                    type(exc).__name__,
+                    error["error_fingerprint"],
+                )
 
     async def send_text(self, channel, text):
         for part in chunks(neutralize_mentions(text)):
@@ -303,10 +389,7 @@ class HinaClient(discord.Client):
         channel_lock = self.channel_lock(scope)
         # One lock per realm+user serializes persistent-memory updates across channels.
         key = scope.user_note
-        lock = self.locks.get(key)
-        if lock is None:
-            lock = asyncio.Lock()
-            self.locks[key] = lock
+        lock = self.memory_lock(scope)
         self.pending_count += 1
         task = asyncio.current_task()
         self.active_tasks.add(task)

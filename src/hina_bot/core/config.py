@@ -91,6 +91,8 @@ class Settings:
     output_tokens: int = 1000
     summary_every: int = 8
     structured_memory_every: int = 4
+    structured_memory_stale_after_seconds: int = 8 * 60 * 60
+    structured_memory_sweep_interval_seconds: int = 60 * 60
     history_turns: int = 12
     history_max_chars: int = 12000
     usage_log_path: str = "data/logs/usage.jsonl"
@@ -336,6 +338,12 @@ class Settings:
             output_tokens=output_tokens,
             summary_every=int(os.getenv("SUMMARY_EVERY", "8")),
             structured_memory_every=int(os.getenv("STRUCTURED_MEMORY_EVERY", "4")),
+            structured_memory_stale_after_seconds=int(
+                os.getenv("STRUCTURED_MEMORY_STALE_AFTER_SECONDS", str(8 * 60 * 60))
+            ),
+            structured_memory_sweep_interval_seconds=int(
+                os.getenv("STRUCTURED_MEMORY_SWEEP_INTERVAL_SECONDS", str(60 * 60))
+            ),
             channel_context_chars=int(os.getenv("CHANNEL_CONTEXT_CHARS", "6000")),
             history_turns=int(os.getenv("HISTORY_TURNS", "12")),
             history_max_chars=int(os.getenv("HISTORY_MAX_CHARS", "12000")),
@@ -367,6 +375,9 @@ class Settings:
                 and 0 <= s.history_max_chars <= 120000
                 and 0 <= s.channel_context_chars <= 12000
                 and 2 <= s.structured_memory_every <= s.summary_every <= s.history_turns <= 30
+                and 60 <= s.structured_memory_stale_after_seconds <= 7 * 24 * 60 * 60
+                and (s.structured_memory_sweep_interval_seconds == 0
+                     or 60 <= s.structured_memory_sweep_interval_seconds <= 24 * 60 * 60)
                 and 0 <= s.lore_max_items <= 20 and 0 <= s.lore_max_chars <= 12000
                 and 0 <= s.vision_max_attachments <= 32
                 and 0 <= s.vision_max_emojis <= 32
@@ -378,6 +389,7 @@ class Settings:
                              "routing classifier timeout 0.25~30초, output tokens 32~1024, "
                              "model/memory routing smart threshold 0.1~10.0, "
                              "2 <= structured_memory_every <= summary_every <= history_turns <= 30, "
+                             "structured memory stale은 60초~7일, sweep interval은 0 또는 60초~24시간, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하")
         return s
