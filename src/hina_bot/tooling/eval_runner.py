@@ -335,9 +335,9 @@ async def run_case(llm: LLM, case: dict) -> dict:
         "validation_errors": validation_errors,
         "provider": llm.settings.provider,
         "model": llm.settings.model,
-        "routing_mode": llm.settings.model_routing_mode,
-        "fast_model": llm.settings.fast_model,
-        "smart_model": llm.settings.smart_model,
+        "routing_mode": getattr(llm.settings, "model_routing_mode", "fixed"),
+        "fast_model": getattr(llm.settings, "fast_model", llm.settings.model),
+        "smart_model": getattr(llm.settings, "smart_model", llm.settings.model),
         "thinking_level": (
             llm.settings.gemini_thinking_level
             if llm.settings.provider == "gemini"
