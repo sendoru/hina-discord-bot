@@ -1,7 +1,5 @@
 """Content-free provenance snapshots for the final model context."""
 
-from collections.abc import Iterable
-
 
 _MAX_SOURCES = 96
 _MAX_STRUCTURED_ITEMS = 96
@@ -140,8 +138,8 @@ def build_context_provenance(
     current_channel_only: bool,
     cross_channel_memory: bool,
     structured: dict | None = None,
-    visuals: Iterable | None = None,
-    conversation_history_message_ids: Iterable[str] | None = None,
+    visuals=None,
+    conversation_history_message_ids=None,
 ) -> dict:
     """Build a bounded, content-free description of context admitted to the answer request."""
 
