@@ -38,7 +38,7 @@ def _message_source(row: dict, *, source_type: str, current_user_id: int | str) 
         "role": str(row.get("role") or "unknown"),
         "owner_relation": _owner_relation(row, current_user_id),
         "access": "full",
-        "reference": kind in _REFERENCE_KINDS
+        "is_reference": kind in _REFERENCE_KINDS
         or provenance in {"reference_material", "reference_derived"},
     }
     optional = (
@@ -76,7 +76,7 @@ def _public_source(row: dict, current_user_id: int | str) -> dict:
             else "unknown"
         ),
         "access": "full",
-        "reference": False,
+        "is_reference": False,
     }
     for key in ("source", "user_id", "name"):
         value = row.get(key)
@@ -89,12 +89,17 @@ def _lore_source(row: dict) -> dict:
     result = {
         "source_type": "lore_reference",
         "access": "full",
-        "reference": True,
+        "is_reference": True,
     }
-    for key in ("reference", "id", "kind", "awareness", "source_type", "lane", "locator"):
+    reference_id = row.get("reference") or row.get("id")
+    if reference_id not in (None, ""):
+        result["reference_id"] = str(reference_id)[:240]
+    for key in ("kind", "awareness", "lane", "locator"):
         value = row.get(key)
         if value not in (None, ""):
             result[key] = str(value)[:240]
+    if row.get("source_type") not in (None, ""):
+        result["lore_source_type"] = str(row.get("source_type"))[:120]
     return result
 
 
@@ -109,7 +114,7 @@ def _visual_source(visual) -> dict:
         "author_name": str(getattr(visual, "author_name", "") or "")[:100],
         "mime_type": str(getattr(visual, "mime_type", "") or "")[:80],
         "access": "full",
-        "reference": getattr(visual, "context_kind", "") != "current_message",
+        "is_reference": getattr(visual, "context_kind", "") != "current_message",
     }
 
 
