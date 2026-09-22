@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Conversation Context · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <a class="back" href="/conversations">← Conversations</a>
+    <h1>Conversation Context</h1>
+    <p>{{ data.before }} previous / {{ data.after }} following turns in the same scope.</p>
+  </div>
+</section>
+
+<section class="panel">
+  {% for row in data.rows %}
+  <article class="context-turn {% if row.selected %}selected{% endif %}">
+    <div class="conversation-head">
+      <div>
+        <strong>{{ row.scope }}</strong>
+        <span>{{ row.created_at | localtime }}</span>
+      </div>
+      <div>
+        {% if row.turn_id %}<a href="/traces/{{ row.turn_id }}">trace</a>{% endif %}
+        <code>msg {{ row.message_id }}</code>
+      </div>
+    </div>
+    <dl class="metadata compact">
+      <div><dt>User</dt><dd>{% if row.name %}{{ row.name }} · {% endif %}<code>{{ row.user_id }}</code></dd></div>
+      <div><dt>Realm</dt><dd>{{ row.realm }}</dd></div>
+      <div><dt>Selected</dt><dd>{{ "yes" if row.selected else "no" }}</dd></div>
+    </dl>
+    <h3>Input</h3>
+    <div class="message">{{ row.content }}</div>
+    <h3>Reply</h3>
+    <div class="message assistant">{{ row.reply }}</div>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}
