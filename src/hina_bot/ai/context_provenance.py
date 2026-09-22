@@ -148,6 +148,7 @@ def build_context_provenance(
     cross_channel_memory: bool,
     structured: dict | None = None,
     visuals: Iterable | None = None,
+    conversation_history_message_ids: Iterable[str] | None = None,
 ) -> dict:
     """Build a bounded, content-free description of context admitted to the answer request."""
 
@@ -157,6 +158,12 @@ def build_context_provenance(
     public = list(context.get("public_server_context", ()) or ())
     lore = list(context.get("lore_reference", ()) or ())
     visual_rows = list(visuals or ())
+    history_message_ids = [
+        str(value)
+        for value in conversation_history_message_ids or ()
+        if str(value)
+    ]
+    personal_recent = list(context.get("personal_recent_conversation", ()) or ())
     structured = dict(structured or {})
     all_structured_items = list(structured.get("items", ()) or ())
     structured_items = all_structured_items[-_MAX_STRUCTURED_ITEMS:]
@@ -203,6 +210,26 @@ def build_context_provenance(
                 current_user_id=current_user_id,
             )
             for row in channel
+        ),
+        *(
+            {
+                "source_type": "personal_recent_conversation",
+                "message_id": str(row.get("message_id") or "")[:160],
+                "owner_relation": "self",
+                "access": "full",
+                "is_reference": False,
+            }
+            for row in personal_recent
+        ),
+        *(
+            {
+                "source_type": "conversation_history",
+                "message_id": message_id[:160],
+                "owner_relation": "self",
+                "access": "full",
+                "is_reference": False,
+            }
+            for message_id in history_message_ids
         ),
         *(_public_source(row, current_user_id) for row in public),
         *(_lore_source(row) for row in lore),
