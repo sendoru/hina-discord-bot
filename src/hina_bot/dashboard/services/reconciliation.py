@@ -11,6 +11,7 @@ class ReconciliationService(MemoryService):
         super().__init__(repository)
         self.telemetry = telemetry
 
+    @staticmethod
     def _proposal_row(row: dict[str, object]) -> dict[str, object]:
         value = dict(row)
         for prefix in ("", "new_", "target_"):
