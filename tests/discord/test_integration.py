@@ -74,9 +74,15 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         await self.llm.answer(self.store, scope, "name", "current-question")
         payload = self.calls[-1]["input"]
         reference = json.loads(payload[0]["content"].split("\n", 1)[1])
-        self.assertEqual(reference["conversation_history"], [
-            {"role": "user", "content": "new"},
-            {"role": "assistant", "content": "reply"}])
+        self.assertEqual(
+            [row["role"] for row in reference["conversation_history"]],
+            ["user", "assistant"],
+        )
+        self.assertEqual(
+            [row["content"] for row in reference["conversation_history"]],
+            ["new", "reply"],
+        )
+        self.assertTrue(all(row["at"].endswith("Z") for row in reference["conversation_history"]))
         self.assertEqual(payload[-1]["content"], "current-question")
         self.assertEqual(len(self.store.history(scope)), 2)
 
