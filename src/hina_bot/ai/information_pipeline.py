@@ -240,28 +240,21 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         factual_recall_plan=None,
     ) -> int:
         """Measure the dynamic text admitted by the same memory/context policies as assembly."""
-        summary, summary_through = store.summary(scope) if use_memory else ("", 0)
+        summary, _ = store.summary(scope) if use_memory else ("", 0)
         channel_rows = self._bind_current_speaker(channel_context or [], scope.user_id)
         current_channel_only = self._current_channel_scope_only(scope, routing_content)
 
-        history = []
-        if use_memory and scope.guild_id is None:
-            used = 0
-            turns = []
-            for turn in reversed(store.history(scope)):
-                size = len(turn["content"]) + len(turn["reply"])
-                if used + size > self.settings.history_max_chars:
-                    break
-                turns.append(turn)
-                used += size
-            for turn in reversed(turns):
-                history.extend((
-                    {"role": "user", "content": turn["content"]},
-                    {"role": "assistant", "content": turn["reply"]},
-                ))
-
+        history, _history_message_ids = (
+            self._dm_conversation_history(
+                store,
+                scope,
+                self.settings.history_max_chars,
+            )
+            if use_memory
+            else ([], [])
+        )
         server_recent = (
-            self._server_recent_conversation(store, scope, summary_through, channel_rows)
+            self._server_recent_conversation(store, scope, channel_rows)
             if use_memory
             else []
         )

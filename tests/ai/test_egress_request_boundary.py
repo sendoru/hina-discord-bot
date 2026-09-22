@@ -167,7 +167,7 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
         assert provenance["egress"]["provider_boundary"]["channel_blocked"] == 0
         assert provenance["egress"]["provider_boundary"]["public_blocked"] == 0
         assert {row["message_id"] for row in provenance["sources"] if row.get("message_id")} == {
-            "10", "12", "13", "14", "15",
+            "1", "10", "12", "13", "14", "15",
         }
         assert not any("content" in row for row in provenance["sources"])
 
