@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.core.config import GEMINI_THINKING_LEVELS, SUPPORTED_MODEL_PROVIDERS, Settings
+from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 
@@ -122,29 +123,93 @@ def _env_bool(name: str, default: bool) -> bool:
     return normalized == "true"
 
 
+def _arg(args, name: str, default=None):
+    return getattr(args, name, default)
+
+
 def eval_settings(args) -> Settings:
     load_dotenv(Path.cwd() / ".env.local", override=False)
     load_dotenv(Path.cwd() / ".env", override=False)
+
+    routing_mode = (_arg(args, "routing_mode", "fixed") or "fixed").strip().lower()
+    if routing_mode not in {"fixed", "adaptive"}:
+        raise ValueError("--routing-mode는 fixed 또는 adaptive여야 합니다.")
+
     provider = (args.provider or os.getenv("LLM_PROVIDER", "openai")).strip().lower()
     if provider not in SUPPORTED_MODEL_PROVIDERS:
         raise ValueError("--provider는 openai, gemini, openrouter 중 하나여야 합니다.")
     api_key = _provider_key(provider)
-    model = (args.model or os.getenv("LLM_MODEL", "").strip()
-             or os.getenv("OPENAI_MODEL", "").strip()
-             or ("gpt-4.1-mini" if provider == "openai" else ""))
+
+    fast_model = (
+        _arg(args, "fast_model", "")
+        or os.getenv("LLM_FAST_MODEL", "").strip()
+    )
+    model = (
+        args.model
+        or os.getenv("LLM_MODEL", "").strip()
+        or os.getenv("OPENAI_MODEL", "").strip()
+        or (fast_model if routing_mode == "adaptive" else "")
+        or ("gpt-4.1-mini" if provider == "openai" else "")
+    )
     if not model:
         raise ValueError("--model 또는 LLM_MODEL이 필요합니다.")
+
+    fast_model = fast_model or model
+    smart_model = (
+        _arg(args, "smart_model", "")
+        or os.getenv("LLM_SMART_MODEL", "").strip()
+        or model
+    )
     community = os.getenv("COMMUNITY_LORE", "true").lower()
     if community not in {"true", "false"}:
         raise ValueError("COMMUNITY_LORE는 true 또는 false여야 합니다.")
+
     gemini_thinking_level = (
-        getattr(args, "gemini_thinking_level", None)
+        _arg(args, "gemini_thinking_level", None)
         or os.getenv("GEMINI_THINKING_LEVEL", "low")
     ).strip().lower()
-    if gemini_thinking_level not in GEMINI_THINKING_LEVELS:
-        allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
-        raise ValueError(f"GEMINI_THINKING_LEVEL은 {allowed} 중 하나여야 합니다.")
+    gemini_fast_thinking_level = (
+        _arg(args, "gemini_fast_thinking_level", None)
+        or os.getenv("GEMINI_FAST_THINKING_LEVEL", "minimal")
+    ).strip().lower()
+    gemini_smart_thinking_level = (
+        _arg(args, "gemini_smart_thinking_level", None)
+        or os.getenv("GEMINI_SMART_THINKING_LEVEL", "medium")
+    ).strip().lower()
+    for variable, level in (
+        ("GEMINI_THINKING_LEVEL", gemini_thinking_level),
+        ("GEMINI_FAST_THINKING_LEVEL", gemini_fast_thinking_level),
+        ("GEMINI_SMART_THINKING_LEVEL", gemini_smart_thinking_level),
+    ):
+        if level not in GEMINI_THINKING_LEVELS:
+            allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
+            raise ValueError(f"{variable}은 {allowed} 중 하나여야 합니다.")
+
+    classifier_mode = (
+        _arg(args, "routing_classifier_mode", None)
+        or os.getenv("ROUTING_CLASSIFIER_MODE", "")
+        or ("active" if routing_mode == "adaptive" else "off")
+    ).strip().lower()
+    if classifier_mode not in {"off", "shadow", "active"}:
+        raise ValueError("--routing-classifier-mode는 off, shadow, active 중 하나여야 합니다.")
+    classifier_provider = (
+        _arg(args, "routing_classifier_provider", None)
+        or os.getenv("ROUTING_CLASSIFIER_PROVIDER", "")
+        or provider
+    ).strip().lower()
+    if classifier_provider not in SUPPORTED_MODEL_PROVIDERS:
+        raise ValueError("--routing-classifier-provider가 올바르지 않습니다.")
+    classifier_model = (
+        _arg(args, "routing_classifier_model", None)
+        or os.getenv("ROUTING_CLASSIFIER_MODEL", "").strip()
+        or fast_model
+    )
+    threshold = float(
+        _arg(args, "smart_threshold", None)
+        or os.getenv("MODEL_ROUTING_SMART_THRESHOLD", "2.0")
+    )
     chat_web_search = _env_bool("CHAT_WEB_SEARCH", True)
+
     base = Settings(
         api_key=api_key,
         discord_token="eval-only",
@@ -153,6 +218,22 @@ def eval_settings(args) -> Settings:
         gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
         openrouter_api_key=os.getenv("OPENROUTER_API_KEY", "").strip(),
         model=model,
+        model_routing_mode=routing_mode,
+        model_routing_smart_threshold=threshold,
+        fast_model=fast_model,
+        smart_model=smart_model,
+        fast_output_tokens=int(os.getenv("FAST_MAX_OUTPUT_TOKENS", "4096")),
+        smart_output_tokens=int(os.getenv("SMART_MAX_OUTPUT_TOKENS", "8192")),
+        routing_classifier_mode=classifier_mode,
+        routing_classifier_provider=classifier_provider,
+        routing_classifier_model=classifier_model,
+        routing_classifier_api_key=os.getenv("ROUTING_CLASSIFIER_API_KEY", "").strip(),
+        routing_classifier_timeout_seconds=float(
+            os.getenv("ROUTING_CLASSIFIER_TIMEOUT_SECONDS", "4")
+        ),
+        routing_classifier_max_output_tokens=int(
+            os.getenv("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "256")
+        ),
         db_path=os.getenv("DATABASE_PATH", "data/hina.sqlite3"),
         prompt_path=os.getenv("CHARACTER_PROMPT_PATH", ""),
         output_tokens=int(os.getenv("MAX_OUTPUT_TOKENS", "1000")),
@@ -165,10 +246,11 @@ def eval_settings(args) -> Settings:
         lore_max_chars=int(os.getenv("LORE_MAX_CHARS", "3200")),
         community_lore=community == "true",
         gemini_thinking_level=gemini_thinking_level,
+        gemini_fast_thinking_level=gemini_fast_thinking_level,
+        gemini_smart_thinking_level=gemini_smart_thinking_level,
         chat_web_search=chat_web_search,
     )
     return replace(base, output_tokens=max(128, min(base.output_tokens, 4096)))
-
 
 def scope_for(mode: str) -> Scope:
     if mode == "server":
@@ -196,6 +278,7 @@ async def run_case(llm: LLM, case: dict) -> dict:
     scope = scope_for(mode)
     store = Store(":memory:", history_turns=llm.settings.history_turns)
     responses = []
+    turn_ids = []
     error = ""
     channel_context = list(case.get("channel_context", []))
     speakers = case_speakers(case)
@@ -203,11 +286,17 @@ async def run_case(llm: LLM, case: dict) -> dict:
         for index, turn in enumerate(case_turns(case), 1):
             speaker = speakers[index - 1]
             scope = replace(scope, user_id=speaker["user_id"])
-            reply = await llm.answer(
-                store, scope, speaker["speaker"], turn,
-                public_context=[], channel_context=list(channel_context),
-                emoji_catalog=[], use_memory=True,
-            )
+            turn_id = new_turn_id()
+            turn_ids.append(turn_id)
+            turn_token = CURRENT_TURN_ID.set(turn_id)
+            try:
+                reply = await llm.answer(
+                    store, scope, speaker["speaker"], turn,
+                    public_context=[], channel_context=list(channel_context),
+                    emoji_catalog=[], use_memory=True,
+                )
+            finally:
+                CURRENT_TURN_ID.reset(turn_token)
             responses.append(reply)
             store.add(scope, index, turn, reply)
             if mode == "server":
@@ -239,17 +328,73 @@ async def run_case(llm: LLM, case: dict) -> dict:
         "speakers": speakers,
         "expected": case["expected"],
         "responses": responses,
+        "turn_ids": turn_ids,
+        "routing": [],
         "error": error,
         "validators": case.get("validators", []),
         "validation_errors": validation_errors,
         "provider": llm.settings.provider,
         "model": llm.settings.model,
+        "routing_mode": llm.settings.model_routing_mode,
+        "fast_model": llm.settings.fast_model,
+        "smart_model": llm.settings.smart_model,
         "thinking_level": (
             llm.settings.gemini_thinking_level
             if llm.settings.provider == "gemini"
             else ""
         ),
     }
+
+
+
+_ROUTE_RESULT_FIELDS = (
+    "provider",
+    "model",
+    "model_tier",
+    "model_route_baseline_tier",
+    "model_route_decision_source",
+    "semantic_route_status",
+    "semantic_route_level",
+    "model_route_margin",
+    "requested_thinking_level",
+)
+
+
+def attach_routing_results(results: list[dict], usage_log: str) -> None:
+    wanted = {
+        turn_id
+        for result in results
+        for turn_id in result.get("turn_ids", ())
+        if isinstance(turn_id, str) and turn_id
+    }
+    answer_rows: dict[str, dict] = {}
+    path = Path(usage_log) if usage_log else None
+    if path is not None and path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            turn_id = row.get("turn_id")
+            if (
+                turn_id in wanted
+                and row.get("operation") == "answer"
+                and isinstance(turn_id, str)
+            ):
+                answer_rows[turn_id] = row
+
+    for result in results:
+        routing = []
+        for turn_id in result.get("turn_ids", ()):
+            row = answer_rows.get(turn_id, {})
+            item = {"turn_id": turn_id}
+            item.update({
+                key: row[key]
+                for key in _ROUTE_RESULT_FIELDS
+                if key in row
+            })
+            routing.append(item)
+        result["routing"] = routing
 
 
 def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
@@ -264,6 +409,9 @@ def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
         f"- cases: {len(results)}",
         f"- provider: `{results[0]['provider'] if results else ''}`",
         f"- model: `{results[0]['model'] if results else ''}`",
+        f"- routing mode: `{results[0]['routing_mode'] if results else ''}`",
+        f"- FAST / SMART: `{results[0]['fast_model'] if results else ''}` / "
+        f"`{results[0]['smart_model'] if results else ''}`",
         f"- thinking level: `{results[0]['thinking_level'] if results else ''}`",
         f"- errors: {sum(bool(row['error']) for row in results)}",
         f"- validator failures: {sum(bool(row['validation_errors']) for row in results)}",
@@ -287,8 +435,21 @@ def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
             lines.append("")
         for index, (turn, response) in enumerate(zip(row["turns"], row["responses"]), 1):
             speaker = row["speakers"][index - 1]
+            route = (
+                row.get("routing", [])[index - 1]
+                if index <= len(row.get("routing", []))
+                else {}
+            )
+            route_bits = [
+                str(route.get("model_tier") or ""),
+                str(route.get("model") or ""),
+                str(route.get("semantic_route_level") or ""),
+                str(route.get("model_route_decision_source") or ""),
+            ]
+            route_text = " / ".join(value for value in route_bits if value) or "unknown"
             lines += [f"**Turn {index} input ({speaker['speaker']}, {speaker['user_id']})**",
-                      "", f"> {turn}", "", "**Response**", "", response, ""]
+                      "", f"> {turn}", "", f"**Routing:** `{route_text}`",
+                      "", "**Response**", "", response, ""]
         lines += ["---", ""]
     report.write_text("\n".join(lines), encoding="utf-8")
     return output, report
@@ -326,6 +487,8 @@ async def run(args) -> None:
     finally:
         await llm.close()
 
+    attach_routing_results(results, args.usage_log)
+
     if args.output:
         output = Path(args.output)
     else:
@@ -348,11 +511,41 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--limit", type=int, help="앞에서부터 N개 case만 실행합니다.")
     root.add_argument("--repeat", type=int, default=1, help="각 case 반복 횟수. 기본은 1입니다.")
     root.add_argument("--provider", help="openai, gemini, openrouter. 기본은 LLM_PROVIDER입니다.")
-    root.add_argument("--model", help="평가에 사용할 모델. 기본은 LLM_MODEL입니다.")
+    root.add_argument("--model", help="fixed 평가 모델. 기본은 LLM_MODEL입니다.")
+    root.add_argument(
+        "--routing-mode",
+        choices=("fixed", "adaptive"),
+        default="fixed",
+        help="fixed는 단일 모델, adaptive는 운영 model routing 경로를 평가합니다.",
+    )
+    root.add_argument("--fast-model", help="adaptive FAST 모델. 기본은 LLM_FAST_MODEL입니다.")
+    root.add_argument("--smart-model", help="adaptive SMART 모델. 기본은 LLM_SMART_MODEL입니다.")
+    root.add_argument("--smart-threshold", type=float, help="adaptive SMART threshold.")
+    root.add_argument(
+        "--routing-classifier-mode",
+        choices=("off", "shadow", "active"),
+        help="adaptive classifier mode. 미지정 시 환경값 또는 adaptive에서 active.",
+    )
+    root.add_argument(
+        "--routing-classifier-provider",
+        choices=sorted(SUPPORTED_MODEL_PROVIDERS),
+        help="classifier provider.",
+    )
+    root.add_argument("--routing-classifier-model", help="classifier model.")
     root.add_argument(
         "--gemini-thinking-level",
         choices=sorted(GEMINI_THINKING_LEVELS),
         help="Gemini fixed eval의 thinking level. 기본은 GEMINI_THINKING_LEVEL 또는 low입니다.",
+    )
+    root.add_argument(
+        "--gemini-fast-thinking-level",
+        choices=sorted(GEMINI_THINKING_LEVELS),
+        help="adaptive Gemini FAST thinking level.",
+    )
+    root.add_argument(
+        "--gemini-smart-thinking-level",
+        choices=sorted(GEMINI_THINKING_LEVELS),
+        help="adaptive Gemini SMART thinking level.",
     )
     root.add_argument("--output", help="결과 JSONL 경로. 같은 이름의 .md 리포트도 생성합니다.")
     root.add_argument("--usage-log", default="data/logs/eval-usage.jsonl")
