@@ -11,11 +11,13 @@ from hina_bot.ai.identity_resolution import identity_group, identity_resolution_
 from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
+from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 
 from .bot import HinaClient as BaseHinaClient
 from .chatlog_capture import capture_mode
+from .interaction_context import build_interaction_context
 from .reply_context import REPLY_CONTEXT, collect_reply_context
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
@@ -550,6 +552,14 @@ class HinaClient(BaseHinaClient):
             finally:
                 CURRENT_TURN_ID.reset(event_token)
 
+        interaction_token = CURRENT_INTERACTION_CONTEXT.set(
+            build_interaction_context(
+                message,
+                self.user.id,
+                replied,
+                include_mention_names=not strict_egress,
+            )
+        )
         target_token = TARGET_CONTEXT.set(tuple(sampled))
         reply_token = REPLY_CONTEXT.set(tuple(replied))
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
@@ -591,6 +601,7 @@ class HinaClient(BaseHinaClient):
             CURRENT_TURN_PROVENANCE.reset(provenance_token)
             REPLY_CONTEXT.reset(reply_token)
             TARGET_CONTEXT.reset(target_token)
+            CURRENT_INTERACTION_CONTEXT.reset(interaction_token)
 
 
 def main():
