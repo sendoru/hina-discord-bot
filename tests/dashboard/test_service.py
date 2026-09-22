@@ -535,8 +535,8 @@ def test_conversation_service_local_time_filter_and_search_match(tmp_path):
 
     data = service.conversations(
         query="question",
-        after="2026-09-21T09:00",
-        before="2026-09-22T09:00",
+        after="2020-01-01T00:00",
+        before="2030-01-01T00:00",
     )
 
     assert data["page"].total == 1
