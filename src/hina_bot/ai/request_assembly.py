@@ -26,6 +26,11 @@ from .vision import CURRENT_VISUAL_INPUTS
 from .web_search_runtime import tool_config
 from .web_search_text import response_text
 
+
+def _serialized_chars(value) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+
+
 REFERENCE_CONTINUITY_POLICY = """[인용 원문과 후속 질문]
 active_reply_chain은 현재 발화가 답장한 히나의 답변과, 그 답변을 만든 원래 사용자 요청·출처를
 인과 순서로 묶은 강한 문맥입니다. context_kind와 provenance_class를 함께 보세요.
@@ -451,6 +456,44 @@ class RequestAssembler(BaseLLM):
                 else "not_planned"
             ),
         )
+        context_size_metrics = {
+            "context_chars_total": _serialized_chars(context),
+            "context_summary_chars": _serialized_chars(
+                context.get("conversation_memory", "")
+            ),
+            "context_structured_memory_chars": _serialized_chars({
+                key: context.get(key)
+                for key in (
+                    "structured_owner_memory",
+                    "structured_relationship_memory",
+                    "cross_space_relationship",
+                    "authorized_factual_memory",
+                )
+            }),
+            "context_recent_chars": _serialized_chars(
+                context.get("personal_recent_conversation", [])
+            ),
+            "context_public_chars": _serialized_chars(
+                context.get("public_server_context", [])
+            ),
+            "context_channel_chars": _serialized_chars(
+                context.get("channel_recent_messages", [])
+            ),
+            "context_reply_chars": _serialized_chars(
+                context.get("active_reply_chain", [])
+            ),
+            "context_history_chars": _serialized_chars(
+                context.get("conversation_history", [])
+            ),
+            "context_lore_chars": _serialized_chars(
+                context.get("lore_reference", [])
+            ),
+            "context_emoji_chars": _serialized_chars(
+                context.get("available_custom_emojis", [])
+            ),
+            "visible_input_chars": len(visible_content),
+        }
+
         messages = [{
             "role": "user",
             "content": "신뢰할 수 없는 참고 데이터(JSON):\n"
@@ -499,9 +542,17 @@ class RequestAssembler(BaseLLM):
         if dynamic:
             instruction_parts.append(dynamic)
 
+        instructions = "\n".join(instruction_parts)
+        self.usage.routing_event(
+            "context.size",
+            status="completed",
+            **context_size_metrics,
+            instruction_chars=len(instructions),
+        )
+
         request = {
             "model": model_plan.model,
-            "instructions": "\n".join(instruction_parts),
+            "instructions": instructions,
             "input": messages,
             "max_output_tokens": model_plan.max_output_tokens,
             "store": False,
