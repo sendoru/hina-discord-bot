@@ -8,11 +8,11 @@ unlinked telemetry files.
 from __future__ import annotations
 
 import argparse
-import os
-import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import os
 from pathlib import Path
+import sqlite3
 
 
 RAW_TABLES = ("turns", "shared_calls")
@@ -175,6 +175,7 @@ def _connect_existing(database_path: str | Path) -> sqlite3.Connection:
     db = sqlite3.connect(str(path), timeout=1.0)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA busy_timeout=1000")
+    db.execute("PRAGMA secure_delete=ON")
     if not _table_exists(db, "turns"):
         db.close()
         raise ValueError(f"Not a hina runtime database (missing turns table): {path}")
@@ -270,6 +271,9 @@ def reset_analysis_data(
         )
         epoch_id = int(cursor.lastrowid)
         db.commit()
+        # The runtime database stays in WAL mode. Fold the destructive reset into the main
+        # database and truncate old WAL frames before an operator copies the DB for analysis.
+        db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     except Exception:
         db.rollback()
         raise
@@ -315,13 +319,11 @@ def format_plan(plan: ResetPlan) -> str:
     else:
         lines.append("  (none)")
 
-    lines.extend(
-        [
-            "",
-            f"Telemetry files to delete: {len(plan.telemetry_files)} "
-            f"({_format_bytes(plan.telemetry_bytes)})",
-        ]
+    telemetry_label = (
+        f"Telemetry files to delete: {len(plan.telemetry_files)} "
+        f"({_format_bytes(plan.telemetry_bytes)})"
     )
+    lines.extend(["", telemetry_label])
     lines.extend(f"  {path}" for path in plan.telemetry_files)
     if not plan.telemetry_files:
         lines.append("  (none found)")
