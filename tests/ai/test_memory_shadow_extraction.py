@@ -540,6 +540,8 @@ async def test_completed_shadow_event_records_result_counts_and_evidence_turns()
     assert completed["duplicate_items"] == 0
     assert completed["rejected_items"] == 0
     assert completed["proposal_items"] == 0
+    assert completed["applied_reconciliations"] == 0
+    assert completed["deferred_reconciliations"] == 0
     store.close()
 
 
@@ -743,7 +745,7 @@ def test_parser_keeps_item_but_drops_relation_to_unknown_target():
 
 
 @pytest.mark.asyncio
-async def test_shadow_reconciliation_records_correction_without_mutating_old_item():
+async def test_shadow_reconciliation_applies_high_confidence_correction():
     store = Store(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     old_id = store.add_memory_item(
@@ -770,15 +772,23 @@ async def test_shadow_reconciliation_records_correction_without_mutating_old_ite
         }]
     }, ensure_ascii=False)
     harness = _harness(_response(extraction))
+    events = []
+    harness.usage.routing_event = lambda operation, **metadata: events.append(
+        (operation, metadata)
+    )
 
     await harness.extract_structured_memory(store, scope)
 
-    items = store.memory_items(100)
-    assert [item.content for item in items] == [
-        "사용자는 '키위'라는 고양이를 키운다.",
+    active = store.memory_items(100)
+    assert [item.content for item in active] == [
         "사용자는 '웅'이라는 고양이를 키운다.",
     ]
-    assert items[0].id == old_id
+    new_id = active[0].id
+    history = store.memory_items(100, include_superseded=True)
+    old = next(item for item in history if item.id == old_id)
+    assert old.status.value == "superseded"
+    assert old.superseded_by == new_id
+
     request = harness.usage.request.await_args.kwargs
     payload = json.loads(request["input"])
     assert payload["existing_memory_candidates"] == [{
@@ -792,11 +802,20 @@ async def test_shadow_reconciliation_records_correction_without_mutating_old_ite
     proposals = store.memory_reconciliation_proposals(100)
     assert len(proposals) == 1
     proposal = proposals[0]
-    assert proposal["new_memory_item_id"] == items[1].id
+    assert proposal["new_memory_item_id"] == new_id
     assert proposal["target_memory_item_id"] == old_id
     assert proposal["relation"] == "corrects"
     assert proposal["confidence"] == pytest.approx(0.99)
     assert json.loads(proposal["source_message_ids"]) == ["101", "102"]
+
+    completed = [
+        metadata
+        for operation, metadata in events
+        if operation == "memory.shadow_extraction"
+        and metadata.get("status") == "completed"
+    ][-1]
+    assert completed["applied_reconciliations"] == 1
+    assert completed["deferred_reconciliations"] == 0
     store.close()
 
 
