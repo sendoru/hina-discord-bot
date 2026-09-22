@@ -10,7 +10,7 @@
   <span class="active-filter-label">Active</span>
   {% for key, value in request.query_params.items() %}
     {% if key != "page" and value %}
-    <a class="filter-chip" href="{{ request.url.remove_query_params(key, 'page') }}" title="Remove {{ key }} filter">
+    <a class="filter-chip" href="{{ request.url.remove_query_params(key).remove_query_params('page') }}" title="Remove {{ key }} filter">
       <span>{{ key | replace("_", " ") }}</span>
       <strong>{{ value }}</strong>
       <span aria-hidden="true">×</span>
