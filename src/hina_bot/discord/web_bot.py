@@ -553,7 +553,12 @@ class HinaClient(BaseHinaClient):
                 CURRENT_TURN_ID.reset(event_token)
 
         interaction_token = CURRENT_INTERACTION_CONTEXT.set(
-            build_interaction_context(message, self.user.id, replied)
+            build_interaction_context(
+                message,
+                self.user.id,
+                replied,
+                include_mention_names=not strict_egress,
+            )
         )
         target_token = TARGET_CONTEXT.set(tuple(sampled))
         reply_token = REPLY_CONTEXT.set(tuple(replied))
