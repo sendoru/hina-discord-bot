@@ -11,16 +11,21 @@ from .repository import AdminRepository
 from .routes import build_routers
 from .service import DashboardService
 from .telemetry import TelemetryReader
+from .timeutils import format_local_time
 
 
 def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     settings = settings or DashboardSettings.load()
     repository = AdminRepository(settings.database_path)
     telemetry = TelemetryReader(settings.usage_log_path, settings.event_log_path)
-    service = DashboardService(repository, telemetry)
+    service = DashboardService(repository, telemetry, timezone=settings.timezone)
 
     package_dir = Path(__file__).parent
     templates = Jinja2Templates(directory=str(package_dir / "templates"))
+    templates.env.filters["localtime"] = (
+        lambda value: format_local_time(value, settings.timezone)
+    )
+    templates.env.globals["dashboard_timezone"] = settings.timezone
 
     app = FastAPI(title="Hina Dashboard", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")
