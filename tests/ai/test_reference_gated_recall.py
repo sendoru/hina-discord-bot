@@ -112,6 +112,60 @@ def test_unique_single_anchor_can_authorize_one_cross_space_memory():
         store.close()
 
 
+def test_bare_recall_question_does_not_open_memory_without_topic_anchor():
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    server = Scope(1, 20, 100, True)
+    try:
+        store.add_memory_item(
+            dm,
+            "다음 주 삼성 면접이 있다",
+            kind=MemoryKind.EVENT,
+            disclosure=MemoryDisclosure.REFERENCE_GATED,
+        )
+
+        plan = plan_reference_gated_recall(
+            store,
+            server,
+            "기억나?",
+            use_memory=True,
+            allow_cross_space=True,
+        )
+
+        assert plan.detected is True
+        assert plan.status == "no_topic_anchor"
+        assert plan.selected == ()
+    finally:
+        store.close()
+
+
+def test_explicit_reference_with_unrelated_topic_does_not_open_memory():
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    server = Scope(1, 20, 100, True)
+    try:
+        store.add_memory_item(
+            dm,
+            "다음 주 삼성 면접이 있다",
+            kind=MemoryKind.EVENT,
+            disclosure=MemoryDisclosure.REFERENCE_GATED,
+        )
+
+        plan = plan_reference_gated_recall(
+            store,
+            server,
+            "전에 말했던 고양이 얘기 있잖아",
+            use_memory=True,
+            allow_cross_space=True,
+        )
+
+        assert plan.detected is True
+        assert plan.status == "no_relevant_candidate"
+        assert plan.selected == ()
+    finally:
+        store.close()
+
+
 def test_ambiguous_single_anchor_does_not_guess_between_memories():
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
