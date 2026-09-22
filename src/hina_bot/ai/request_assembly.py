@@ -3,6 +3,12 @@
 import json
 import re
 
+from hina_bot.core.memory_context import (
+    CURRENT_CONTEXT_PROVENANCE,
+    CURRENT_EGRESS_DECISION,
+)
+
+from .context_provenance import build_context_provenance
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode
 from .information_plan import InformationPlan
@@ -12,7 +18,11 @@ from .managed_tools import CODE_EXECUTION_POLICY, managed_tool_config, search_to
 from .model_routing import ModelPlan, fixed_model_plan
 from .rp_output_policy import hide_web_citations, provenance_instruction
 from .runtime_context import build_runtime_context, runtime_instruction
-from .structured_memory_context import structured_memory_context
+from .structured_memory_context import (
+    structured_memory_context,
+    structured_memory_provenance,
+)
+from .vision import CURRENT_VISUAL_INPUTS
 from .web_search_runtime import tool_config
 from .web_search_text import response_text
 
@@ -318,11 +328,23 @@ class RequestAssembler(BaseLLM):
         # This is the authoritative external-data boundary. Earlier capture/routing filters improve
         # behavior and data minimization, but a row that slips through them still cannot reach the
         # provider unless the active egress policy admits it here.
+        provider_channel_input = len(context.get("channel_recent_messages", ()) or ())
+        provider_public_input = len(context.get("public_server_context", ()) or ())
         context = apply_context_policy(
             context,
             scope.user_id,
             self.settings.external_context_policy,
         )
+        provider_channel_allowed = len(context.get("channel_recent_messages", ()) or ())
+        provider_public_allowed = len(context.get("public_server_context", ()) or ())
+        provider_boundary = {
+            "channel_input": provider_channel_input,
+            "channel_allowed": provider_channel_allowed,
+            "channel_blocked": provider_channel_input - provider_channel_allowed,
+            "public_input": provider_public_input,
+            "public_allowed": provider_public_allowed,
+            "public_blocked": provider_public_input - provider_public_allowed,
+        }
         chain_kinds = {
             "reply_reference_source",
             "reply_origin_source",
@@ -343,6 +365,24 @@ class RequestAssembler(BaseLLM):
             row for row in channel_rows
             if not has_reply_origin or row.get("context_kind") not in chain_kinds
         ]
+        structured_trace = structured_memory_provenance(
+            store,
+            scope,
+            use_memory=use_memory,
+            allow_cross_space=cross_channel_memory,
+        )
+        CURRENT_CONTEXT_PROVENANCE.set(build_context_provenance(
+            context,
+            scope,
+            egress_policy=self.settings.external_context_policy,
+            adapter_egress=CURRENT_EGRESS_DECISION.get(),
+            provider_boundary=provider_boundary,
+            use_memory=use_memory,
+            current_channel_only=current_channel_only,
+            cross_channel_memory=cross_channel_memory,
+            structured=structured_trace,
+            visuals=CURRENT_VISUAL_INPUTS.get(),
+        ))
         messages = [{
             "role": "user",
             "content": "신뢰할 수 없는 참고 데이터(JSON):\n"
