@@ -327,16 +327,6 @@ def build_analytics(
         if row.get("operation") == "model_route_shadow"
         and _matches_text(row.get("routing_classifier_provider"), provider)
     ]
-    scoped_api = [
-        row
-        for row in api_rows
-        if _matches_text(row.get("model"), model)
-        and _matches_text(row.get("provider"), provider)
-    ]
-    identity_rows = [
-        row for row in scoped_api if row.get("operation") == "identity_resolve"
-    ]
-
     tokens = {field: _metric(filtered_api, field) for field in _TOKEN_FIELDS}
     known_route_margins = [
         float(row["model_route_margin"])
@@ -375,20 +365,36 @@ def build_analytics(
         or "memory" in str(row.get("operation") or "")
         or "summary" in str(row.get("operation") or "")
     ]
-    performance_memory_rows = [
-        row
-        for row in scoped_api
-        if str(row.get("operation") or "") in _MEMORY_OPERATIONS
-        or "memory" in str(row.get("operation") or "")
-        or "summary" in str(row.get("operation") or "")
-    ]
-
     time_events = _filter_time(snapshot.events, after, before)
     answer_turn_ids = {
         str(row["turn_id"])
         for row in answer_rows
         if isinstance(row.get("turn_id"), str) and row.get("turn_id")
     }
+    performance_api_rows = (
+        [
+            row
+            for row in api_rows
+            if str(row.get("turn_id") or "") in answer_turn_ids
+        ]
+        if model or provider
+        else api_rows
+    )
+    performance_classifier_rows = [
+        row
+        for row in performance_api_rows
+        if row.get("operation") == "model_route_classify"
+    ]
+    identity_rows = [
+        row for row in performance_api_rows if row.get("operation") == "identity_resolve"
+    ]
+    performance_memory_rows = [
+        row
+        for row in performance_api_rows
+        if str(row.get("operation") or "") in _MEMORY_OPERATIONS
+        or "memory" in str(row.get("operation") or "")
+        or "summary" in str(row.get("operation") or "")
+    ]
     performance_events = (
         [
             row
@@ -416,7 +422,7 @@ def build_analytics(
         turn_id: rows[-1]
         for turn_id, rows in _by_turn(reply_rows).items()
     }
-    usage_by_turn = _by_turn(scoped_api)
+    usage_by_turn = _by_turn(performance_api_rows)
 
     observed_reply_values = []
     for row in reply_rows:
@@ -546,7 +552,7 @@ def build_analytics(
         },
         "api_categories": {
             "answer": _category_usage(answer_rows),
-            "routing": _category_usage(classifier_rows),
+            "routing": _category_usage(performance_classifier_rows),
             "identity": _category_usage(identity_rows),
             "memory": _category_usage(performance_memory_rows),
         },
