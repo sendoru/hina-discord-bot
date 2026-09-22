@@ -65,7 +65,7 @@ class AdminRepository:
             rows = db.execute(
                 f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
                            {turn_id},memory_context,created_at
-                    FROM turns ORDER BY id DESC LIMIT ?""
+                    FROM turns ORDER BY id DESC LIMIT ?""",
                 (limit,),
             ).fetchall()
         return self._dicts(rows)
@@ -144,7 +144,7 @@ class AdminRepository:
             rows = db.execute(
                 f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
                            {turn_id},memory_context,created_at
-                    FROM turns{where} ORDER BY id DESC LIMIT ? OFFSET ?""
+                    FROM turns{where} ORDER BY id DESC LIMIT ? OFFSET ?""",
                 (*params, limit, offset),
             ).fetchall()
         return self._dicts(rows)
