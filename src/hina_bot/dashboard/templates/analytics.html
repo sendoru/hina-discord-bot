@@ -51,6 +51,90 @@
 </section>
 {% endif %}
 
+<section class="section-heading">
+  <h2>Runtime performance</h2>
+  <p class="muted">Observed reply latency includes retained web preflight time. Missing preflight or stage fields stay missing.</p>
+</section>
+
+<section class="cards">
+  <article class="card">
+    <span>Observed reply p50 / p95</span>
+    <strong>{{ data.performance.reply_latency.p50 if data.performance.reply_latency.p50 is not none else "—" }} / {{ data.performance.reply_latency.p95 if data.performance.reply_latency.p95 is not none else "—" }} ms</strong>
+    <small>{{ data.performance.reply_latency.known }} known / {{ data.performance.reply_latency.missing }} missing</small>
+  </article>
+  <article class="card">
+    <span>Total turn p50 / p95</span>
+    <strong>{{ data.performance.turn_latency.p50 if data.performance.turn_latency.p50 is not none else "—" }} / {{ data.performance.turn_latency.p95 if data.performance.turn_latency.p95 is not none else "—" }} ms</strong>
+    <small>preflight + terminal turn</small>
+  </article>
+  <article class="card">
+    <span>Post-reply avg</span>
+    <strong>{{ data.performance.post_reply.average if data.performance.post_reply.average is not none else "—" }} ms</strong>
+    <small>work after Discord delivery</small>
+  </article>
+  <article class="card">
+    <span>Generation residual avg</span>
+    <strong>{{ data.performance.generation.residual.average if data.performance.generation.residual.average is not none else "—" }} ms</strong>
+    <small>generation stage minus critical API calls</small>
+  </article>
+</section>
+
+<div class="grid-2">
+  <section class="panel">
+    <h2>Latency stages</h2>
+    <table>
+      <thead><tr><th>Stage</th><th>Avg</th><th>p95</th><th>Coverage</th></tr></thead>
+      <tbody>
+      {% for name, metric in data.performance.stages.items() %}
+      <tr>
+        <td><code>{{ name }}</code></td>
+        <td class="numeric">{{ metric.average if metric.average is not none else "—" }}</td>
+        <td class="numeric">{{ metric.p95 if metric.p95 is not none else "—" }}</td>
+        <td>{{ metric.known }} / {{ metric.known + metric.missing }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>API cost by role</h2>
+    <table>
+      <thead><tr><th>Role</th><th>Calls</th><th>Total tokens</th><th>Avg latency</th></tr></thead>
+      <tbody>
+      {% for name, metric in data.performance.api_categories.items() %}
+      <tr>
+        <td><code>{{ name }}</code></td>
+        <td class="numeric">{{ metric.calls }}</td>
+        <td class="numeric">{{ "{:,}".format(metric.tokens.value) }}</td>
+        <td class="numeric">{{ metric.latency.average if metric.latency.average is not none else "—" }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Request size attribution</h2>
+  <p class="muted">Serialized character counts are a privacy-safe attribution proxy; provider-reported input tokens remain authoritative.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Section</th><th>Avg chars</th><th>p95</th><th>Coverage</th></tr></thead>
+      <tbody>
+      {% for name, metric in data.performance.context_chars.items() %}
+      <tr>
+        <td><code>{{ name }}</code></td>
+        <td class="numeric">{{ metric.average if metric.average is not none else "—" }}</td>
+        <td class="numeric">{{ metric.p95 if metric.p95 is not none else "—" }}</td>
+        <td>{{ metric.known }} / {{ metric.known + metric.missing }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="panel">
   <h2>Token fields</h2>
   <div class="table-wrap">
