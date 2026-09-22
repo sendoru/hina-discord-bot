@@ -42,6 +42,14 @@ def _row_value(row, key: str, default=""):
         return default
 
 
+def _speaker_name(rows) -> str:
+    for row in reversed(list(rows)):
+        name = str(_row_value(row, "name", "") or "").strip()
+        if name:
+            return name[:100]
+    return ""
+
+
 def _summary_metrics(
     *,
     memory_kind: str,
@@ -187,6 +195,7 @@ class MemorySummaryMixin:
         reconciliation_candidates = build_reconciliation_candidates(candidate_items)
         payload = {
             "speaker_id": str(scope.user_id),
+            "speaker_name": _speaker_name(pending),
             "origin": {
                 "realm": scope.realm,
                 "channel_id": str(scope.channel_id),
@@ -323,6 +332,8 @@ class MemorySummaryMixin:
             new_turns.append(item)
         payload = {
             "previous_memory": old,
+            "speaker_id": str(scope.user_id),
+            "speaker_name": _speaker_name(pending),
             "new_turns": new_turns,
         }
         plan = build_memory_model_plan(
@@ -360,6 +371,7 @@ class MemorySummaryMixin:
         payload = {
             "previous_memory": old,
             "speaker_id": str(scope.user_id),
+            "speaker_name": _speaker_name(pending),
             "direct_calls": direct_calls,
         }
         plan = build_memory_model_plan(

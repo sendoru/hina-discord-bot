@@ -10,7 +10,7 @@
 
 <section class="panel">
   <dl class="metadata">
-    <div><dt>User</dt><dd><code>{{ data.item.user_id }}</code></dd></div>
+    <div><dt>User</dt><dd>{% if data.item.user_name %}{{ data.item.user_name }} · {% endif %}<code>{{ data.item.user_id }}</code></dd></div>
     <div><dt>Kind</dt><dd>{{ data.item.kind }}</dd></div>
     <div><dt>Disclosure</dt><dd>{{ data.item.disclosure }}</dd></div>
     <div><dt>Confidence</dt><dd>{{ "%.3f"|format(data.item.confidence) }}</dd></div>
@@ -43,6 +43,7 @@
           <dl class="metadata compact">
             <div><dt>Scope</dt><dd>{{ source.turn.scope }}</dd></div>
             <div><dt>Realm</dt><dd>{{ source.turn.realm }}</dd></div>
+            <div><dt>User</dt><dd>{% if source.turn.name %}{{ source.turn.name }} · {% endif %}<code>{{ source.turn.user_id }}</code></dd></div>
             <div><dt>Created</dt><dd>{{ source.turn.created_at }}</dd></div>
           </dl>
           <div class="message">{{ source.turn.content }}</div>

@@ -60,9 +60,10 @@ class AdminRepository:
     def recent_turns(self, *, limit: int = 100) -> list[dict[str, object]]:
         limit = self._limit(limit)
         turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
+        name = "name" if self._has_column("turns", "name") else "'' AS name"
         with self._connection() as db:
             rows = db.execute(
-                f"""SELECT id,scope,realm,user_id,message_id,content,reply,exportable,
+                f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
                            {turn_id},memory_context,created_at
                     FROM turns ORDER BY id DESC LIMIT ?""",
                 (limit,),
@@ -135,12 +136,13 @@ class AdminRepository:
         limit = self._limit(limit)
         offset = max(0, int(offset))
         turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
+        name = "name" if self._has_column("turns", "name") else "'' AS name"
         where, params = self._turn_filters(
             scope=scope, realm=realm, user_id=user_id, query=query
         )
         with self._connection() as db:
             rows = db.execute(
-                f"""SELECT id,scope,realm,user_id,message_id,content,reply,exportable,
+                f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
                            {turn_id},memory_context,created_at
                     FROM turns{where} ORDER BY id DESC LIMIT ? OFFSET ?""",
                 (*params, limit, offset),
@@ -320,9 +322,10 @@ class AdminRepository:
             return []
         placeholders = ",".join("?" for _ in values)
         turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
+        name = "name" if self._has_column("turns", "name") else "'' AS name"
         with self._connection() as db:
             rows = db.execute(
-                f"""SELECT id,scope,realm,user_id,message_id,content,reply,exportable,
+                f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
                            {turn_id},memory_context,created_at
                     FROM turns WHERE message_id IN ({placeholders}) ORDER BY id""",
                 values,

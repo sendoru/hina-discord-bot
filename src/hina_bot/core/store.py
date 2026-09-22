@@ -24,6 +24,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS turns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 scope TEXT NOT NULL, realm TEXT NOT NULL, user_id TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
                 message_id TEXT NOT NULL UNIQUE,
                 content TEXT NOT NULL, reply TEXT NOT NULL, exportable INTEGER NOT NULL,
                 turn_id TEXT,
@@ -34,6 +35,7 @@ class Store:
             CREATE INDEX IF NOT EXISTS turns_owner ON turns(realm, user_id);
             CREATE TABLE IF NOT EXISTS summaries (
                 scope TEXT PRIMARY KEY, realm TEXT NOT NULL, user_id TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
                 text TEXT NOT NULL, through_id INTEGER NOT NULL, exportable INTEGER NOT NULL
             );
             CREATE TABLE IF NOT EXISTS shared_calls (
@@ -50,6 +52,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS memory_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
+                user_name TEXT NOT NULL DEFAULT '',
                 content TEXT NOT NULL,
                 kind TEXT NOT NULL CHECK(kind IN (
                     'fact','event','preference','relationship','boundary','task'
@@ -118,8 +121,19 @@ class Store:
         if "turn_id" not in columns:
             with self.db:
                 self.db.execute("ALTER TABLE turns ADD COLUMN turn_id TEXT")
+        if "name" not in columns:
+            with self.db:
+                self.db.execute("ALTER TABLE turns ADD COLUMN name TEXT NOT NULL DEFAULT ''")
         with self.db:
             self.db.execute("CREATE INDEX IF NOT EXISTS turns_turn_id ON turns(turn_id)")
+        summary_columns = {
+            row["name"] for row in self.db.execute("PRAGMA table_info(summaries)")
+        }
+        if "name" not in summary_columns:
+            with self.db:
+                self.db.execute(
+                    "ALTER TABLE summaries ADD COLUMN name TEXT NOT NULL DEFAULT ''"
+                )
         memory_columns = {
             row["name"] for row in self.db.execute("PRAGMA table_info(memory_items)")
         }
@@ -128,6 +142,11 @@ class Store:
                 self.db.execute(
                     "ALTER TABLE memory_items "
                     "ADD COLUMN relationship_evidence TEXT NOT NULL DEFAULT '{}'"
+                )
+        if "user_name" not in memory_columns:
+            with self.db:
+                self.db.execute(
+                    "ALTER TABLE memory_items ADD COLUMN user_name TEXT NOT NULL DEFAULT ''"
                 )
 
     def close(self):
@@ -154,6 +173,18 @@ class Store:
         row = self.db.execute("SELECT text, through_id FROM summaries WHERE scope=?",
                               (scope.conversation,)).fetchone()
         return (row[0], row[1]) if row else ("", 0)
+
+    def user_name(self, scope: Scope) -> str:
+        """Return the latest observed human-readable name for this scoped user."""
+        for sql in (
+            "SELECT name FROM turns WHERE scope=? AND name<>'' ORDER BY id DESC LIMIT 1",
+            "SELECT name FROM shared_calls WHERE scope=? AND name<>'' ORDER BY id DESC LIMIT 1",
+            "SELECT name FROM shared_summaries WHERE scope=? AND name<>'' LIMIT 1",
+        ):
+            row = self.db.execute(sql, (scope.conversation,)).fetchone()
+            if row is not None and str(row[0] or "").strip():
+                return str(row[0])[:100]
+        return ""
 
     def history(self, scope: Scope):
         return list(reversed(self.db.execute(
@@ -281,6 +312,7 @@ class Store:
         content: str,
         reply: str,
         *,
+        name: str = "",
         memory_context=None,
     ):
         exportable = scope.public_at_capture and self.summary_exportable(scope)
@@ -295,12 +327,13 @@ class Store:
         )
         with self.db:
             self.db.execute(
-                "INSERT INTO turns(scope,realm,user_id,message_id,content,reply,exportable,"
-                "turn_id,memory_context) VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO turns(scope,realm,user_id,name,message_id,content,reply,exportable,"
+                "turn_id,memory_context) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     scope.conversation,
                     scope.realm,
                     str(scope.user_id),
+                    str(name or "")[:100],
                     str(message_id),
                     content,
                     reply,
@@ -318,9 +351,20 @@ class Store:
         exportable = self.summary_exportable(scope) and all(
             row["exportable"] for row in self.pending(scope) if row["id"] <= through)
         with self.db:
-            self.db.execute("INSERT OR REPLACE INTO summaries VALUES (?,?,?,?,?,?)",
-                            (scope.conversation, scope.realm, str(scope.user_id), text, through,
-                             int(exportable)))
+            self.db.execute(
+                "INSERT OR REPLACE INTO summaries("
+                "scope,realm,user_id,name,text,through_id,exportable"
+                ") VALUES (?,?,?,?,?,?,?)",
+                (
+                    scope.conversation,
+                    scope.realm,
+                    str(scope.user_id),
+                    self.user_name(scope),
+                    text,
+                    through,
+                    int(exportable),
+                ),
+            )
 
     def summary_exportable(self, scope: Scope):
         row = self.db.execute("SELECT exportable FROM summaries WHERE scope=?",
@@ -336,6 +380,7 @@ class Store:
         return MemoryItem(
             id=int(row["id"]),
             user_id=str(row["user_id"]),
+            user_name=str(row["user_name"] or ""),
             content=str(row["content"]),
             kind=MemoryKind(row["kind"]),
             origin_realm=str(row["origin_realm"]),
@@ -359,6 +404,7 @@ class Store:
         source_message_ids=(),
         confidence: float = 1.0,
         relationship_evidence: RelationshipEvidence | dict | None = None,
+        user_name: str | None = None,
     ) -> int:
         text = content.strip()
         if not text:
@@ -379,13 +425,15 @@ class Store:
         encoded_evidence = json.dumps(
             evidence.as_dict(), ensure_ascii=False, separators=(",", ":")
         )
+        owner_name = self.user_name(scope) if user_name is None else str(user_name)[:100]
         with self.db:
             cursor = self.db.execute(
-                "INSERT INTO memory_items(user_id,content,kind,origin_realm,origin_channel_id,"
+                "INSERT INTO memory_items(user_id,user_name,content,kind,origin_realm,origin_channel_id,"
                 "origin_public_at_capture,disclosure,source_message_ids,confidence,"
-                "relationship_evidence) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "relationship_evidence) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     str(scope.user_id),
+                    owner_name,
                     text,
                     kind.value,
                     scope.realm,
