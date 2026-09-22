@@ -49,6 +49,12 @@
   <input type="datetime-local" name="created_before" value="{{ data.filters.created_before }}">
   <button type="submit">Filter</button>
   <a class="button secondary" href="/reconciliation">Reset</a>
+  <div class="quick-ranges" aria-label="Quick created-time ranges">
+    <span>Created:</span>
+    {% for preset in data.time_ranges %}
+    <a href="{{ request.url.include_query_params(created_after=preset.after, created_before='', page=1) }}">{{ preset.label }}</a>
+    {% endfor %}
+  </div>
 </form>
 
 <section class="notice">
@@ -88,7 +94,7 @@
         </td>
         <td class="numeric">{{ row.source_message_ids_decoded|length }}</td>
         <td>{{ "yes" if row.retry_suspect else "—" }}</td>
-        <td>{{ row.created_at }}</td>
+        <td>{{ row.created_at | localtime }}</td>
       </tr>
       {% endfor %}
       </tbody>

@@ -17,8 +17,8 @@
     <div><dt>Captured</dt><dd>{{ "public" if data.item.origin_public_at_capture else "private" }}</dd></div>
     <div><dt>Origin realm</dt><dd><code>{{ data.item.origin_realm }}</code></dd></div>
     <div><dt>Origin channel</dt><dd><code>{{ data.item.origin_channel_id }}</code></dd></div>
-    <div><dt>Created</dt><dd>{{ data.item.created_at }}</dd></div>
-    <div><dt>Updated</dt><dd>{{ data.item.updated_at }}</dd></div>
+    <div><dt>Created</dt><dd>{{ data.item.created_at | localtime }}</dd></div>
+    <div><dt>Updated</dt><dd>{{ data.item.updated_at | localtime }}</dd></div>
     {% if data.schema.has_lifecycle %}
     <div><dt>Status</dt><dd>{{ data.item.status or "—" }}</dd></div>
     {% endif %}
@@ -44,7 +44,7 @@
             <div><dt>Scope</dt><dd>{{ source.turn.scope }}</dd></div>
             <div><dt>Realm</dt><dd>{{ source.turn.realm }}</dd></div>
             <div><dt>User</dt><dd>{% if source.turn.name %}{{ source.turn.name }} · {% endif %}<code>{{ source.turn.user_id }}</code></dd></div>
-            <div><dt>Created</dt><dd>{{ source.turn.created_at }}</dd></div>
+            <div><dt>Created</dt><dd>{{ source.turn.created_at | localtime }}</dd></div>
           </dl>
           <div class="message">{{ source.turn.content }}</div>
         {% else %}

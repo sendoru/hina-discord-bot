@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from .base import Page, ReadService, _db_timestamp, _decode_json
+from ..searchutils import search_matches
+from ..timeutils import db_utc_timestamp
+from .base import Page, ReadService, _decode_json
 
 
 class MemoryService(ReadService):
@@ -62,10 +64,10 @@ class MemoryService(ReadService):
             "query": query.strip(),
             "confidence_min": optional_float(confidence_min),
             "confidence_max": optional_float(confidence_max),
-            "created_after": _db_timestamp(created_after),
-            "created_before": _db_timestamp(created_before),
-            "updated_after": _db_timestamp(updated_after),
-            "updated_before": _db_timestamp(updated_before),
+            "created_after": db_utc_timestamp(created_after, self.timezone),
+            "created_before": db_utc_timestamp(created_before, self.timezone),
+            "updated_after": db_utc_timestamp(updated_after, self.timezone),
+            "updated_before": db_utc_timestamp(updated_before, self.timezone),
         }
         total = self.repository.count_memory_items(**filters)
         pagination = self._page(page, page_size, total)
@@ -76,8 +78,19 @@ class MemoryService(ReadService):
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
         )
+        view_rows = []
+        for raw in rows:
+            row = self._memory_row(raw)
+            row["search_matches"] = search_matches(
+                query,
+                (
+                    ("content", row.get("content")),
+                    ("source message id", row.get("source_message_ids")),
+                ),
+            )
+            view_rows.append(row)
         return {
-            "rows": [self._memory_row(row) for row in rows],
+            "rows": view_rows,
             "page": pagination,
             "filters": {
                 "user_id": user_id.strip(),
@@ -96,6 +109,7 @@ class MemoryService(ReadService):
                 "updated_before": updated_before.strip(),
             },
             "schema": self.repository.memory_schema(),
+            "time_ranges": self.time_ranges(),
         }
 
     def memory_item(self, item_id: int) -> dict[str, object] | None:

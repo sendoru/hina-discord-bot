@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 
@@ -14,6 +15,7 @@ class DashboardSettings:
     event_log_path: str = "data/logs/events.jsonl"
     host: str = "127.0.0.1"
     port: int = 8765
+    timezone: str = "Asia/Seoul"
 
     @classmethod
     def load(cls) -> DashboardSettings:
@@ -44,10 +46,21 @@ class DashboardSettings:
         if not database_path:
             raise ValueError("DASHBOARD_DATABASE_PATH 또는 DATABASE_PATH를 설정해 주세요.")
 
+        timezone = (
+            os.getenv("DASHBOARD_TIMEZONE", "").strip()
+            or os.getenv("RUNTIME_TIMEZONE", "").strip()
+            or "Asia/Seoul"
+        )
+        try:
+            ZoneInfo(timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"알 수 없는 DASHBOARD_TIMEZONE입니다: {timezone}") from exc
+
         return cls(
             database_path=database_path,
             usage_log_path=usage_log_path,
             event_log_path=event_log_path,
             host=host,
             port=port,
+            timezone=timezone,
         )

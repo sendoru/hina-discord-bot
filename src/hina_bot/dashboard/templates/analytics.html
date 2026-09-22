@@ -8,8 +8,8 @@
   </div>
   <div class="window">
     <strong>Available telemetry</strong>
-    <span>{{ data.available.oldest_at or "none" }}</span>
-    <span>→ {{ data.available.newest_at or "none" }}</span>
+    <span>{{ data.available.oldest_at | localtime if data.available.oldest_at else "none" }}</span>
+    <span>→ {{ data.available.newest_at | localtime if data.available.newest_at else "none" }}</span>
   </div>
 </section>
 
@@ -17,10 +17,16 @@
   <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
   <input name="model" value="{{ data.filters.model }}" placeholder="model">
   <input name="provider" value="{{ data.filters.provider }}" placeholder="provider">
-  <input name="after" value="{{ data.filters.after }}" placeholder="after (ISO-8601)">
-  <input name="before" value="{{ data.filters.before }}" placeholder="before (ISO-8601)">
+  <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
+  <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
   <button type="submit">Filter</button>
   <a class="button secondary" href="/analytics">Reset</a>
+  <div class="quick-ranges" aria-label="Quick time ranges">
+    <span>Time:</span>
+    {% for preset in data.time_ranges %}
+    <a href="{{ request.url.include_query_params(after=preset.after, before='') }}">{{ preset.label }}</a>
+    {% endfor %}
+  </div>
 </form>
 
 <section class="cards">
@@ -378,11 +384,11 @@
 </section>
 
 <section class="panel">
-  <h2>Daily provider / model breakdown</h2>
+  <h2>Daily provider / model breakdown · {{ dashboard_timezone }}</h2>
   {% if data.usage.daily %}
   <div class="table-wrap">
     <table>
-      <thead><tr><th>UTC day</th><th>Provider</th><th>Model</th><th>Calls</th><th>Errors</th><th>Total tokens</th><th>Coverage</th><th>Avg latency</th></tr></thead>
+      <thead><tr><th>Local day</th><th>Provider</th><th>Model</th><th>Calls</th><th>Errors</th><th>Total tokens</th><th>Coverage</th><th>Avg latency</th></tr></thead>
       <tbody>
       {% for row in data.usage.daily %}
       <tr>

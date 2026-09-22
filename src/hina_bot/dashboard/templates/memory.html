@@ -12,39 +12,58 @@
   </div>
 </section>
 
-<form class="filters" method="get">
-  <input name="q" value="{{ data.filters.q }}" placeholder="content / source message">
-  <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
-  <input name="origin_realm" value="{{ data.filters.origin_realm }}" placeholder="origin realm">
-  <input name="origin_channel_id" value="{{ data.filters.origin_channel_id }}" placeholder="channel id">
-  <select name="kind">
-    <option value="">all kinds</option>
-    {% for value in ["fact","event","preference","relationship","boundary","task"] %}
-    <option value="{{ value }}" {% if data.filters.kind == value %}selected{% endif %}>{{ value }}</option>
+<form class="filters search-filter" method="get">
+  <div class="search-primary">
+    <label for="memory-search">Content search</label>
+    <input id="memory-search" class="search-input" name="q" value="{{ data.filters.q }}" placeholder="memory content / source message id 검색">
+  </div>
+  <div class="filter-row">
+    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
+    <input name="origin_realm" value="{{ data.filters.origin_realm }}" placeholder="origin realm">
+    <input name="origin_channel_id" value="{{ data.filters.origin_channel_id }}" placeholder="channel id">
+    <select name="kind">
+      <option value="">all kinds</option>
+      {% for value in ["fact","event","preference","relationship","boundary","task"] %}
+      <option value="{{ value }}" {% if data.filters.kind == value %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+    <select name="disclosure">
+      <option value="">all disclosure</option>
+      {% for value in ["local","implicit","reference_gated","global"] %}
+      <option value="{{ value }}" {% if data.filters.disclosure == value %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+    {% if data.schema.has_lifecycle %}
+    <input name="status" value="{{ data.filters.status }}" placeholder="lifecycle status">
+    {% endif %}
+    <select name="relationship">
+      <option value="">relationship: any</option>
+      <option value="yes" {% if data.filters.relationship == "yes" %}selected{% endif %}>relationship only</option>
+      <option value="no" {% if data.filters.relationship == "no" %}selected{% endif %}>non-relationship</option>
+    </select>
+    <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥">
+    <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤">
+    <label class="time-field">Created after
+      <input type="datetime-local" name="created_after" value="{{ data.filters.created_after }}">
+    </label>
+    <label class="time-field">Created before
+      <input type="datetime-local" name="created_before" value="{{ data.filters.created_before }}">
+    </label>
+    <label class="time-field">Updated after
+      <input type="datetime-local" name="updated_after" value="{{ data.filters.updated_after }}">
+    </label>
+    <label class="time-field">Updated before
+      <input type="datetime-local" name="updated_before" value="{{ data.filters.updated_before }}">
+    </label>
+    <button type="submit">Filter</button>
+    <a class="button secondary" href="/memory">Reset</a>
+  </div>
+  <div class="quick-ranges" aria-label="Quick created-time ranges">
+    <span>Created:</span>
+    {% for preset in data.time_ranges %}
+    <a href="{{ request.url.include_query_params(created_after=preset.after, created_before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
-  </select>
-  <select name="disclosure">
-    <option value="">all disclosure</option>
-    {% for value in ["local","implicit","reference_gated","global"] %}
-    <option value="{{ value }}" {% if data.filters.disclosure == value %}selected{% endif %}>{{ value }}</option>
-    {% endfor %}
-  </select>
-  {% if data.schema.has_lifecycle %}
-  <input name="status" value="{{ data.filters.status }}" placeholder="lifecycle status">
-  {% endif %}
-  <select name="relationship">
-    <option value="">relationship: any</option>
-    <option value="yes" {% if data.filters.relationship == "yes" %}selected{% endif %}>relationship only</option>
-    <option value="no" {% if data.filters.relationship == "no" %}selected{% endif %}>non-relationship</option>
-  </select>
-  <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥">
-  <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤">
-  <input type="datetime-local" name="created_after" value="{{ data.filters.created_after }}">
-  <input type="datetime-local" name="created_before" value="{{ data.filters.created_before }}">
-  <input type="datetime-local" name="updated_after" value="{{ data.filters.updated_after }}">
-  <input type="datetime-local" name="updated_before" value="{{ data.filters.updated_before }}">
-  <button type="submit">Filter</button>
-  <a class="button secondary" href="/memory">Reset</a>
+  </div>
 </form>
 
 <section class="panel flush">
@@ -71,11 +90,20 @@
           <td class="numeric">{{ row.source_message_ids_decoded|length }}</td>
           <td>{{ "yes" if row.has_relationship_evidence else "—" }}</td>
           {% if data.schema.has_lifecycle %}<td>{{ row.status or "—" }}</td>{% endif %}
-          <td>{{ row.updated_at }}</td>
+          <td>{{ row.updated_at | localtime }}</td>
         </tr>
         <tr class="content-row">
           <td></td>
-          <td colspan="{{ 9 if data.schema.has_lifecycle else 8 }}"><div class="memory-preview">{{ row.content }}</div></td>
+          <td colspan="{{ 9 if data.schema.has_lifecycle else 8 }}">
+            <div class="memory-preview">{{ row.content }}</div>
+            {% if row.search_matches %}
+            <div class="search-matches compact-search-matches">
+              {% for match in row.search_matches %}
+              <div><span class="match-field">{{ match.field }}</span> {{ match.fragment.before }}<mark>{{ match.fragment.match }}</mark>{{ match.fragment.after }}</div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
         </tr>
       {% endfor %}
       </tbody>

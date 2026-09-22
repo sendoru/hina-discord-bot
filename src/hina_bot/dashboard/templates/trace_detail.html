@@ -27,7 +27,7 @@
     <div><dt>Realm</dt><dd>{{ data.stored.realm }}</dd></div>
     <div><dt>User</dt><dd><code>{{ data.stored.user_id }}</code></dd></div>
     <div><dt>Message</dt><dd><code>{{ data.stored.message_id }}</code></dd></div>
-    <div><dt>Created</dt><dd>{{ data.stored.created_at }}</dd></div>
+    <div><dt>Created</dt><dd>{{ data.stored.created_at | localtime }}</dd></div>
   </dl>
   <h3>Input</h3>
   <div class="message">{{ data.stored.content }}</div>
@@ -248,7 +248,7 @@
   {% if data.timeline %}
     {% for item in data.timeline %}
     <details class="timeline-item" {% if item.source == "event" %}open{% endif %}>
-      <summary><span class="source {{ item.source }}">{{ item.source }}</span> {{ item.at }}</summary>
+      <summary><span class="source {{ item.source }}">{{ item.source }}</span> {{ item.at | localtime }}</summary>
       <pre>{{ item.row | tojson(indent=2) }}</pre>
     </details>
     {% endfor %}

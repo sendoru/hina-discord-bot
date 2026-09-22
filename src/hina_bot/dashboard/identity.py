@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from math import ceil
 
 from .telemetry import TelemetrySnapshot
+from .timeutils import parse_local_time, quick_ranges
 
 
 def _parse_time(value: object) -> datetime | None:
@@ -19,10 +20,15 @@ def _parse_time(value: object) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _in_window(row: dict[str, object], after: str, before: str) -> bool:
+def _in_window(
+    row: dict[str, object],
+    after: str,
+    before: str,
+    timezone: str,
+) -> bool:
     row_dt = _parse_time(row.get("at"))
-    after_dt = _parse_time(after)
-    before_dt = _parse_time(before)
+    after_dt = parse_local_time(after, timezone)
+    before_dt = parse_local_time(before, timezone)
     if after_dt and (row_dt is None or row_dt < after_dt):
         return False
     return not (before_dt and (row_dt is None or row_dt > before_dt))
@@ -175,6 +181,7 @@ def build_identity_observability(
     blocked_reason: str = "",
     after: str = "",
     before: str = "",
+    timezone: str = "Asia/Seoul",
 ) -> dict[str, object]:
     outcome = outcome.strip().lower()
     blocked_reason = blocked_reason.strip().lower()
@@ -185,14 +192,14 @@ def build_identity_observability(
         row
         for row in snapshot.events
         if row.get("event") == "identity.resolution"
-        and _in_window(row, after, before)
+        and _in_window(row, after, before, timezone)
     ]
     invoked = [row for row in all_events if row.get("resolver_invoked") is True]
     usage = [
         row
         for row in snapshot.usage
         if row.get("operation") == "identity_resolve"
-        and _in_window(row, after, before)
+        and _in_window(row, after, before, timezone)
     ]
 
     outcomes = Counter(str(row.get("outcome") or "unknown") for row in all_events)
@@ -230,6 +237,7 @@ def build_identity_observability(
             "after": after,
             "before": before,
         },
+        "time_ranges": quick_ranges(timezone),
         "summary": {
             "events": len(all_events),
             "invoked": invoked_count,

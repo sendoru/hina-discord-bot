@@ -44,7 +44,7 @@
         <td class="numeric">{{ row.effective_through_id }}</td>
         <td class="numeric">{{ row.latest_turn_id or "—" }}</td>
         <td class="numeric">{{ row.pending_turns }}</td>
-        <td>{{ row.extraction_updated_at or "—" }}</td>
+        <td>{{ row.extraction_updated_at | localtime if row.extraction_updated_at else "—" }}</td>
       </tr>
       {% endfor %}
       </tbody>

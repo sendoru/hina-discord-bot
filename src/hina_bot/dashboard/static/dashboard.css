@@ -539,3 +539,114 @@ code {
     justify-content: space-between;
   }
 }
+
+
+.timezone-badge {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.search-filter {
+  display: block;
+}
+.search-primary {
+  margin-bottom: 10px;
+}
+.search-primary label,
+.time-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.search-input {
+  width: min(720px, 100%);
+  min-height: 44px;
+  font-size: 16px;
+}
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+.time-field input {
+  min-width: 190px;
+}
+.quick-ranges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.quick-ranges a {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+}
+.search-matches {
+  margin: 10px 0 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: rgba(143, 180, 255, .06);
+  color: var(--muted);
+  font-size: 13px;
+}
+.compact-search-matches {
+  margin-bottom: 0;
+}
+.match-field {
+  display: inline-block;
+  min-width: 84px;
+  margin-right: 6px;
+  color: var(--accent);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+mark {
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.context-turn {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.context-turn:last-child {
+  border-bottom: 0;
+}
+.context-turn.selected {
+  margin: 0 -10px;
+  padding: 14px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(143, 180, 255, .06);
+}
+
+@media (max-width: 720px) {
+  .filter-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .filter-row > input,
+  .filter-row > select,
+  .filter-row > button,
+  .filter-row > .button,
+  .filter-row > .time-field,
+  .time-field input {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .filter-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

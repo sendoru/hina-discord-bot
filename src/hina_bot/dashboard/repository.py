@@ -85,6 +85,8 @@ class AdminRepository:
         realm: str = "",
         user_id: str = "",
         query: str = "",
+        created_after: str = "",
+        created_before: str = "",
     ) -> tuple[str, tuple[object, ...]]:
         clauses: list[str] = []
         params: list[object] = []
@@ -105,6 +107,12 @@ class AdminRepository:
             )
             pattern = f"%{escaped}%"
             params.extend((pattern, pattern, pattern))
+        if created_after:
+            clauses.append("created_at>=?")
+            params.append(created_after)
+        if created_before:
+            clauses.append("created_at<=?")
+            params.append(created_before)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         return where, tuple(params)
 
@@ -115,9 +123,16 @@ class AdminRepository:
         realm: str = "",
         user_id: str = "",
         query: str = "",
+        created_after: str = "",
+        created_before: str = "",
     ) -> int:
         where, params = self._turn_filters(
-            scope=scope, realm=realm, user_id=user_id, query=query
+            scope=scope,
+            realm=realm,
+            user_id=user_id,
+            query=query,
+            created_after=created_after,
+            created_before=created_before,
         )
         with self._connection() as db:
             row = db.execute(f"SELECT COUNT(*) AS count FROM turns{where}", params).fetchone()
@@ -130,6 +145,8 @@ class AdminRepository:
         realm: str = "",
         user_id: str = "",
         query: str = "",
+        created_after: str = "",
+        created_before: str = "",
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, object]]:
@@ -138,7 +155,12 @@ class AdminRepository:
         turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
         name = "name" if self._has_column("turns", "name") else "'' AS name"
         where, params = self._turn_filters(
-            scope=scope, realm=realm, user_id=user_id, query=query
+            scope=scope,
+            realm=realm,
+            user_id=user_id,
+            query=query,
+            created_after=created_after,
+            created_before=created_before,
         )
         with self._connection() as db:
             rows = db.execute(
@@ -148,6 +170,58 @@ class AdminRepository:
                 (*params, limit, offset),
             ).fetchall()
         return self._dicts(rows)
+
+    def _turn_select(self) -> tuple[str, str]:
+        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
+        name = "name" if self._has_column("turns", "name") else "'' AS name"
+        return turn_id, name
+
+    def turn_by_id(self, row_id: int) -> dict[str, object] | None:
+        turn_id, name = self._turn_select()
+        with self._connection() as db:
+            row = db.execute(
+                f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
+                           {turn_id},memory_context,created_at
+                    FROM turns WHERE id=?""",
+                (int(row_id),),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def turn_context(
+        self,
+        row_id: int,
+        *,
+        before: int = 5,
+        after: int = 5,
+    ) -> list[dict[str, object]]:
+        target = self.turn_by_id(row_id)
+        if target is None:
+            return []
+        before = min(20, max(0, int(before)))
+        after = min(20, max(0, int(after)))
+        turn_id, name = self._turn_select()
+        fields = (
+            f"id,scope,realm,user_id,{name},message_id,content,reply,exportable,"
+            f"{turn_id},memory_context,created_at"
+        )
+        with self._connection() as db:
+            previous = db.execute(
+                f"""SELECT {fields} FROM turns
+                    WHERE scope=? AND id<?
+                    ORDER BY id DESC LIMIT ?""",
+                (str(target["scope"]), int(row_id), before),
+            ).fetchall()
+            following = db.execute(
+                f"""SELECT {fields} FROM turns
+                    WHERE scope=? AND id>?
+                    ORDER BY id ASC LIMIT ?""",
+                (str(target["scope"]), int(row_id), after),
+            ).fetchall()
+        return [
+            *reversed(self._dicts(previous)),
+            target,
+            *self._dicts(following),
+        ]
 
     def turn_for_trace(self, turn_id: str) -> dict[str, object] | None:
         trace_id = turn_id.strip()

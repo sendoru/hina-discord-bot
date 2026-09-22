@@ -171,6 +171,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     identity = client.get("/identity")
     detail = client.get("/traces/trace-ui")
     conversations = client.get("/conversations?q=dashboard")
+    conversation_context = client.get("/conversations/1/context")
     memory = client.get("/memory?q=dashboard")
     memory_detail = client.get("/memory/1")
     summaries = client.get("/summaries?q=dashboard")
@@ -183,6 +184,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Hina Dashboard" in overview.text
     assert 'aria-label="Dashboard sections"' in overview.text
     assert "viewport-fit=cover" in overview.text
+    assert "Asia/Seoul" in overview.text
+    assert "2026-09-21 09:00:00 KST" in overview.text
     assert "trace-ui" in traces.text
     assert analytics.status_code == 200
     assert "Routing & Usage Analytics" in analytics.text
@@ -193,7 +196,14 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Context &amp; provenance" in detail.text
     assert "Egress policy" in detail.text
     assert "hello dashboard" in conversations.text
+    assert "Content search" in conversations.text
+    assert 'type="datetime-local"' in conversations.text
+    assert "<mark>dashboard</mark>" in conversations.text
+    assert conversation_context.status_code == 200
+    assert "Conversation Context" in conversation_context.text
     assert "dashboard memory" in memory.text
+    assert "Content search" in memory.text
+    assert "<mark>dashboard</mark>" in memory.text
     assert "hello dashboard" in memory_detail.text
     assert "legacy dashboard summary" in summaries.text
     assert "Memory Extraction Cursors" in cursors.text

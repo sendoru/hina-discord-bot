@@ -8,13 +8,30 @@
   </div>
 </section>
 
-<form class="filters" method="get">
-  <input name="q" value="{{ data.filters.query }}" placeholder="message id / input / reply">
-  <input name="scope" value="{{ data.filters.scope }}" placeholder="scope">
-  <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
-  <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
-  <button type="submit">Filter</button>
-  <a class="button secondary" href="/conversations">Reset</a>
+<form class="filters search-filter" method="get">
+  <div class="search-primary">
+    <label for="conversation-search">Content search</label>
+    <input id="conversation-search" class="search-input" name="q" value="{{ data.filters.query }}" placeholder="input / reply / message id 검색">
+  </div>
+  <div class="filter-row">
+    <input name="scope" value="{{ data.filters.scope }}" placeholder="scope">
+    <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
+    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
+    <label class="time-field">After
+      <input type="datetime-local" name="after" value="{{ data.filters.after }}">
+    </label>
+    <label class="time-field">Before
+      <input type="datetime-local" name="before" value="{{ data.filters.before }}">
+    </label>
+    <button type="submit">Filter</button>
+    <a class="button secondary" href="/conversations">Reset</a>
+  </div>
+  <div class="quick-ranges" aria-label="Quick time ranges">
+    <span>Time:</span>
+    {% for preset in data.time_ranges %}
+    <a href="{{ request.url.include_query_params(after=preset.after, before='', page=1) }}">{{ preset.label }}</a>
+    {% endfor %}
+  </div>
 </form>
 
 {% if data.rows %}
@@ -23,9 +40,10 @@
     <div class="conversation-head">
       <div>
         <strong>{{ row.scope }}</strong>
-        <span>{{ row.created_at }}</span>
+        <span>{{ row.created_at | localtime }}</span>
       </div>
       <div>
+        <a href="/conversations/{{ row.id }}/context">context</a>
         {% if row.turn_id %}<a href="/traces/{{ row.turn_id }}">trace</a>{% else %}<span class="muted">no trace id</span>{% endif %}
         <code>msg {{ row.message_id }}</code>
       </div>
@@ -35,6 +53,13 @@
       <div><dt>User</dt><dd>{% if row.name %}{{ row.name }} · {% endif %}<code>{{ row.user_id }}</code></dd></div>
       <div><dt>Exportable</dt><dd>{{ row.exportable }}</dd></div>
     </dl>
+    {% if row.search_matches %}
+    <div class="search-matches">
+      {% for match in row.search_matches %}
+      <div><span class="match-field">{{ match.field }}</span> {{ match.fragment.before }}<mark>{{ match.fragment.match }}</mark>{{ match.fragment.after }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
     <h3>Input</h3>
     <div class="message">{{ row.content }}</div>
     <h3>Reply</h3>

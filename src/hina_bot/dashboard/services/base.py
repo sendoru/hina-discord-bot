@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from ..repository import AdminRepository
+from ..timeutils import quick_ranges
 
 
 def _as_int(value: object) -> int:
@@ -73,8 +74,12 @@ class Page:
 
 
 class ReadService:
-    def __init__(self, repository: AdminRepository):
+    def __init__(self, repository: AdminRepository, *, timezone: str = "Asia/Seoul"):
         self.repository = repository
+        self.timezone = timezone
+
+    def time_ranges(self) -> tuple[dict[str, str], ...]:
+        return quick_ranges(self.timezone)
 
     @staticmethod
     def _page(number: int, size: int, total: int) -> Page:

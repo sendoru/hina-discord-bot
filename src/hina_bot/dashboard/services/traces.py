@@ -4,15 +4,23 @@ import json
 from collections import Counter, defaultdict
 
 from ..repository import AdminRepository
+from ..searchutils import search_matches
 from ..telemetry import TelemetryReader, TelemetrySnapshot
+from ..timeutils import db_utc_timestamp, parse_local_time
 from .base import Page, ReadService, _as_int, _parse_time, _timestamp, _turn_id
 
 _TERMINAL_EVENTS = {"turn.completed", "turn.failed", "turn.dropped"}
 
 
 class TraceService(ReadService):
-    def __init__(self, repository: AdminRepository, telemetry: TelemetryReader):
-        super().__init__(repository)
+    def __init__(
+        self,
+        repository: AdminRepository,
+        telemetry: TelemetryReader,
+        *,
+        timezone: str = "Asia/Seoul",
+    ):
+        super().__init__(repository, timezone=timezone)
         self.telemetry = telemetry
 
     def overview(self) -> dict[str, object]:
@@ -96,8 +104,8 @@ class TraceService(ReadService):
         after = after.strip()
         before = before.strip()
         query = query.strip().lower()
-        after_dt = _parse_time(after)
-        before_dt = _parse_time(before)
+        after_dt = parse_local_time(after, self.timezone)
+        before_dt = parse_local_time(before, self.timezone)
 
         def keep(row: dict[str, object]) -> bool:
             if scope and str(row.get("scope", "")).lower() != scope:
@@ -166,6 +174,7 @@ class TraceService(ReadService):
                 "before": before,
                 "q": query,
             },
+            "time_ranges": self.time_ranges(),
         }
 
     def _context_provenance_view(
@@ -328,25 +337,76 @@ class TraceService(ReadService):
         realm: str = "",
         user_id: str = "",
         query: str = "",
+        after: str = "",
+        before: str = "",
     ) -> dict[str, object]:
         page_size = min(100, max(10, int(page_size)))
         page = max(1, int(page))
-        filters = {
+        query = query.strip()
+        repository_filters = {
             "scope": scope.strip(),
             "realm": realm.strip(),
             "user_id": user_id.strip(),
-            "query": query.strip(),
+            "query": query,
+            "created_after": db_utc_timestamp(after, self.timezone),
+            "created_before": db_utc_timestamp(before, self.timezone),
         }
-        total = self.repository.count_turns(**filters)
+        total = self.repository.count_turns(**repository_filters)
         pagination = self._page(page, page_size, total)
         if pagination.number > pagination.pages:
             pagination = Page(pagination.pages, pagination.size, pagination.total)
-        rows = self.repository.search_turns(
-            **filters,
+        raw_rows = self.repository.search_turns(
+            **repository_filters,
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
         )
-        return {"rows": rows, "page": pagination, "filters": filters}
+        rows = []
+        for raw in raw_rows:
+            row = dict(raw)
+            row["search_matches"] = search_matches(
+                query,
+                (
+                    ("input", row.get("content")),
+                    ("reply", row.get("reply")),
+                    ("message id", row.get("message_id")),
+                ),
+            )
+            rows.append(row)
+        return {
+            "rows": rows,
+            "page": pagination,
+            "filters": {
+                "scope": scope.strip(),
+                "realm": realm.strip(),
+                "user_id": user_id.strip(),
+                "query": query,
+                "after": after.strip(),
+                "before": before.strip(),
+            },
+            "time_ranges": self.time_ranges(),
+        }
+
+    def conversation_context(
+        self,
+        turn_row_id: int,
+        *,
+        before: int = 5,
+        after: int = 5,
+    ) -> dict[str, object] | None:
+        selected = self.repository.turn_by_id(turn_row_id)
+        if selected is None:
+            return None
+        rows = []
+        for row in self.repository.turn_context(turn_row_id, before=before, after=after):
+            value = dict(row)
+            value["selected"] = int(value["id"]) == int(turn_row_id)
+            rows.append(value)
+        return {
+            "selected": selected,
+            "rows": rows,
+            "before": before,
+            "after": after,
+        }
 
     def _trace_summaries(
         self,
