@@ -8,8 +8,8 @@
   </div>
   <div class="window">
     <strong>Available telemetry</strong>
-    <span>{{ data.available.oldest_at or "none" }}</span>
-    <span>→ {{ data.available.newest_at or "none" }}</span>
+    <span>{{ data.available.oldest_at | localtime if data.available.oldest_at else "none" }}</span>
+    <span>→ {{ data.available.newest_at | localtime if data.available.newest_at else "none" }}</span>
   </div>
 </section>
 
@@ -95,7 +95,7 @@
       <tbody>
       {% for row in data.recent_traces %}
         <tr>
-          <td><a href="/traces/{{ row.turn_id }}">{{ row.at }}</a></td>
+          <td><a href="/traces/{{ row.turn_id }}">{{ row.at | localtime }}</a></td>
           <td>{{ row.scope or "—" }}</td>
           <td><span class="status">{{ row.status }}</span></td>
           <td>{{ row.model_tier or "—" }}</td>

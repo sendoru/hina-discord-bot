@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from ..repository import AdminRepository
 from ..telemetry import TelemetryReader
-from .base import Page, _db_timestamp, _decode_json
+from ..timeutils import db_utc_timestamp
+from .base import Page, _decode_json
 from .memory import MemoryService
 
 
 class ReconciliationService(MemoryService):
-    def __init__(self, repository: AdminRepository, telemetry: TelemetryReader):
-        super().__init__(repository)
+    def __init__(
+        self,
+        repository: AdminRepository,
+        telemetry: TelemetryReader,
+        *,
+        timezone: str = "Asia/Seoul",
+    ):
+        super().__init__(repository, timezone=timezone)
         self.telemetry = telemetry
 
     @staticmethod
@@ -70,8 +77,8 @@ class ReconciliationService(MemoryService):
             "query": query.strip(),
             "confidence_min": optional_float(confidence_min),
             "confidence_max": optional_float(confidence_max),
-            "created_after": _db_timestamp(created_after),
-            "created_before": _db_timestamp(created_before),
+            "created_after": db_utc_timestamp(created_after, self.timezone),
+            "created_before": db_utc_timestamp(created_before, self.timezone),
         }
         total = self.repository.count_reconciliation_proposals(**filters)
         pagination = self._page(page, page_size, total)
@@ -100,6 +107,7 @@ class ReconciliationService(MemoryService):
                 "created_before": created_before.strip(),
             },
             "schema": self.repository.reconciliation_schema(),
+            "time_ranges": self.time_ranges(),
         }
 
     def reconciliation_proposal(self, proposal_id: int) -> dict[str, object] | None:

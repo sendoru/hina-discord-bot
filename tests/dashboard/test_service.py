@@ -526,3 +526,32 @@ def test_reconciliation_service_list_stats_and_detail_context(tmp_path):
         "memory.shadow_extraction",
     ]
     assert trace["events"][0]["event"] == "turn.completed"
+
+
+def test_conversation_service_local_time_filter_and_search_match(tmp_path):
+    service = build_service(tmp_path)
+    service.timezone = "Asia/Seoul"
+    service.traces_service.timezone = "Asia/Seoul"
+
+    data = service.conversations(
+        query="question",
+        after="2020-01-01T00:00",
+        before="2030-01-01T00:00",
+    )
+
+    assert data["page"].total == 1
+    assert data["rows"][0]["search_matches"][0]["field"] == "input"
+    assert data["rows"][0]["search_matches"][0]["fragment"]["match"] == "question"
+    assert data["time_ranges"]
+
+
+def test_conversation_context_marks_selected_turn(tmp_path):
+    service = build_service(tmp_path)
+    row_id = int(service.repository.search_turns(limit=1)[0]["id"])
+
+    data = service.conversation_context(row_id, before=2, after=2)
+
+    assert data is not None
+    selected = [row for row in data["rows"] if row["selected"]]
+    assert len(selected) == 1
+    assert selected[0]["id"] == row_id

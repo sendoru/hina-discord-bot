@@ -4,8 +4,10 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from math import ceil
+from zoneinfo import ZoneInfo
 
 from .telemetry import TelemetrySnapshot
+from .timeutils import parse_local_time, quick_ranges
 
 _TOKEN_FIELDS = (
     "input_tokens",
@@ -36,9 +38,14 @@ def _parse_time(value: object) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def _filter_time(rows: Iterable[dict[str, object]], after: str, before: str):
-    after_dt = _parse_time(after)
-    before_dt = _parse_time(before)
+def _filter_time(
+    rows: Iterable[dict[str, object]],
+    after: str,
+    before: str,
+    timezone: str,
+):
+    after_dt = parse_local_time(after, timezone)
+    before_dt = parse_local_time(before, timezone)
     result = []
     for row in rows:
         row_dt = _parse_time(row.get("at"))
@@ -255,11 +262,18 @@ def _transition_counts(
     return {"rows": result, "missing": missing}
 
 
-def _daily(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+def _daily(
+    rows: list[dict[str, object]],
+    timezone: str,
+) -> list[dict[str, object]]:
     buckets: dict[tuple[str, str, str], list[dict[str, object]]] = defaultdict(list)
     for row in rows:
         at = _parse_time(row.get("at"))
-        day = at.date().isoformat() if at else "(unknown)"
+        day = (
+            at.astimezone(ZoneInfo(timezone)).date().isoformat()
+            if at
+            else "(unknown)"
+        )
         provider = str(row.get("provider") or "(unknown)")
         model = str(row.get("model") or "(unknown)")
         buckets[(day, provider, model)].append(row)
@@ -289,6 +303,7 @@ def build_analytics(
     provider: str = "",
     after: str = "",
     before: str = "",
+    timezone: str = "Asia/Seoul",
 ) -> dict[str, object]:
     operation = operation.strip().lower()
     model = model.strip().lower()
@@ -296,7 +311,7 @@ def build_analytics(
     after = after.strip()
     before = before.strip()
 
-    time_usage = _filter_time(snapshot.usage, after, before)
+    time_usage = _filter_time(snapshot.usage, after, before, timezone)
     api_rows = [row for row in time_usage if _api_row(row)]
     filtered_api = [
         row
@@ -335,7 +350,7 @@ def build_analytics(
         and not isinstance(row.get("model_route_margin"), bool)
     ]
 
-    exchanges = _filter_time(snapshot.exchanges, after, before)
+    exchanges = _filter_time(snapshot.exchanges, after, before, timezone)
     exchange_completeness = Counter()
     for row in exchanges:
         value = row.get("usage_complete")
@@ -365,7 +380,7 @@ def build_analytics(
         or "memory" in str(row.get("operation") or "")
         or "summary" in str(row.get("operation") or "")
     ]
-    time_events = _filter_time(snapshot.events, after, before)
+    time_events = _filter_time(snapshot.events, after, before, timezone)
     answer_turn_ids = {
         str(row["turn_id"])
         for row in answer_rows
@@ -574,6 +589,7 @@ def build_analytics(
             "after": after,
             "before": before,
         },
+        "time_ranges": quick_ranges(timezone),
         "usage": {
             "api_calls": len(filtered_api),
             "errors": sum(row.get("status") == "error" for row in filtered_api),
@@ -588,7 +604,7 @@ def build_analytics(
             "operations": _aggregate_calls(filtered_api, "operation"),
             "models": _aggregate_calls(filtered_api, "model"),
             "providers": _aggregate_calls(filtered_api, "provider"),
-            "daily": _daily(filtered_api),
+            "daily": _daily(filtered_api, timezone),
             "memory_calls": len(memory_rows),
             "memory_tokens": _metric(memory_rows, "total_tokens"),
         },

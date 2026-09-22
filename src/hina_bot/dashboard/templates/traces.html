@@ -8,8 +8,8 @@
   </div>
   <div class="window">
     <strong>Available telemetry</strong>
-    <span>{{ data.available.oldest_at or "none" }}</span>
-    <span>→ {{ data.available.newest_at or "none" }}</span>
+    <span>{{ data.available.oldest_at | localtime if data.available.oldest_at else "none" }}</span>
+    <span>→ {{ data.available.newest_at | localtime if data.available.newest_at else "none" }}</span>
   </div>
 </section>
 
@@ -34,10 +34,16 @@
     <option value="yes" {% if data.filters.web_search == "yes" %}selected{% endif %}>search: used</option>
     <option value="no" {% if data.filters.web_search == "no" %}selected{% endif %}>search: not used</option>
   </select>
-  <input name="after" value="{{ data.filters.after }}" placeholder="after (ISO-8601 UTC)">
-  <input name="before" value="{{ data.filters.before }}" placeholder="before (ISO-8601 UTC)">
+  <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
+  <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
   <button type="submit">Filter</button>
   <a class="button secondary" href="/traces">Reset</a>
+  <div class="quick-ranges" aria-label="Quick time ranges">
+    <span>Time:</span>
+    {% for preset in data.time_ranges %}
+    <a href="{{ request.url.include_query_params(after=preset.after, before='', page=1) }}">{{ preset.label }}</a>
+    {% endfor %}
+  </div>
 </form>
 
 <section class="panel flush">
@@ -50,7 +56,7 @@
       <tbody>
       {% for row in data.rows %}
         <tr>
-          <td><a href="/traces/{{ row.turn_id }}">{{ row.at }}</a></td>
+          <td><a href="/traces/{{ row.turn_id }}">{{ row.at | localtime }}</a></td>
           <td>{{ row.scope or "—" }}</td>
           <td><span class="status">{{ row.status }}</span></td>
           <td>{{ row.model_tier or "—" }}</td>

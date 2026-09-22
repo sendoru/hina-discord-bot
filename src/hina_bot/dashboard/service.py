@@ -10,12 +10,23 @@ from .telemetry import TelemetryReader
 class DashboardService:
     """Compatibility facade over domain-specific dashboard read services."""
 
-    def __init__(self, repository: AdminRepository, telemetry: TelemetryReader):
+    def __init__(
+        self,
+        repository: AdminRepository,
+        telemetry: TelemetryReader,
+        *,
+        timezone: str = "Asia/Seoul",
+    ):
         self.repository = repository
         self.telemetry = telemetry
-        self.traces_service = TraceService(repository, telemetry)
-        self.memory_service = MemoryService(repository)
-        self.reconciliation_service = ReconciliationService(repository, telemetry)
+        self.timezone = timezone
+        self.traces_service = TraceService(repository, telemetry, timezone=timezone)
+        self.memory_service = MemoryService(repository, timezone=timezone)
+        self.reconciliation_service = ReconciliationService(
+            repository,
+            telemetry,
+            timezone=timezone,
+        )
 
     def analytics(
         self,
@@ -33,6 +44,7 @@ class DashboardService:
             provider=provider,
             after=after,
             before=before,
+            timezone=self.timezone,
         )
 
     def identity_observability(
@@ -49,6 +61,7 @@ class DashboardService:
             blocked_reason=blocked_reason,
             after=after,
             before=before,
+            timezone=self.timezone,
         )
 
     def overview(self) -> dict[str, object]:
@@ -62,6 +75,13 @@ class DashboardService:
 
     def conversations(self, **kwargs) -> dict[str, object]:
         return self.traces_service.conversations(**kwargs)
+
+    def conversation_context(
+        self,
+        turn_row_id: int,
+        **kwargs,
+    ) -> dict[str, object] | None:
+        return self.traces_service.conversation_context(turn_row_id, **kwargs)
 
     def memory_items(self, **kwargs) -> dict[str, object]:
         return self.memory_service.memory_items(**kwargs)
