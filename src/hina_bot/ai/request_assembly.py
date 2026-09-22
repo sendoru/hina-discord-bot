@@ -262,6 +262,7 @@ class RequestAssembler(BaseLLM):
         channel_context = self._bind_current_speaker(channel_context or [], scope.user_id)
         current_channel_only = self._current_channel_scope_only(scope, routing_content)
         history = []
+        history_message_ids: list[str] = []
         if use_memory and scope.guild_id is None:
             turns = []
             used = 0
@@ -272,6 +273,7 @@ class RequestAssembler(BaseLLM):
                 turns.append(turn)
                 used += size
             for turn in reversed(turns):
+                history_message_ids.append(str(turn["message_id"]))
                 history.extend((
                     {"role": "user", "content": turn["content"]},
                     {"role": "assistant", "content": turn["reply"]},
@@ -382,6 +384,7 @@ class RequestAssembler(BaseLLM):
             cross_channel_memory=cross_channel_memory,
             structured=structured_trace,
             visuals=CURRENT_VISUAL_INPUTS.get(),
+            conversation_history_message_ids=history_message_ids,
         )
         CURRENT_CONTEXT_PROVENANCE.set(context_provenance)
         section_counts = {
