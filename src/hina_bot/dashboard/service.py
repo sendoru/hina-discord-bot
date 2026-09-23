@@ -86,6 +86,9 @@ class DashboardService:
     def memory_items(self, **kwargs) -> dict[str, object]:
         return self.memory_service.memory_items(**kwargs)
 
+    def relationship_profiles(self, **kwargs) -> dict[str, object]:
+        return self.memory_service.relationship_profiles(**kwargs)
+
     def memory_item(self, item_id: int) -> dict[str, object] | None:
         return self.memory_service.memory_item(item_id)
 
