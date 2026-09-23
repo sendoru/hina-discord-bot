@@ -285,6 +285,24 @@ queries the full table so operators can inspect superseded history and follow re
 The repository still detects these columns dynamically so older/pre-migration read-only database copies
 remain viewable without dashboard-side schema writes.
 
+### Effective relationship profiles
+
+`/relationships` reproduces the runtime cross-space implicit relationship projection for a selected
+target guild/channel. The projection is intentionally target-specific: relationship memories already
+FULL in that disclosure space do not contribute to the implicit profile.
+
+The page uses the same shared aggregation contract as request assembly:
+
+- active `relationship` + `implicit` memories only,
+- minimum item confidence `0.8`,
+- at most the eight newest eligible observations,
+- confidence-weighted noisy-OR with `0.85` exponential recency decay,
+- six positive-evidence axes: familiarity, comfort, casualness, teasing tolerance,
+  support openness, and task orientation.
+
+Each user row shows the resulting 1..4 axis values and can expand the exact memory observations used
+for that projection. Missing axes mean no stored positive evidence, never negative evidence.
+
 ## Legacy summary and extraction state
 
 `/summaries` reports:
