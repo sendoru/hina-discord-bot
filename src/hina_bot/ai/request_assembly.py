@@ -68,6 +68,10 @@ author_user_id가 current_speaker와 다르면 그 발언을 현재 사용자에
 현재 발화가 '근데/그럼/그래도' 같은 짧은 반론·교정이면 replied_message의 문장만 따로 답하지 말고,
 원래 요청과 직전 답변의 논리를 함께 재검토하세요. 감사·웃음·사과 같은 짧은 반응도 실제 상호작용의
 감정적 태도는 이어받되 reference_material 자체를 둘 사이의 과거 경험으로 승격하지 마세요.
+짧은 '왜?', '그럼?', '그건?'처럼 현재 발화만으로 대상이 부족하면 문맥 우선순위는
+active_reply_chain > speaker_thread > target_user_history > channel_ambient 순서입니다. 다만 현재 발화가
+새 주제나 새 대상을 명시하면 현재 발화가 가장 우선하며, reply했다는 이유만으로 이전 주제를 강제로
+이어가지 마세요.
 체인에 이미지가 있었다는 표식만 있고 실제 시각 입력이 제공되지 않았다면 이미지 내용을 기억하거나
 볼 수 있는 척하지 마세요.
 
@@ -431,18 +435,13 @@ class RequestAssembler(BaseLLM):
             "replied_message",
         }
         channel_rows = list(context.get("channel_recent_messages", ()))
-        has_reply_origin = any(
-            row.get("context_kind")
-            in {"reply_reference_source", "reply_origin_source", "reply_origin_request"}
-            for row in channel_rows
-        )
         context["active_reply_chain"] = [
             row for row in channel_rows
-            if has_reply_origin and row.get("context_kind") in chain_kinds
+            if row.get("context_kind") in chain_kinds
         ]
         context["channel_recent_messages"] = [
             row for row in channel_rows
-            if not has_reply_origin or row.get("context_kind") not in chain_kinds
+            if row.get("context_kind") not in chain_kinds
         ]
         structured_trace = structured_memory_provenance(
             store,
