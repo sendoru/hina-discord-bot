@@ -1527,3 +1527,14 @@ pre {
     padding-left: max(12px, env(safe-area-inset-left));
   }
 }
+
+
+/* Local dashboard brand asset */
+.brand-mark {
+  display: block;
+  object-fit: contain;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
