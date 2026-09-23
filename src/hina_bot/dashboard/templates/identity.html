@@ -103,7 +103,7 @@
   </p>
   {% if data.repeat_groups %}
   <div class="table-wrap">
-    <table>
+    <table class="wide-table">
       <thead><tr><th>Reference group</th><th>Events</th><th>Resolved</th><th>Ambiguous</th><th>None</th><th>Potential hits</th><th>Conflicts</th><th>Distinct users</th><th>Stable?</th></tr></thead>
       <tbody>
       {% for row in data.repeat_groups %}
@@ -137,7 +137,7 @@
   <h2>Recent resolver / policy cases</h2>
   {% if data.recent %}
   <div class="table-wrap">
-    <table>
+    <table class="wide-table">
       <thead><tr><th>Time</th><th>Outcome</th><th>Candidates</th><th>Raw candidates</th><th>Blocked reason</th><th>Reference group</th><th>Resolved user group</th><th>Trace</th></tr></thead>
       <tbody>
       {% for row in data.recent %}

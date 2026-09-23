@@ -20,7 +20,7 @@
   <h2>Personal summaries</h2>
   {% if data.personal %}
   <div class="table-wrap">
-    <table>
+    <table class="wide-table">
       <thead><tr><th>Scope</th><th>User</th><th>Through</th><th>Latest retained</th><th>Pending</th><th>Exportable</th><th>Structured items</th><th>Extraction cursor</th></tr></thead>
       <tbody>
       {% for row in data.personal %}
@@ -50,7 +50,7 @@
   <h2>Shared summaries</h2>
   {% if data.shared %}
   <div class="table-wrap">
-    <table>
+    <table class="wide-table">
       <thead><tr><th>Scope</th><th>User</th><th>Through</th><th>Latest retained call</th><th>Pending calls</th></tr></thead>
       <tbody>
       {% for row in data.shared %}

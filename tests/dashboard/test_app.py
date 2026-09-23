@@ -231,6 +231,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert overview.status_code == 200
     assert "Hina Dashboard" in overview.text
     assert 'aria-label="Dashboard sections"' in overview.text
+    assert 'class="mobile-nav"' in overview.text
+    assert 'aria-label="Mobile dashboard sections"' in overview.text
+    assert "Navigate" in overview.text
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
@@ -247,6 +250,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Current observability epoch #1" in traces.text
     assert 'aria-label="Observability epoch"' in traces.text
     assert "Advanced filters" in traces.text
+    assert 'class="wide-table"' in traces.text
     assert 'aria-label="Active filters"' in traces.text
     assert analytics.status_code == 200
     assert "Routing & Usage Analytics" in analytics.text
@@ -285,6 +289,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "FULL/raw relationship memory" in relationships.text
     assert "same guild raw relationship" in relationships.text
     assert "Cross-space IMPLICIT projection" in relationships.text
+    assert 'class="table-wrap relationship-desktop"' in relationships.text
+    assert 'class="relationship-mobile"' in relationships.text
+    assert 'class="relationship-mobile-card"' in relationships.text
     assert state.status_code == 200
     assert "Memory &amp; Context State" in state.text
     assert "dashboard server note" in state.text
@@ -292,6 +299,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "dashboard user note" in state.text
     assert "read_only" in state.text
     assert "direct" in state.text
+    assert 'class="wide-table"' not in state.text
     assert "legacy dashboard summary" in summaries.text
     assert "Dashboard User<br><code>100</code>" in summaries.text
     assert "Memory Extraction Cursors" in cursors.text
@@ -315,6 +323,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert ".sidebar-nav" in static.text
     assert ".nav-link.active" in static.text
     assert ".notice.warning" in static.text
+    assert ".mobile-nav-panel" in static.text
+    assert ".wide-table" in static.text
+    assert ".relationship-mobile-card" in static.text
+    assert ".relationship-desktop" in static.text
 
 
 def test_unknown_trace_returns_404(tmp_path):
