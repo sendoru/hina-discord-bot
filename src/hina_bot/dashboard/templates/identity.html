@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
 {% block title %}Identity · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -21,6 +22,7 @@
     {% endfor %}
   </select>
   <input name="blocked_reason" value="{{ data.filters.blocked_reason }}" placeholder="blocked reason">
+  {{ epoch_selector(data) }}
   <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
   <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
   <button type="submit">Filter</button>
@@ -32,6 +34,8 @@
     {% endfor %}
   </div>
 </form>
+
+{{ epoch_notice(data) }}
 
 <section class="cards">
   <article class="card"><span>Resolver invoked</span><strong>{{ data.summary.invoked }}</strong></article>
