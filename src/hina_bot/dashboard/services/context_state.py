@@ -103,7 +103,8 @@ class ContextStateService(ReadService):
         target_guild_id = target_guild_id.strip()
         target_channel_id = target_channel_id.strip()
         target_user_id = target_user_id.strip()
-        query = query.strip().lower()
+        query = query.strip()
+        query_folded = query.lower()
 
         memory_override_rows = self.repository.scope_mode_overrides("memory_modes")
         chat_override_rows = self.repository.scope_mode_overrides("chat_log_modes")
@@ -129,7 +130,7 @@ class ContextStateService(ReadService):
                 internal_note_count += 1
                 continue
             note = self._manual_note_row(row, names)
-            if query:
+            if query_folded:
                 haystack = " ".join(
                     (
                         str(note["scope"]),
@@ -140,7 +141,7 @@ class ContextStateService(ReadService):
                         str(note["text"]),
                     )
                 ).lower()
-                if query not in haystack:
+                if query_folded not in haystack:
                     continue
             manual_notes.append(note)
 
