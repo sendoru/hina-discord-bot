@@ -7,27 +7,58 @@
   <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <a class="brand" href="/">Hina Dashboard</a>
-      <span class="badge">read-only</span><span class="timezone-badge">{{ dashboard_timezone }}</span>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-branding">
+        <a class="brand" href="/">
+          <span class="brand-mark">H</span>
+          <span class="brand-copy">
+            <strong>Hina</strong>
+            <small>Dashboard</small>
+          </span>
+        </a>
+        <span class="badge">read-only</span>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Dashboard sections">
+        <a class="nav-link nav-home {% if request.url.path == '/' %}active{% endif %}" href="/">
+          <span>Overview</span>
+        </a>
+
+        <div class="nav-group">
+          <span class="nav-group-label">Observability</span>
+          <a class="nav-link {% if request.url.path.startswith('/traces') %}active{% endif %}" href="/traces">Traces</a>
+          <a class="nav-link {% if request.url.path == '/analytics' %}active{% endif %}" href="/analytics">Analytics</a>
+          <a class="nav-link {% if request.url.path == '/identity' %}active{% endif %}" href="/identity">Identity</a>
+        </div>
+
+        <div class="nav-group">
+          <span class="nav-group-label">Context</span>
+          <a class="nav-link {% if request.url.path.startswith('/conversations') %}active{% endif %}" href="/conversations">Conversations</a>
+          <a class="nav-link {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}active{% endif %}" href="/memory">Memory</a>
+          <a class="nav-link {% if request.url.path == '/relationships' %}active{% endif %}" href="/relationships">Relationships</a>
+          <a class="nav-link {% if request.url.path == '/state' %}active{% endif %}" href="/state">State</a>
+        </div>
+
+        <div class="nav-group">
+          <span class="nav-group-label">Memory ops</span>
+          <a class="nav-link {% if request.url.path == '/summaries' %}active{% endif %}" href="/summaries">Summaries</a>
+          <a class="nav-link {% if request.url.path == '/memory/cursors' %}active{% endif %}" href="/memory/cursors">Cursors</a>
+          <a class="nav-link {% if request.url.path.startswith('/reconciliation') %}active{% endif %}" href="/reconciliation">Reconciliation</a>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="sidebar-footer-label">Display timezone</span>
+        <span class="timezone-badge">{{ dashboard_timezone }}</span>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <main class="container">
+        {% block content %}{% endblock %}
+      </main>
     </div>
-    <nav aria-label="Dashboard sections">
-      <a href="/">Overview</a>
-      <a href="/traces">Traces</a>
-      <a href="/analytics">Analytics</a>
-      <a href="/identity">Identity</a>
-      <a href="/conversations">Conversations</a>
-      <a href="/memory">Memory</a>
-      <a href="/relationships">Relationships</a>
-      <a href="/state">State</a>
-      <a href="/summaries">Summaries</a>
-      <a href="/memory/cursors">Cursors</a>
-      <a href="/reconciliation">Reconciliation</a>
-    </nav>
-  </header>
-  <main class="container">
-    {% block content %}{% endblock %}
-  </main>
+  </div>
 </body>
 </html>
