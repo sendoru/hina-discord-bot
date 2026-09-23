@@ -53,6 +53,49 @@ _BROAD_SERVER_MEMORY_QUERY = re.compile(
     re.IGNORECASE,
 )
 
+_PASSIVE_RECENT_VISUAL_REFERENCE = re.compile(
+    r"(?:"
+    r"(?:아까|방금|좀\s*전|이전|전에|위(?:에|쪽)?)\s*.{0,16}?"
+    r"(?:그\s*)?(?:거|것|사진|이미지|그림|짤|스샷|스크린샷)"
+    r"|(?:그|저)\s*(?:거|것|사진|이미지|그림|짤|스샷|스크린샷)"
+    r"|(?:earlier|previous|above|that).{0,16}(?:photo|image|picture|screenshot)"
+    r")",
+    re.IGNORECASE,
+)
+_ADDITIONAL_RECENT_VISUAL_REFERENCE = re.compile(
+    r"(?:비교|대조|차이|둘\s*다|둘\s*중|같이\s*(?:봐|보|놓)|"
+    r"함께\s*(?:봐|보)|compare|difference|both)",
+    re.IGNORECASE,
+)
+_CURRENT_VISUAL_REFERENCE = re.compile(r"<a?:[^:<>\s]{1,32}:[0-9]{1,20}>")
+
+
+def _has_current_visual_reference(message) -> bool:
+    """Treat any current attachment/sticker/emoji as a direct anchor before weak recent context."""
+    return bool(
+        getattr(message, "attachments", ())
+        or getattr(message, "stickers", ())
+        or _CURRENT_VISUAL_REFERENCE.search(str(getattr(message, "content", "") or ""))
+    )
+
+
+def _passive_recent_visual_requested(
+    text: str,
+    *,
+    has_direct_reference: bool,
+) -> bool:
+    """Allow weak recent visuals only for explicit backward visual references.
+
+    Direct current/reply/causal anchors suppress fallback substitution. A comparison-style request
+    can opt into an additional recent visual alongside the direct anchor.
+    """
+    if not text or _PASSIVE_RECENT_VISUAL_REFERENCE.search(text) is None:
+        return False
+    return (
+        not has_direct_reference
+        or _ADDITIONAL_RECENT_VISUAL_REFERENCE.search(text) is not None
+    )
+
 
 def _augment_empty_call(content: str, text: str | None, has_visuals: bool) -> str | None:
     """Only add image intent when a bare trigger has strong visual context."""
@@ -476,6 +519,19 @@ class HinaClient(BaseHinaClient):
         )
         reply_context_ms = round((time.perf_counter() - reply_context_started) * 1000)
         reply_chain_visual_ids = self.recent.reply_chain_visual_ids(scope, replied)
+        has_direct_visual_reference = bool(
+            getattr(message, "reference", None) is not None
+            or replied
+            or reply_chain_visual_ids
+            or _has_current_visual_reference(message)
+        )
+        include_passive_recent_visual = (
+            self.store.chat_log_enabled(scope)
+            and _passive_recent_visual_requested(
+                text or "",
+                has_direct_reference=has_direct_visual_reference,
+            )
+        )
 
         visual_capture_mode = capture_mode(self.store, scope)
 
@@ -511,7 +567,7 @@ class HinaClient(BaseHinaClient):
                 message,
                 limits=self.vision_limits,
                 include_reply=True,
-                include_recent=self.store.chat_log_enabled(scope),
+                include_recent=include_passive_recent_visual,
                 allowed_reply_author_id=(
                     {scope.user_id, self.user.id} if strict_egress else None
                 ),
