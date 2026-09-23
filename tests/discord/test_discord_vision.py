@@ -32,6 +32,10 @@ def test_passive_recent_visual_requires_explicit_backward_reference():
         has_direct_reference=False,
     )
     assert _passive_recent_visual_requested(
+        "아까 보낸 사진 뭐였어?",
+        has_direct_reference=False,
+    )
+    assert _passive_recent_visual_requested(
         "저거 뭐야?",
         has_direct_reference=False,
     )
