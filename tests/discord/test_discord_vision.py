@@ -8,7 +8,11 @@ from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.store import Store
 from hina_bot.discord.vision import VisionLimits, collect_visual_inputs
-from hina_bot.discord.web_bot import HinaClient
+from hina_bot.discord.web_bot import (
+    HinaClient,
+    _has_current_visual_reference,
+    _passive_recent_visual_requested,
+)
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 16
 GIF = b"GIF89a" + b"x" * 16
@@ -20,6 +24,67 @@ def _history(messages):
             yield message
 
     return rows()
+
+
+def test_passive_recent_visual_requires_explicit_backward_reference():
+    assert _passive_recent_visual_requested(
+        "아까 사진 뭐였어?",
+        has_direct_reference=False,
+    )
+    assert _passive_recent_visual_requested(
+        "저거 뭐야?",
+        has_direct_reference=False,
+    )
+    assert not _passive_recent_visual_requested(
+        "이게 누구야?",
+        has_direct_reference=False,
+    )
+    assert not _passive_recent_visual_requested(
+        "오늘 뭐 했어?",
+        has_direct_reference=False,
+    )
+
+
+def test_direct_visual_reference_blocks_recent_fallback_unless_comparing():
+    assert not _passive_recent_visual_requested(
+        "아까 사진 뭐였어?",
+        has_direct_reference=True,
+    )
+    assert not _passive_recent_visual_requested(
+        "저거 뭐야?",
+        has_direct_reference=True,
+    )
+    assert _passive_recent_visual_requested(
+        "이 사진이랑 아까 거 비교해줘",
+        has_direct_reference=True,
+    )
+    assert _passive_recent_visual_requested(
+        "아까 사진이랑 차이가 뭐야?",
+        has_direct_reference=True,
+    )
+
+
+def test_current_attachment_sticker_or_emoji_counts_as_direct_visual_reference():
+    assert _has_current_visual_reference(NS(
+        content="히나야",
+        attachments=[NS(filename="image.png")],
+        stickers=[],
+    ))
+    assert _has_current_visual_reference(NS(
+        content="히나야",
+        attachments=[],
+        stickers=[NS(name="sticker")],
+    ))
+    assert _has_current_visual_reference(NS(
+        content="히나야 <:hina_test:123>",
+        attachments=[],
+        stickers=[],
+    ))
+    assert not _has_current_visual_reference(NS(
+        content="히나야 저거 뭐야?",
+        attachments=[],
+        stickers=[],
+    ))
 
 
 @pytest.mark.asyncio
