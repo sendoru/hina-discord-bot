@@ -729,3 +729,107 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
     )
     assert invalid["effective"] is None
     assert "positive integers" in invalid["target_error"]
+
+
+
+def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
+    database = tmp_path / "epochs.sqlite3"
+    store = Store(str(database))
+    with store.db:
+        store.db.execute(
+            """CREATE TABLE observability_epochs (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   reset_at TEXT NOT NULL
+               )"""
+        )
+        store.db.execute(
+            "INSERT INTO observability_epochs(reset_at) VALUES (?)",
+            ("2026-09-15T00:00:00+00:00",),
+        )
+    store.close()
+
+    usage = tmp_path / "logs" / "usage.jsonl"
+    events = tmp_path / "logs" / "events.jsonl"
+    write_rows(
+        usage,
+        [
+            {
+                "at": "2026-09-10T00:00:01+00:00",
+                "turn_id": "old-turn",
+                "operation": "answer",
+                "model": "old-model",
+                "model_tier": "fast",
+                "status": "completed",
+            },
+            {
+                "at": "2026-09-20T00:00:01+00:00",
+                "turn_id": "new-turn",
+                "operation": "answer",
+                "model": "new-model",
+                "model_tier": "smart",
+                "status": "completed",
+            },
+        ],
+    )
+    write_rows(
+        events,
+        [
+            {
+                "at": "2026-09-10T00:00:00+00:00",
+                "turn_id": "old-turn",
+                "event": "turn.completed",
+                "scope": "guild",
+                "status": "completed",
+            },
+            {
+                "at": "2026-09-10T00:00:00+00:00",
+                "turn_id": "old-identity",
+                "event": "identity.resolution",
+                "outcome": "resolved",
+                "resolver_invoked": True,
+            },
+            {
+                "at": "2026-09-20T00:00:00+00:00",
+                "turn_id": "new-turn",
+                "event": "turn.completed",
+                "scope": "dm",
+                "status": "completed",
+            },
+            {
+                "at": "2026-09-20T00:00:00+00:00",
+                "turn_id": "new-identity",
+                "event": "identity.resolution",
+                "outcome": "resolved",
+                "resolver_invoked": True,
+            },
+        ],
+    )
+
+    service = DashboardService(
+        AdminRepository(database),
+        TelemetryReader(usage, events),
+    )
+
+    analytics = service.analytics()
+    assert analytics["epoch"]["selected"] == "1"
+    assert analytics["epoch"]["is_current"] is True
+    assert analytics["usage"]["api_calls"] == 1
+    assert analytics["usage"]["models"][0]["name"] == "new-model"
+
+    all_analytics = service.analytics(epoch="all")
+    assert all_analytics["usage"]["api_calls"] == 2
+    assert all_analytics["epoch"]["selected"] == "all"
+
+    traces = service.traces()
+    assert traces["page"].total == 1
+    assert traces["rows"][0]["turn_id"] == "new-turn"
+    assert service.traces(epoch="all")["page"].total == 2
+
+    identity = service.identity_observability()
+    assert identity["epoch"]["selected"] == "1"
+    assert identity["summary"]["resolved"] == 1
+    assert service.identity_observability(epoch="all")["summary"]["resolved"] == 2
+
+    overview = service.overview()
+    assert overview["epoch"]["selected"] == "1"
+    assert overview["trace_count"] == 1
