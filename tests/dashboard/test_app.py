@@ -216,11 +216,14 @@ def test_dashboard_read_only_pages_render(tmp_path):
     reconciliation = client.get("/reconciliation?relation=corrects")
     reconciliation_detail = client.get("/reconciliation/1")
     static = client.get("/static/dashboard.css")
+    icon = client.get("/static/hina-dashboard-icon.webp")
 
     assert overview.status_code == 200
     assert "Hina Dashboard" in overview.text
     assert 'aria-label="Dashboard sections"' in overview.text
     assert 'class="nav-link nav-home active"' in overview.text
+    assert 'hina-dashboard-icon.webp' in overview.text
+    assert 'rel="icon" type="image/webp"' in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -280,6 +283,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Target / old" in reconciliation_detail.text
     assert "dashboard memory updated" in reconciliation_detail.text
     assert static.status_code == 200
+    assert icon.status_code == 200
+    assert icon.headers["content-type"] == "image/webp"
+    assert icon.content
     assert "color-scheme" in static.text
     assert "@media (max-width: 720px)" in static.text
     assert "@media (max-width: 480px)" in static.text
