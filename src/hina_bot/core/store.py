@@ -956,11 +956,13 @@ class Store:
         return row[0] if row else None
 
     def memory_mode_chain(self, scope: Scope) -> dict[str, str | None]:
-        return resolve_scope_chain(
-            self.memory_mode_overrides(),
-            scope,
-            default="normal",
-        )
+        overrides = {
+            "global": self.memory_mode_override("global"),
+            scope.channel: self.memory_mode_override(scope.channel),
+        }
+        if scope.guild_id is not None:
+            overrides[scope.realm] = self.memory_mode_override(scope.realm)
+        return resolve_scope_chain(overrides, scope, default="normal")
 
     def memory_mode(self, scope: Scope) -> str:
         return str(self.memory_mode_chain(scope)["effective"])
@@ -987,11 +989,13 @@ class Store:
         return row[0] if row else None
 
     def chat_log_mode_chain(self, scope: Scope) -> dict[str, str | None]:
-        return resolve_scope_chain(
-            self.chat_log_mode_overrides(),
-            scope,
-            default="on",
-        )
+        overrides = {
+            "global": self.chat_log_mode_override("global"),
+            scope.channel: self.chat_log_mode_override(scope.channel),
+        }
+        if scope.guild_id is not None:
+            overrides[scope.realm] = self.chat_log_mode_override(scope.realm)
+        return resolve_scope_chain(overrides, scope, default="on")
 
     def chat_log_enabled(self, scope: Scope) -> bool:
         return self.chat_log_mode_chain(scope)["effective"] == "on"
