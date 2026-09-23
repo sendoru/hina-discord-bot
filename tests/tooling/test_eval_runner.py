@@ -224,7 +224,6 @@ class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["turn_ids"][0])
         self.assertEqual(result["routing"], [])
 
-
     async def test_run_case_exposes_sanitized_visual_fixture_to_llm(self):
         class FakeLLM:
             settings = SimpleNamespace(history_turns=12, provider="test", model="fake")
