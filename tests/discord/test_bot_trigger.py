@@ -1,5 +1,6 @@
 import json
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -61,6 +62,44 @@ def test_bot_origin_is_preserved_in_turn_provenance():
     provenance = build_turn_provenance(message, "안녕", [], [])
     assert provenance["origin_request"]["role"] == "bot"
     assert provenance["origin_request"]["author_user_id"] == "300"
+
+
+def test_turn_provenance_preserves_request_and_source_timestamps():
+    message = routing_message("<@99> 이어서", author_id=100, bot=False, mentions=(99,))
+    message.id = 20
+    message.author.display_name = "사용자"
+    message.created_at = datetime(2026, 9, 23, 5, 54, 30, tzinfo=UTC)
+    replied = [{
+        "message_id": "19",
+        "content": "이전 답변",
+        "role": "assistant",
+        "user_id": "99",
+        "author_user_id": "99",
+        "at": "2026-09-23T05:54:20+00:00",
+    }]
+
+    provenance = build_turn_provenance(message, "이어서", replied, [])
+
+    assert provenance["origin_request"]["at"] == "2026-09-23T05:54:30+00:00"
+    assert provenance["origin_sources"][0]["at"] == "2026-09-23T05:54:20+00:00"
+
+
+def test_turn_provenance_normalizes_legacy_unix_source_timestamp():
+    message = routing_message("<@99> 이어서", author_id=100, bot=False, mentions=(99,))
+    message.id = 20
+    message.author.display_name = "사용자"
+    replied = [{
+        "message_id": "19",
+        "content": "이전 답변",
+        "role": "assistant",
+        "user_id": "99",
+        "author_user_id": "99",
+        "unix_time": 1789999999.0,
+    }]
+
+    provenance = build_turn_provenance(message, "이어서", replied, [])
+
+    assert provenance["origin_sources"][0]["at"].endswith("+00:00")
 
 
 @pytest.fixture
