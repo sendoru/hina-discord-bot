@@ -509,14 +509,13 @@ def test_reconciliation_service_list_stats_and_detail_context(tmp_path):
 
     assert listing["page"].total == 1
     assert listing["stats"]["retry_suspects"] == 1
+    assert listing["rows"][0]["user_name"] == "Reconciliation User"
     assert listing["rows"][0]["same_source_set"] is True
     assert listing["rows"][0]["source_overlap_ids"] == ("101", "102")
 
     detail = service.reconciliation_proposal(proposal_id)
     assert detail is not None
     assert detail["proposal"]["user_name"] == "Reconciliation User"
-
-    assert detail is not None
     assert detail["new_item"]["content"] == "new remembered value"
     assert detail["target_item"]["content"] == "old remembered value"
     assert {row["message_id"] for row in detail["sources"]} == {"101", "102"}
