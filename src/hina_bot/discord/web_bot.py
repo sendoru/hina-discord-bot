@@ -55,10 +55,10 @@ _BROAD_SERVER_MEMORY_QUERY = re.compile(
 
 _PASSIVE_RECENT_VISUAL_REFERENCE = re.compile(
     r"(?:"
-    r"(?:아까|방금|좀\s*전|이전|전에|위(?:에|쪽)?)\s*"
+    r"(?:아까|방금|좀\s*전|이전|전에|위(?:에|쪽)?)\s*.{0,16}?"
     r"(?:그\s*)?(?:거|것|사진|이미지|그림|짤|스샷|스크린샷)"
     r"|(?:그|저)\s*(?:거|것|사진|이미지|그림|짤|스샷|스크린샷)"
-    r"|(?:earlier|previous|above|that)\s+(?:photo|image|picture|screenshot)"
+    r"|(?:earlier|previous|above|that).{0,16}(?:photo|image|picture|screenshot)"
     r")",
     re.IGNORECASE,
 )
