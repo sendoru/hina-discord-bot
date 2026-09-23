@@ -6,7 +6,6 @@ from collections.abc import Iterable
 
 from hina_bot.core.memory_items import (
     MemoryAccess,
-    MemoryDisclosure,
     MemoryItem,
     MemoryKind,
     memory_access,
