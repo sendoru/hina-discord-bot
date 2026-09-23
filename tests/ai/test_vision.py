@@ -45,6 +45,26 @@ def test_vision_policy_calibrates_character_identity():
     assert "추측·정정은 추가 문맥일 뿐" in compact
 
 
+def test_vision_policy_requires_stronger_evidence_for_self_attribution():
+    compact = " ".join(VISION_INPUT_POLICY.split())
+    assert "self-attribution은 일반 인물 식별보다 더 엄격하게 판단하세요" in compact
+    assert "'히나야'라고 부르거나 bot mention으로 assistant를 호출한 사실" in compact
+    assert "현재 역할이 히나라는 사실 자체는 이미지 subject의 신원 근거가 아닙니다" in compact
+    assert "머리색·SD 스타일·복장 일부가 비슷하다는 이유만으로" in compact
+    assert "'나를 그린 그림', '내 모습', '나네'" in compact
+    assert "'이 그림', '사진 속 캐릭터' 같은 중립 표현" in compact
+
+
+def test_vision_policy_distinguishes_identity_premise_from_verification():
+    compact = " ".join(VISION_INPUT_POLICY.split())
+    assert "'이거 너야', '히나 그림이야'" in compact
+    assert "'얘는 유즈키 유카리야'" in compact
+    assert "신원 검증 자체를 요청한 것이 아닌 한 그 전제를 우선" in compact
+    assert "'진짜 유카리 맞아?', '이거 너야?'" in compact
+    assert "사용자 명명을 결론으로 고정하지 말고" in compact
+    assert "필요하면 반박하거나 불확실성을 표시하세요" in compact
+
+
 def test_vision_policy_separates_current_past_and_depicted_character_state():
     compact = " ".join(VISION_INPUT_POLICY.split())
     assert "현재 대화 시점의 실제 상태로 자동 적용하지 마세요" in compact

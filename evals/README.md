@@ -104,6 +104,13 @@ python scripts/run_prompt_injection_eval.py --repeat 2
 - 짧지만 맥락 해석이 필요한 세계관 follow-up 회피
 - 멀티봇 문장에서 호격 대상과 언급 대상을 혼동
 - 근거 없는 지시어 보완
+- assistant 호격을 이미지 subject의 자기 동일시 근거로 오인
+
+이미지 회귀는 원본 운영 이미지를 저장하지 않고 `evals/fixtures/` 아래의 익명화된 합성 fixture를
+base64 텍스트로 둡니다. case의 `visuals` 배열은 현재 single-turn eval에서만 지원하며
+`fixture`, `mime_type`, 선택적인 `name`을 지정합니다. 러너는 이를 실제 `VisualInput`으로
+복원하므로 provider에 전달되는 vision policy까지 함께 평가할 수 있습니다. Discord의 이미지
+retrieval/causal continuity 자체는 이 eval 경로에서 흉내 내지 않습니다.
 
 고정 FAST/SMART 비교만으로는 운영 routing 자체의 실패를 구분할 수 없으므로
 `hina-eval`에 adaptive mode도 제공합니다.
