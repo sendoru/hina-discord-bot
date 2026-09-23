@@ -46,7 +46,7 @@
       <p class="muted">
         <code>{{ data.effective.realm }}</code> ·
         <code>channel:{{ data.effective.scope.channel_id }}</code> ·
-        <code>user:{{ data.effective.scope.user_id }}</code>
+        {% if data.effective.user_name %}{{ data.effective.user_name }} · {% endif %}<code>user:{{ data.effective.scope.user_id }}</code>
       </p>
     </div>
   </div>
