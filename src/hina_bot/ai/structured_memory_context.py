@@ -7,7 +7,6 @@ from collections.abc import Iterable
 from hina_bot.core.memory_items import (
     MemoryAccess,
     MemoryItem,
-    MemoryKind,
     memory_access,
 )
 from hina_bot.core.relationship_profile import (
