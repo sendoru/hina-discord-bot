@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
 {% block title %}Overview · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -12,6 +13,8 @@
     <span>→ {{ data.available.newest_at | localtime if data.available.newest_at else "none" }}</span>
   </div>
 </section>
+
+{{ epoch_notice(data) }}
 
 <section class="cards">
   <article class="card"><span>Traces</span><strong>{{ data.trace_count }}</strong></article>

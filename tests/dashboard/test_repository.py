@@ -361,3 +361,32 @@ def test_repository_user_filter_accepts_stored_human_readable_name(tmp_path):
     memories = repository.search_memory_items(user_id="board user")
     assert [row["user_id"] for row in memories] == ["100"]
     assert repository.count_memory_items(user_id="100") == 1
+
+
+
+def test_repository_reads_observability_epochs_when_present(tmp_path):
+    path = tmp_path / "epochs.sqlite3"
+    populated_database(path)
+
+    repository = AdminRepository(path)
+    assert repository.observability_epochs() == []
+
+    db = sqlite3.connect(path)
+    try:
+        db.execute(
+            """CREATE TABLE observability_epochs (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   reset_at TEXT NOT NULL
+               )"""
+        )
+        db.execute(
+            "INSERT INTO observability_epochs(reset_at) VALUES (?)",
+            ("2026-09-15T00:00:00+00:00",),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    assert repository.observability_epochs() == [
+        {"id": 1, "reset_at": "2026-09-15T00:00:00+00:00"}
+    ]

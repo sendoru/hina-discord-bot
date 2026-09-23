@@ -101,6 +101,17 @@ def dashboard_client(tmp_path):
     store.set_note("config:chatlog_capture:global", "direct")
     store.set_note(guild_scope.realm, "dashboard server note")
     store.set_note(guild_scope.user_note, "dashboard user note")
+    with store.db:
+        store.db.execute(
+            """CREATE TABLE observability_epochs (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   reset_at TEXT NOT NULL
+               )"""
+        )
+        store.db.execute(
+            "INSERT INTO observability_epochs(reset_at) VALUES (?)",
+            ("2026-09-20T00:00:00+00:00",),
+        )
     store.close()
 
     usage = tmp_path / "usage.jsonl"
@@ -214,14 +225,19 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "viewport-fit=cover" in overview.text
     assert "Asia/Seoul" in overview.text
     assert "2026-09-21 09:00:00 KST" in overview.text
+    assert "Current observability epoch #1" in overview.text
     assert "trace-ui" in traces.text
+    assert "Current observability epoch #1" in traces.text
+    assert 'aria-label="Observability epoch"' in traces.text
     assert "Advanced filters" in traces.text
     assert 'aria-label="Active filters"' in traces.text
     assert analytics.status_code == 200
     assert "Routing & Usage Analytics" in analytics.text
     assert "test-model" in analytics.text
+    assert "Current observability epoch #1" in analytics.text
     assert identity.status_code == 200
     assert "Speaker Identity Observability" in identity.text
+    assert "Current observability epoch #1" in identity.text
     assert "hello dashboard" in detail.text
     assert "Context &amp; provenance" in detail.text
     assert "Egress policy" in detail.text

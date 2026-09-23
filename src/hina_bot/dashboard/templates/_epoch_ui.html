@@ -1,0 +1,37 @@
+{% macro epoch_selector(data) -%}
+{% if data.epoch.tracked %}
+<select name="epoch" aria-label="Observability epoch">
+  {% for item in data.epoch.windows %}
+  <option value="{{ item.value }}" {% if data.epoch.selected == item.value %}selected{% endif %}>
+    {{ item.label }}{% if item.current %} · current{% endif %}
+  </option>
+  {% endfor %}
+</select>
+{% endif %}
+{%- endmacro %}
+
+{% macro epoch_notice(data) -%}
+{% if data.epoch.tracked %}
+<section class="notice">
+  {% if data.epoch.selected == "all" %}
+  <strong>All observability epochs are combined.</strong>
+  Missing fields can come from older telemetry schemas and should not be interpreted as runtime zero/false.
+  {% elif data.epoch.selected == "legacy" %}
+  <strong>Legacy / pre-reset telemetry.</strong>
+  This data predates the first analysis baseline reset and may not contain fields used by current dashboards.
+  {% elif data.epoch.is_current %}
+  <strong>Current observability epoch #{{ data.epoch.current }}.</strong>
+  {% if data.epoch.reset_at %}Baseline started {{ data.epoch.reset_at | localtime }}.{% endif %}
+  {% if data.epoch.excluded_rows %} {{ data.epoch.excluded_rows }} retained telemetry rows from other epochs are excluded.{% endif %}
+  {% else %}
+  <strong>Historical observability epoch #{{ data.epoch.selected }}.</strong>
+  Interpret field coverage within this epoch only; schema availability may differ from the current epoch.
+  {% endif %}
+</section>
+{% else %}
+<section class="notice">
+  No observability epoch marker exists. Retained telemetry is treated as one untracked generation;
+  missing fields may belong to older schemas.
+</section>
+{% endif %}
+{%- endmacro %}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .analytics import build_analytics
+from .epochs import epoch_view, select_observability_epoch
 from .identity import build_identity_observability
 from .repository import AdminRepository
 from .services import (
@@ -42,9 +43,15 @@ class DashboardService:
         provider: str = "",
         after: str = "",
         before: str = "",
+        epoch: str = "",
     ) -> dict[str, object]:
-        return build_analytics(
+        selection = select_observability_epoch(
             self.telemetry.snapshot(),
+            self.repository.observability_epochs(),
+            epoch,
+        )
+        data = build_analytics(
+            selection.snapshot,
             operation=operation,
             model=model,
             provider=provider,
@@ -52,6 +59,9 @@ class DashboardService:
             before=before,
             timezone=self.timezone,
         )
+        data["epoch"] = epoch_view(selection)
+        data["filters"]["epoch"] = selection.selected
+        return data
 
     def identity_observability(
         self,
@@ -60,15 +70,24 @@ class DashboardService:
         blocked_reason: str = "",
         after: str = "",
         before: str = "",
+        epoch: str = "",
     ) -> dict[str, object]:
-        return build_identity_observability(
+        selection = select_observability_epoch(
             self.telemetry.snapshot(),
+            self.repository.observability_epochs(),
+            epoch,
+        )
+        data = build_identity_observability(
+            selection.snapshot,
             outcome=outcome,
             blocked_reason=blocked_reason,
             after=after,
             before=before,
             timezone=self.timezone,
         )
+        data["epoch"] = epoch_view(selection)
+        data["filters"]["epoch"] = selection.selected
+        return data
 
     def overview(self) -> dict[str, object]:
         return self.traces_service.overview()
