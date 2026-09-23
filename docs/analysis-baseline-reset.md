@@ -97,6 +97,18 @@ id | reset_at
 이 marker는 raw analysis data와 함께 삭제되지 않습니다. 이후 dashboard/export 분석에서
 서로 다른 telemetry schema 세대를 구분할 기준으로 사용할 수 있습니다.
 
-현재 command 자체는 epoch를 telemetry row에 자동 주입하지 않습니다. 우선 reset 시점의
-persistent marker만 제공하며, epoch-aware dashboard filtering이 필요해지면 별도 작업으로
-확장합니다.
+command 자체는 epoch ID를 telemetry row에 직접 주입하지 않습니다. 대신 dashboard가
+각 JSONL row의 `at` timestamp를 persistent `reset_at` marker와 비교해 epoch를 결정합니다.
+
+- 첫 reset 이전: `legacy`
+- reset #N 이상, 다음 reset 미만: epoch `N`
+- 가장 최근 reset 이후: current epoch
+
+Observability marker가 하나라도 있으면 telemetry 기반 dashboard 화면은 기본적으로 current
+epoch만 분석합니다. `Traces`, `Analytics`, `Identity`에서는 과거 epoch, `legacy`, 또는
+`all`을 명시적으로 선택할 수 있습니다.
+
+`all`은 서로 다른 telemetry schema 세대를 섞을 수 있으므로 dashboard가 경고를 표시합니다.
+특히 오래된 row의 missing field를 현재 runtime의 `0`/`false` 값으로 해석하면 안 됩니다.
+timestamp가 없는 telemetry row는 특정 epoch에 안전하게 귀속할 수 없어 epoch별 분석에서는
+제외되고, `all`에서만 유지됩니다.

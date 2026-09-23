@@ -15,12 +15,14 @@ def build_router(service: DashboardService, templates: Jinja2Templates) -> APIRo
         blocked_reason: str = "",
         after: str = "",
         before: str = "",
+        epoch: str = "",
     ):
         data = service.identity_observability(
             outcome=outcome,
             blocked_reason=blocked_reason,
             after=after,
             before=before,
+            epoch=epoch,
         )
         return templates.TemplateResponse(
             request=request,

@@ -57,6 +57,15 @@ class AdminRepository:
             rows = db.execute(f"PRAGMA table_info({table})").fetchall()
         return any(str(row["name"]) == column for row in rows)
 
+    def observability_epochs(self) -> list[dict[str, object]]:
+        if not self._table_exists("observability_epochs"):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT id,reset_at FROM observability_epochs ORDER BY id"
+            ).fetchall()
+        return self._dicts(rows)
+
     def scope_mode_overrides(self, table: str) -> list[dict[str, object]]:
         if table not in {"memory_modes", "chat_log_modes"}:
             raise ValueError("unsupported dashboard mode table")
