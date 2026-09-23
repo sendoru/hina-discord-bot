@@ -226,10 +226,17 @@ def test_dashboard_read_only_pages_render(tmp_path):
     reconciliation = client.get("/reconciliation?relation=corrects")
     reconciliation_detail = client.get("/reconciliation/1")
     static = client.get("/static/dashboard.css")
+    icon = client.get("/static/hina-dashboard-icon.webp")
 
     assert overview.status_code == 200
     assert "Hina Dashboard" in overview.text
     assert 'aria-label="Dashboard sections"' in overview.text
+    assert 'class="nav-link nav-home active"' in overview.text
+    assert 'hina-dashboard-icon.webp' in overview.text
+    assert 'rel="icon" type="image/webp"' in overview.text
+    assert "Observability" in overview.text
+    assert "Context" in overview.text
+    assert "Memory ops" in overview.text
     assert 'href="/relationships"' in overview.text
     assert 'href="/state"' in overview.text
     assert "viewport-fit=cover" in overview.text
@@ -289,12 +296,19 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Target / old" in reconciliation_detail.text
     assert "dashboard memory updated" in reconciliation_detail.text
     assert static.status_code == 200
+    assert icon.status_code == 200
+    assert icon.headers["content-type"] == "image/webp"
+    assert icon.content
     assert "color-scheme" in static.text
     assert "@media (max-width: 720px)" in static.text
     assert "@media (max-width: 480px)" in static.text
     assert "Some mobile browsers expose an effective CSS viewport wider than 720px" in static.text
     assert "white-space: nowrap" in static.text
     assert "overscroll-behavior-x: contain" in static.text
+    assert ".app-shell" in static.text
+    assert ".sidebar-nav" in static.text
+    assert ".nav-link.active" in static.text
+    assert ".notice.warning" in static.text
 
 
 def test_unknown_trace_returns_404(tmp_path):
