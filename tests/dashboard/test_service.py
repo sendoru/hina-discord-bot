@@ -783,7 +783,7 @@ def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
             },
             {
                 "at": "2026-09-10T00:00:00+00:00",
-                "turn_id": "old-identity",
+                "turn_id": "old-turn",
                 "event": "identity.resolution",
                 "outcome": "resolved",
                 "resolver_invoked": True,
@@ -797,7 +797,7 @@ def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
             },
             {
                 "at": "2026-09-20T00:00:00+00:00",
-                "turn_id": "new-identity",
+                "turn_id": "new-turn",
                 "event": "identity.resolution",
                 "outcome": "resolved",
                 "resolver_invoked": True,
