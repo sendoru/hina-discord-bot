@@ -1,5 +1,22 @@
 from __future__ import annotations
 
+from hina_bot.core.memory_items import (
+    MemoryDisclosure,
+    MemoryItem,
+    MemoryKind,
+    MemoryStatus,
+    RelationshipEvidence,
+)
+from hina_bot.core.relationship_profile import (
+    RELATIONSHIP_EVIDENCE_AXES,
+    RELATIONSHIP_MAX_OBSERVATIONS,
+    RELATIONSHIP_MIN_ITEM_CONFIDENCE,
+    RELATIONSHIP_RECENCY_DECAY,
+    aggregate_relationship_evidence,
+    implicit_relationship_observations,
+)
+from hina_bot.core.routing import Scope
+
 from ..searchutils import search_matches
 from ..timeutils import db_utc_timestamp
 from .base import Page, ReadService, _decode_json
@@ -23,6 +40,126 @@ class MemoryService(ReadService):
         value["status"] = value.get("status")
         value["superseded_by"] = value.get("superseded_by")
         return value
+
+    @staticmethod
+    def _typed_memory_item(row: dict[str, object]) -> MemoryItem:
+        sources = _decode_json(row.get("source_message_ids"), [])
+        evidence = _decode_json(row.get("relationship_evidence"), {})
+        return MemoryItem(
+            id=int(row["id"]),
+            user_id=str(row["user_id"]),
+            user_name=str(row.get("user_name") or ""),
+            content=str(row.get("content") or ""),
+            kind=MemoryKind(str(row["kind"])),
+            origin_realm=str(row["origin_realm"]),
+            origin_channel_id=str(row["origin_channel_id"]),
+            origin_public_at_capture=bool(row.get("origin_public_at_capture")),
+            disclosure=MemoryDisclosure(str(row["disclosure"])),
+            source_message_ids=(
+                tuple(str(item) for item in sources)
+                if isinstance(sources, list)
+                else ()
+            ),
+            confidence=float(row.get("confidence") or 0.0),
+            created_at=str(row.get("created_at") or ""),
+            updated_at=str(row.get("updated_at") or ""),
+            relationship_evidence=RelationshipEvidence.from_mapping(
+                evidence if isinstance(evidence, dict) else {}
+            ),
+            status=MemoryStatus(str(row.get("status") or "active")),
+            superseded_by=(
+                int(row["superseded_by"])
+                if row.get("superseded_by") is not None
+                else None
+            ),
+        )
+
+    def relationship_profiles(
+        self,
+        *,
+        target_guild_id: str = "",
+        target_channel_id: str = "",
+        query: str = "",
+    ) -> dict[str, object]:
+        target_guild_id = target_guild_id.strip()
+        target_channel_id = target_channel_id.strip()
+        query = query.strip()
+
+        target = None
+        target_error = ""
+        if target_guild_id or target_channel_id:
+            try:
+                guild_id = int(target_guild_id)
+                channel_id = int(target_channel_id)
+                if guild_id <= 0 or channel_id <= 0:
+                    raise ValueError
+                target = (guild_id, channel_id)
+            except ValueError:
+                target_error = "Target guild ID and channel ID must both be positive integers."
+
+        rows = []
+        for owner in self.repository.relationship_profile_users(query=query):
+            user_id = str(owner["user_id"])
+            raw_items = self.repository.relationship_profile_items(user_id)
+            typed_items = []
+            invalid_items = 0
+            for raw in raw_items:
+                try:
+                    typed_items.append(self._typed_memory_item(raw))
+                except (KeyError, TypeError, ValueError):
+                    invalid_items += 1
+
+            profile: dict[str, int] = {}
+            contributors = []
+            if target is not None and user_id.isdigit():
+                scope = Scope(target[0], target[1], int(user_id))
+                selected = implicit_relationship_observations(typed_items, scope)
+                profile = aggregate_relationship_evidence(typed_items, scope)
+                raw_by_id = {int(item["id"]): item for item in raw_items}
+                for age, item in enumerate(reversed(selected)):
+                    raw = raw_by_id.get(item.id, {})
+                    contributors.append({
+                        "id": item.id,
+                        "content": item.content,
+                        "origin_realm": item.origin_realm,
+                        "origin_channel_id": item.origin_channel_id,
+                        "origin_public_at_capture": item.origin_public_at_capture,
+                        "confidence": item.confidence,
+                        "evidence": item.relationship_evidence.as_dict(),
+                        "source_message_ids": item.source_message_ids,
+                        "created_at": item.created_at,
+                        "updated_at": item.updated_at,
+                        "age": age,
+                    })
+
+            rows.append({
+                **dict(owner),
+                "profile": profile,
+                "contributors": contributors,
+                "used_observations": len(contributors),
+                "invalid_observations": invalid_items,
+            })
+
+        return {
+            "rows": rows,
+            "filters": {
+                "target_guild_id": target_guild_id,
+                "target_channel_id": target_channel_id,
+                "q": query,
+            },
+            "target": (
+                {"guild_id": target[0], "channel_id": target[1]}
+                if target is not None
+                else None
+            ),
+            "target_error": target_error,
+            "axes": RELATIONSHIP_EVIDENCE_AXES,
+            "policy": {
+                "min_confidence": RELATIONSHIP_MIN_ITEM_CONFIDENCE,
+                "max_observations": RELATIONSHIP_MAX_OBSERVATIONS,
+                "recency_decay": RELATIONSHIP_RECENCY_DECAY,
+            },
+        }
 
     def memory_items(
         self,
