@@ -555,3 +555,177 @@ def test_conversation_context_marks_selected_turn(tmp_path):
     selected = [row for row in data["rows"] if row["selected"]]
     assert len(selected) == 1
     assert selected[0]["id"] == row_id
+
+
+
+def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
+    database = tmp_path / "relationships.sqlite3"
+    store = Store(str(database))
+    dm = Scope(None, 10, 100)
+    same_target_guild = Scope(1, 20, 100, True)
+
+    first_id = store.add_memory_item(
+        dm,
+        "first cross-space relationship observation",
+        kind="relationship",
+        disclosure="implicit",
+        confidence=0.9,
+        relationship_evidence={"familiarity": 2},
+        user_name="Profile User",
+    )
+    second_id = store.add_memory_item(
+        dm,
+        "second cross-space relationship observation",
+        kind="relationship",
+        disclosure="implicit",
+        confidence=0.9,
+        relationship_evidence={"familiarity": 2},
+        user_name="Profile User",
+    )
+    store.add_memory_item(
+        same_target_guild,
+        "same disclosure space relationship",
+        kind="relationship",
+        disclosure="implicit",
+        confidence=0.99,
+        relationship_evidence={"casualness": 4},
+        user_name="Profile User",
+    )
+    store.add_memory_item(
+        dm,
+        "low confidence relationship",
+        kind="relationship",
+        disclosure="implicit",
+        confidence=0.79,
+        relationship_evidence={"comfort": 4},
+        user_name="Profile User",
+    )
+    store.close()
+
+    service = DashboardService(
+        AdminRepository(database),
+        TelemetryReader("", ""),
+    )
+
+    data = service.relationship_profiles(
+        target_guild_id="1",
+        target_channel_id="99",
+        query="Profile",
+    )
+
+    assert data["target"] == {"guild_id": 1, "channel_id": 99}
+    assert data["axes"] == (
+        "familiarity",
+        "comfort",
+        "casualness",
+        "teasing_tolerance",
+        "support_openness",
+        "task_orientation",
+    )
+    assert len(data["rows"]) == 1
+    row = data["rows"][0]
+    assert row["user_id"] == "100"
+    assert row["observation_count"] == 4
+    assert row["profile"] == {"familiarity": 3}
+    assert row["used_observations"] == 2
+    assert [item["id"] for item in row["contributors"]] == [second_id, first_id]
+    assert all(item["evidence"] == {"familiarity": 2} for item in row["contributors"])
+
+    no_target = service.relationship_profiles(query="Profile")
+    assert no_target["target"] is None
+    assert no_target["rows"][0]["profile"] == {}
+    assert no_target["rows"][0]["used_observations"] == 0
+
+
+
+def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
+    database = tmp_path / "context-state.sqlite3"
+    store = Store(str(database))
+    guild = Scope(1, 10, 100)
+    dm = Scope(None, 20, 100)
+
+    store.add(guild, 1, "state source", "reply", name="State User")
+    store.set_memory_mode_override("global", "off")
+    store.set_memory_mode_override(guild.realm, "read_only")
+    store.set_chat_log_mode_override("global", "on")
+    store.set_chat_log_mode_override(guild.realm, "off")
+    store.set_note("config:chatlog_capture:global", "direct")
+    store.set_note("config:chatlog_unified_v1", "1")
+    store.set_note(guild.realm, "guild-wide manual note")
+    store.set_note(guild.user_note, "guild user manual note")
+    store.set_note(dm.user_note, "dm user manual note")
+    store.close()
+
+    service = DashboardService(
+        AdminRepository(database),
+        TelemetryReader("", ""),
+    )
+
+    data = service.context_state(
+        target_guild_id="1",
+        target_channel_id="10",
+        target_user_id="100",
+    )
+    effective = data["effective"]
+    assert effective is not None
+    assert effective["memory"]["chain"]["effective"] == "read_only"
+    assert effective["memory"]["chain"]["source"] == "server"
+    assert effective["memory"]["reads"] is True
+    assert effective["memory"]["writes"] is False
+    assert effective["chat_log"]["enabled_chain"]["effective"] == "off"
+    assert effective["chat_log"]["capture_chain"]["effective"] == "direct"
+    assert effective["chat_log"]["effective"] == "off"
+    assert effective["notes"]["server"] == "guild-wide manual note"
+    assert effective["notes"]["user"] == "guild user manual note"
+
+    assert {(row["scope"], row["mode"]) for row in data["memory_overrides"]} == {
+        ("global", "off"),
+        ("guild:1", "read_only"),
+    }
+    assert data["chat_overrides"] == [
+        {"scope": "global", "enabled": "on", "capture": "direct"},
+        {"scope": "guild:1", "enabled": "off", "capture": None},
+    ]
+    assert data["internal_note_count"] == 2
+    assert {row["text"] for row in data["manual_notes"]} == {
+        "guild-wide manual note",
+        "guild user manual note",
+        "dm user manual note",
+    }
+    user_note = next(
+        row for row in data["manual_notes"] if row["text"] == "guild user manual note"
+    )
+    assert user_note["user_name"] == "State User"
+
+    filtered = service.context_state(query="State User")
+    assert [row["text"] for row in filtered["manual_notes"]] == [
+        "guild user manual note"
+    ]
+
+    dm_data = service.context_state(
+        target_channel_id="20",
+        target_user_id="100",
+    )
+    dm_effective = dm_data["effective"]
+    assert dm_effective is not None
+    assert dm_effective["memory"]["chain"]["effective"] == "off"
+    assert dm_effective["chat_log"]["effective"] == "off"
+    assert dm_effective["chat_log"]["guild_recent_context_applicable"] is False
+    assert dm_effective["notes"]["server"] == ""
+    assert dm_effective["notes"]["user"] == "dm user manual note"
+
+
+def test_context_state_rejects_partial_or_invalid_target(tmp_path):
+    service, _, _ = build_memory_service(tmp_path)
+
+    partial = service.context_state(target_guild_id="1", target_user_id="100")
+    assert partial["effective"] is None
+    assert "Channel ID and user ID are required" in partial["target_error"]
+
+    invalid = service.context_state(
+        target_guild_id="-1",
+        target_channel_id="10",
+        target_user_id="100",
+    )
+    assert invalid["effective"] is None
+    assert "positive integers" in invalid["target_error"]

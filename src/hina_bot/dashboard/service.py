@@ -3,7 +3,12 @@ from __future__ import annotations
 from .analytics import build_analytics
 from .identity import build_identity_observability
 from .repository import AdminRepository
-from .services import MemoryService, ReconciliationService, TraceService
+from .services import (
+    ContextStateService,
+    MemoryService,
+    ReconciliationService,
+    TraceService,
+)
 from .telemetry import TelemetryReader
 
 
@@ -22,6 +27,7 @@ class DashboardService:
         self.timezone = timezone
         self.traces_service = TraceService(repository, telemetry, timezone=timezone)
         self.memory_service = MemoryService(repository, timezone=timezone)
+        self.context_state_service = ContextStateService(repository, timezone=timezone)
         self.reconciliation_service = ReconciliationService(
             repository,
             telemetry,
@@ -83,8 +89,14 @@ class DashboardService:
     ) -> dict[str, object] | None:
         return self.traces_service.conversation_context(turn_row_id, **kwargs)
 
+    def context_state(self, **kwargs) -> dict[str, object]:
+        return self.context_state_service.context_state(**kwargs)
+
     def memory_items(self, **kwargs) -> dict[str, object]:
         return self.memory_service.memory_items(**kwargs)
+
+    def relationship_profiles(self, **kwargs) -> dict[str, object]:
+        return self.memory_service.relationship_profiles(**kwargs)
 
     def memory_item(self, item_id: int) -> dict[str, object] | None:
         return self.memory_service.memory_item(item_id)
