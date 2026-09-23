@@ -45,6 +45,8 @@ The dashboard currently exposes the following read-only routes:
 - `/conversations`: bounded raw-turn inspection with server-side filters
 - `/memory`: structured-memory list/filter view
 - `/memory/{id}`: memory provenance/source-turn detail
+- `/relationships`: target-scope effective implicit relationship profiles
+- `/state`: effective memory/chat-log inheritance and manual notes
 - `/summaries`: personal/shared legacy summary state
 - `/memory/cursors`: structured extraction cursor/pending state
 - `/reconciliation`: shadow reconciliation proposal review
@@ -303,6 +305,30 @@ The page uses the same shared aggregation contract as request assembly:
 Each user row shows the resulting 1..4 axis values and can expand the exact memory observations used
 for that projection. Missing axes mean no stored positive evidence, never negative evidence.
 
+### Effective memory / recent-context state
+
+`/state` evaluates the configuration that applies to one target guild/channel/user without constructing
+the production `Store` or writing migrations.
+
+The page resolves the same global -> server -> channel inheritance used by runtime code and shows:
+
+- automatic-memory mode plus whether the effective mode permits reads and writes,
+- recent-channel-context enablement (`on/off`) and capture scope (`all/direct`) as separate chains,
+- the final runtime recent-context behavior (`all`, `direct`, or `off`),
+- the exact user/server manual notes addressed by that scope,
+- all stored memory/chat-log overrides and all non-`config:*` manual notes.
+
+DM targets intentionally report recent-channel context as `off`, matching runtime behavior even when
+the underlying global chat-log setting is `on`.
+
+The `notes` table also stores internal configuration markers such as chat-log capture overrides.
+Those rows are excluded from the manual-note list and represented through their relevant configuration
+view instead, so internal state is not mistaken for prompt-visible user/server notes.
+
+Manual notes shown for a target are configuration-eligible when memory reads are enabled, but the page
+does not claim that every request receives them. Per-request context routing may still choose a
+current-channel-only request and suppress cross-channel memory.
+
 ## Legacy summary and extraction state
 
 `/summaries` reports:
@@ -353,7 +379,7 @@ explicit:
 - `dashboard/app.py` is the composition root: settings, read-only repository/telemetry construction,
   templates/static setup, router registration, and health checks.
 - `dashboard/routes/` owns FastAPI request/response wiring by domain.
-- `dashboard/services/` owns trace, memory, and reconciliation read models. The legacy
+- `dashboard/services/` owns trace, memory, context-state, and reconciliation read models. The legacy
   `DashboardService` name remains as a compatibility facade so callers do not need to change all at once.
 - `dashboard/analytics.py` and `dashboard/identity.py` remain pure read-model builders instead of being
   wrapped in unnecessary service classes.

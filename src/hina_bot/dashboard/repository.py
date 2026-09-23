@@ -57,6 +57,50 @@ class AdminRepository:
             rows = db.execute(f"PRAGMA table_info({table})").fetchall()
         return any(str(row["name"]) == column for row in rows)
 
+    def scope_mode_overrides(self, table: str) -> list[dict[str, object]]:
+        if table not in {"memory_modes", "chat_log_modes"}:
+            raise ValueError("unsupported dashboard mode table")
+        if not self._table_exists(table):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                f"SELECT scope,mode FROM {table} ORDER BY scope"
+            ).fetchall()
+        return self._dicts(rows)
+
+    def note_rows(self) -> list[dict[str, object]]:
+        if not self._table_exists("notes"):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT scope,text FROM notes ORDER BY scope"
+            ).fetchall()
+        return self._dicts(rows)
+
+    def latest_user_names(self) -> dict[tuple[str, str], str]:
+        names: dict[tuple[str, str], str] = {}
+        if self._table_exists("turns") and self._has_column("turns", "name"):
+            with self._connection() as db:
+                rows = db.execute(
+                    """SELECT realm,user_id,name FROM turns
+                       WHERE name<>'' ORDER BY id DESC"""
+                ).fetchall()
+            for row in rows:
+                key = (str(row["realm"]), str(row["user_id"]))
+                names.setdefault(key, str(row["name"])[:100])
+        memory_columns = self._table_columns("memory_items")
+        if "user_name" in memory_columns:
+            with self._connection() as db:
+                rows = db.execute(
+                    """SELECT origin_realm AS realm,user_id,user_name
+                       FROM memory_items WHERE user_name<>''
+                       ORDER BY id DESC"""
+                ).fetchall()
+            for row in rows:
+                key = (str(row["realm"]), str(row["user_id"]))
+                names.setdefault(key, str(row["user_name"])[:100])
+        return names
+
     def recent_turns(self, *, limit: int = 100) -> list[dict[str, object]]:
         limit = self._limit(limit)
         turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
