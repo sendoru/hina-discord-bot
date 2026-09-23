@@ -314,3 +314,89 @@ def test_external_reference_is_not_relabelled_as_current_speaker():
     assert source["author_user_id"] == "200"
     assert source["source_turn_user_id"] == "100"
     assert source["provenance_class"] == "reference_material"
+
+def test_small_budget_preserves_origin_request_and_replied_answer_anchors():
+    recent = TargetAwareRecentMessages(budget=20)
+    scope = Scope(1, 10, 100)
+    provenance = {
+        "origin_request": {
+            "message_id": "1",
+            "content": "원래 질문 " * 20,
+            "role": "user",
+            "user_id": "100",
+            "author_user_id": "100",
+            "provenance_class": "conversation",
+        },
+        "origin_sources": [],
+    }
+    token = CURRENT_TURN_PROVENANCE.set(provenance)
+    try:
+        recent.add(scope, 2, "히나", "원래 답변 " * 20, role="assistant")
+    finally:
+        CURRENT_TURN_PROVENANCE.reset(token)
+
+    reply_token = REPLY_CONTEXT.set(({
+        "message_id": "2",
+        "content": "원래 답변 " * 20,
+        "role": "assistant",
+        "user_id": "99",
+        "author_user_id": "99",
+    },))
+    try:
+        rows = recent.context(scope, 3)
+    finally:
+        REPLY_CONTEXT.reset(reply_token)
+
+    chain = [
+        row for row in rows
+        if row.get("context_kind") in {"reply_origin_request", "replied_message"}
+    ]
+    assert [row["context_kind"] for row in chain] == [
+        "reply_origin_request",
+        "replied_message",
+    ]
+    assert all(row["content"] for row in chain)
+    assert all(row.get("truncated") is True for row in chain)
+    assert sum(len(row["content"]) for row in rows) <= 20
+
+
+def test_active_reply_anchors_outrank_ambient_rows_under_pressure():
+    recent = TargetAwareRecentMessages(budget=24)
+    scope = Scope(1, 10, 100)
+    other = Scope(1, 10, 200)
+    provenance = {
+        "origin_request": {
+            "message_id": "10",
+            "content": "벡터 재할당 질문 " * 10,
+            "role": "user",
+            "user_id": "100",
+            "author_user_id": "100",
+            "provenance_class": "conversation",
+        },
+        "origin_sources": [],
+    }
+    token = CURRENT_TURN_PROVENANCE.set(provenance)
+    try:
+        recent.add(scope, 11, "히나", "capacity가 부족해서 그래 " * 10, role="assistant")
+    finally:
+        CURRENT_TURN_PROVENANCE.reset(token)
+    for message_id in range(12, 18):
+        recent.add(other, message_id, "다른 사람", "CUDA 주변 대화 " * 10)
+
+    reply_token = REPLY_CONTEXT.set(({
+        "message_id": "11",
+        "content": "capacity가 부족해서 그래 " * 10,
+        "role": "assistant",
+        "user_id": "99",
+        "author_user_id": "99",
+    },))
+    try:
+        rows = recent.context(scope, 18)
+    finally:
+        REPLY_CONTEXT.reset(reply_token)
+
+    kinds = [row.get("context_kind") for row in rows]
+    assert "reply_origin_request" in kinds
+    assert "replied_message" in kinds
+    assert sum(len(row["content"]) for row in rows) <= 24
+
