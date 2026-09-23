@@ -26,7 +26,7 @@
       {% for row in data.personal %}
       <tr>
         <td><code>{{ row.scope }}</code><br><span class="muted">{{ row.realm }}</span></td>
-        <td><code>{{ row.user_id }}</code></td>
+        <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
         <td class="numeric">{{ row.through_id }}</td>
         <td class="numeric">{{ row.latest_turn_id or "—" }}</td>
         <td class="numeric">{{ row.pending_turns }}</td>
@@ -51,18 +51,17 @@
   {% if data.shared %}
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Scope</th><th>User</th><th>Name</th><th>Through</th><th>Latest retained call</th><th>Pending calls</th></tr></thead>
+      <thead><tr><th>Scope</th><th>User</th><th>Through</th><th>Latest retained call</th><th>Pending calls</th></tr></thead>
       <tbody>
       {% for row in data.shared %}
       <tr>
         <td><code>{{ row.scope }}</code><br><span class="muted">{{ row.realm }}</span></td>
-        <td><code>{{ row.user_id }}</code></td>
-        <td>{{ row.name }}</td>
+        <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
         <td class="numeric">{{ row.through_id }}</td>
         <td class="numeric">{{ row.latest_call_id or "—" }}</td>
         <td class="numeric">{{ row.pending_calls }}</td>
       </tr>
-      <tr class="content-row"><td></td><td colspan="5"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
+      <tr class="content-row"><td></td><td colspan="4"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
       {% endfor %}
       </tbody>
     </table>

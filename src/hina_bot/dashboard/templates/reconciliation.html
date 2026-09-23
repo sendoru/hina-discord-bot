@@ -91,6 +91,7 @@
         <td><span class="relation relation-{{ row.relation }}">{{ row.relation }}</span></td>
         <td class="numeric">{{ "%.3f"|format(row.confidence) }}</td>
         <td>
+          {% if row.user_name %}{{ row.user_name }}<br>{% endif %}
           <code>{{ row.user_id }}</code><br>
           <span class="muted">{{ row.origin_realm }} · #{{ row.origin_channel_id }}</span>
         </td>

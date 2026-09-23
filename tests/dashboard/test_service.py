@@ -342,7 +342,7 @@ def build_memory_service(tmp_path):
     scope = Scope(1, 10, 100, True)
     token = CURRENT_TURN_ID.set("memory-trace")
     try:
-        store.add(scope, 700, "source for memory", "reply")
+        store.add(scope, 700, "source for memory", "reply", name="Memory User")
     finally:
         CURRENT_TURN_ID.reset(token)
     source_turn_id = int(store.db.execute(
@@ -393,9 +393,11 @@ def test_summary_and_cursor_service_show_rollout_state(tmp_path):
     summaries = service.summaries(user_id="100")
     assert len(summaries["personal"]) == 1
     assert summaries["personal"][0]["structured_memory_count"] == 1
+    assert summaries["personal"][0]["user_name"] == "Memory User"
 
     cursors = service.extraction_cursors(user_id="100")
     row = next(row for row in cursors["rows"] if row["scope"] == scope.conversation)
+    assert row["user_name"] == "Memory User"
     assert row["initialized"] == 0
     assert row["effective_through_id"] == row["summary_through_id"]
     assert row["cursor_delta"] is None
@@ -408,12 +410,12 @@ def build_reconciliation_service(tmp_path):
 
     token = CURRENT_TURN_ID.set("trace-old")
     try:
-        store.add(scope, 101, "old source", "reply")
+        store.add(scope, 101, "old source", "reply", name="Reconciliation User")
     finally:
         CURRENT_TURN_ID.reset(token)
     token = CURRENT_TURN_ID.set("trace-extract")
     try:
-        store.add(scope, 102, "new correction source", "reply")
+        store.add(scope, 102, "new correction source", "reply", name="Reconciliation User")
     finally:
         CURRENT_TURN_ID.reset(token)
 
@@ -507,12 +509,13 @@ def test_reconciliation_service_list_stats_and_detail_context(tmp_path):
 
     assert listing["page"].total == 1
     assert listing["stats"]["retry_suspects"] == 1
+    assert listing["rows"][0]["user_name"] == "Reconciliation User"
     assert listing["rows"][0]["same_source_set"] is True
     assert listing["rows"][0]["source_overlap_ids"] == ("101", "102")
 
     detail = service.reconciliation_proposal(proposal_id)
-
     assert detail is not None
+    assert detail["proposal"]["user_name"] == "Reconciliation User"
     assert detail["new_item"]["content"] == "new remembered value"
     assert detail["target_item"]["content"] == "old remembered value"
     assert {row["message_id"] for row in detail["sources"]} == {"101", "102"}
@@ -724,6 +727,7 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     )
     effective = data["effective"]
     assert effective is not None
+    assert effective["user_name"] == "State User"
     assert effective["memory"]["chain"]["effective"] == "read_only"
     assert effective["memory"]["chain"]["source"] == "server"
     assert effective["memory"]["reads"] is True
