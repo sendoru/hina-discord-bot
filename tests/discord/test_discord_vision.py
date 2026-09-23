@@ -665,20 +665,13 @@ async def test_explicit_reply_blocks_unrelated_recent_visual_fallback():
         attachments=[],
         stickers=[],
     )
-    replied = [{
-        "message_id": "150",
-        "content": "답장 대상",
-        "role": "assistant",
-        "user_id": "99",
-        "author_user_id": "99",
-    }]
     collector = AsyncMock(return_value=[])
 
     try:
         with (
             patch(
                 "hina_bot.discord.web_bot.collect_reply_context",
-                new=AsyncMock(return_value=replied),
+                new=AsyncMock(return_value=[]),
             ),
             patch("hina_bot.discord.web_bot.collect_visual_inputs", new=collector),
         ):
