@@ -29,14 +29,14 @@
 </form>
 
 {% if data.target_error %}
-<section class="notice">{{ data.target_error }}</section>
+<section class="notice danger">{{ data.target_error }}</section>
 {% elif not data.target %}
-<section class="notice">
+<section class="notice info">
   Select both a target guild and channel. The implicit profile is target-specific: relationship memories
   already FULL in that disclosure space are intentionally excluded from the cross-space projection.
 </section>
 {% else %}
-<section class="notice">
+<section class="notice info">
   Target: <code>guild:{{ data.target.guild_id }}</code> · <code>channel:{{ data.target.channel_id }}</code>.
   Missing axes mean no positive evidence was projected; they do not mean dislike or rejection.
 </section>
