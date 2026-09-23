@@ -431,6 +431,72 @@ class AdminRepository:
             ).fetchall()
         return {str(row["user_id"]): int(row["count"]) for row in rows}
 
+    def relationship_profile_users(
+        self,
+        *,
+        query: str = "",
+    ) -> list[dict[str, object]]:
+        columns = self._table_columns("memory_items")
+        if "relationship_evidence" not in columns:
+            return []
+        clauses = [
+            "kind='relationship'",
+            "disclosure='implicit'",
+            "relationship_evidence NOT IN ('{}','')",
+        ]
+        if "status" in columns:
+            clauses.append("status='active'")
+        params: list[object] = []
+        user_name = (
+            "MAX(NULLIF(user_name,'')) AS user_name"
+            if "user_name" in columns
+            else "'' AS user_name"
+        )
+        if query:
+            escaped = self._like(query)
+            pattern = f"%{escaped}%"
+            if "user_name" in columns:
+                clauses.append(
+                    "(user_id LIKE ? ESCAPE '\\' OR user_name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
+                )
+                params.extend((pattern, pattern))
+            else:
+                clauses.append("user_id LIKE ? ESCAPE '\\'")
+                params.append(pattern)
+        where = " AND ".join(clauses)
+        with self._connection() as db:
+            rows = db.execute(
+                f"""SELECT user_id,{user_name},COUNT(*) AS observation_count,
+                           MAX(updated_at) AS latest_updated_at
+                    FROM memory_items
+                    WHERE {where}
+                    GROUP BY user_id
+                    ORDER BY latest_updated_at DESC, user_id""",
+                tuple(params),
+            ).fetchall()
+        return self._dicts(rows)
+
+    def relationship_profile_items(self, user_id: str) -> list[dict[str, object]]:
+        columns = self._table_columns("memory_items")
+        if "relationship_evidence" not in columns:
+            return []
+        clauses = [
+            "user_id=?",
+            "kind='relationship'",
+            "disclosure='implicit'",
+            "relationship_evidence NOT IN ('{}','')",
+        ]
+        if "status" in columns:
+            clauses.append("status='active'")
+        with self._connection() as db:
+            rows = db.execute(
+                f"""SELECT * FROM memory_items
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY id""",
+                (str(user_id),),
+            ).fetchall()
+        return self._dicts(rows)
+
     def personal_summary_status(self) -> list[dict[str, object]]:
         if not self._table_exists("summaries"):
             return []
