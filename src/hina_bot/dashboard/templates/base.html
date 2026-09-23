@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>{% block title %}Hina Dashboard{% endblock %}</title>
+  <link rel="icon" type="image/webp" href="{{ url_for('static', path='hina-dashboard-icon.webp') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}">
 </head>
 <body>
@@ -11,7 +12,7 @@
     <aside class="sidebar">
       <div class="sidebar-branding">
         <a class="brand" href="/">
-          <span class="brand-mark">H</span>
+          <img class="brand-mark" src="{{ url_for('static', path='hina-dashboard-icon.webp') }}" alt="">
           <span class="brand-copy">
             <strong>Hina</strong>
             <small>Dashboard</small>
