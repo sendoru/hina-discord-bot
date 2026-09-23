@@ -10,6 +10,7 @@ from . import (
     overview,
     reconciliation,
     relationships,
+    state,
     summaries,
     traces,
 )
@@ -27,6 +28,7 @@ def build_routers(
         conversations.build_router(service, templates),
         memory.build_router(service, templates),
         relationships.build_router(service, templates),
+        state.build_router(service, templates),
         reconciliation.build_router(service, templates),
         summaries.build_router(service, templates),
     )
