@@ -1,6 +1,8 @@
 import argparse
 import ast
 import asyncio
+import base64
+import binascii
 import json
 import os
 import re
@@ -11,6 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from hina_bot.ai.runtime_llm import LLM
+from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS, VisualInput
 from hina_bot.core.config import GEMINI_THINKING_LEVELS, SUPPORTED_MODEL_PROVIDERS, Settings
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope
@@ -23,6 +26,9 @@ SPECIAL_EVAL_USER_ID = 910002
 EVAL_GUILD_ID = 920001
 EVAL_CHANNEL_ID = 930001
 VALIDATORS = frozenset({"python_fenced_code", "python_syntax"})
+EVAL_VISUAL_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/webp"})
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+EVAL_FIXTURE_ROOT = (PROJECT_ROOT / "evals" / "fixtures").resolve()
 _PYTHON_FENCE = re.compile(r"```(?:python|py)\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
 
 
@@ -88,6 +94,35 @@ def read_cases(path: Path) -> list[dict]:
                        or not row["content"].strip()
                        for row in channel_context)):
             raise ValueError(f"{path}:{number}: channel_context는 content가 있는 객체 배열이어야 합니다.")
+        visuals = case.get("visuals", [])
+        if not isinstance(visuals, list):
+            raise ValueError(f"{path}:{number}: visuals는 객체 배열이어야 합니다.")
+        if visuals and "turns" in case:
+            raise ValueError(f"{path}:{number}: visuals는 현재 single-turn eval에서만 지원합니다.")
+        for visual in visuals:
+            if not isinstance(visual, dict):
+                raise ValueError(f"{path}:{number}: visual은 객체여야 합니다.")
+            fixture = visual.get("fixture")
+            mime_type = visual.get("mime_type")
+            if not isinstance(fixture, str) or not fixture.strip():
+                raise ValueError(f"{path}:{number}: visual.fixture가 필요합니다.")
+            fixture_path = Path(fixture)
+            if (
+                fixture_path.is_absolute()
+                or ".." in fixture_path.parts
+                or fixture_path.parts[:2] != ("evals", "fixtures")
+            ):
+                raise ValueError(
+                    f"{path}:{number}: visual.fixture는 evals/fixtures 아래 상대 경로여야 합니다."
+                )
+            if mime_type not in EVAL_VISUAL_MIME_TYPES:
+                supported = ", ".join(sorted(EVAL_VISUAL_MIME_TYPES))
+                raise ValueError(
+                    f"{path}:{number}: visual.mime_type은 다음 중 하나여야 합니다: {supported}"
+                )
+            name = visual.get("name", "")
+            if not isinstance(name, str):
+                raise ValueError(f"{path}:{number}: visual.name은 문자열이어야 합니다.")
         validators = case.get("validators", [])
         if (not isinstance(validators, list)
                 or any(not isinstance(value, str) or value not in VALIDATORS
@@ -277,6 +312,28 @@ def case_speakers(case: dict) -> list[dict]:
     } for turn in case.get("turns", [case.get("input", "")])]
 
 
+def case_visuals(case: dict) -> tuple[VisualInput, ...]:
+    visuals = []
+    for item in case.get("visuals", []):
+        fixture_path = (PROJECT_ROOT / item["fixture"]).resolve()
+        if not fixture_path.is_relative_to(EVAL_FIXTURE_ROOT):
+            raise ValueError("visual fixture가 evals/fixtures 경계를 벗어났습니다.")
+        try:
+            encoded = fixture_path.read_text(encoding="ascii")
+            data = base64.b64decode("".join(encoded.split()), validate=True)
+        except (OSError, UnicodeError, ValueError, binascii.Error) as exc:
+            raise ValueError(f"visual fixture를 읽을 수 없습니다: {item['fixture']}") from exc
+        visuals.append(VisualInput(
+            data=data,
+            mime_type=item["mime_type"],
+            source="attachment",
+            name=item.get("name", ""),
+            context_kind="current_message",
+            reference_strength="current_message",
+        ))
+    return tuple(visuals)
+
+
 async def run_case(llm: LLM, case: dict) -> dict:
     mode = case.get("mode", "dm")
     scope = scope_for(mode)
@@ -293,6 +350,7 @@ async def run_case(llm: LLM, case: dict) -> dict:
             turn_id = new_turn_id()
             turn_ids.append(turn_id)
             turn_token = CURRENT_TURN_ID.set(turn_id)
+            visual_token = CURRENT_VISUAL_INPUTS.set(case_visuals(case))
             try:
                 reply = await llm.answer(
                     store, scope, speaker["speaker"], turn,
@@ -300,6 +358,7 @@ async def run_case(llm: LLM, case: dict) -> dict:
                     emoji_catalog=[], use_memory=True,
                 )
             finally:
+                CURRENT_VISUAL_INPUTS.reset(visual_token)
                 CURRENT_TURN_ID.reset(turn_token)
             responses.append(reply)
             store.add(scope, index, turn, reply)
@@ -329,6 +388,7 @@ async def run_case(llm: LLM, case: dict) -> dict:
         "input": case.get("input", ""),
         "turns": case_turns(case),
         "channel_context": case.get("channel_context", []),
+        "visuals": case.get("visuals", []),
         "speakers": speakers,
         "expected": case["expected"],
         "responses": responses,
@@ -433,6 +493,9 @@ def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
         if row["channel_context"]:
             context_text = json.dumps(row["channel_context"], ensure_ascii=False, indent=2)
             lines += ["**Channel context**", "", "```json", context_text, "```", ""]
+        if row.get("visuals"):
+            visual_text = json.dumps(row["visuals"], ensure_ascii=False, indent=2)
+            lines += ["**Visual fixtures**", "", "```json", visual_text, "```", ""]
         if row["error"]:
             lines += [f"**ERROR:** `{row['error']}`", ""]
         if row["validation_errors"]:
