@@ -582,7 +582,7 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         relationship_evidence={"familiarity": 2},
         user_name="Profile User",
     )
-    store.add_memory_item(
+    same_space_id = store.add_memory_item(
         same_target_guild,
         "same disclosure space relationship",
         kind="relationship",
@@ -598,6 +598,15 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         disclosure="implicit",
         confidence=0.79,
         relationship_evidence={"comfort": 4},
+        user_name="Profile User",
+    )
+    global_full_id = store.add_memory_item(
+        Scope(2, 30, 100, True),
+        "globally disclosed relationship",
+        kind="relationship",
+        disclosure="global",
+        confidence=0.7,
+        relationship_evidence={"support_openness": 1},
         user_name="Profile User",
     )
     store.close()
@@ -625,8 +634,17 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     assert len(data["rows"]) == 1
     row = data["rows"][0]
     assert row["user_id"] == "100"
-    assert row["observation_count"] == 4
+    assert row["observation_count"] == 5
     assert row["profile"] == {"familiarity": 3}
+    assert row["full_relationship_count"] == 2
+    assert [item["id"] for item in row["full_relationships"]] == [
+        same_space_id,
+        global_full_id,
+    ]
+    assert row["full_relationships"][0]["content"] == (
+        "same disclosure space relationship"
+    )
+    assert row["full_relationships"][1]["disclosure"] == "global"
     assert row["used_observations"] == 2
     assert [item["id"] for item in row["contributors"]] == [second_id, first_id]
     assert all(item["evidence"] == {"familiarity": 2} for item in row["contributors"])
@@ -634,6 +652,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     no_target = service.relationship_profiles(query="Profile")
     assert no_target["target"] is None
     assert no_target["rows"][0]["profile"] == {}
+    assert no_target["rows"][0]["full_relationships"] == []
+    assert no_target["rows"][0]["full_relationship_count"] == 0
     assert no_target["rows"][0]["used_observations"] == 0
 
 
