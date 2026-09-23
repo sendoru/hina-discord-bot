@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 
+from ..epochs import epoch_view, select_observability_epoch
 from ..repository import AdminRepository
 from ..searchutils import search_matches
 from ..telemetry import TelemetryReader, TelemetrySnapshot
@@ -24,7 +25,11 @@ class TraceService(ReadService):
         self.telemetry = telemetry
 
     def overview(self) -> dict[str, object]:
-        snapshot = self.telemetry.snapshot()
+        selection = select_observability_epoch(
+            self.telemetry.snapshot(),
+            self.repository.observability_epochs(),
+        )
+        snapshot = selection.snapshot
         traces = self._trace_summaries(snapshot)
 
         status_counts = Counter(str(row["status"]) for row in traces)
@@ -61,6 +66,7 @@ class TraceService(ReadService):
                 "oldest_at": snapshot.oldest_at,
                 "newest_at": snapshot.newest_at,
             },
+            "epoch": epoch_view(selection),
             "sources": self.telemetry.source_status(),
             "trace_count": len(traces),
             "stored_turn_count": self.repository.count_turns(),
@@ -90,8 +96,14 @@ class TraceService(ReadService):
         after: str = "",
         before: str = "",
         query: str = "",
+        epoch: str = "",
     ) -> dict[str, object]:
-        snapshot = self.telemetry.snapshot()
+        selection = select_observability_epoch(
+            self.telemetry.snapshot(),
+            self.repository.observability_epochs(),
+            epoch,
+        )
+        snapshot = selection.snapshot
         rows = self._trace_summaries(snapshot)
 
         scope = scope.strip().lower()
@@ -173,7 +185,9 @@ class TraceService(ReadService):
                 "after": after,
                 "before": before,
                 "q": query,
+                "epoch": selection.selected,
             },
+            "epoch": epoch_view(selection),
             "time_ranges": self.time_ranges(),
         }
 
