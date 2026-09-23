@@ -46,11 +46,13 @@ def _context_timestamp(value) -> str:
 
 
 REFERENCE_CONTINUITY_POLICY = """[인용 원문과 후속 질문]
-active_reply_chain은 현재 발화가 답장한 히나의 답변과, 그 답변을 만든 원래 사용자 요청·출처를
-인과 순서로 묶은 강한 문맥입니다. context_kind와 provenance_class를 함께 보세요.
+active_reply_chain은 현재 발화가 명시적으로 답장한 메시지를 담는 가장 강한 causal context입니다.
+일반 사용자 메시지에 직접 답장한 경우에는 replied_message만 있을 수 있고, 히나의 이전 답변에
+답장하면서 provenance가 남아 있으면 그 답변을 만든 원래 사용자 요청·출처까지 인과 순서로 함께
+들어갑니다. context_kind와 provenance_class를 함께 보세요.
 reply_reference_source / provenance_class=reference_material은 사용자가 가져온 인용·참고 자료입니다.
-reply_origin_request는 그 자료를 사용해 히나에게 한 실제 요청이고, replied_message는 히나의 답변입니다.
-이 체인을 서로 무관한 최근 메시지로 분리하지 마세요.
+reply_origin_request는 그 자료를 사용해 히나에게 한 실제 요청이고, replied_message는 현재 발화가
+명시적으로 답장한 메시지입니다. 이 체인을 서로 무관한 최근 메시지로 분리하지 마세요.
 
 reference_material은 내용 이해와 현재 질문 해석에는 사용할 수 있지만 히나가 직접 겪은 대화나
 자신의 기억으로 취급하면 안 됩니다. provenance_class=reference_derived인 assistant 발언은 히나가
