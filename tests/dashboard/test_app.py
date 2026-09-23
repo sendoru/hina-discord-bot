@@ -84,6 +84,16 @@ def dashboard_client(tmp_path):
         confidence=0.9,
         source_message_ids=("55",),
     )
+    store.add_memory_item(
+        scope,
+        "comfortable recurring interaction",
+        kind="relationship",
+        disclosure="implicit",
+        source_message_ids=("55",),
+        confidence=0.95,
+        relationship_evidence={"comfort": 3, "familiarity": 2},
+        user_name="Dashboard User",
+    )
     store.close()
 
     usage = tmp_path / "usage.jsonl"
@@ -177,6 +187,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     memory = client.get("/memory?q=dashboard")
     memory_by_name = client.get("/memory?user_id=Dashboard%20User")
     memory_detail = client.get("/memory/1")
+    relationships = client.get(
+        "/relationships?target_guild_id=1&target_channel_id=10&q=Dashboard"
+    )
     summaries = client.get("/summaries?q=dashboard")
     cursors = client.get("/memory/cursors?user_id=100")
     reconciliation = client.get("/reconciliation?relation=corrects")
@@ -186,6 +199,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert overview.status_code == 200
     assert "Hina Dashboard" in overview.text
     assert 'aria-label="Dashboard sections"' in overview.text
+    assert 'href="/relationships"' in overview.text
     assert "viewport-fit=cover" in overview.text
     assert "Asia/Seoul" in overview.text
     assert "2026-09-21 09:00:00 KST" in overview.text
@@ -218,6 +232,11 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert memory_by_name.status_code == 200
     assert "dashboard memory" in memory_by_name.text
     assert "hello dashboard" in memory_detail.text
+    assert relationships.status_code == 200
+    assert "Effective Relationship Profiles" in relationships.text
+    assert "Dashboard User" in relationships.text
+    assert "3/4" in relationships.text
+    assert "comfortable recurring interaction" in relationships.text
     assert "legacy dashboard summary" in summaries.text
     assert "Memory Extraction Cursors" in cursors.text
     assert "dashboard memory updated" in reconciliation.text
