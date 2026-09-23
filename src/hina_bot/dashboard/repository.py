@@ -108,6 +108,19 @@ class AdminRepository:
             for row in rows:
                 key = (str(row["realm"]), str(row["user_id"]))
                 names.setdefault(key, str(row["user_name"])[:100])
+
+        for table in ("summaries", "shared_summaries"):
+            columns = self._table_columns(table)
+            if not {"realm", "user_id", "name"}.issubset(columns):
+                continue
+            with self._connection() as db:
+                rows = db.execute(
+                    f"""SELECT realm,user_id,name FROM {table}
+                        WHERE name<>'' ORDER BY rowid DESC"""
+                ).fetchall()
+            for row in rows:
+                key = (str(row["realm"]), str(row["user_id"]))
+                names.setdefault(key, str(row["name"])[:100])
         return names
 
     def recent_turns(self, *, limit: int = 100) -> list[dict[str, object]]:

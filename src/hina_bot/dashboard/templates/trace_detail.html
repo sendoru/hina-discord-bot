@@ -25,7 +25,7 @@
   <dl class="metadata">
     <div><dt>Scope</dt><dd>{{ data.stored.scope }}</dd></div>
     <div><dt>Realm</dt><dd>{{ data.stored.realm }}</dd></div>
-    <div><dt>User</dt><dd><code>{{ data.stored.user_id }}</code></dd></div>
+    <div><dt>User</dt><dd>{% if data.stored.name %}{{ data.stored.name }} · {% endif %}<code>{{ data.stored.user_id }}</code></dd></div>
     <div><dt>Message</dt><dd><code>{{ data.stored.message_id }}</code></dd></div>
     <div><dt>Created</dt><dd>{{ data.stored.created_at | localtime }}</dd></div>
   </dl>
@@ -125,7 +125,8 @@
           </td>
           <td>
             {{ source.owner_relation or "—" }}
-            {% if source.author_name or source.name %}<br>{{ source.author_name or source.name }}{% endif %}
+            {% set source_user_name = source.author_name or source.name or (source.stored_turn.name if source.stored_turn else "") %}
+            {% if source_user_name %}<br>{{ source_user_name }}{% endif %}
             {% if source.author_user_id %}<br><code>{{ source.author_user_id }}</code>{% endif %}
           </td>
           <td>

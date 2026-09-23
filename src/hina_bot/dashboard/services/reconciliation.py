@@ -89,8 +89,20 @@ class ReconciliationService(MemoryService):
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
         )
+        names = self.repository.latest_user_names()
+        proposal_rows = []
+        for row in rows:
+            value = self._proposal_row(row)
+            value["user_name"] = names.get(
+                (
+                    str(value.get("origin_realm") or ""),
+                    str(value.get("user_id") or ""),
+                ),
+                "",
+            )
+            proposal_rows.append(value)
         return {
-            "rows": [self._proposal_row(row) for row in rows],
+            "rows": proposal_rows,
             "page": pagination,
             "stats": self.repository.reconciliation_stats(**filters),
             "filters": {
@@ -115,6 +127,14 @@ class ReconciliationService(MemoryService):
         if raw is None:
             return None
         proposal = self._proposal_row(raw)
+        names = self.repository.latest_user_names()
+        proposal["user_name"] = names.get(
+            (
+                str(proposal.get("origin_realm") or ""),
+                str(proposal.get("user_id") or ""),
+            ),
+            "",
+        )
         new_item_raw = self.repository.memory_item(int(proposal["new_memory_item_id"]))
         target_item_raw = self.repository.memory_item(int(proposal["target_memory_item_id"]))
         if new_item_raw is None or target_item_raw is None:

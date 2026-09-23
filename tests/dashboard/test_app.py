@@ -256,6 +256,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Speaker Identity Observability" in identity.text
     assert "Current observability epoch #1" in identity.text
     assert "hello dashboard" in detail.text
+    assert "<dt>User</dt><dd>Dashboard User · <code>100</code></dd>" in detail.text
     assert "Context &amp; provenance" in detail.text
     assert "Egress policy" in detail.text
     assert "hello dashboard" in conversations.text
@@ -287,13 +288,18 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert state.status_code == 200
     assert "Memory &amp; Context State" in state.text
     assert "dashboard server note" in state.text
+    assert "Dashboard User · <code>user:100</code>" in state.text
     assert "dashboard user note" in state.text
     assert "read_only" in state.text
     assert "direct" in state.text
     assert "legacy dashboard summary" in summaries.text
+    assert "Dashboard User<br><code>100</code>" in summaries.text
     assert "Memory Extraction Cursors" in cursors.text
+    assert "Dashboard User<br><code>100</code>" in cursors.text
     assert "dashboard memory updated" in reconciliation.text
+    assert "Dashboard User" in reconciliation.text
     assert "Target / old" in reconciliation_detail.text
+    assert "Dashboard User · <code>100</code>" in reconciliation_detail.text
     assert "dashboard memory updated" in reconciliation_detail.text
     assert static.status_code == 200
     assert icon.status_code == 200

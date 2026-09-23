@@ -298,6 +298,7 @@ class MemoryService(ReadService):
         realm = realm.strip()
         query = query.strip().lower()
         counts = self.repository.memory_counts_by_user()
+        names = self.repository.latest_user_names()
         cursor_rows = self.repository.extraction_cursor_status()
         cursor_by_scope = {str(row["scope"]): row for row in cursor_rows}
 
@@ -324,15 +325,30 @@ class MemoryService(ReadService):
             if not keep(row):
                 continue
             value = dict(row)
+            value["user_name"] = str(
+                row.get("name")
+                or names.get(
+                    (str(row.get("realm") or ""), str(row.get("user_id") or "")),
+                    "",
+                )
+            )
             value["structured_memory_count"] = counts.get(str(row["user_id"]), 0)
             value["extraction_cursor"] = cursor_by_scope.get(str(row["scope"]))
             personal.append(value)
 
-        shared = [
-            dict(row)
-            for row in self.repository.shared_summary_status()
-            if keep(row)
-        ]
+        shared = []
+        for row in self.repository.shared_summary_status():
+            if not keep(row):
+                continue
+            value = dict(row)
+            value["user_name"] = str(
+                row.get("name")
+                or names.get(
+                    (str(row.get("realm") or ""), str(row.get("user_id") or "")),
+                    "",
+                )
+            )
+            shared.append(value)
         return {
             "personal": personal,
             "shared": shared,
@@ -351,9 +367,14 @@ class MemoryService(ReadService):
         realm = realm.strip()
         pending = pending.strip().lower()
         query = query.strip().lower()
+        names = self.repository.latest_user_names()
         rows: list[dict[str, object]] = []
         for raw in self.repository.extraction_cursor_status():
             row = dict(raw)
+            row["user_name"] = names.get(
+                (str(row.get("realm") or ""), str(row.get("user_id") or "")),
+                "",
+            )
             row["cursor_delta"] = None
             extraction = row.get("extraction_through_id")
             summary = row.get("summary_through_id")
@@ -368,8 +389,16 @@ class MemoryService(ReadService):
                 continue
             if pending == "no" and row["has_pending"]:
                 continue
-            if query and query not in str(row.get("scope", "")).lower():
-                continue
+            if query:
+                haystack = " ".join(
+                    (
+                        str(row.get("scope", "")),
+                        str(row.get("user_id", "")),
+                        str(row.get("user_name", "")),
+                    )
+                ).lower()
+                if query not in haystack:
+                    continue
             rows.append(row)
         return {
             "rows": rows,

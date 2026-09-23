@@ -9,7 +9,7 @@
 </section>
 
 <form class="filters" method="get">
-  <input name="q" value="{{ data.filters.q }}" placeholder="scope">
+  <input name="q" value="{{ data.filters.q }}" placeholder="scope / user name">
   <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
   <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
   <select name="pending">
@@ -36,7 +36,7 @@
       {% for row in data.rows %}
       <tr>
         <td><code>{{ row.scope }}</code><br><span class="muted">{{ row.realm }}</span></td>
-        <td><code>{{ row.user_id }}</code></td>
+        <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
         <td>{{ "yes" if row.initialized else "no" }}</td>
         <td class="numeric">{{ row.extraction_through_id if row.extraction_through_id is not none else "—" }}</td>
         <td class="numeric">{{ row.summary_through_id if row.summary_through_id is not none else "—" }}</td>

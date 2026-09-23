@@ -13,7 +13,7 @@
   </div>
   <div class="window">
     <strong>Owner / origin</strong>
-    <span><code>{{ data.proposal.user_id }}</code></span>
+    <span>{% if data.proposal.user_name %}{{ data.proposal.user_name }} · {% endif %}<code>{{ data.proposal.user_id }}</code></span>
     <span>{{ data.proposal.origin_realm }} · #{{ data.proposal.origin_channel_id }}</span>
   </div>
 </section>

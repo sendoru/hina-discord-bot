@@ -182,6 +182,7 @@ class ContextStateService(ReadService):
                 "scope": scope,
                 "realm": scope.realm,
                 "channel": scope.channel,
+                "user_name": names.get((scope.realm, str(scope.user_id)), ""),
                 "user_note_key": scope.user_note,
                 "memory": {
                     "chain": memory_chain,

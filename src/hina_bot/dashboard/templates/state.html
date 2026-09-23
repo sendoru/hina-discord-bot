@@ -46,7 +46,7 @@
       <p class="muted">
         <code>{{ data.effective.realm }}</code> ·
         <code>channel:{{ data.effective.scope.channel_id }}</code> ·
-        <code>user:{{ data.effective.scope.user_id }}</code>
+        {% if data.effective.user_name %}{{ data.effective.user_name }} · {% endif %}<code>user:{{ data.effective.scope.user_id }}</code>
       </p>
     </div>
   </div>
@@ -121,7 +121,7 @@
   <h3>Server note · <code>{{ data.effective.realm }}</code></h3>
   <div class="message">{{ data.effective.notes.server or "—" }}</div>
   {% endif %}
-  <h3>User note · <code>{{ data.effective.user_note_key }}</code></h3>
+  <h3>User note{% if data.effective.user_name %} · {{ data.effective.user_name }}{% endif %} · <code>{{ data.effective.user_note_key }}</code></h3>
   <div class="message">{{ data.effective.notes.user or "—" }}</div>
 </section>
 {% endif %}
