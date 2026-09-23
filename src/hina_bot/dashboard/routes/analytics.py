@@ -16,6 +16,7 @@ def build_router(service: DashboardService, templates: Jinja2Templates) -> APIRo
         provider: str = "",
         after: str = "",
         before: str = "",
+        epoch: str = "",
     ):
         data = service.analytics(
             operation=operation,
@@ -23,6 +24,7 @@ def build_router(service: DashboardService, templates: Jinja2Templates) -> APIRo
             provider=provider,
             after=after,
             before=before,
+            epoch=epoch,
         )
         return templates.TemplateResponse(
             request=request,
