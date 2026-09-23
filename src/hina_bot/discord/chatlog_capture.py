@@ -32,11 +32,13 @@ def capture_mode_overrides(store) -> dict[str, str]:
 
 
 def capture_mode_chain(store, scope: Scope) -> dict[str, str | None]:
-    return resolve_scope_chain(
-        capture_mode_overrides(store),
-        scope,
-        default="all",
-    )
+    overrides = {
+        "global": capture_mode_override(store, "global"),
+        scope.channel: capture_mode_override(store, scope.channel),
+    }
+    if scope.guild_id is not None:
+        overrides[scope.realm] = capture_mode_override(store, scope.realm)
+    return resolve_scope_chain(overrides, scope, default="all")
 
 
 def capture_mode(store, scope: Scope) -> str:
