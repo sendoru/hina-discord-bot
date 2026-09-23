@@ -1,4 +1,37 @@
 {% extends "base.html" %}
+{% macro evidence_grid(values, axes, projected=false) -%}
+<div class="relationship-axis-grid">
+  {% for axis in axes %}
+  <div class="relationship-axis">
+    <span>{{ axis | replace("_", " ") }}</span>
+    <strong>
+      {% if values.get(axis) %}
+        {{ values.get(axis) }}{% if projected %}/4{% endif %}
+      {% else %}—{% endif %}
+    </strong>
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro %}
+{% macro relationship_memory_card(item, axes, show_disclosure=false) -%}
+<article class="relationship-memory-card">
+  <div class="relationship-memory-head">
+    <a href="/memory/{{ item.id }}">Memory #{{ item.id }}</a>
+    <span class="muted">{{ "%.2f"|format(item.confidence) }} confidence</span>
+  </div>
+  <div class="relationship-memory-content">{{ item.content }}</div>
+  <dl class="relationship-memory-meta">
+    <div><dt>Origin</dt><dd><code>{{ item.origin_realm }}</code> · #{{ item.origin_channel_id }}</dd></div>
+    <div><dt>Captured</dt><dd>{{ "public" if item.origin_public_at_capture else "private" }}</dd></div>
+    {% if show_disclosure %}<div><dt>Disclosure</dt><dd><code>{{ item.disclosure }}</code></dd></div>{% endif %}
+    <div><dt>Updated</dt><dd>{{ item.updated_at | localtime }}</dd></div>
+  </dl>
+  {{ evidence_grid(item.evidence, axes) }}
+  {% if item.source_message_ids %}
+  <div class="relationship-memory-sources">sources: {{ item.source_message_ids | join(", ") }}</div>
+  {% endif %}
+</article>
+{%- endmacro %}
 {% block title %}Relationships · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -45,8 +78,8 @@
 
 <section class="panel flush">
   {% if data.rows %}
-  <div class="table-wrap">
-    <table>
+  <div class="table-wrap relationship-desktop">
+    <table class="wide-table relationship-table">
       <thead>
         <tr>
           <th>User</th>
@@ -84,7 +117,7 @@
               {% if row.full_relationships %}
               <p class="muted">These are the exact bounded relationship memories eligible for <code>structured_relationship_memory</code> in this target scope.</p>
               <div class="table-wrap">
-                <table>
+                <table class="wide-table">
                   <thead>
                     <tr>
                       <th>Memory</th><th>Origin</th><th>Disclosure</th><th>Confidence</th>
@@ -130,7 +163,7 @@
               {% if row.contributors %}
               <p class="muted">Raw content is shown here only for dashboard inspection; runtime cross-space context receives the aggregated axis values above, not these source texts.</p>
               <div class="table-wrap">
-                <table>
+                <table class="wide-table">
                   <thead>
                     <tr>
                       <th>Memory</th><th>Origin</th><th>Confidence</th>
@@ -172,6 +205,60 @@
       {% endfor %}
       </tbody>
     </table>
+  </div>
+
+  <div class="relationship-mobile">
+    {% for row in data.rows %}
+    <article class="relationship-mobile-card">
+      <header class="relationship-mobile-head">
+        <div>
+          {% if row.user_name %}<strong>{{ row.user_name }}</strong><br>{% endif %}
+          <code>{{ row.user_id }}</code>
+        </div>
+        <span>{{ row.latest_updated_at | localtime if row.latest_updated_at else "—" }}</span>
+      </header>
+
+      <div class="relationship-mobile-counts">
+        <div><span>Stored</span><strong>{{ row.observation_count }}</strong></div>
+        <div><span>FULL/raw</span><strong>{{ row.full_relationship_count if data.target else "—" }}</strong></div>
+        <div><span>IMPLICIT</span><strong>{{ row.used_observations if data.target else "—" }}</strong></div>
+      </div>
+
+      {% if data.target %}
+      <section class="relationship-mobile-projection">
+        <h3>Cross-space projection</h3>
+        {{ evidence_grid(row.profile, data.axes, true) }}
+      </section>
+
+      <details class="relationship-mobile-detail">
+        <summary>FULL/raw relationship memory · {{ row.full_relationship_count }}</summary>
+        {% if row.full_relationships %}
+          <p class="muted">Exact relationship memories eligible for <code>structured_relationship_memory</code> in this target.</p>
+          {% for item in row.full_relationships %}
+            {{ relationship_memory_card(item, data.axes, true) }}
+          {% endfor %}
+        {% else %}
+          <p class="muted">No relationship memories resolve to FULL in this target scope.</p>
+        {% endif %}
+      </details>
+
+      <details class="relationship-mobile-detail">
+        <summary>
+          IMPLICIT source observations · {{ row.used_observations }}
+          {% if row.invalid_observations %} · {{ row.invalid_observations }} invalid{% endif %}
+        </summary>
+        {% if row.contributors %}
+          <p class="muted">These raw texts are dashboard-only inspection data; runtime cross-space context receives only the aggregated axes.</p>
+          {% for item in row.contributors %}
+            {{ relationship_memory_card(item, data.axes) }}
+          {% endfor %}
+        {% else %}
+          <p class="muted">No implicit observations are eligible in this target scope.</p>
+        {% endif %}
+      </details>
+      {% endif %}
+    </article>
+    {% endfor %}
   </div>
   {% else %}
   <p class="empty">No active relationship memories match this user filter.</p>
