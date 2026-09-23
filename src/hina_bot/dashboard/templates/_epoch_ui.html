@@ -12,7 +12,7 @@
 
 {% macro epoch_notice(data) -%}
 {% if data.epoch.tracked %}
-<section class="notice">
+<section class="notice {% if data.epoch.selected == 'all' or data.epoch.selected == 'legacy' or not data.epoch.is_current %}warning{% else %}info{% endif %}">
   {% if data.epoch.selected == "all" %}
   <strong>All observability epochs are combined.</strong>
   Missing fields can come from older telemetry schemas and should not be interpreted as runtime zero/false.
@@ -29,7 +29,7 @@
   {% endif %}
 </section>
 {% else %}
-<section class="notice">
+<section class="notice warning">
   No observability epoch marker exists. Retained telemetry is treated as one untracked generation;
   missing fields may belong to older schemas.
 </section>

@@ -33,9 +33,9 @@
 </form>
 
 {% if data.target_error %}
-<section class="notice">{{ data.target_error }}</section>
+<section class="notice danger">{{ data.target_error }}</section>
 {% elif not data.effective %}
-<section class="notice">
+<section class="notice info">
   Enter channel and user IDs to evaluate a scope. Leave guild ID empty to inspect a DM scope.
 </section>
 {% else %}

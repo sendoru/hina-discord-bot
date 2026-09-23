@@ -51,7 +51,7 @@
 </section>
 
 {% if data.usage.tokens.total_tokens.missing or data.exchanges.usage_completeness.get("partial", 0) or data.exchanges.usage_completeness.get("unknown", 0) %}
-<section class="notice">
+<section class="notice warning">
   Some retained rows have incomplete usage metadata.
   Token sums below include only rows where that field is known.
   Exchange completeness:
