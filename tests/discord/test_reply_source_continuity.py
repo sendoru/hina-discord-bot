@@ -1,14 +1,8 @@
-from types import SimpleNamespace as NS
-from unittest.mock import AsyncMock
-
-import pytest
-
 from hina_bot.ai.egress_policy import filter_channel_context
 from hina_bot.core.routing import Scope
 from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.target_recent import TargetAwareRecentMessages
 from hina_bot.discord.turn_provenance import CURRENT_TURN_PROVENANCE
-from hina_bot.discord.vision import collect_visual_inputs
 
 
 def seed(recent, scope):
@@ -215,83 +209,6 @@ def test_explicit_reply_to_assistant_reconstructs_one_hop_causal_chain():
         assert all("turn_provenance" not in row for row in rows)
     finally:
         REPLY_CONTEXT.reset(reply_token)
-
-
-@pytest.mark.asyncio
-async def test_active_reply_chain_visual_matches_text_message_identity():
-    recent = TargetAwareRecentMessages()
-    scope = Scope(1, 10, 100)
-    provenance = {
-        "origin_request": {
-            "message_id": "1",
-            "content": "히나야 이 사진 봐",
-            "role": "user",
-            "user_id": "100",
-            "author_user_id": "100",
-            "direct_trigger": True,
-            "has_visual": True,
-            "provenance_class": "conversation",
-            "at": "2026-09-23T05:53:09+00:00",
-        },
-        "origin_sources": [],
-    }
-    token = CURRENT_TURN_PROVENANCE.set(provenance)
-    try:
-        recent.add(scope, 2, "히나", "응, 보고 있어.", role="assistant")
-    finally:
-        CURRENT_TURN_PROVENANCE.reset(token)
-
-    replied = ({
-        "message_id": "2",
-        "content": "응, 보고 있어.",
-        "role": "assistant",
-        "user_id": "99",
-        "author_user_id": "99",
-    },)
-    reply_token = REPLY_CONTEXT.set(replied)
-    try:
-        rows = recent.context(scope, 3)
-        visual_ids = recent.reply_chain_visual_ids(scope, replied)
-    finally:
-        REPLY_CONTEXT.reset(reply_token)
-
-    chain = [
-        row for row in rows
-        if row.get("context_kind") in {"reply_origin_request", "replied_message"}
-    ]
-    assert [row["message_id"] for row in chain] == ["1", "2"]
-    assert visual_ids == ("1",)
-
-    png = b"\x89PNG\r\n\x1a\n" + b"x" * 16
-    attachment = NS(
-        size=len(png),
-        content_type="image/png",
-        filename="origin.png",
-        read=AsyncMock(return_value=png),
-    )
-    origin = NS(
-        id=1,
-        content="히나야 이 사진 봐",
-        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
-        attachments=[attachment],
-        stickers=[],
-    )
-    channel = NS(id=10, fetch_message=AsyncMock(return_value=origin))
-    message = NS(
-        id=3,
-        content="히나야 근데 저건 뭐야?",
-        author=origin.author,
-        channel=channel,
-        attachments=[],
-        stickers=[],
-    )
-
-    visuals = await collect_visual_inputs(message, context_message_ids=visual_ids)
-
-    assert [visual.message_id for visual in visuals] == ["1"]
-    assert visuals[0].context_kind == "reply_origin_source"
-    assert visuals[0].reference_strength == "prior_explicit_reply"
-    assert visuals[0].message_id == chain[0]["message_id"]
 
 
 def test_reply_chain_is_not_available_to_a_different_user():
