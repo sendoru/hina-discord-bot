@@ -9,14 +9,11 @@
 
 1. **현재 호출 메시지**
 2. **명시적으로 reply한 대상 메시지**
-3. **active reply chain이 가리키는 원본 visual source**
-4. **명시적 backward-reference가 요청한 제한된 최근 메시지**
+3. **같은 채널의 제한된 최근 메시지**
 
-현재 메시지, 명시적 reply, active reply chain의 원본 visual source는 강한 causal 참조로 취급합니다.
-reply chain visual은 assistant 답변에 저장된 provenance의 Discord `message_id`로 원본 메시지를
-다시 조회하므로 text provenance와 visual provenance가 같은 메시지 identity를 사용합니다. 최근 채널
-이미지는 `아까 사진`, `저거`처럼 현재 발화가 과거 시각 문맥을 명시적으로 가리킬 때만 사용하는
-약한 fallback입니다. 모델에는 이 구분과 원래 메시지의 본문·작성자·message ID가 함께 전달됩니다.
+현재 메시지와 명시적 reply는 강한 참조로 취급합니다. 최근 채널 이미지는 대화 연속성을 위한 약한
+문맥이며, 모델에는 이 구분과 원래 메시지의 본문·작성자·message ID가 함께 전달됩니다. 이미지
+언급 여부를 정규식으로 판정하지 않고 원래 대화 구조와 메인 모델의 의미 해석을 사용합니다.
 
 | 입력 | 현재 메시지 | reply 대상 | 최근 채널 문맥 |
 | --- | --- | --- | --- |
@@ -39,11 +36,9 @@ reply chain visual은 assistant 답변에 저장된 provenance의 Discord `messa
 - 현재 메시지 이전 **최대 12개 메시지**를 뒤에서부터 확인
 - 그중 실제 시각 입력이 추가된 **최대 3개 메시지**만 사용
 - 과거 이미지는 원래 메시지 단위로 묶은 뒤 message ID 기준 시간순으로 배치
-- `아까 사진`, `방금 이미지`, `저거` 같은 명시적 backward-reference가 있을 때만 passive recent scan을 수행
-- 현재 첨부, explicit reply, causal reply-chain처럼 직접 참조가 이미 있으면 passive recent를 기본 제외
-- `이 사진이랑 아까 거 비교해줘`처럼 비교·추가 대상을 명시한 경우에만 직접 참조와 recent를 함께 허용
-- 읽을 수 없는 explicit/causal source를 무관한 최근 이미지로 대체하지 않음
-- 우선순위는 현재 메시지 → 명시적 reply → causal reply-chain source → 요청된 recent 순서
+- 명시적 reply가 있어도 답장 메시지와 그 이전 시각 문맥을 함께 비교할 수 있음
+- 답장 대상과 무관한 과거 이미지는 대체 대상으로 사용하지 않도록 prompt에서 명시
+- 우선순위는 현재 메시지 → 명시적 reply → 최근 메시지 순서
 - source별 count quota와 전체 byte budget은 세 범위가 공동으로 사용
 
 최근 문맥은 `/chatlog`가 켜져 있을 때만 수집합니다. `capture direct`에서는 히나와 직접 상호작용한
@@ -118,9 +113,8 @@ provider adapter
 이미지 bytes는 `ContextVar`를 통해 현재 `answer()` 요청에만 전달합니다. 장기 기억 요약과 공유 기억
 요약에는 넣지 않습니다. 이미지 원본·base64·Discord CDN URL도 기억용 데이터로 저장하지 않습니다.
 
-active reply chain visual은 provenance에 저장된 `message_id`로 Discord 원본 메시지를 다시 조회하고,
-passive recent가 명시적으로 필요할 때만 제한된 같은 채널 history를 스캔합니다. 어느 경우에도 과거
-이미지 bytes를 캐시하지 않으므로 봇 프로세스가 이미지를 장기 보관하지 않습니다.
+최근 이미지를 사용할 때도 과거 이미지 bytes를 캐시하는 대신 Discord의 제한된 같은 채널 history에서
+현재 요청에 필요한 항목만 다시 읽습니다. 따라서 봇 프로세스가 이미지를 장기 보관하지 않습니다.
 
 ## Provider 동작
 
@@ -150,8 +144,7 @@ adapter가 이미지 형식을 지원하는 것과 선택한 모델 자체가 vi
 
 - `현재 메시지`: 현재 사용자가 보낸 강한 참조
 - `명시적 답장 대상 메시지`: 사용자가 Discord reply로 직접 선택한 강한 참조
-- `답장 체인의 원본 메시지`: replied assistant turn을 만든 원본 visual message의 강한 causal 참조
-- `최근 채널 메시지`: 현재 발화가 명시적으로 과거 visual을 가리킬 때만 붙는 약한 문맥
+- `최근 채널 메시지`: 대화 연속성을 위한 약한 문맥
 
 과거 이미지는 현재 사용자 메시지의 첨부가 아닙니다. 현재 질문의 답장 대상과 메시지 순서를 먼저
 확인하고, 대화상 연결이 분명할 때만 사용합니다. 정체나 외형을 묻는 질문이라는 이유만으로 가장
