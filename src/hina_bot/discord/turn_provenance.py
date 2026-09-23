@@ -123,6 +123,8 @@ def build_turn_provenance(
                         existing["has_visual"] = True
                         if not existing["content"]:
                             existing["content"] = source["content"]
+                        if not existing.get("at"):
+                            existing["at"] = source["at"]
                         break
             continue
         add_source(source)
