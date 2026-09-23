@@ -4,11 +4,11 @@
 <section class="page-heading">
   <div>
     <h1>Effective Relationship Profiles</h1>
-    <p>Runtime-equivalent cross-space implicit relationship projection for a selected target guild/channel.</p>
+    <p>Target-scope view of raw/FULL relationship memory and cross-space IMPLICIT projection.</p>
   </div>
   <div class="window">
-    <strong>Policy</strong>
-    <span>confidence ≥ {{ data.policy.min_confidence }} · newest {{ data.policy.max_observations }} · decay {{ data.policy.recency_decay }}</span>
+    <strong>Runtime policy</strong>
+    <span>FULL newest {{ data.policy.max_observations }} · IMPLICIT confidence ≥ {{ data.policy.min_confidence }} · decay {{ data.policy.recency_decay }}</span>
   </div>
 </section>
 
@@ -32,13 +32,14 @@
 <section class="notice">{{ data.target_error }}</section>
 {% elif not data.target %}
 <section class="notice">
-  Select both a target guild and channel. The implicit profile is target-specific: relationship memories
-  already FULL in that disclosure space are intentionally excluded from the cross-space projection.
+  Select both a target guild and channel. FULL/raw access and the cross-space IMPLICIT projection are
+  both target-specific.
 </section>
 {% else %}
 <section class="notice">
   Target: <code>guild:{{ data.target.guild_id }}</code> · <code>channel:{{ data.target.channel_id }}</code>.
-  Missing axes mean no positive evidence was projected; they do not mean dislike or rejection.
+  FULL relationship memories are shown with raw content below. IMPLICIT memories contribute only their
+  bounded evidence projection. Missing axes mean no positive evidence was projected.
 </section>
 {% endif %}
 
@@ -49,8 +50,9 @@
       <thead>
         <tr>
           <th>User</th>
-          <th>Stored observations</th>
-          <th>Used</th>
+          <th>Stored relationships</th>
+          <th>FULL/raw</th>
+          <th>IMPLICIT inputs</th>
           {% for axis in data.axes %}<th>{{ axis | replace("_", " ") }}</th>{% endfor %}
           <th>Latest</th>
         </tr>
@@ -60,6 +62,7 @@
         <tr>
           <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
           <td class="numeric">{{ row.observation_count }}</td>
+          <td class="numeric">{{ row.full_relationship_count if data.target else "—" }}</td>
           <td class="numeric">{{ row.used_observations if data.target else "—" }}</td>
           {% for axis in data.axes %}
           <td class="numeric">
@@ -73,13 +76,59 @@
         {% if data.target %}
         <tr class="content-row">
           <td></td>
-          <td colspan="{{ 3 + (data.axes|length) }}">
+          <td colspan="{{ 4 + (data.axes|length) }}">
             <details>
               <summary>
-                {{ row.used_observations }} contributing observation{{ "" if row.used_observations == 1 else "s" }}
+                FULL/raw relationship memory · {{ row.full_relationship_count }} item{{ "" if row.full_relationship_count == 1 else "s" }}
+              </summary>
+              {% if row.full_relationships %}
+              <p class="muted">These are the exact bounded relationship memories eligible for <code>structured_relationship_memory</code> in this target scope.</p>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Memory</th><th>Origin</th><th>Disclosure</th><th>Confidence</th>
+                      {% for axis in data.axes %}<th>{{ axis | replace("_", " ") }}</th>{% endfor %}
+                      <th>Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                  {% for item in row.full_relationships %}
+                    <tr>
+                      <td><a href="/memory/{{ item.id }}">#{{ item.id }}</a></td>
+                      <td><code>{{ item.origin_realm }}</code><br><span class="muted">#{{ item.origin_channel_id }} · {{ "public" if item.origin_public_at_capture else "private" }}</span></td>
+                      <td><code>{{ item.disclosure }}</code></td>
+                      <td class="numeric">{{ "%.2f"|format(item.confidence) }}</td>
+                      {% for axis in data.axes %}
+                      <td class="numeric">{{ item.evidence.get(axis, "—") }}</td>
+                      {% endfor %}
+                      <td>{{ item.updated_at | localtime }}</td>
+                    </tr>
+                    <tr class="content-row">
+                      <td></td>
+                      <td colspan="{{ 3 + (data.axes|length) }}">
+                        <div class="memory-preview">{{ item.content }}</div>
+                        {% if item.source_message_ids %}
+                        <span class="muted">sources: {{ item.source_message_ids | join(", ") }}</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <p class="muted">No relationship memories resolve to FULL in this target scope.</p>
+              {% endif %}
+            </details>
+
+            <details>
+              <summary>
+                Cross-space IMPLICIT projection · {{ row.used_observations }} contributing observation{{ "" if row.used_observations == 1 else "s" }}
                 {% if row.invalid_observations %} · {{ row.invalid_observations }} invalid row(s) skipped{% endif %}
               </summary>
               {% if row.contributors %}
+              <p class="muted">Raw content is shown here only for dashboard inspection; runtime cross-space context receives the aggregated axis values above, not these source texts.</p>
               <div class="table-wrap">
                 <table>
                   <thead>
@@ -125,7 +174,7 @@
     </table>
   </div>
   {% else %}
-  <p class="empty">No active implicit relationship observations match this user filter.</p>
+  <p class="empty">No active relationship memories match this user filter.</p>
   {% endif %}
 </section>
 {% endblock %}
