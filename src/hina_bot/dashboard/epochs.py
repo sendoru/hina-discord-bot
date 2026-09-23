@@ -104,7 +104,7 @@ def select_observability_epoch(
             excluded_rows=0,
         )
 
-    current_id, current_reset_at, _ = epochs[-1]
+    current_id = epochs[-1][0]
     current = str(current_id)
     windows: list[EpochWindow] = [
         EpochWindow("all", "All retained telemetry", None, None, False),
