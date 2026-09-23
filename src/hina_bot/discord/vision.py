@@ -99,6 +99,11 @@ def _message_metadata(message, context_kind: str, reference_strength: str) -> di
         )[:100],
         "author_user_id": str(getattr(author, "id", "") or ""),
         "message_content": str(getattr(message, "content", "") or "")[:2000],
+        "at": (
+            getattr(message, "created_at", None).isoformat()
+            if getattr(message, "created_at", None) is not None
+            else ""
+        ),
     }
 
 
