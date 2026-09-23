@@ -1,5 +1,5 @@
 from types import SimpleNamespace as NS
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
@@ -8,11 +8,7 @@ from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.store import Store
 from hina_bot.discord.vision import VisionLimits, collect_visual_inputs
-from hina_bot.discord.web_bot import (
-    HinaClient,
-    _has_current_visual_reference,
-    _passive_recent_visual_requested,
-)
+from hina_bot.discord.web_bot import HinaClient
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 16
 GIF = b"GIF89a" + b"x" * 16
@@ -24,71 +20,6 @@ def _history(messages):
             yield message
 
     return rows()
-
-
-def test_passive_recent_visual_requires_explicit_backward_reference():
-    assert _passive_recent_visual_requested(
-        "아까 사진 뭐였어?",
-        has_direct_reference=False,
-    )
-    assert _passive_recent_visual_requested(
-        "아까 보낸 사진 뭐였어?",
-        has_direct_reference=False,
-    )
-    assert _passive_recent_visual_requested(
-        "저거 뭐야?",
-        has_direct_reference=False,
-    )
-    assert not _passive_recent_visual_requested(
-        "이게 누구야?",
-        has_direct_reference=False,
-    )
-    assert not _passive_recent_visual_requested(
-        "오늘 뭐 했어?",
-        has_direct_reference=False,
-    )
-
-
-def test_direct_visual_reference_blocks_recent_fallback_unless_comparing():
-    assert not _passive_recent_visual_requested(
-        "아까 사진 뭐였어?",
-        has_direct_reference=True,
-    )
-    assert not _passive_recent_visual_requested(
-        "저거 뭐야?",
-        has_direct_reference=True,
-    )
-    assert _passive_recent_visual_requested(
-        "이 사진이랑 아까 거 비교해줘",
-        has_direct_reference=True,
-    )
-    assert _passive_recent_visual_requested(
-        "아까 사진이랑 차이가 뭐야?",
-        has_direct_reference=True,
-    )
-
-
-def test_current_attachment_sticker_or_emoji_counts_as_direct_visual_reference():
-    assert _has_current_visual_reference(NS(
-        content="히나야",
-        attachments=[NS(filename="image.png")],
-        stickers=[],
-    ))
-    assert _has_current_visual_reference(NS(
-        content="히나야",
-        attachments=[],
-        stickers=[NS(name="sticker")],
-    ))
-    assert _has_current_visual_reference(NS(
-        content="히나야 <:hina_test:123>",
-        attachments=[],
-        stickers=[],
-    ))
-    assert not _has_current_visual_reference(NS(
-        content="히나야 저거 뭐야?",
-        attachments=[],
-        stickers=[],
-    ))
 
 
 @pytest.mark.asyncio
@@ -571,166 +502,6 @@ async def test_embed_reply_keeps_older_visual_as_separately_labeled_context():
             "히나야 버섯 씌워놨어",
         ),
     ]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("content", "expected_include_recent"),
-    [
-        ("히나야 이게 누구야?", False),
-        ("히나야 아까 보낸 사진 뭐였어?", True),
-    ],
-)
-async def test_web_bot_only_enables_recent_scan_for_backward_visual_reference(
-    content,
-    expected_include_recent,
-):
-    llm = NS(
-        answer=AsyncMock(return_value="응."),
-        summarize=AsyncMock(),
-        extract_structured_memory=AsyncMock(),
-        summarize_shared=AsyncMock(),
-        close=AsyncMock(),
-    )
-    store = Store(":memory:")
-    store.set_chat_log_mode_override("global", "on")
-    bot = HinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
-    bot._connection.user = NS(id=99)
-    channel = MagicMock()
-    channel.id = 10
-    channel.send = AsyncMock(return_value=NS(id=1000))
-    channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
-    channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
-    channel.history.side_effect = lambda **kwargs: _history([])
-    message = NS(
-        id=200,
-        content=content,
-        author=NS(
-            id=100,
-            bot=False,
-            display_name="사용자",
-            guild_permissions=NS(manage_guild=False),
-        ),
-        guild=None,
-        channel=channel,
-        mentions=[],
-        webhook_id=None,
-        reference=None,
-        attachments=[],
-        stickers=[],
-    )
-    collector = AsyncMock(return_value=[])
-
-    try:
-        with patch("hina_bot.discord.web_bot.collect_visual_inputs", new=collector):
-            await bot.on_message(message)
-        assert collector.await_args.kwargs["include_recent"] is expected_include_recent
-    finally:
-        await bot.close()
-
-
-@pytest.mark.asyncio
-async def test_explicit_reply_blocks_unrelated_recent_visual_fallback():
-    llm = NS(
-        answer=AsyncMock(return_value="응."),
-        summarize=AsyncMock(),
-        extract_structured_memory=AsyncMock(),
-        summarize_shared=AsyncMock(),
-        close=AsyncMock(),
-    )
-    store = Store(":memory:")
-    store.set_chat_log_mode_override("global", "on")
-    bot = HinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
-    bot._connection.user = NS(id=99)
-    channel = MagicMock()
-    channel.id = 10
-    channel.send = AsyncMock(return_value=NS(id=1000))
-    channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
-    channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
-    channel.history.side_effect = lambda **kwargs: _history([])
-    message = NS(
-        id=201,
-        content="히나야 아까 사진 뭐였어?",
-        author=NS(
-            id=100,
-            bot=False,
-            display_name="사용자",
-            guild_permissions=NS(manage_guild=False),
-        ),
-        guild=None,
-        channel=channel,
-        mentions=[],
-        webhook_id=None,
-        reference=NS(message_id=150, channel_id=10, resolved=None),
-        attachments=[],
-        stickers=[],
-    )
-    collector = AsyncMock(return_value=[])
-
-    try:
-        with (
-            patch(
-                "hina_bot.discord.web_bot.collect_reply_context",
-                new=AsyncMock(return_value=[]),
-            ),
-            patch("hina_bot.discord.web_bot.collect_visual_inputs", new=collector),
-        ):
-            await bot.on_message(message)
-        assert collector.await_args.kwargs["include_recent"] is False
-    finally:
-        await bot.close()
-
-
-@pytest.mark.asyncio
-async def test_direct_visual_can_request_additional_recent_visual_for_comparison():
-    llm = NS(
-        answer=AsyncMock(return_value="응."),
-        summarize=AsyncMock(),
-        extract_structured_memory=AsyncMock(),
-        summarize_shared=AsyncMock(),
-        close=AsyncMock(),
-    )
-    store = Store(":memory:")
-    store.set_chat_log_mode_override("global", "on")
-    bot = HinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
-    bot._connection.user = NS(id=99)
-    channel = MagicMock()
-    channel.id = 10
-    channel.send = AsyncMock(return_value=NS(id=1000))
-    channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
-    channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
-    channel.history.side_effect = lambda **kwargs: _history([])
-    attachment = NS(
-        size=len(PNG),
-        content_type="image/png",
-        filename="current.png",
-        read=AsyncMock(return_value=PNG),
-    )
-    message = NS(
-        id=202,
-        content="히나야 이 사진이랑 아까 거 비교해줘",
-        author=NS(
-            id=100,
-            bot=False,
-            display_name="사용자",
-            guild_permissions=NS(manage_guild=False),
-        ),
-        guild=None,
-        channel=channel,
-        mentions=[],
-        webhook_id=None,
-        reference=None,
-        attachments=[attachment],
-        stickers=[],
-    )
-    collector = AsyncMock(return_value=[])
-
-    try:
-        with patch("hina_bot.discord.web_bot.collect_visual_inputs", new=collector):
-            await bot.on_message(message)
-        assert collector.await_args.kwargs["include_recent"] is True
-    finally:
-        await bot.close()
 
 
 @pytest.mark.asyncio

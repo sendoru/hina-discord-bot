@@ -169,7 +169,7 @@ class TargetAwareRecentMessages(RecentMessages):
         return None
 
     def reply_chain_visual_ids(self, scope, replied) -> tuple[str, ...]:
-        """Return unique strong visual message IDs from the explicitly replied assistant turn."""
+        """Return only strong visual source IDs from the explicitly replied assistant turn."""
         turn = self._explicit_assistant_turn(scope, replied)
         if turn is None:
             return ()
@@ -177,17 +177,11 @@ class TargetAwareRecentMessages(RecentMessages):
         rows = [provenance.get("origin_request", {})]
         rows.extend(provenance.get("origin_sources", ()))
         rows.extend(provenance.get("reference_sources", ()))
-        selected = []
-        seen = set()
-        for row in rows:
-            message_id = str(row.get("message_id", ""))
-            if not row.get("has_visual") or not message_id or message_id in seen:
-                continue
-            selected.append(message_id)
-            seen.add(message_id)
-            if len(selected) >= 3:
-                break
-        return tuple(selected)
+        return tuple(
+            str(row.get("message_id", ""))
+            for row in rows
+            if row.get("has_visual") and row.get("message_id")
+        )[:3]
 
     @staticmethod
     def _take_recent(rows, budget, slots):
