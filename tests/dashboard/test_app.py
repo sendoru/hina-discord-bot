@@ -94,6 +94,13 @@ def dashboard_client(tmp_path):
         relationship_evidence={"comfort": 3, "familiarity": 2},
         user_name="Dashboard User",
     )
+    guild_scope = Scope(1, 20, 100)
+    store.set_memory_mode_override("global", "read_only")
+    store.set_memory_mode_override(guild_scope.realm, "normal")
+    store.set_chat_log_mode_override("global", "on")
+    store.set_note("config:chatlog_capture:global", "direct")
+    store.set_note(guild_scope.realm, "dashboard server note")
+    store.set_note(guild_scope.user_note, "dashboard user note")
     store.close()
 
     usage = tmp_path / "usage.jsonl"
@@ -190,6 +197,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     relationships = client.get(
         "/relationships?target_guild_id=1&target_channel_id=10&q=Dashboard"
     )
+    state = client.get(
+        "/state?target_guild_id=1&target_channel_id=20&target_user_id=100&q=dashboard"
+    )
     summaries = client.get("/summaries?q=dashboard")
     cursors = client.get("/memory/cursors?user_id=100")
     reconciliation = client.get("/reconciliation?relation=corrects")
@@ -200,6 +210,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Hina Dashboard" in overview.text
     assert 'aria-label="Dashboard sections"' in overview.text
     assert 'href="/relationships"' in overview.text
+    assert 'href="/state"' in overview.text
     assert "viewport-fit=cover" in overview.text
     assert "Asia/Seoul" in overview.text
     assert "2026-09-21 09:00:00 KST" in overview.text
@@ -237,6 +248,12 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Dashboard User" in relationships.text
     assert "3/4" in relationships.text
     assert "comfortable recurring interaction" in relationships.text
+    assert state.status_code == 200
+    assert "Memory &amp; Context State" in state.text
+    assert "dashboard server note" in state.text
+    assert "dashboard user note" in state.text
+    assert "read_only" in state.text
+    assert "direct" in state.text
     assert "legacy dashboard summary" in summaries.text
     assert "Memory Extraction Cursors" in cursors.text
     assert "dashboard memory updated" in reconciliation.text
