@@ -73,7 +73,7 @@
         {% if data.target %}
         <tr class="content-row">
           <td></td>
-          <td colspan="{{ 9 + (data.axes|length) - 6 }}">
+          <td colspan="{{ 3 + (data.axes|length) }}">
             <details>
               <summary>
                 {{ row.used_observations }} contributing observation{{ "" if row.used_observations == 1 else "s" }}
@@ -102,7 +102,7 @@
                     </tr>
                     <tr class="content-row">
                       <td></td>
-                      <td colspan="{{ 8 + (data.axes|length) - 6 }}">
+                      <td colspan="{{ 3 + (data.axes|length) }}">
                         <div class="memory-preview">{{ item.content }}</div>
                         {% if item.source_message_ids %}
                         <span class="muted">sources: {{ item.source_message_ids | join(", ") }}</span>
