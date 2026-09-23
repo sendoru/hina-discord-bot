@@ -208,6 +208,27 @@ The dashboard remains intended for administrative inspection rather than dense m
 large analytical tables keep their column structure and use local horizontal scrolling instead of
 hiding fields.
 
+## Observability epochs
+
+Successful analysis-baseline resets append `observability_epochs(id, reset_at)` without copying the
+epoch ID into every JSONL row. The dashboard assigns retained telemetry to a generation by timestamp:
+
+- data before the first reset is `legacy`,
+- epoch `N` starts at reset `N` and ends immediately before the next reset,
+- the newest epoch is the current analysis baseline.
+
+When at least one marker exists, telemetry-based pages default to the current epoch. Overview is always
+current-epoch scoped; Traces, Analytics and Identity can explicitly select a historical epoch,
+`legacy`, or `all`.
+
+This default prevents fields introduced after an older deployment from being silently compared with
+rows where those fields did not exist. Selecting `all` is intentionally allowed for coarse historical
+inspection, but the UI warns that missing fields may represent schema-generation differences rather
+than runtime zero/false values.
+
+Rows without a valid `at` timestamp cannot be assigned to a specific epoch and are excluded from
+epoch-scoped views. They remain visible when `all` retained telemetry is selected.
+
 ## Routing and usage analytics
 
 `/analytics` reads only retained `usage.jsonl` and `discord-usage.jsonl` telemetry. It does not
