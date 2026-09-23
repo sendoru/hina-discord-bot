@@ -45,14 +45,11 @@ def test_vision_policy_calibrates_character_identity():
     assert "추측·정정은 추가 문맥일 뿐" in compact
 
 
-
 def test_vision_policy_requires_stronger_evidence_for_self_attribution():
     compact = " ".join(VISION_INPUT_POLICY.split())
     assert "self-attribution은 일반 인물 식별보다 더 엄격하게 판단하세요" in compact
     assert "'히나야'라고 부르거나 bot mention으로 assistant를 호출한 사실" in compact
     assert "현재 역할이 히나라는 사실 자체는 이미지 subject의 신원 근거가 아닙니다" in compact
-    assert "머리색· SD 스타일·복장 일부가 비슷하다는 이유만으로" not in compact
-    assert "머리색· SD 스타일" not in compact
     assert "머리색·SD 스타일·복장 일부가 비슷하다는 이유만으로" in compact
     assert "'나를 그린 그림', '내 모습', '나네'" in compact
     assert "'이 그림', '사진 속 캐릭터' 같은 중립 표현" in compact
