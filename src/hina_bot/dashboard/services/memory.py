@@ -115,9 +115,7 @@ class MemoryService(ReadService):
                 scope = Scope(target[0], target[1], int(user_id))
                 selected = implicit_relationship_observations(typed_items, scope)
                 profile = aggregate_relationship_evidence(typed_items, scope)
-                raw_by_id = {int(item["id"]): item for item in raw_items}
                 for age, item in enumerate(reversed(selected)):
-                    raw = raw_by_id.get(item.id, {})
                     contributors.append({
                         "id": item.id,
                         "content": item.content,
