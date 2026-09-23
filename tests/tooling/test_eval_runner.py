@@ -5,9 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.tooling.eval_runner import (
     attach_routing_results,
     case_turns,
+    case_visuals,
     eval_settings,
     read_cases,
     response_validation_errors,
@@ -26,6 +28,12 @@ class EvalRunnerTests(unittest.TestCase):
              "mode": "server", "channel_context": [
                  {"user_id": "99", "name": "A", "role": "user", "content": "아까 한 말"},
              ], "validators": ["python_syntax"]},
+            {"id": "visual", "input": "히나야", "expected": "이미지를 자기 자신으로 오인하지 않는다.",
+             "mode": "server", "visuals": [{
+                 "fixture": "evals/fixtures/visual-not-hina.png.b64",
+                 "mime_type": "image/png",
+                 "name": "visual-not-hina.png",
+             }]},
         ]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "cases.jsonl"
@@ -37,6 +45,8 @@ class EvalRunnerTests(unittest.TestCase):
         self.assertEqual(cases[1]["mode"], "special_dm")
         self.assertEqual(cases[2]["channel_context"][0]["name"], "A")
         self.assertEqual(cases[2]["validators"], ["python_syntax"])
+        self.assertEqual(cases[3]["visuals"][0]["mime_type"], "image/png")
+        self.assertEqual(case_visuals(cases[3])[0].context_kind, "current_message")
 
     def test_rejects_duplicate_ids_invalid_mode_and_bad_channel_context(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -62,6 +72,18 @@ class EvalRunnerTests(unittest.TestCase):
                 {"id": "bad-context", "input": "a", "expected": "x",
                  "channel_context": [{"name": "A"}]}) + "\n",
                 encoding="utf-8")
+            with self.assertRaises(ValueError):
+                read_cases(path)
+            path.write_text(json.dumps(
+                {"id": "bad-visual", "input": "a", "expected": "x",
+                 "visuals": [{"fixture": "../secret.png.b64", "mime_type": "image/png"}]})
+                + "\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                read_cases(path)
+            path.write_text(json.dumps(
+                {"id": "multi-visual", "turns": ["a", "b"], "expected": "x",
+                 "visuals": [{"fixture": "evals/fixtures/visual-not-hina.png.b64",
+                              "mime_type": "image/png"}]}) + "\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 read_cases(path)
 
@@ -203,6 +225,43 @@ class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["routing"], [])
 
 
+    async def test_run_case_exposes_sanitized_visual_fixture_to_llm(self):
+        class FakeLLM:
+            settings = SimpleNamespace(history_turns=12, provider="test", model="fake")
+
+            def __init__(self):
+                self.visuals = []
+
+            async def answer(self, store, scope, name, content, **kwargs):
+                self.visuals.append(CURRENT_VISUAL_INPUTS.get())
+                return "ok"
+
+        case = {
+            "id": "visual",
+            "mode": "server",
+            "speaker": "A",
+            "input": "히나야",
+            "visuals": [{
+                "fixture": "evals/fixtures/visual-not-hina.png.b64",
+                "mime_type": "image/png",
+                "name": "visual-not-hina.png",
+            }],
+            "expected": "이미지를 자기 자신으로 오인하지 않는다.",
+        }
+        llm = FakeLLM()
+
+        result = await run_case(llm, case)
+
+        self.assertEqual(result["error"], "")
+        self.assertEqual(len(llm.visuals), 1)
+        self.assertEqual(len(llm.visuals[0]), 1)
+        self.assertEqual(llm.visuals[0][0].mime_type, "image/png")
+        self.assertEqual(llm.visuals[0][0].source, "attachment")
+        self.assertEqual(llm.visuals[0][0].context_kind, "current_message")
+        self.assertEqual(CURRENT_VISUAL_INPUTS.get(), ())
+        self.assertEqual(result["visuals"], case["visuals"])
+
+
 def test_attach_routing_results_reports_actual_answer_model_and_tier(tmp_path):
     usage = tmp_path / "usage.jsonl"
     usage.write_text(
@@ -256,6 +315,7 @@ def test_production_quality_cases_are_sanitized_and_cover_live_failure_shapes():
         "production_world_followup_answers_hypothetical",
         "production_multi_bot_addressee_not_self",
         "production_ambiguous_deictic_does_not_invent",
+        "production_visual_address_not_self_attribution",
     }
     raw = Path("evals/production_quality_cases.jsonl").read_text(encoding="utf-8")
     assert "478976784881287178" not in raw
