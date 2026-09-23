@@ -520,7 +520,8 @@ class HinaClient(BaseHinaClient):
         reply_context_ms = round((time.perf_counter() - reply_context_started) * 1000)
         reply_chain_visual_ids = self.recent.reply_chain_visual_ids(scope, replied)
         has_direct_visual_reference = bool(
-            replied
+            getattr(message, "reference", None) is not None
+            or replied
             or reply_chain_visual_ids
             or _has_current_visual_reference(message)
         )
