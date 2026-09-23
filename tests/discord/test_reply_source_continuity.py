@@ -160,12 +160,12 @@ def _provenance(*, visual=True):
         "origin_request": {
             "message_id": "2", "content": "이거 그대로 읽어봐", "role": "user",
             "user_id": "100", "author_user_id": "100", "direct_trigger": True,
-            "has_visual": False,
+            "at": "2026-09-23T05:53:19+00:00", "has_visual": False,
         },
         "origin_sources": [{
             "message_id": "1", "content": "", "role": "user",
             "user_id": "100", "author_user_id": "100", "direct_trigger": None,
-            "has_visual": visual,
+            "at": "2026-09-23T05:53:09+00:00", "has_visual": visual,
         }],
     }
 
@@ -184,6 +184,7 @@ def test_explicit_reply_to_assistant_reconstructs_one_hop_causal_chain():
     reply_token = REPLY_CONTEXT.set(({
         "message_id": "3", "content": "하아... 나는 고양이가 아니야.",
         "role": "assistant", "user_id": "99", "author_user_id": "99",
+        "at": "2026-09-23T05:53:36+00:00",
     },))
     try:
         rows = recent.context(scope, 4)
@@ -197,6 +198,11 @@ def test_explicit_reply_to_assistant_reconstructs_one_hop_causal_chain():
             "reply_origin_source", "reply_origin_request", "replied_message"
         ]
         assert [row["message_id"] for row in chain] == ["1", "2", "3"]
+        assert [row["at"] for row in chain] == [
+            "2026-09-23T05:53:09+00:00",
+            "2026-09-23T05:53:19+00:00",
+            "2026-09-23T05:53:36+00:00",
+        ]
         assert recent.reply_chain_visual_ids(scope, REPLY_CONTEXT.get()) == ("1",)
         assert all("turn_provenance" not in row for row in rows)
     finally:
