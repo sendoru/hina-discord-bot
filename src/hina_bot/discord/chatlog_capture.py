@@ -1,8 +1,12 @@
 """Scope-aware policy for which channel messages enter recent context."""
 
 from hina_bot.core.routing import Scope
+from hina_bot.core.scope_overrides import (
+    CHATLOG_CAPTURE_NOTE_PREFIX,
+    resolve_scope_chain,
+)
 
-_PREFIX = "config:chatlog_capture:"
+_PREFIX = CHATLOG_CAPTURE_NOTE_PREFIX
 
 
 def _key(scope_key: str) -> str:
@@ -28,24 +32,11 @@ def capture_mode_overrides(store) -> dict[str, str]:
 
 
 def capture_mode_chain(store, scope: Scope) -> dict[str, str | None]:
-    global_mode = capture_mode_override(store, "global")
-    server_mode = capture_mode_override(store, scope.realm) if scope.guild_id is not None else None
-    channel_mode = capture_mode_override(store, scope.channel)
-    if channel_mode is not None:
-        effective, source = channel_mode, "channel"
-    elif server_mode is not None:
-        effective, source = server_mode, "server"
-    elif global_mode is not None:
-        effective, source = global_mode, "global"
-    else:
-        effective, source = "all", "default"
-    return {
-        "global": global_mode,
-        "server": server_mode,
-        "channel": channel_mode,
-        "effective": effective,
-        "source": source,
-    }
+    return resolve_scope_chain(
+        capture_mode_overrides(store),
+        scope,
+        default="all",
+    )
 
 
 def capture_mode(store, scope: Scope) -> str:
