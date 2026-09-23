@@ -215,6 +215,62 @@ class TargetAwareRecentMessages(RecentMessages):
             if str(row.get("message_id", "")) in selected
         ]
 
+    @classmethod
+    def _take_active_reply_bundle(cls, active_chain, replied, budget, slots):
+        """Keep explicit-reply anchors before spending context on weaker recent rows."""
+        bundle = [*active_chain, *replied]
+        remaining = max(0, int(budget))
+        slots = max(0, int(slots))
+        if not bundle or remaining <= 0 or slots <= 0:
+            return [], remaining
+
+        required_kinds = {"reply_origin_request", "replied_message"}
+        required = [
+            row for row in bundle
+            if row.get("context_kind") in required_kinds
+        ][:slots]
+        selected_required = []
+        for index, row in enumerate(required):
+            if remaining <= 0:
+                break
+            anchors_left = len(required) - index
+            share = max(1, remaining // anchors_left)
+            content = str(row.get("content", ""))
+            if not content and not row.get("has_visual"):
+                continue
+            item = dict(row)
+            item["content"] = content[:share]
+            if len(item["content"]) < len(content):
+                item["truncated"] = True
+            remaining -= len(item["content"])
+            selected_required.append(item)
+
+        selected_ids = {
+            str(row.get("message_id", ""))
+            for row in selected_required
+            if row.get("message_id") is not None
+        }
+        optional = [
+            row for row in bundle
+            if (
+                row.get("context_kind") not in required_kinds
+                and str(row.get("message_id", "")) not in selected_ids
+            )
+        ]
+        optional_selected, remaining = cls._take_recent(
+            optional,
+            remaining,
+            max(0, slots - len(selected_required)),
+        )
+        return (
+            cls._merge_in_source_order(
+                bundle,
+                optional_selected,
+                selected_required,
+            ),
+            remaining,
+        )
+
     def context(self, scope, before_id):
         current_user_id = str(scope.user_id)
         base = super().candidates(scope, before_id)
@@ -418,22 +474,26 @@ class TargetAwareRecentMessages(RecentMessages):
             if str(row.get("message_id", "")) not in extra_ids
         ]
 
-        # One character budget covers every source of channel context, but the item budget is now
-        # slightly wider because short ambient Discord chatter should not erase an ongoing speaker
-        # thread. Priority is: explicit reply, same-speaker continuity, ambient channel chat, then
-        # target-user history. Unused reservations flow back to the remaining sources.
+        # One character budget covers every source of channel context. Explicit reply context
+        # receives the strongest reservation, then same-speaker continuity, request-selected
+        # target history, and finally ambient channel chat. Unused reservations flow back.
         remaining = max(0, int(self.budget))
         slots = 18
 
-        replied_selected, remaining = self._take_recent(replied, remaining, slots)
-        slots -= len(replied_selected)
-
-        chain_selected, remaining = self._take_recent(
-            active_chain,
-            remaining,
-            min(4, slots),
+        active_reply_budget = (
+            min(4000, max(1200, remaining * 2 // 3))
+            if replied
+            else 0
         )
-        slots -= len(chain_selected)
+        active_reply_budget = min(remaining, active_reply_budget)
+        active_reply_selected, active_reply_unused = self._take_active_reply_bundle(
+            active_chain,
+            replied,
+            active_reply_budget,
+            min(6, slots),
+        )
+        remaining -= active_reply_budget - active_reply_unused
+        slots -= len(active_reply_selected)
 
         source_selected, remaining = self._take_recent(sources, remaining, min(2, slots))
         slots -= len(source_selected)
@@ -494,6 +554,5 @@ class TargetAwareRecentMessages(RecentMessages):
             target_selected
             + selected_base
             + source_selected
-            + chain_selected
-            + replied_selected
+            + active_reply_selected
         )

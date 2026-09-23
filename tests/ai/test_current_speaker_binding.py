@@ -290,3 +290,56 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
         await llm.close()
         store.close()
 
+@pytest.mark.asyncio
+async def test_plain_explicit_reply_is_always_split_into_active_reply_chain():
+    calls = []
+
+    def handler(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json=_response())
+
+    client = AsyncOpenAI(
+        api_key="test-not-a-real-key",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100, True)
+    channel_context = [{
+        "message_id": "10",
+        "author_user_id": "200",
+        "user_id": "200",
+        "content": "파란색이 좋아",
+        "role": "user",
+        "context_kind": "replied_message",
+        "reference_strength": "explicit_reply",
+    }, {
+        "message_id": "11",
+        "author_user_id": "300",
+        "user_id": "300",
+        "content": "CUDA 얘기",
+        "role": "user",
+        "context_kind": "channel_ambient",
+    }]
+    try:
+        await llm.answer(
+            store,
+            scope,
+            "사용자",
+            "왜?",
+            channel_context=channel_context,
+        )
+        payload = calls[-1]
+        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+
+        assert [row["message_id"] for row in reference["active_reply_chain"]] == ["10"]
+        assert [row["message_id"] for row in reference["channel_recent_messages"]] == ["11"]
+        assert (
+            "active_reply_chain > speaker_thread > target_user_history > channel_ambient"
+            in payload["instructions"]
+        )
+        assert "새 주제나 새 대상을 명시하면 현재 발화가 가장 우선" in payload["instructions"]
+    finally:
+        await llm.close()
+        store.close()
+
