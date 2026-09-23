@@ -494,8 +494,6 @@ class AdminRepository:
             return []
         clauses = [
             "kind='relationship'",
-            "disclosure='implicit'",
-            "relationship_evidence NOT IN ('{}','')",
         ]
         if "status" in columns:
             clauses.append("status='active'")
@@ -536,8 +534,6 @@ class AdminRepository:
         clauses = [
             "user_id=?",
             "kind='relationship'",
-            "disclosure='implicit'",
-            "relationship_evidence NOT IN ('{}','')",
         ]
         if "status" in columns:
             clauses.append("status='active'")
