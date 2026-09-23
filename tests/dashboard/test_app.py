@@ -220,6 +220,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert overview.status_code == 200
     assert "Hina Dashboard" in overview.text
     assert 'aria-label="Dashboard sections"' in overview.text
+    assert 'class="nav-link nav-home active"' in overview.text
+    assert "Observability" in overview.text
+    assert "Context" in overview.text
+    assert "Memory ops" in overview.text
     assert 'href="/relationships"' in overview.text
     assert 'href="/state"' in overview.text
     assert "viewport-fit=cover" in overview.text
@@ -282,6 +286,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Some mobile browsers expose an effective CSS viewport wider than 720px" in static.text
     assert "white-space: nowrap" in static.text
     assert "overscroll-behavior-x: contain" in static.text
+    assert ".app-shell" in static.text
+    assert ".sidebar-nav" in static.text
+    assert ".nav-link.active" in static.text
+    assert ".notice.warning" in static.text
 
 
 def test_unknown_trace_returns_404(tmp_path):
