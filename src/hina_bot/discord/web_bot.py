@@ -91,9 +91,10 @@ def _passive_recent_visual_requested(
     """
     if not text or _PASSIVE_RECENT_VISUAL_REFERENCE.search(text) is None:
         return False
-    if has_direct_reference and _ADDITIONAL_RECENT_VISUAL_REFERENCE.search(text) is None:
-        return False
-    return True
+    return (
+        not has_direct_reference
+        or _ADDITIONAL_RECENT_VISUAL_REFERENCE.search(text) is not None
+    )
 
 
 def _augment_empty_call(content: str, text: str | None, has_visuals: bool) -> str | None:
