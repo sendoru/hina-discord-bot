@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}State · Hina Dashboard{% endblock %}
+{% block content %}
+{% macro chain_rows(chain, include_server=true) -%}
+<tr><td>global</td><td>{{ chain.global or "inherit / default" }}</td></tr>
+{% if include_server %}<tr><td>server</td><td>{{ chain.server or "inherit" }}</td></tr>{% endif %}
+<tr><td>channel</td><td>{{ chain.channel or "inherit" }}</td></tr>
+<tr><td><strong>effective</strong></td><td><strong>{{ chain.effective }}</strong> <span class="muted">from {{ chain.source }}</span></td></tr>
+{%- endmacro %}
+
+<section class="page-heading">
+  <div>
+    <h1>Memory &amp; Context State</h1>
+    <p>Read-only view of effective memory, recent-chat context, and manual notes.</p>
+  </div>
+</section>
+
+<form class="filters search-filter" method="get">
+  <div class="filter-row">
+    <input name="target_guild_id" inputmode="numeric" value="{{ data.filters.target_guild_id }}" placeholder="guild id (empty = DM)">
+    <input name="target_channel_id" inputmode="numeric" value="{{ data.filters.target_channel_id }}" placeholder="channel id">
+    <input name="target_user_id" inputmode="numeric" value="{{ data.filters.target_user_id }}" placeholder="user id">
+    <button type="submit">Evaluate scope</button>
+    <a class="button secondary" href="/state">Reset</a>
+  </div>
+  <div class="search-primary">
+    <label for="state-note-search">Manual note search</label>
+    <div class="search-primary-row">
+      <input id="state-note-search" class="search-input" name="q" value="{{ data.filters.q }}" placeholder="scope / user / note content">
+      <button type="submit">Search notes</button>
+    </div>
+  </div>
+</form>
+
+{% if data.target_error %}
+<section class="notice">{{ data.target_error }}</section>
+{% elif not data.effective %}
+<section class="notice">
+  Enter channel and user IDs to evaluate a scope. Leave guild ID empty to inspect a DM scope.
+</section>
+{% else %}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Effective target state</h2>
+      <p class="muted">
+        <code>{{ data.effective.realm }}</code> ·
+        <code>channel:{{ data.effective.scope.channel_id }}</code> ·
+        <code>user:{{ data.effective.scope.user_id }}</code>
+      </p>
+    </div>
+  </div>
+
+  <section class="cards">
+    <article class="card">
+      <span>Memory mode</span>
+      <strong>{{ data.effective.memory.chain.effective }}</strong>
+      <small>from {{ data.effective.memory.chain.source }}</small>
+    </article>
+    <article class="card">
+      <span>Memory reads</span>
+      <strong>{{ "yes" if data.effective.memory.reads else "no" }}</strong>
+    </article>
+    <article class="card">
+      <span>Memory writes</span>
+      <strong>{{ "yes" if data.effective.memory.writes else "no" }}</strong>
+    </article>
+    <article class="card">
+      <span>Recent context</span>
+      <strong>{{ data.effective.chat_log.effective }}</strong>
+      {% if not data.effective.chat_log.guild_recent_context_applicable %}
+      <small>DM: recent channel context is not used</small>
+      {% endif %}
+    </article>
+  </section>
+
+  <div class="two-column">
+    <div>
+      <h3>Automatic memory inheritance</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Layer</th><th>Mode</th></tr></thead>
+          <tbody>
+            {{ chain_rows(data.effective.memory.chain, data.effective.scope.guild_id is not none) }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div>
+      <h3>Recent-context enablement</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Layer</th><th>on/off</th></tr></thead>
+          <tbody>
+            {{ chain_rows(data.effective.chat_log.enabled_chain, data.effective.scope.guild_id is not none) }}
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Recent-context capture</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Layer</th><th>all/direct</th></tr></thead>
+          <tbody>
+            {{ chain_rows(data.effective.chat_log.capture_chain, data.effective.scope.guild_id is not none) }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Manual notes for this scope</h2>
+  <p class="muted">
+    Notes are eligible only when automatic-memory reads are enabled. Per-request context routing can
+    still suppress cross-channel memory, so this is configuration eligibility rather than proof that
+    a particular answer received the note.
+  </p>
+  {% if data.effective.scope.guild_id is not none %}
+  <h3>Server note · <code>{{ data.effective.realm }}</code></h3>
+  <div class="message">{{ data.effective.notes.server or "—" }}</div>
+  {% endif %}
+  <h3>User note · <code>{{ data.effective.user_note_key }}</code></h3>
+  <div class="message">{{ data.effective.notes.user or "—" }}</div>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Stored memory overrides</h2>
+  {% if data.memory_overrides %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Scope</th><th>Mode</th></tr></thead>
+      <tbody>
+      {% for row in data.memory_overrides %}
+        <tr><td><code>{{ row.scope }}</code></td><td>{{ row.mode }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No explicit memory overrides; runtime defaults to <code>normal</code>.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Stored recent-context overrides</h2>
+  <p class="muted">
+    Runtime stores enablement (<code>on/off</code>) and capture scope (<code>all/direct</code>)
+    separately. The effective target state above combines both.
+  </p>
+  {% if data.chat_overrides %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Scope</th><th>Enabled override</th><th>Capture override</th></tr></thead>
+      <tbody>
+      {% for row in data.chat_overrides %}
+        <tr>
+          <td><code>{{ row.scope }}</code></td>
+          <td>{{ row.enabled or "inherit" }}</td>
+          <td>{{ row.capture or "inherit" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No explicit recent-context overrides; runtime defaults to <code>on + all</code>.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Manual notes</h2>
+      <p class="muted">
+        Internal <code>config:*</code> rows are excluded here. {{ data.internal_note_count }} internal/config
+        row{{ "" if data.internal_note_count == 1 else "s" }} currently exist; chat-log capture rows are
+        represented in the override table above.
+      </p>
+    </div>
+  </div>
+  {% if data.manual_notes %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Kind</th><th>Scope / owner</th><th>Content</th></tr></thead>
+      <tbody>
+      {% for row in data.manual_notes %}
+        <tr>
+          <td>{{ row.kind }}</td>
+          <td>
+            <code>{{ row.scope }}</code>
+            {% if row.user_id %}
+              <br>{% if row.user_name %}{{ row.user_name }} · {% endif %}<code>{{ row.user_id }}</code>
+            {% endif %}
+          </td>
+          <td><div class="memory-preview">{{ row.text }}</div></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No manual notes match this filter.</p>
+  {% endif %}
+</section>
+{% endblock %}
