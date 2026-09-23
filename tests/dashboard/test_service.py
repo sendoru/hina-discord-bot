@@ -658,6 +658,42 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
 
 
 
+def test_relationship_profiles_include_users_with_only_full_relationships(tmp_path):
+    database = tmp_path / "full-only-relationships.sqlite3"
+    store = Store(str(database))
+    store.add_memory_item(
+        Scope(2, 30, 200, True),
+        "globally visible relationship only",
+        kind="relationship",
+        disclosure="global",
+        confidence=0.6,
+        user_name="Full Only User",
+    )
+    store.close()
+
+    service = DashboardService(
+        AdminRepository(database),
+        TelemetryReader("", ""),
+    )
+
+    data = service.relationship_profiles(
+        target_guild_id="1",
+        target_channel_id="99",
+        query="Full Only",
+    )
+
+    assert len(data["rows"]) == 1
+    row = data["rows"][0]
+    assert row["user_id"] == "200"
+    assert row["observation_count"] == 1
+    assert row["profile"] == {}
+    assert row["used_observations"] == 0
+    assert row["full_relationship_count"] == 1
+    assert row["full_relationships"][0]["content"] == (
+        "globally visible relationship only"
+    )
+
+
 def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     database = tmp_path / "context-state.sqlite3"
     store = Store(str(database))
