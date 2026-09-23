@@ -94,7 +94,17 @@ def dashboard_client(tmp_path):
         relationship_evidence={"comfort": 3, "familiarity": 2},
         user_name="Dashboard User",
     )
-    guild_scope = Scope(1, 20, 100)
+    guild_scope = Scope(1, 20, 100, True)
+    store.add_memory_item(
+        guild_scope,
+        "same guild raw relationship",
+        kind="relationship",
+        disclosure="local",
+        source_message_ids=("55",),
+        confidence=0.88,
+        relationship_evidence={"casualness": 2},
+        user_name="Dashboard User",
+    )
     store.set_memory_mode_override("global", "read_only")
     store.set_memory_mode_override(guild_scope.realm, "normal")
     store.set_chat_log_mode_override("global", "on")
@@ -264,6 +274,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Dashboard User" in relationships.text
     assert "3/4" in relationships.text
     assert "comfortable recurring interaction" in relationships.text
+    assert "FULL/raw relationship memory" in relationships.text
+    assert "same guild raw relationship" in relationships.text
+    assert "Cross-space IMPLICIT projection" in relationships.text
     assert state.status_code == 200
     assert "Memory &amp; Context State" in state.text
     assert "dashboard server note" in state.text

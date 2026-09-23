@@ -45,7 +45,7 @@ The dashboard currently exposes the following read-only routes:
 - `/conversations`: bounded raw-turn inspection with server-side filters
 - `/memory`: structured-memory list/filter view
 - `/memory/{id}`: memory provenance/source-turn detail
-- `/relationships`: target-scope effective implicit relationship profiles
+- `/relationships`: target-scope FULL/raw relationships + effective IMPLICIT projection
 - `/state`: effective memory/chat-log inheritance and manual notes
 - `/summaries`: personal/shared legacy summary state
 - `/memory/cursors`: structured extraction cursor/pending state
@@ -310,21 +310,32 @@ remain viewable without dashboard-side schema writes.
 
 ### Effective relationship profiles
 
-`/relationships` reproduces the runtime cross-space implicit relationship projection for a selected
-target guild/channel. The projection is intentionally target-specific: relationship memories already
-FULL in that disclosure space do not contribute to the implicit profile.
+`/relationships` evaluates relationship memory for a selected target guild/channel using the same
+access policy as request assembly. It shows both sides of the runtime relationship context:
 
-The page uses the same shared aggregation contract as request assembly:
+- **FULL/raw relationship memory**: the newest eight active relationship items whose access resolves
+  to `full` in that shared target scope. Their content and evidence are the same bounded items used
+  for `structured_relationship_memory`.
+- **Cross-space IMPLICIT projection**: active `relationship + implicit` memories from other
+  disclosure spaces whose confidence is at least `0.8` and whose evidence is eligible for implicit
+  access. At most the eight newest observations are combined with confidence-weighted noisy-OR and
+  `0.85` exponential recency decay.
 
-- active `relationship` + `implicit` memories only,
-- minimum item confidence `0.8`,
-- at most the eight newest eligible observations,
-- confidence-weighted noisy-OR with `0.85` exponential recency decay,
-- six positive-evidence axes: familiarity, comfort, casualness, teasing tolerance,
+A relationship item cannot be both FULL and an implicit contributor for the same target. Same-space
+or `global` items resolve to FULL; eligible cross-space implicit items contribute only their evidence
+vector to the projection.
+
+Each user row therefore exposes:
+
+- stored active relationship count,
+- bounded FULL/raw item count and drill-down,
+- bounded IMPLICIT contributor count and drill-down,
+- the resulting 1..4 values for familiarity, comfort, casualness, teasing tolerance,
   support openness, and task orientation.
 
-Each user row shows the resulting 1..4 axis values and can expand the exact memory observations used
-for that projection. Missing axes mean no stored positive evidence, never negative evidence.
+The dashboard shows the source text of implicit contributors only for administrative inspection.
+Runtime cross-space model context receives the aggregated axis values, not those raw source texts.
+Missing axes mean no stored positive evidence, never negative evidence.
 
 ### Effective memory / recent-context state
 

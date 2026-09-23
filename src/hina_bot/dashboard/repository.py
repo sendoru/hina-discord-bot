@@ -490,12 +490,10 @@ class AdminRepository:
         query: str = "",
     ) -> list[dict[str, object]]:
         columns = self._table_columns("memory_items")
-        if "relationship_evidence" not in columns:
+        if not columns:
             return []
         clauses = [
             "kind='relationship'",
-            "disclosure='implicit'",
-            "relationship_evidence NOT IN ('{}','')",
         ]
         if "status" in columns:
             clauses.append("status='active'")
@@ -531,13 +529,11 @@ class AdminRepository:
 
     def relationship_profile_items(self, user_id: str) -> list[dict[str, object]]:
         columns = self._table_columns("memory_items")
-        if "relationship_evidence" not in columns:
+        if not columns:
             return []
         clauses = [
             "user_id=?",
             "kind='relationship'",
-            "disclosure='implicit'",
-            "relationship_evidence NOT IN ('{}','')",
         ]
         if "status" in columns:
             clauses.append("status='active'")

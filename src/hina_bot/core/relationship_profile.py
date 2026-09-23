@@ -19,6 +19,24 @@ RELATIONSHIP_MAX_OBSERVATIONS = 8
 RELATIONSHIP_RECENCY_DECAY = 0.85
 
 
+def full_relationship_observations(
+    items: Iterable[MemoryItem],
+    scope: Scope,
+) -> list[MemoryItem]:
+    """Return the exact bounded raw relationship items admitted as FULL in shared space."""
+
+    if scope.guild_id is None:
+        return []
+    owned = [
+        item
+        for item in items
+        if item.user_id == str(scope.user_id)
+        and item.kind == MemoryKind.RELATIONSHIP
+        and memory_access(item, scope) == MemoryAccess.FULL
+    ]
+    return owned[-RELATIONSHIP_MAX_OBSERVATIONS:]
+
+
 def implicit_relationship_observations(
     items: Iterable[MemoryItem],
     scope: Scope,
@@ -89,5 +107,6 @@ __all__ = [
     "RELATIONSHIP_MIN_ITEM_CONFIDENCE",
     "RELATIONSHIP_RECENCY_DECAY",
     "aggregate_relationship_evidence",
+    "full_relationship_observations",
     "implicit_relationship_observations",
 ]

@@ -7,7 +7,6 @@ from collections.abc import Iterable
 from hina_bot.core.memory_items import (
     MemoryAccess,
     MemoryItem,
-    MemoryKind,
     memory_access,
 )
 from hina_bot.core.relationship_profile import (
@@ -15,6 +14,7 @@ from hina_bot.core.relationship_profile import (
     RELATIONSHIP_MIN_ITEM_CONFIDENCE,
     RELATIONSHIP_RECENCY_DECAY,
     aggregate_relationship_evidence,
+    full_relationship_observations,
     implicit_relationship_observations,
 )
 from hina_bot.core.routing import Scope
@@ -54,15 +54,9 @@ def full_relationship_memory(items: Iterable[MemoryItem], scope: Scope) -> list[
 
     if scope.guild_id is None:
         return []
-    candidates = [
-        item
-        for item in _owned(items, scope)
-        if item.kind == MemoryKind.RELATIONSHIP
-        and memory_access(item, scope) == MemoryAccess.FULL
-    ]
     return [
         _serialize_memory_item(item)
-        for item in candidates[-RELATIONSHIP_MAX_OBSERVATIONS:]
+        for item in full_relationship_observations(items, scope)
     ]
 
 
@@ -104,12 +98,7 @@ def structured_memory_provenance(
             })
         return {"items": selected, "relationship_axes": []}
 
-    full_items = [
-        item
-        for item in items
-        if item.kind == MemoryKind.RELATIONSHIP
-        and memory_access(item, scope) == MemoryAccess.FULL
-    ][-RELATIONSHIP_MAX_OBSERVATIONS:]
+    full_items = full_relationship_observations(items, scope)
     for item in full_items:
         selected.append({
             "item_id": item.id,

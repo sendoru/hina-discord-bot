@@ -13,6 +13,7 @@ from hina_bot.core.relationship_profile import (
     RELATIONSHIP_MIN_ITEM_CONFIDENCE,
     RELATIONSHIP_RECENCY_DECAY,
     aggregate_relationship_evidence,
+    full_relationship_observations,
     implicit_relationship_observations,
 )
 from hina_bot.core.routing import Scope
@@ -74,6 +75,22 @@ class MemoryService(ReadService):
             ),
         )
 
+    @staticmethod
+    def _relationship_item_view(item: MemoryItem) -> dict[str, object]:
+        return {
+            "id": item.id,
+            "content": item.content,
+            "origin_realm": item.origin_realm,
+            "origin_channel_id": item.origin_channel_id,
+            "origin_public_at_capture": item.origin_public_at_capture,
+            "disclosure": item.disclosure.value,
+            "confidence": item.confidence,
+            "evidence": item.relationship_evidence.as_dict(),
+            "source_message_ids": item.source_message_ids,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+        }
+
     def relationship_profiles(
         self,
         *,
@@ -111,28 +128,25 @@ class MemoryService(ReadService):
 
             profile: dict[str, int] = {}
             contributors = []
+            full_relationships = []
             if target is not None and user_id.isdigit():
                 scope = Scope(target[0], target[1], int(user_id))
+                full_relationships = [
+                    self._relationship_item_view(item)
+                    for item in full_relationship_observations(typed_items, scope)
+                ]
                 selected = implicit_relationship_observations(typed_items, scope)
                 profile = aggregate_relationship_evidence(typed_items, scope)
                 for age, item in enumerate(reversed(selected)):
-                    contributors.append({
-                        "id": item.id,
-                        "content": item.content,
-                        "origin_realm": item.origin_realm,
-                        "origin_channel_id": item.origin_channel_id,
-                        "origin_public_at_capture": item.origin_public_at_capture,
-                        "confidence": item.confidence,
-                        "evidence": item.relationship_evidence.as_dict(),
-                        "source_message_ids": item.source_message_ids,
-                        "created_at": item.created_at,
-                        "updated_at": item.updated_at,
-                        "age": age,
-                    })
+                    contributor = self._relationship_item_view(item)
+                    contributor["age"] = age
+                    contributors.append(contributor)
 
             rows.append({
                 **dict(owner),
                 "profile": profile,
+                "full_relationships": full_relationships,
+                "full_relationship_count": len(full_relationships),
                 "contributors": contributors,
                 "used_observations": len(contributors),
                 "invalid_observations": invalid_items,
