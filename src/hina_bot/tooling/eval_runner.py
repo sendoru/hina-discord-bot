@@ -96,12 +96,12 @@ def read_cases(path: Path) -> list[dict]:
             raise ValueError(f"{path}:{number}: channel_context는 content가 있는 객체 배열이어야 합니다.")
         visuals = case.get("visuals", [])
         if not isinstance(visuals, list):
-            raise ValueError(f"{path}:{number}: visuals는 객체 배열이어야 합니다.")
+            raise TypeError(f"{path}:{number}: visuals는 객체 배열이어야 합니다.")
         if visuals and "turns" in case:
             raise ValueError(f"{path}:{number}: visuals는 현재 single-turn eval에서만 지원합니다.")
         for visual in visuals:
             if not isinstance(visual, dict):
-                raise ValueError(f"{path}:{number}: visual은 객체여야 합니다.")
+                raise TypeError(f"{path}:{number}: visual은 객체여야 합니다.")
             fixture = visual.get("fixture")
             mime_type = visual.get("mime_type")
             if not isinstance(fixture, str) or not fixture.strip():
@@ -122,7 +122,7 @@ def read_cases(path: Path) -> list[dict]:
                 )
             name = visual.get("name", "")
             if not isinstance(name, str):
-                raise ValueError(f"{path}:{number}: visual.name은 문자열이어야 합니다.")
+                raise TypeError(f"{path}:{number}: visual.name은 문자열이어야 합니다.")
         validators = case.get("validators", [])
         if (not isinstance(validators, list)
                 or any(not isinstance(value, str) or value not in VALIDATORS
