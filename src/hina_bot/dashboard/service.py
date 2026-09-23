@@ -3,7 +3,12 @@ from __future__ import annotations
 from .analytics import build_analytics
 from .identity import build_identity_observability
 from .repository import AdminRepository
-from .services import ContextStateService, MemoryService, ReconciliationService, TraceService
+from .services import (
+    ContextStateService,
+    MemoryService,
+    ReconciliationService,
+    TraceService,
+)
 from .telemetry import TelemetryReader
 
 
