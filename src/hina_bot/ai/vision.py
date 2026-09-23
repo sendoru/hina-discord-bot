@@ -69,6 +69,7 @@ class VisualInput:
     author_name: str = ""
     author_user_id: str = ""
     message_content: str = ""
+    at: str = ""
 
     def data_url(self) -> str:
         encoded = base64.b64encode(self.data).decode("ascii")
@@ -149,6 +150,7 @@ def _historical_visual_messages(visuals: list[VisualInput]) -> list[dict]:
             "author_name": first.author_name,
             "author_user_id": first.author_user_id,
             "message_content": first.message_content,
+            "at": first.at,
         }
         content = [{
             "type": "input_text",
