@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
+from datetime import UTC, datetime
 
 from ..ai.vision import VisualInput
 
@@ -32,6 +33,16 @@ def _author_row(message) -> dict:
     }
 
 
+def _source_at(value: dict) -> str:
+    at = str(value.get("at") or "").strip()
+    if at:
+        return at
+    unix_time = value.get("unix_time")
+    if isinstance(unix_time, (int, float)) and not isinstance(unix_time, bool):
+        return datetime.fromtimestamp(float(unix_time), UTC).isoformat()
+    return ""
+
+
 def _source_from_visual(visual: VisualInput) -> dict:
     return {
         "message_id": str(visual.message_id or ""),
@@ -42,6 +53,7 @@ def _source_from_visual(visual: VisualInput) -> dict:
         "role": "user",
         "direct_trigger": None,
         "has_visual": True,
+        "at": str(visual.at or ""),
     }
 
 
@@ -53,12 +65,14 @@ def build_turn_provenance(
 ) -> dict:
     """Build a small, flat record; image bytes and recursive provenance never enter it."""
     message_id = str(getattr(message, "id", "") or "")
+    created_at = getattr(message, "created_at", None)
     request = {
         "message_id": message_id,
         **_author_row(message),
         "content": str(visible_content or "")[:4000],
         "direct_trigger": True,
         "provenance_class": "conversation",
+        "at": created_at.isoformat() if created_at is not None else "",
         "has_visual": any(
             visual.message_id == message_id
             and visual.reference_strength == "current_message"
@@ -84,6 +98,7 @@ def build_turn_provenance(
             "content": str(value.get("content") or value.get("message_content") or "")[:2000],
             "role": role,
             "direct_trigger": value.get("direct_trigger"),
+            "at": _source_at(value),
             "has_visual": bool(value.get("has_visual", False)),
             "provenance_class": (
                 "conversation"
@@ -108,6 +123,8 @@ def build_turn_provenance(
                         existing["has_visual"] = True
                         if not existing["content"]:
                             existing["content"] = source["content"]
+                        if not existing.get("at"):
+                            existing["at"] = source["at"]
                         break
             continue
         add_source(source)
