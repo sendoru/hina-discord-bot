@@ -12,6 +12,7 @@ from .memory_items import (
 )
 from .observability import current_turn_id
 from .routing import Scope
+from .scope_overrides import resolve_scope_chain
 
 
 class Store:
@@ -955,24 +956,11 @@ class Store:
         return row[0] if row else None
 
     def memory_mode_chain(self, scope: Scope) -> dict[str, str | None]:
-        global_mode = self.memory_mode_override("global")
-        server_mode = self.memory_mode_override(scope.realm) if scope.guild_id is not None else None
-        channel_mode = self.memory_mode_override(scope.channel)
-        if channel_mode is not None:
-            effective, source = channel_mode, "channel"
-        elif server_mode is not None:
-            effective, source = server_mode, "server"
-        elif global_mode is not None:
-            effective, source = global_mode, "global"
-        else:
-            effective, source = "normal", "default"
-        return {
-            "global": global_mode,
-            "server": server_mode,
-            "channel": channel_mode,
-            "effective": effective,
-            "source": source,
-        }
+        return resolve_scope_chain(
+            self.memory_mode_overrides(),
+            scope,
+            default="normal",
+        )
 
     def memory_mode(self, scope: Scope) -> str:
         return str(self.memory_mode_chain(scope)["effective"])
@@ -999,24 +987,11 @@ class Store:
         return row[0] if row else None
 
     def chat_log_mode_chain(self, scope: Scope) -> dict[str, str | None]:
-        global_mode = self.chat_log_mode_override("global")
-        server_mode = self.chat_log_mode_override(scope.realm) if scope.guild_id is not None else None
-        channel_mode = self.chat_log_mode_override(scope.channel)
-        if channel_mode is not None:
-            effective, source = channel_mode, "channel"
-        elif server_mode is not None:
-            effective, source = server_mode, "server"
-        elif global_mode is not None:
-            effective, source = global_mode, "global"
-        else:
-            effective, source = "on", "default"
-        return {
-            "global": global_mode,
-            "server": server_mode,
-            "channel": channel_mode,
-            "effective": effective,
-            "source": source,
-        }
+        return resolve_scope_chain(
+            self.chat_log_mode_overrides(),
+            scope,
+            default="on",
+        )
 
     def chat_log_enabled(self, scope: Scope) -> bool:
         return self.chat_log_mode_chain(scope)["effective"] == "on"
