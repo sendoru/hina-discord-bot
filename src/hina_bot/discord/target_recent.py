@@ -65,6 +65,7 @@ class TargetAwareRecentMessages(RecentMessages):
         author_user_id=None,
         reply_target_user_id=None,
         direct_trigger=None,
+        has_visual=False,
         capture_turn_provenance=False,
     ):
         direct = direct_trigger
@@ -97,6 +98,7 @@ class TargetAwareRecentMessages(RecentMessages):
             author_user_id=author_user_id,
             reply_target_user_id=reply_target_user_id,
             direct_trigger=direct,
+            has_visual=has_visual,
             capture_turn_provenance=capture_turn_provenance,
         )
         # Delivered live answers own ephemeral sources; buffer eviction/deletion removes both.
