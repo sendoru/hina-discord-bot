@@ -68,6 +68,37 @@ async def test_explicit_reply_is_available_even_when_direct_capture_omits_side_c
 
 
 @pytest.mark.asyncio
+async def test_visual_only_explicit_reply_is_kept_as_message_context():
+    now = datetime.now(UTC)
+    channel = FakeHistoryChannel(10)
+    target = NS(
+        id=43,
+        content="",
+        author=NS(id=200, bot=False, display_name="대상", name="대상"),
+        webhook_id=None,
+        created_at=now - timedelta(seconds=10),
+        channel=channel,
+        attachments=[NS(content_type="image/png")],
+        stickers=[],
+    )
+    message = NS(
+        id=44,
+        content="히나야 이거 뭐야?",
+        author=NS(id=100, bot=False),
+        channel=channel,
+        reference=NS(message_id=43, channel_id=10, resolved=target),
+    )
+
+    rows = await collect_reply_context(message, 99)
+
+    assert len(rows) == 1
+    assert rows[0]["message_id"] == "43"
+    assert rows[0]["content"] == ""
+    assert rows[0]["has_visual"] is True
+    assert rows[0]["context_kind"] == "replied_message"
+
+
+@pytest.mark.asyncio
 async def test_explicit_reply_to_old_hina_message_survives_without_recent_buffer_state():
     now = datetime.now(UTC)
     channel = FakeHistoryChannel(10)
