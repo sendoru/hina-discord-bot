@@ -362,6 +362,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                     outcome = await self.semantic_model_router.classify(
                         information,
                         baseline_tier=baseline_tier,
+                        visual_inputs=visual_inputs,
                     )
                     information = self._with_search_provenance(
                         apply_web_classification(information, outcome)

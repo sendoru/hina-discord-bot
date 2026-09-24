@@ -20,6 +20,7 @@ from hina_bot.ai.semantic_model_routing import (
     semantic_result,
 )
 from hina_bot.ai.usage import UsageLogger
+from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS, VisualInput
 from hina_bot.core.config import Settings
 from hina_bot.core.lore import LoreIndex
 from hina_bot.core.routing import Scope
@@ -234,6 +235,76 @@ async def test_active_runtime_uses_classifier_result_for_answer_model(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_active_runtime_forwards_current_visuals_to_classifier():
+    primary = client(response("응."))
+    classifier_client = client(response(classification(level="high")))
+    llm = LLM(settings(), client=primary, classifier_client=classifier_client)
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    visual = VisualInput(
+        data=b"\x89PNG\r\n\x1a\nproblem",
+        mime_type="image/png",
+        source="attachment",
+        context_kind="current_message",
+        reference_strength="current_message",
+    )
+    token = CURRENT_VISUAL_INPUTS.set((visual,))
+    try:
+        result = await llm.answer(
+            store,
+            Scope(None, 10, 100),
+            "사용자",
+            "자 여깄어",
+        )
+        assert result == "응."
+        request = classifier_client.responses.create.await_args.kwargs
+        assert isinstance(request["input"], list)
+        content = request["input"][0]["content"]
+        assert any(block["type"] == "input_image" for block in content)
+        payload = json.loads(content[0]["text"])
+        assert payload["current_request"] == "자 여깄어"
+    finally:
+        CURRENT_VISUAL_INPUTS.reset(token)
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_classifier_visual_telemetry_is_content_free(tmp_path):
+    log_path = tmp_path / "usage.jsonl"
+    usage = UsageLogger(str(log_path))
+    classifier_client = client(response(classification(level="medium")))
+    router = SemanticModelRouter(settings(), classifier_client, usage)
+    visual = VisualInput(
+        data=b"\x89PNG\r\n\x1a\nsecret-bytes",
+        mime_type="image/png",
+        source="attachment",
+        name="private-problem.png",
+        context_kind="speaker_thread",
+        reference_strength="same_speaker",
+        message_id="1552507303155204136",
+    )
+    try:
+        outcome = await router.classify(
+            information("다시 풀어봐"),
+            baseline_tier="fast",
+            visual_inputs=(visual,),
+        )
+        assert outcome.status == "completed"
+    finally:
+        usage.close()
+
+    rows = [json.loads(line) for line in log_path.read_text().splitlines()]
+    row = next(item for item in rows if item["operation"] == "model_route_classify")
+    assert row["routing_classifier_visual_count"] == 1
+    assert row["routing_classifier_visual_context_kinds"] == {"speaker_thread": 1}
+    serialized = log_path.read_text()
+    assert visual.name not in serialized
+    assert visual.message_id not in serialized
+    assert "secret-bytes" not in serialized
+
+
+@pytest.mark.asyncio
 async def test_invalid_classifier_output_does_not_block_answer():
     primary = client(response("응."))
     classifier_client = client(response("I think this is difficult."))
@@ -249,6 +320,37 @@ async def test_invalid_classifier_output_does_not_block_answer():
     finally:
         await llm.close()
         store.close()
+
+
+@pytest.mark.asyncio
+async def test_shadow_classifier_receives_same_selected_visuals():
+    config = settings(routing_classifier_mode="shadow")
+    classifier_client = client(response(classification(level="high")))
+    usage = UsageLogger("")
+    router = SemanticModelRouter(config, classifier_client, usage)
+    visual = VisualInput(
+        data=b"\x89PNG\r\n\x1a\nproblem",
+        mime_type="image/png",
+        source="attachment",
+        context_kind="speaker_thread",
+        reference_strength="same_speaker",
+    )
+    info = information("다시 풀어봐")
+    baseline = build_model_plan(config, info, visual_inputs=(visual,))
+
+    await router.observe_shadow(
+        info,
+        baseline,
+        context_chars=0,
+        visual_inputs=(visual,),
+    )
+
+    request = classifier_client.responses.create.await_args.kwargs
+    assert isinstance(request["input"], list)
+    assert any(
+        block["type"] == "input_image"
+        for block in request["input"][0]["content"]
+    )
 
 
 @pytest.mark.asyncio
