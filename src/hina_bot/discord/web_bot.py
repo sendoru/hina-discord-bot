@@ -21,9 +21,14 @@ from .interaction_context import build_interaction_context
 from .reply_context import REPLY_CONTEXT, collect_reply_context
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
-from .target_recent import TargetAwareRecentMessages
+from .target_recent import CURRENT_CHANNEL_CONTEXT, TargetAwareRecentMessages
 from .turn_provenance import CURRENT_TURN_PROVENANCE, build_turn_provenance
-from .vision import VisionLimits, collect_visual_inputs, message_has_visual
+from .vision import (
+    VisionLimits,
+    collect_visual_inputs,
+    message_has_visual,
+    rank_visual_context_refs,
+)
 
 log = logging.getLogger("hina")
 
@@ -477,51 +482,32 @@ class HinaClient(BaseHinaClient):
             else []
         )
         reply_context_ms = round((time.perf_counter() - reply_context_started) * 1000)
-        reply_chain_visual_ids = self.recent.reply_chain_visual_ids(scope, replied)
-
-        visual_capture_mode = capture_mode(self.store, scope)
-
-        def recent_visual_allowed(candidate) -> bool:
-            if getattr(candidate, "webhook_id", None) is not None:
-                return False
-            author = getattr(candidate, "author", None)
-            author_id = getattr(author, "id", None)
-            if author is None or author_id is None:
-                return False
-            own_visual = author_id == self.user.id
-            if own_visual:
-                return True
-            direct = trigger_text(
-                candidate,
-                self.user.id,
-                self.settings.dm_always_reply,
-                self.settings.call_prefixes,
-            ) is not None
-            # Passive bot images never become visual context. A bot's own explicit call may carry
-            # an image, and is bounded by the same direct-call provenance as its text.
-            if getattr(author, "bot", False):
-                return direct
-            if strict_egress:
-                return direct
-            if visual_capture_mode == "direct":
-                return direct
-            return True
 
         visual_context_started = time.perf_counter()
+        selected_context = []
+        if (
+            text is not None
+            and scope.guild_id is not None
+            and self.store.chat_log_enabled(scope)
+        ):
+            target_selection_token = TARGET_CONTEXT.set(tuple(sampled))
+            reply_selection_token = REPLY_CONTEXT.set(tuple(replied))
+            try:
+                await self.hydrate_recent_history(message, scope)
+                selected_context = self.recent.context(scope, message.id)
+            finally:
+                REPLY_CONTEXT.reset(reply_selection_token)
+                TARGET_CONTEXT.reset(target_selection_token)
+
+        visual_refs = rank_visual_context_refs(selected_context)
         visuals = (
             await collect_visual_inputs(
                 message,
+                context_refs=visual_refs,
                 limits=self.vision_limits,
-                include_reply=True,
-                include_recent=self.store.chat_log_enabled(scope),
-                allowed_reply_author_id=(
-                    {scope.user_id, self.user.id} if strict_egress else None
-                ),
-                context_message_ids=reply_chain_visual_ids,
-                allowed_context_author_id=scope.user_id if strict_egress else None,
-                recent_filter=recent_visual_allowed,
             )
-            if text is not None else []
+            if text is not None
+            else []
         )
         visual_context_ms = round((time.perf_counter() - visual_context_started) * 1000)
         public_request = (
@@ -564,6 +550,7 @@ class HinaClient(BaseHinaClient):
         )
         target_token = TARGET_CONTEXT.set(tuple(sampled))
         reply_token = REPLY_CONTEXT.set(tuple(replied))
+        channel_context_token = CURRENT_CHANNEL_CONTEXT.set(tuple(selected_context))
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
         provenance_token = CURRENT_TURN_PROVENANCE.set(
             build_turn_provenance(message, text or "", replied, visuals)
@@ -598,6 +585,7 @@ class HinaClient(BaseHinaClient):
             CURRENT_PUBLIC_CONTEXT_REQUEST.reset(public_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)
             CURRENT_TURN_PROVENANCE.reset(provenance_token)
+            CURRENT_CHANNEL_CONTEXT.reset(channel_context_token)
             REPLY_CONTEXT.reset(reply_token)
             TARGET_CONTEXT.reset(target_token)
             CURRENT_INTERACTION_CONTEXT.reset(interaction_token)
