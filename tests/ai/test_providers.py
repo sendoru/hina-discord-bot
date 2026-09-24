@@ -7,6 +7,7 @@ import pytest
 from hina_bot.ai.providers import (
     ProviderAPIError,
     _gemini_input,
+    _gemini_output,
     _GeminiResponses,
     _OpenRouterResponses,
     normalize_provider,
@@ -114,6 +115,51 @@ async def test_gemini_translates_search_and_normalizes_response():
     assert "example.com/source" in response.output_text
     assert response.usage.total_tokens == 17
     assert [item.type for item in response.output].count("web_search_call") == 1
+
+
+def test_gemini_output_uses_only_final_model_output_run():
+    response = _gemini_output({
+        "status": "completed",
+        "steps": [
+            {
+                "type": "model_output",
+                "content": [{
+                    "type": "text",
+                    "text": "체인 확인 및 응답 길이 준수 (1~4문장), 무대 지시 없이 담백한 반말.",
+                }],
+            },
+            {
+                "type": "code_execution_call",
+                "id": "code_1",
+                "arguments": {"code": "print('solve')", "language": "python"},
+            },
+            {
+                "type": "code_execution_result",
+                "call_id": "code_1",
+                "result": "solve\n",
+                "is_error": False,
+            },
+            {
+                "type": "model_output",
+                "content": [{"type": "text", "text": "사과게임 풀이야. "}],
+            },
+            {
+                "type": "model_output",
+                "content": [{"type": "text", "text": "이 부분만 보여야 해."}],
+            },
+        ],
+        "usage": {},
+    })
+
+    assert response.output_text == "사과게임 풀이야. 이 부분만 보여야 해."
+    assert [item.type for item in response.output] == [
+        "message",
+        "code_execution_call",
+        "code_execution_result",
+        "message",
+        "message",
+    ]
+    assert response.output[0].content[0].text.startswith("체인 확인 및 응답 길이 준수")
 
 
 @pytest.mark.asyncio
