@@ -328,6 +328,37 @@ async def test_invalid_classifier_output_does_not_block_answer():
 
 
 @pytest.mark.asyncio
+async def test_shadow_classifier_receives_same_selected_visuals():
+    config = settings(routing_classifier_mode="shadow")
+    classifier_client = client(response(classification(level="high")))
+    usage = UsageLogger("")
+    router = SemanticModelRouter(config, classifier_client, usage)
+    visual = VisualInput(
+        data=b"\x89PNG\r\n\x1a\nproblem",
+        mime_type="image/png",
+        source="attachment",
+        context_kind="speaker_thread",
+        reference_strength="same_speaker",
+    )
+    info = information("다시 풀어봐")
+    baseline = build_model_plan(config, info, visual_inputs=(visual,))
+
+    await router.observe_shadow(
+        info,
+        baseline,
+        context_chars=0,
+        visual_inputs=(visual,),
+    )
+
+    request = classifier_client.responses.create.await_args.kwargs
+    assert isinstance(request["input"], list)
+    assert any(
+        block["type"] == "input_image"
+        for block in request["input"][0]["content"]
+    )
+
+
+@pytest.mark.asyncio
 async def test_shadow_runtime_does_not_block_or_change_actual_route(tmp_path):
     release = asyncio.Event()
 
