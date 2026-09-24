@@ -10,6 +10,7 @@ from .target_context import TARGET_CONTEXT
 from .turn_provenance import CURRENT_TURN_PROVENANCE
 
 CURRENT_DIRECT_TRIGGER = ContextVar("current_direct_trigger", default=False)
+CURRENT_CHANNEL_CONTEXT = ContextVar("current_channel_context", default=None)
 
 _MAX_REFERENCE_SOURCES = 2
 
@@ -165,21 +166,6 @@ class TargetAwareRecentMessages(RecentMessages):
             if row.get("turn_provenance"):
                 return row
         return None
-
-    def reply_chain_visual_ids(self, scope, replied) -> tuple[str, ...]:
-        """Return only strong visual source IDs from the explicitly replied assistant turn."""
-        turn = self._explicit_assistant_turn(scope, replied)
-        if turn is None:
-            return ()
-        provenance = turn.get("turn_provenance", {})
-        rows = [provenance.get("origin_request", {})]
-        rows.extend(provenance.get("origin_sources", ()))
-        rows.extend(provenance.get("reference_sources", ()))
-        return tuple(
-            str(row.get("message_id", ""))
-            for row in rows
-            if row.get("has_visual") and row.get("message_id")
-        )[:3]
 
     @staticmethod
     def _take_recent(rows, budget, slots):

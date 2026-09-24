@@ -249,7 +249,8 @@ def test_explicit_reply_to_assistant_reconstructs_one_hop_causal_chain():
             "2026-09-23T05:53:19+00:00",
             "2026-09-23T05:53:36+00:00",
         ]
-        assert recent.reply_chain_visual_ids(scope, REPLY_CONTEXT.get()) == ("1",)
+        refs = visual_context_refs(rows)
+        assert [ref.message_id for ref in refs] == ["1"]
         assert all("turn_provenance" not in row for row in rows)
     finally:
         REPLY_CONTEXT.reset(reply_token)
@@ -270,7 +271,10 @@ def test_reply_chain_is_not_available_to_a_different_user():
         rows = recent.context(other_scope, 4)
         assert not any(str(row.get("context_kind", "")).startswith("reply_origin")
                        for row in rows)
-        assert recent.reply_chain_visual_ids(other_scope, replied) == ()
+        refs = visual_context_refs(rows)
+        assert [(ref.message_id, ref.context_kind) for ref in refs] == [
+            ("1", "prior_reply_source")
+        ]
     finally:
         REPLY_CONTEXT.reset(reply_token)
 

@@ -14,10 +14,15 @@ CURRENT_TURN_PROVENANCE: ContextVar[dict | None] = ContextVar(
 )
 
 _MAX_ORIGIN_SOURCES = 2
-_STRONG_VISUAL_REFERENCES = {
+_PROVENANCE_VISUAL_CONTEXT_KINDS = {
     "current_message",
-    "explicit_reply",
-    "prior_explicit_reply",
+    "replied_message",
+    "reply_reference_source",
+    "reply_origin_source",
+    "reply_origin_request",
+    "prior_reply_source",
+    "speaker_thread",
+    "target_user_history",
 }
 
 
@@ -107,7 +112,7 @@ def build_turn_provenance(
     for row in replied:
         add_source(dict(row))
     for visual in visuals:
-        if visual.reference_strength not in _STRONG_VISUAL_REFERENCES:
+        if visual.context_kind not in _PROVENANCE_VISUAL_CONTEXT_KINDS:
             continue
         source = _source_from_visual(visual)
         source_id = source["message_id"]
