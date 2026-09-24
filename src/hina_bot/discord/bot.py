@@ -25,6 +25,7 @@ from hina_bot.core.store import Store
 from .emoji_commands import EmojiRegistry
 from .memory_commands import MemoryCommands, MemoryMode
 from .output_safety import neutralize_mentions
+from .target_recent import CURRENT_CHANNEL_CONTEXT
 from .vision import message_has_visual
 
 log = logging.getLogger("hina")
@@ -526,8 +527,15 @@ class HinaClient(discord.Client):
                             answer = await self.llm.answer(
                                 self.store, scope, message.author.display_name, text,
                                 public_context=context,
-                                channel_context=(self.recent.context(scope, message.id)
-                                                 if guild_id is not None and use_chat_log else []),
+                                channel_context=(
+                                    (
+                                        list(CURRENT_CHANNEL_CONTEXT.get())
+                                        if CURRENT_CHANNEL_CONTEXT.get() is not None
+                                        else self.recent.context(scope, message.id)
+                                    )
+                                    if guild_id is not None and use_chat_log
+                                    else []
+                                ),
                                 use_memory=use_memory,
                                 emoji_catalog=emoji_catalog)
                             timings["generation_ms"] = round(
