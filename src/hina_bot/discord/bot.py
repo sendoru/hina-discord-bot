@@ -25,6 +25,7 @@ from hina_bot.core.store import Store
 from .emoji_commands import EmojiRegistry
 from .memory_commands import MemoryCommands, MemoryMode
 from .output_safety import neutralize_mentions
+from .vision import message_has_visual
 
 log = logging.getLogger("hina")
 
@@ -267,7 +268,8 @@ class HinaClient(discord.Client):
                 own_bot = self.user is not None and old.author.id == self.user.id
                 if old.author.bot and not own_bot:
                     continue
-                if not old.content:
+                has_visual = message_has_visual(old)
+                if not old.content and not has_visual:
                     continue
                 historical_scope = Scope(
                     scope.guild_id, scope.channel_id, old.author.id, scope.public_at_capture)
@@ -291,6 +293,7 @@ class HinaClient(discord.Client):
                     author_user_id=old.author.id,
                     reply_target_user_id=None,
                     direct_trigger=None if own_bot else historical_text is not None,
+                    has_visual=has_visual,
                 )
         except discord.HTTPException as exc:
             # Do not log message contents or channel data. Retry naturally on a later call.
@@ -370,6 +373,7 @@ class HinaClient(discord.Client):
                 author_user_id=message.author.id,
                 reply_target_user_id=None,
                 direct_trigger=text is not None,
+                has_visual=message_has_visual(message),
             )
         if text is None:
             return
