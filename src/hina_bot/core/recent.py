@@ -61,7 +61,7 @@ class RecentMessages:
             "author_user_id": author_id,
             "reply_target_user_id": reply_target_id,
             "direct_trigger": direct,
-            "has_visual": bool(has_visual),
+            **({"has_visual": True} if has_visual else {}),
             "name": name[:100],
             "content": content[:4000],
             "role": role,
