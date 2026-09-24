@@ -3,6 +3,7 @@ from hina_bot.core.routing import Scope
 from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.target_recent import TargetAwareRecentMessages
 from hina_bot.discord.turn_provenance import CURRENT_TURN_PROVENANCE
+from hina_bot.discord.vision import visual_context_refs
 
 
 def add_live_assistant(recent, scope, message_id, content):
@@ -46,6 +47,35 @@ def seed(recent, scope):
 
 def sources(rows):
     return [row for row in rows if row.get("context_kind") == "prior_reply_source"]
+
+
+def test_selected_speaker_thread_keeps_visual_ref_past_ambient_message_window():
+    recent = TargetAwareRecentMessages()
+    scope = Scope(1, 10, 100)
+    other = Scope(1, 10, 200)
+
+    recent.add(
+        scope,
+        10,
+        "사용자",
+        "자 여깄어",
+        direct_trigger=True,
+        has_visual=True,
+    )
+    add_live_assistant(recent, scope, 11, "문제를 잘못 이해한 답변")
+    for message_id in range(12, 27):
+        recent.add(other, message_id, "다른 사용자", f"주변 텍스트 {message_id}")
+
+    rows = recent.context(scope, 30)
+    source = next(row for row in rows if str(row.get("message_id")) == "10")
+    refs = visual_context_refs(rows)
+
+    assert source["context_kind"] == "speaker_thread"
+    assert source["reference_strength"] == "same_speaker"
+    assert source["has_visual"] is True
+    assert [(ref.message_id, ref.context_kind, ref.reference_strength) for ref in refs] == [
+        ("10", "speaker_thread", "same_speaker")
+    ]
 
 
 def test_source_survives_next_turn_and_remains_untrusted_full_only():
