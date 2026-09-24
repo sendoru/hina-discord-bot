@@ -25,9 +25,17 @@ class ContextBudgetTests(unittest.TestCase):
         user_b = Scope(1, 10, 200)
 
         recent.add(user_a, 1, "A", "히나야 A의 질문", direct_trigger=True)
-        recent.add(user_a, 2, "히나", "A에게 한 답변", role="assistant")
+        recent.add(
+            user_a, 2, "히나", "A에게 한 답변", role="assistant",
+            author_user_id=99, reply_target_user_id=100,
+            capture_turn_provenance=True,
+        )
         recent.add(user_b, 3, "B", "히나야 B의 질문", direct_trigger=True)
-        recent.add(user_b, 4, "히나", "B에게 한 답변", role="assistant")
+        recent.add(
+            user_b, 4, "히나", "B에게 한 답변", role="assistant",
+            author_user_id=99, reply_target_user_id=200,
+            capture_turn_provenance=True,
+        )
 
         rows = recent.context(user_b, 99)
         self.assertEqual(
@@ -44,9 +52,17 @@ class ContextBudgetTests(unittest.TestCase):
         other = Scope(1, 10, 300)
 
         recent.add(speaker, 1, "B", "히나야 메이드복 입은 거 보고 싶어")
-        recent.add(speaker, 2, "히나", "그런 옷을 입어 달라는 건 좀 곤란해.", role="assistant")
+        recent.add(
+            speaker, 2, "히나", "그런 옷을 입어 달라는 건 좀 곤란해.", role="assistant",
+            author_user_id=99, reply_target_user_id=200,
+            capture_turn_provenance=True,
+        )
         recent.add(speaker, 3, "B", "장난 아닌데")
-        recent.add(speaker, 4, "히나", "그래도 지금은 싫어.", role="assistant")
+        recent.add(
+            speaker, 4, "히나", "그래도 지금은 싫어.", role="assistant",
+            author_user_id=99, reply_target_user_id=200,
+            capture_turn_provenance=True,
+        )
         for message_id in range(5, 21):
             recent.add(other, message_id, "다른 사람", f"끼어든 짧은 채팅 {message_id}")
 
@@ -68,10 +84,18 @@ class ContextBudgetTests(unittest.TestCase):
         other = Scope(1, 10, 300)
 
         recent.add(user_b, 1, "B", "내 얘기는 기억해 줘")
-        recent.add(user_b, 2, "히나", "응, 그 얘기 말이지.", role="assistant")
+        recent.add(
+            user_b, 2, "히나", "응, 그 얘기 말이지.", role="assistant",
+            author_user_id=99, reply_target_user_id=200,
+            capture_turn_provenance=True,
+        )
         for message_id in range(3, 13):
             recent.add(other, message_id, "다른 사람", f"주변 대화 {message_id}")
-        recent.add(user_a, 13, "히나", "A한테만 한 날 선 답변", role="assistant")
+        recent.add(
+            user_a, 13, "히나", "A한테만 한 날 선 답변", role="assistant",
+            author_user_id=99, reply_target_user_id=100,
+            capture_turn_provenance=True,
+        )
 
         rows = recent.context(user_b, 99)
         contents = [row["content"] for row in rows]

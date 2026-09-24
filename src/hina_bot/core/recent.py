@@ -29,6 +29,7 @@ class RecentMessages:
         author_user_id=None,
         reply_target_user_id=None,
         direct_trigger=None,
+        capture_turn_provenance=False,
     ):
         now = time.monotonic()
         wall_now = time.time()

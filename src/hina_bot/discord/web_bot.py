@@ -21,7 +21,7 @@ from .interaction_context import build_interaction_context
 from .reply_context import REPLY_CONTEXT, collect_reply_context
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
-from .target_recent import CURRENT_DIRECT_TRIGGER, TargetAwareRecentMessages
+from .target_recent import TargetAwareRecentMessages
 from .turn_provenance import CURRENT_TURN_PROVENANCE, build_turn_provenance
 from .vision import VisionLimits, collect_visual_inputs
 
@@ -359,19 +359,18 @@ class HinaClient(BaseHinaClient):
                     old.author.id,
                     scope.public_at_capture,
                 )
-                direct_token = CURRENT_DIRECT_TRIGGER.set(historical_text is not None)
-                try:
-                    self.recent.add(
-                        historical_scope,
-                        old.id,
-                        old.author.display_name,
-                        old.content,
-                        role="assistant" if own_bot else ("bot" if other_bot else "user"),
-                        unix_time=old.created_at.timestamp(),
-                        author_user_id=old.author.id if own_bot else None,
-                    )
-                finally:
-                    CURRENT_DIRECT_TRIGGER.reset(direct_token)
+                self.recent.add(
+                    historical_scope,
+                    old.id,
+                    old.author.display_name,
+                    old.content,
+                    role="assistant" if own_bot else ("bot" if other_bot else "user"),
+                    unix_time=old.created_at.timestamp(),
+                    author_user_id=old.author.id,
+                    reply_target_user_id=None,
+                    direct_trigger=None if own_bot else historical_text is not None,
+                    capture_turn_provenance=False,
+                )
         except discord.HTTPException as exc:
             log.warning("Recent channel history backfill failed (%s)", type(exc).__name__)
             return
@@ -569,8 +568,6 @@ class HinaClient(BaseHinaClient):
             else None
         )
         public_token = CURRENT_PUBLIC_CONTEXT_REQUEST.set(public_request)
-        direct_token = CURRENT_DIRECT_TRIGGER.set(text is not None)
-
         # A text-only bare call stays a bare call and uses the base client's relationship-aware
         # fixed reply. Current-message or explicit-reply visuals are strong enough to infer an
         # image request; passive recent images alone must not turn a bare call into one.
@@ -595,7 +592,6 @@ class HinaClient(BaseHinaClient):
                 CURRENT_TURN_ID.reset(correlation_token)
             if original_content is not None:
                 message.content = original_content
-            CURRENT_DIRECT_TRIGGER.reset(direct_token)
             CURRENT_PUBLIC_CONTEXT_REQUEST.reset(public_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)
             CURRENT_TURN_PROVENANCE.reset(provenance_token)

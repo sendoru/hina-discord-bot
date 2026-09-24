@@ -271,6 +271,16 @@ class HinaClient(discord.Client):
                     continue
                 historical_scope = Scope(
                     scope.guild_id, scope.channel_id, old.author.id, scope.public_at_capture)
+                historical_text = (
+                    None
+                    if own_bot
+                    else trigger_text(
+                        old,
+                        self.user.id,
+                        self.settings.dm_always_reply,
+                        self.settings.call_prefixes,
+                    )
+                )
                 self.recent.add(
                     historical_scope,
                     old.id,
@@ -278,6 +288,9 @@ class HinaClient(discord.Client):
                     old.content,
                     role="assistant" if own_bot else "user",
                     unix_time=old.created_at.timestamp(),
+                    author_user_id=old.author.id,
+                    reply_target_user_id=None,
+                    direct_trigger=None if own_bot else historical_text is not None,
                 )
         except discord.HTTPException as exc:
             # Do not log message contents or channel data. Retry naturally on a later call.
@@ -346,12 +359,17 @@ class HinaClient(discord.Client):
         received_chat_log = self.store.chat_log_enabled(scope)
         # Recent chat context is independent from persistent memory and has its own switch.
         if guild_id is not None and received_chat_log:
+            created_at = getattr(message, "created_at", None)
             self.recent.add(
                 scope,
                 message.id,
                 message.author.display_name,
                 message.content,
                 role="bot" if bot_author else "user",
+                unix_time=created_at.timestamp() if created_at is not None else None,
+                author_user_id=message.author.id,
+                reply_target_user_id=None,
+                direct_trigger=text is not None,
             )
         if text is None:
             return
@@ -539,7 +557,19 @@ class HinaClient(discord.Client):
                             )
                             if guild_id is not None and use_chat_log:
                                 assistant_name = getattr(self.user, "display_name", "assistant")[:100]
-                                self.recent.add(scope, sent.id, assistant_name, answer, role="assistant")
+                                sent_at = getattr(sent, "created_at", None)
+                                self.recent.add(
+                                    scope,
+                                    sent.id,
+                                    assistant_name,
+                                    answer,
+                                    role="assistant",
+                                    unix_time=sent_at.timestamp() if sent_at is not None else None,
+                                    author_user_id=self.user.id,
+                                    reply_target_user_id=scope.user_id,
+                                    direct_trigger=None,
+                                    capture_turn_provenance=True,
+                                )
                         # Commit only after Discord delivery. Never memorize a failed model request.
                         memory_failures = 0
                         if save_memory:

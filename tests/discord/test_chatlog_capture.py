@@ -11,7 +11,7 @@ from hina_bot.discord.chatlog_capture import (
     set_capture_mode_override,
 )
 from hina_bot.discord.target_context import collect
-from hina_bot.discord.target_recent import CURRENT_DIRECT_TRIGGER, TargetAwareRecentMessages
+from hina_bot.discord.target_recent import TargetAwareRecentMessages
 
 
 class CaptureModeTests(unittest.TestCase):
@@ -40,12 +40,17 @@ class CaptureModeTests(unittest.TestCase):
         recent = TargetAwareRecentMessages(store=store)
 
         recent.add(scope, 1, "A", "옆 대화")
-        token = CURRENT_DIRECT_TRIGGER.set(True)
-        try:
-            recent.add(scope, 2, "A", "히나야 질문")
-        finally:
-            CURRENT_DIRECT_TRIGGER.reset(token)
-        recent.add(scope, 3, "히나", "답변", role="assistant")
+        recent.add(scope, 2, "A", "히나야 질문", direct_trigger=True)
+        recent.add(
+            scope,
+            3,
+            "히나",
+            "답변",
+            role="assistant",
+            author_user_id=999,
+            reply_target_user_id=100,
+            capture_turn_provenance=True,
+        )
 
         rows = recent.context(scope, 99)
         self.assertEqual([row["content"] for row in rows], ["히나야 질문", "답변"])
@@ -59,7 +64,16 @@ class CaptureModeTests(unittest.TestCase):
         bot_scope = Scope(1, 10, 999)
 
         recent.add(user_a, 1, "A", "히나야 또 놀릴 거야")
-        recent.add(user_a, 2, "히나", "이제 그만해.", role="assistant")
+        recent.add(
+            user_a,
+            2,
+            "히나",
+            "이제 그만해.",
+            role="assistant",
+            author_user_id=999,
+            reply_target_user_id=100,
+            capture_turn_provenance=True,
+        )
         recent.add(
             bot_scope,
             3,
@@ -67,6 +81,9 @@ class CaptureModeTests(unittest.TestCase):
             "재시작 전 답변",
             role="assistant",
             unix_time=time.time(),
+            author_user_id=999,
+            reply_target_user_id=None,
+            capture_turn_provenance=False,
         )
         recent.add(user_b, 4, "B", "히나야 배고파")
 
@@ -74,8 +91,8 @@ class CaptureModeTests(unittest.TestCase):
         live = next(row for row in raw_rows if row["message_id"] == 2)
         hydrated = next(row for row in raw_rows if row["message_id"] == 3)
         self.assertEqual(live["reply_target_user_id"], "100")
-        self.assertIsNone(live["author_user_id"])
-        self.assertEqual(live["user_id"], "")
+        self.assertEqual(live["author_user_id"], "999")
+        self.assertEqual(live["user_id"], "999")
         self.assertEqual(hydrated["author_user_id"], "999")
         self.assertIsNone(hydrated["reply_target_user_id"])
         self.assertEqual(hydrated["user_id"], "999")
