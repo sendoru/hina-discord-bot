@@ -39,12 +39,25 @@ conservatively:
 
 The row remains ordinary channel context instead of being guessed into a caller's speaker thread.
 
-## Remaining #133 work
+## Intentional restart degradation
 
-A later restart-metadata phase may preserve a TTL-bound, content-free mapping from delivered Discord
-answer ids to their request/target/source ids. That phase is responsible for restoring assistant
-reply targets, bounded turn provenance, multi-chunk logical turns, and restart-time causal visual
-links.
+The recent-context layer intentionally does not persist a separate restart metadata index.
 
-Until that metadata exists, hydration must prefer missing attribution over incorrect cross-user
-attribution. It must not infer a target from message adjacency, answer text, or surrounding tone.
+After restart, an old Hina message may therefore lose:
+
+- the user id that originally caused that answer
+- live-only turn provenance attached to that answer
+- causal source metadata that existed only in the in-memory recent buffer
+
+Hydration must prefer missing attribution over incorrect cross-user attribution. It must not infer a
+target from message adjacency, answer text, or surrounding tone.
+
+Explicit Discord replies are different: the current message itself still contains the replied
+message id. `collect_reply_context()` can fetch that Discord message directly after restart, so the
+replied Hina message remains strong `replied_message` context even when its older live-only
+provenance is gone. The application does not fabricate missing `reply_origin_*` rows in that case.
+
+This is the accepted #133 boundary. If production logs later show that losing assistant-target or
+causal provenance across a restart causes recurring user-visible failures, that concrete failure
+should be tracked separately before adding persistent ephemeral metadata, multi-chunk mappings, or
+other restart-only infrastructure.
