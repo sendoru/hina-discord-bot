@@ -255,11 +255,6 @@ async def test_active_runtime_forwards_current_visuals_to_classifier():
             Scope(None, 10, 100),
             "사용자",
             "자 여깄어",
-            routing_plan=RoutingPlan(
-                "자 여깄어",
-                "자 여깄어",
-                prior_user_request="히나야 사과게임 풀어줘",
-            ),
         )
         assert result == "응."
         request = classifier_client.responses.create.await_args.kwargs
@@ -267,7 +262,7 @@ async def test_active_runtime_forwards_current_visuals_to_classifier():
         content = request["input"][0]["content"]
         assert any(block["type"] == "input_image" for block in content)
         payload = json.loads(content[0]["text"])
-        assert payload["prior_user_request"] == "히나야 사과게임 풀어줘"
+        assert payload["current_request"] == "자 여깄어"
     finally:
         CURRENT_VISUAL_INPUTS.reset(token)
         await llm.close()
