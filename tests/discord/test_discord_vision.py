@@ -9,8 +9,8 @@ from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.discord.vision import (
-    VisualContextRef,
     VisionLimits,
+    VisualContextRef,
     collect_visual_inputs,
     message_has_visual,
     rank_visual_context_refs,
