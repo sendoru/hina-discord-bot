@@ -8,9 +8,11 @@ from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.store import Store
 from hina_bot.discord.vision import (
+    VisualContextRef,
     VisionLimits,
     collect_visual_inputs,
     message_has_visual,
+    rank_visual_context_refs,
     visual_context_refs,
 )
 from hina_bot.discord.web_bot import HinaClient
@@ -123,8 +125,9 @@ async def test_collects_custom_emoji_once_and_raster_sticker():
     assert visuals[1].mime_type == "image/png"
 
 
+
 @pytest.mark.asyncio
-async def test_source_quotas_are_shared_across_message_contexts():
+async def test_source_quotas_are_shared_across_selected_message_contexts():
     current_attachment = NS(
         size=len(PNG),
         content_type="image/png",
@@ -137,36 +140,38 @@ async def test_source_quotas_are_shared_across_message_contexts():
         filename="reply.png",
         read=AsyncMock(return_value=PNG),
     )
-    channel = NS(id=10)
     target = NS(
         id=40,
         content="",
         author=NS(id=200, display_name="대상", name="대상"),
-        channel=channel,
         attachments=[reply_attachment],
         stickers=[],
     )
+    channel = NS(id=10, fetch_message=AsyncMock(return_value=target))
     message = NS(
         id=41,
         content="히나야 이거 봐",
         author=NS(id=100, display_name="사용자", name="사용자"),
         channel=channel,
-        reference=NS(message_id=40, channel_id=10, resolved=target),
         attachments=[current_attachment],
         stickers=[],
     )
+    refs = [VisualContextRef(
+        message_id="40",
+        context_kind="replied_message",
+        reference_strength="explicit_reply",
+    )]
 
     visuals = await collect_visual_inputs(
         message,
+        context_refs=refs,
         limits=VisionLimits(attachments=1, emojis=0, stickers=0),
-        include_reply=True,
     )
 
     assert [(v.name, v.context_kind) for v in visuals] == [
         ("current.png", "current_message")
     ]
     reply_attachment.read.assert_not_awaited()
-
 
 @pytest.mark.asyncio
 async def test_source_quotas_are_independent_and_skip_extra_downloads():
@@ -244,34 +249,38 @@ async def test_lottie_sticker_is_not_sent_as_image():
     downloader.assert_not_awaited()
 
 
+
 @pytest.mark.asyncio
-async def test_collects_explicit_reply_visual_with_provenance():
+async def test_collects_selected_explicit_reply_visual_with_provenance():
     attachment = NS(
         size=len(PNG),
         content_type="image/png",
         filename="older.png",
         read=AsyncMock(return_value=PNG),
     )
-    channel = NS(id=10)
     target = NS(
         id=70,
         content="이거",
         author=NS(id=200, display_name="민수", name="민수"),
-        channel=channel,
         attachments=[attachment],
         stickers=[],
     )
+    channel = NS(id=10, fetch_message=AsyncMock(return_value=target))
     message = NS(
         id=71,
         content="히나야 이건 뭐야?",
         author=NS(id=100, display_name="사용자", name="사용자"),
         channel=channel,
-        reference=NS(message_id=70, channel_id=10, resolved=target),
         attachments=[],
         stickers=[],
     )
+    refs = [VisualContextRef(
+        message_id="70",
+        context_kind="replied_message",
+        reference_strength="explicit_reply",
+    )]
 
-    visuals = await collect_visual_inputs(message, include_reply=True)
+    visuals = await collect_visual_inputs(message, context_refs=refs)
 
     assert len(visuals) == 1
     visual = visuals[0]
@@ -284,192 +293,158 @@ async def test_collects_explicit_reply_visual_with_provenance():
 
 
 @pytest.mark.asyncio
-async def test_strict_author_filter_blocks_other_users_reply_visual():
+async def test_unselected_visual_is_never_scanned_or_substituted():
     attachment = NS(
         size=len(PNG),
         content_type="image/png",
-        filename="other.png",
+        filename="unrelated.png",
         read=AsyncMock(return_value=PNG),
     )
-    channel = NS(id=10)
-    target = NS(
+    unrelated = NS(
         id=80,
         content="",
         author=NS(id=200, display_name="다른 사용자", name="다른 사용자"),
-        channel=channel,
         attachments=[attachment],
         stickers=[],
+    )
+    channel = NS(
+        id=10,
+        fetch_message=AsyncMock(),
+        history=MagicMock(return_value=_history([unrelated])),
     )
     message = NS(
         id=81,
         content="히나야",
         author=NS(id=100, display_name="사용자", name="사용자"),
         channel=channel,
-        reference=NS(message_id=80, channel_id=10, resolved=target),
         attachments=[],
         stickers=[],
     )
 
-    visuals = await collect_visual_inputs(
-        message,
-        include_reply=True,
-        allowed_context_author_id=100,
-    )
+    visuals = await collect_visual_inputs(message, context_refs=[])
 
     assert visuals == []
+    channel.fetch_message.assert_not_awaited()
+    channel.history.assert_not_called()
     attachment.read.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_collects_bounded_recent_image_messages_and_ignores_passive_emojis():
-    newest_attachment = NS(
-        size=len(PNG),
-        content_type="image/png",
-        filename="newest.png",
-        read=AsyncMock(return_value=PNG),
-    )
-    older_attachment = NS(
-        size=len(PNG),
-        content_type="image/png",
-        filename="older.png",
-        read=AsyncMock(return_value=PNG),
-    )
-    author = NS(id=100, display_name="사용자", name="사용자", bot=False)
-    newest = NS(
-        id=95,
-        content="사진",
-        author=author,
-        webhook_id=None,
-        attachments=[newest_attachment],
-        stickers=[],
-    )
-    emoji_only = NS(
-        id=94,
-        content="<:old_emoji:123>",
-        author=author,
-        webhook_id=None,
-        attachments=[],
-        stickers=[],
-    )
-    older = NS(
-        id=93,
-        content="예전 사진",
-        author=author,
-        webhook_id=None,
-        attachments=[older_attachment],
-        stickers=[],
-    )
-    channel = NS(id=10, history=lambda **kwargs: _history([newest, emoji_only, older]))
-    message = NS(
-        id=100,
-        content="히나야 아까 거 뭐야?",
-        author=author,
-        channel=channel,
-        attachments=[],
-        stickers=[],
-    )
-    downloader = AsyncMock(return_value=PNG)
-
-    visuals = await collect_visual_inputs(
-        message,
-        include_recent=True,
-        recent_message_limit=1,
-        downloader=downloader,
-    )
-
-    assert [(v.name, v.context_kind, v.reference_strength) for v in visuals] == [
-        ("newest.png", "recent_channel_message", "passive_recent")
-    ]
-    older_attachment.read.assert_not_awaited()
-    downloader.assert_not_awaited()
-    assert "약한 최근 문맥" in visuals[0].label(1)
-
-
-@pytest.mark.asyncio
-async def test_reply_and_recent_visuals_keep_distinct_message_provenance():
+async def test_ranked_context_fetches_until_visual_message_cap_and_ignores_passive_emojis():
     reply_attachment = NS(
         size=len(PNG),
         content_type="image/png",
         filename="reply.png",
         read=AsyncMock(return_value=PNG),
     )
-    older_attachment = NS(
+    speaker_attachment = NS(
         size=len(PNG),
         content_type="image/png",
-        filename="older.png",
+        filename="speaker.png",
         read=AsyncMock(return_value=PNG),
     )
-    channel = NS(id=10)
-    reply_target = NS(
-        id=110,
-        content="",
-        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
-        channel=channel,
-        webhook_id=None,
-        attachments=[reply_attachment],
-        stickers=[],
+    author = NS(id=100, display_name="사용자", name="사용자", bot=False)
+    reply = NS(
+        id=90, content="", author=author,
+        attachments=[reply_attachment], stickers=[],
     )
-    older = NS(
-        id=109,
-        content="",
-        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
-        channel=channel,
-        webhook_id=None,
-        attachments=[older_attachment],
-        stickers=[],
+    emoji_only = NS(
+        id=95, content="<:old_emoji:123>", author=author,
+        attachments=[], stickers=[],
     )
-    channel.history = lambda **kwargs: _history([reply_target, older])
+    speaker = NS(
+        id=94, content="문제 사진", author=author,
+        attachments=[speaker_attachment], stickers=[],
+    )
+    by_id = {90: reply, 95: emoji_only, 94: speaker}
+    channel = NS(id=10, fetch_message=AsyncMock(side_effect=lambda mid: by_id[mid]))
     message = NS(
-        id=111,
-        content="히나야 이 사진",
-        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
-        channel=channel,
-        reference=NS(message_id=110, channel_id=10, resolved=reply_target),
-        attachments=[],
-        stickers=[],
+        id=100, content="히나야 다시 봐줘", author=author, channel=channel,
+        attachments=[], stickers=[],
     )
+    rows = [
+        {
+            "message_id": "95", "has_visual": True,
+            "context_kind": "speaker_thread", "reference_strength": "same_speaker",
+        },
+        {
+            "message_id": "94", "has_visual": True,
+            "context_kind": "speaker_thread", "reference_strength": "same_speaker",
+        },
+        {
+            "message_id": "90", "has_visual": True,
+            "context_kind": "replied_message", "reference_strength": "explicit_reply",
+        },
+    ]
+    refs = rank_visual_context_refs(rows)
 
     visuals = await collect_visual_inputs(
         message,
-        include_reply=True,
-        include_recent=True,
+        context_refs=refs,
+        max_context_messages=2,
+        downloader=AsyncMock(return_value=PNG),
     )
 
     assert [(v.name, v.context_kind) for v in visuals] == [
         ("reply.png", "replied_message"),
-        ("older.png", "recent_channel_message"),
+        ("speaker.png", "speaker_thread"),
     ]
-    assert reply_attachment.read.await_count == 1
-    assert older_attachment.read.await_count == 1
+    assert [call.args[0] for call in channel.fetch_message.await_args_list] == [90, 95, 94]
 
 
 @pytest.mark.asyncio
-async def test_fetches_reply_origin_visual_directly_by_message_id():
-    attachment = NS(
-        size=len(PNG),
-        content_type="image/png",
-        filename="embarrassing.png",
+async def test_selected_visuals_keep_distinct_message_provenance():
+    reply_attachment = NS(
+        size=len(PNG), content_type="image/png", filename="reply.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    speaker_attachment = NS(
+        size=len(PNG), content_type="image/png", filename="speaker.png",
         read=AsyncMock(return_value=PNG),
     )
     author = NS(id=100, display_name="사용자", name="사용자", bot=False)
-    origin = NS(
-        id=130,
-        content="",
-        author=author,
-        attachments=[attachment],
-        stickers=[],
+    messages = {
+        110: NS(id=110, content="", author=author,
+                attachments=[reply_attachment], stickers=[]),
+        109: NS(id=109, content="", author=author,
+                attachments=[speaker_attachment], stickers=[]),
+    }
+    channel = NS(id=10, fetch_message=AsyncMock(side_effect=lambda mid: messages[mid]))
+    message = NS(
+        id=111, content="히나야 이 사진", author=author, channel=channel,
+        attachments=[], stickers=[],
     )
+    refs = [
+        VisualContextRef("110", "replied_message", "explicit_reply"),
+        VisualContextRef("109", "speaker_thread", "same_speaker"),
+    ]
+
+    visuals = await collect_visual_inputs(message, context_refs=refs)
+
+    assert [(v.name, v.context_kind) for v in visuals] == [
+        ("reply.png", "replied_message"),
+        ("speaker.png", "speaker_thread"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_fetches_selected_reply_origin_visual_directly_by_message_id():
+    attachment = NS(
+        size=len(PNG), content_type="image/png", filename="embarrassing.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    author = NS(id=100, display_name="사용자", name="사용자", bot=False)
+    origin = NS(id=130, content="", author=author, attachments=[attachment], stickers=[])
     channel = NS(id=10, fetch_message=AsyncMock(return_value=origin))
     message = NS(
-        id=133,
-        content="히나야 고마워",
-        author=author,
-        channel=channel,
-        attachments=[],
-        stickers=[],
+        id=133, content="히나야 고마워", author=author, channel=channel,
+        attachments=[], stickers=[],
     )
+    refs = [VisualContextRef(
+        "130", "reply_origin_source", "prior_explicit_reply",
+    )]
 
-    visuals = await collect_visual_inputs(message, context_message_ids=("130",))
+    visuals = await collect_visual_inputs(message, context_refs=refs)
 
     channel.fetch_message.assert_awaited_once_with(130)
     assert [(v.name, v.context_kind, v.reference_strength) for v in visuals] == [
@@ -479,74 +454,49 @@ async def test_fetches_reply_origin_visual_directly_by_message_id():
 
 
 @pytest.mark.asyncio
-async def test_missing_reply_origin_visual_is_not_substituted():
-    channel = NS(id=10, fetch_message=AsyncMock(side_effect=discord.NotFound(
-        NS(status=404, reason="not found"), "missing"
-    )))
-    message = NS(
-        id=133,
-        content="히나야 고마워",
-        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
-        channel=channel,
-        attachments=[],
-        stickers=[],
+async def test_missing_selected_visual_is_not_substituted_from_history():
+    history = MagicMock(return_value=_history([]))
+    channel = NS(
+        id=10,
+        fetch_message=AsyncMock(side_effect=discord.NotFound(
+            NS(status=404, reason="not found"), "missing"
+        )),
+        history=history,
     )
+    message = NS(
+        id=133, content="히나야 고마워",
+        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
+        channel=channel, attachments=[], stickers=[],
+    )
+    refs = [VisualContextRef("130", "speaker_thread", "same_speaker")]
 
-    assert await collect_visual_inputs(message, context_message_ids=("130",)) == []
+    assert await collect_visual_inputs(message, context_refs=refs) == []
+    history.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_embed_reply_keeps_older_visual_as_separately_labeled_context():
+async def test_selected_speaker_visual_does_not_depend_on_nearby_embed_reply():
     recent_attachment = NS(
-        size=len(PNG),
-        content_type="image/png",
-        filename="mushroom.png",
+        size=len(PNG), content_type="image/png", filename="mushroom.png",
         read=AsyncMock(return_value=PNG),
     )
-    channel = NS(id=10)
-    reply_target = NS(
-        id=120,
-        content="https://example.com/post",
-        author=NS(id=200, display_name="링크 봇", name="링크 봇", bot=True),
-        channel=channel,
-        webhook_id=None,
-        attachments=[],
-        stickers=[],
-        embeds=[NS(image=NS(url="https://example.com/embed.png"))],
-    )
+    author = NS(id=100, display_name="사용자", name="사용자", bot=False)
     recent = NS(
-        id=119,
-        content="히나야 버섯 씌워놨어",
-        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
-        webhook_id=None,
-        attachments=[recent_attachment],
-        stickers=[],
+        id=119, content="히나야 버섯 씌워놨어", author=author,
+        attachments=[recent_attachment], stickers=[],
     )
-    channel.history = lambda **kwargs: _history([reply_target, recent])
+    channel = NS(id=10, fetch_message=AsyncMock(return_value=recent))
     message = NS(
-        id=121,
-        content="히나야 히나 고양이야?",
-        author=NS(id=100, display_name="사용자", name="사용자", bot=False),
-        channel=channel,
-        reference=NS(message_id=120, channel_id=10, resolved=reply_target),
-        attachments=[],
-        stickers=[],
+        id=121, content="히나야 히나 고양이야?", author=author, channel=channel,
+        attachments=[], stickers=[],
     )
+    refs = [VisualContextRef("119", "speaker_thread", "same_speaker")]
 
-    visuals = await collect_visual_inputs(
-        message,
-        include_reply=True,
-        include_recent=True,
-    )
+    visuals = await collect_visual_inputs(message, context_refs=refs)
 
     assert [(v.name, v.context_kind, v.message_content) for v in visuals] == [
-        (
-            "mushroom.png",
-            "recent_channel_message",
-            "히나야 버섯 씌워놨어",
-        ),
+        ("mushroom.png", "speaker_thread", "히나야 버섯 씌워놨어")
     ]
-
 
 @pytest.mark.asyncio
 async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
