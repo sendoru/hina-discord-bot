@@ -10,6 +10,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from time import perf_counter
 
+from hina_bot.core.build_info import build_metadata
 from hina_bot.core.observability import current_turn_id
 
 _TOKEN_FIELDS = ("input_tokens", "output_tokens", "total_tokens", "cached_tokens", "reasoning_tokens")
@@ -105,6 +106,7 @@ class EmptyProviderResponseError(RuntimeError):
 class UsageLogger:
     def __init__(self, path: str):
         self.handler = self._handler(path)
+        self.build = build_metadata()
         self.exchange_handler = None
         if path:
             # Keep aggregate rows separate so summing usage.jsonl never double-counts tokens.
@@ -190,6 +192,7 @@ class UsageLogger:
             "scope": scope,
             "operations": {},
             "models": set(),
+            **self.build,
         })
         turn_id = current_turn_id()
         if turn_id:
@@ -228,8 +231,12 @@ class UsageLogger:
         **kwargs,
     ):
         started = perf_counter()
-        row = {"at": datetime.now(UTC).isoformat(), "operation": operation,
-               "model": kwargs["model"]}
+        row = {
+            "at": datetime.now(UTC).isoformat(),
+            "operation": operation,
+            "model": kwargs["model"],
+            **self.build,
+        }
         provider = getattr(client, "provider_name", "")
         if isinstance(provider, str) and provider:
             row["provider"] = provider
@@ -331,6 +338,7 @@ class UsageLogger:
         row = {
             "at": datetime.now(UTC).isoformat(),
             "operation": operation,
+            **self.build,
         }
         turn_id = current_turn_id()
         if turn_id:
