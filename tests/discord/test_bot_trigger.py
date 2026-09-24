@@ -64,6 +64,18 @@ def test_bot_origin_is_preserved_in_turn_provenance():
     assert provenance["origin_request"]["author_user_id"] == "300"
 
 
+def test_turn_provenance_keeps_message_visual_fact_without_loaded_visual_input():
+    message = routing_message("<@99> 봐줘", author_id=100, bot=False, mentions=(99,))
+    message.id = 15
+    message.author.display_name = "사용자"
+    message.attachments = [NS(content_type="image/png")]
+    message.stickers = []
+
+    provenance = build_turn_provenance(message, "봐줘", [], [])
+
+    assert provenance["origin_request"]["has_visual"] is True
+
+
 def test_turn_provenance_preserves_request_and_source_timestamps():
     message = routing_message("<@99> 이어서", author_id=100, bot=False, mentions=(99,))
     message.id = 20

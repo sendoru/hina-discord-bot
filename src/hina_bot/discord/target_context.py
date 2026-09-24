@@ -7,6 +7,8 @@ import discord
 
 from hina_bot.core.routing import trigger_text
 
+from .vision import message_has_visual
+
 log = logging.getLogger("hina")
 TARGET_CONTEXT = ContextVar("target_context", default=())
 TARGET_PROFILE_QUERY = re.compile(
@@ -111,7 +113,9 @@ async def collect(
             if visibility_mode == "direct" and not direct_trigger:
                 continue
             text_value = (getattr(old, "content", "") or "").strip()
-            if (not text_value or len(found[uid]) >= limits["messages"]
+            has_visual = message_has_visual(old)
+            if ((not text_value and not has_visual)
+                    or len(found[uid]) >= limits["messages"]
                     or sizes[uid] >= limits["chars"]):
                 continue
             text_value = text_value[:limits["chars"] - sizes[uid]]
@@ -121,6 +125,7 @@ async def collect(
                 "at": old.created_at.isoformat() if getattr(old, "created_at", None) else "",
                 "content": text_value,
                 "direct_trigger": direct_trigger,
+                **({"has_visual": True} if has_visual else {}),
             })
             if all(len(found[x]) >= limits["messages"]
                    or sizes[x] >= limits["chars"] for x in chosen):

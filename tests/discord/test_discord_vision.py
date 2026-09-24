@@ -7,7 +7,12 @@ import pytest
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.store import Store
-from hina_bot.discord.vision import VisionLimits, collect_visual_inputs
+from hina_bot.discord.vision import (
+    VisionLimits,
+    collect_visual_inputs,
+    message_has_visual,
+    visual_context_refs,
+)
 from hina_bot.discord.web_bot import HinaClient
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 16
@@ -20,6 +25,45 @@ def _history(messages):
             yield message
 
     return rows()
+
+
+def test_message_has_visual_uses_structural_metadata_without_reading_bytes():
+    image = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="screen.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    message = NS(content="", attachments=[image], stickers=[])
+
+    assert message_has_visual(message) is True
+    image.read.assert_not_awaited()
+
+
+def test_visual_context_refs_follow_selected_message_provenance():
+    refs = visual_context_refs([
+        {
+            "message_id": "10",
+            "content": "자 여깄어",
+            "has_visual": True,
+            "context_kind": "speaker_thread",
+            "reference_strength": "same_speaker",
+            "provenance_class": "conversation",
+            "author_user_id": "100",
+            "at": "2026-09-24T09:38:07+00:00",
+        },
+        {
+            "message_id": "11",
+            "content": "텍스트만",
+            "context_kind": "speaker_thread",
+        },
+    ])
+
+    assert len(refs) == 1
+    assert refs[0].message_id == "10"
+    assert refs[0].context_kind == "speaker_thread"
+    assert refs[0].reference_strength == "same_speaker"
+    assert refs[0].author_user_id == "100"
 
 
 @pytest.mark.asyncio

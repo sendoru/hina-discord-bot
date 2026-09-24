@@ -202,6 +202,54 @@ class RecentHydrationParityTests(unittest.IsolatedAsyncioTestCase):
             self.provider_rows(self.bot.recent, scope, current.id),
         )
 
+    async def test_visual_only_row_has_live_hydration_provider_parity(self):
+        now = datetime.now(UTC)
+        visual_message = NS(
+            id=4,
+            content="",
+            created_at=now - timedelta(minutes=1),
+            author=NS(
+                id=100,
+                bot=False,
+                display_name="user-100",
+                name="user-100",
+            ),
+            webhook_id=None,
+            mentions=[],
+            guild=NS(id=1),
+            attachments=[NS(content_type="image/png")],
+            stickers=[],
+        )
+        channel = FakeHistoryChannel([visual_message])
+        current = NS(id=10, created_at=now, channel=channel)
+        scope = Scope(1, 10, 100)
+
+        live = TargetAwareRecentMessages(
+            store=self.store,
+            external_context_policy=self.bot.settings.external_context_policy,
+        )
+        live.add(
+            scope,
+            4,
+            "user-100",
+            "",
+            role="user",
+            unix_time=visual_message.created_at.timestamp(),
+            author_user_id=100,
+            reply_target_user_id=None,
+            direct_trigger=False,
+            has_visual=True,
+        )
+
+        await self.bot.hydrate_recent_history(current, scope)
+
+        live_rows = self.provider_rows(live, scope, current.id)
+        hydrated_rows = self.provider_rows(self.bot.recent, scope, current.id)
+        self.assertEqual(live_rows, hydrated_rows)
+        self.assertEqual(len(hydrated_rows), 1)
+        self.assertTrue(hydrated_rows[0]["has_visual"])
+        self.assertEqual(hydrated_rows[0]["content"], "")
+
     async def test_hydrated_assistant_is_conservatively_unattributed_without_restart_metadata(self):
         now = datetime.now(UTC)
         assistant = self.message(
