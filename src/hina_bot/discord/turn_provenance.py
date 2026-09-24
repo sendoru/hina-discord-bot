@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 
 from ..ai.vision import VisualInput
+from .vision import message_has_visual
 
 CURRENT_TURN_PROVENANCE: ContextVar[dict | None] = ContextVar(
     "current_turn_provenance",
@@ -73,11 +74,7 @@ def build_turn_provenance(
         "direct_trigger": True,
         "provenance_class": "conversation",
         "at": created_at.isoformat() if created_at is not None else "",
-        "has_visual": any(
-            visual.message_id == message_id
-            and visual.reference_strength == "current_message"
-            for visual in visuals
-        ),
+        "has_visual": message_has_visual(message),
     }
 
     sources: list[dict] = []

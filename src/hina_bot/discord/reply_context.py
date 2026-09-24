@@ -3,6 +3,8 @@ from contextvars import ContextVar
 
 import discord
 
+from .vision import message_has_visual
+
 log = logging.getLogger("hina")
 
 REPLY_CONTEXT = ContextVar("reply_context", default=())
@@ -12,7 +14,8 @@ def _row(target, bot_id: int) -> dict | None:
     content = (getattr(target, "content", "") or "").strip()
     author = getattr(target, "author", None)
     user_id = getattr(author, "id", None)
-    if not content or author is None or user_id is None:
+    has_visual = message_has_visual(target)
+    if (not content and not has_visual) or author is None or user_id is None:
         return None
 
     own_bot = user_id == bot_id
@@ -25,6 +28,7 @@ def _row(target, bot_id: int) -> dict | None:
         "author_user_id": str(user_id),
         "reply_target_user_id": None,
         "direct_trigger": None,
+        **({"has_visual": True} if has_visual else {}),
         "name": str(getattr(author, "display_name", getattr(author, "name", "")))[:100],
         "content": content[:4000],
         "truncated": len(content) > 4000,

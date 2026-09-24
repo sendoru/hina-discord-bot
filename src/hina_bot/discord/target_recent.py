@@ -65,6 +65,7 @@ class TargetAwareRecentMessages(RecentMessages):
         author_user_id=None,
         reply_target_user_id=None,
         direct_trigger=None,
+        has_visual=False,
         capture_turn_provenance=False,
     ):
         direct = direct_trigger
@@ -97,6 +98,7 @@ class TargetAwareRecentMessages(RecentMessages):
             author_user_id=author_user_id,
             reply_target_user_id=reply_target_user_id,
             direct_trigger=direct,
+            has_visual=has_visual,
             capture_turn_provenance=capture_turn_provenance,
         )
         # Delivered live answers own ephemeral sources; buffer eviction/deletion removes both.
@@ -441,6 +443,7 @@ class TargetAwareRecentMessages(RecentMessages):
                     "author_user_id": str(target.get("user_id", "")),
                     "reply_target_user_id": None,
                     "direct_trigger": sampled.get("direct_trigger"),
+                    **({"has_visual": True} if sampled.get("has_visual") else {}),
                     "target_retrieval_mode": str(target.get("retrieval_mode", "")),
                     "explicit_history_request": bool(
                         target.get("explicit_history_request", False)

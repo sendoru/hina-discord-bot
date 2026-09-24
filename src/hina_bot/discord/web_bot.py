@@ -23,7 +23,7 @@ from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
 from .target_recent import TargetAwareRecentMessages
 from .turn_provenance import CURRENT_TURN_PROVENANCE, build_turn_provenance
-from .vision import VisionLimits, collect_visual_inputs
+from .vision import VisionLimits, collect_visual_inputs, message_has_visual
 
 log = logging.getLogger("hina")
 
@@ -351,7 +351,8 @@ class HinaClient(BaseHinaClient):
                 )
                 if policy == "direct" and not own_bot and historical_text is None:
                     continue
-                if not old.content:
+                has_visual = message_has_visual(old)
+                if not old.content and not has_visual:
                     continue
                 historical_scope = Scope(
                     scope.guild_id,
@@ -369,6 +370,7 @@ class HinaClient(BaseHinaClient):
                     author_user_id=old.author.id,
                     reply_target_user_id=None,
                     direct_trigger=None if own_bot else historical_text is not None,
+                    has_visual=has_visual,
                     capture_turn_provenance=False,
                 )
         except discord.HTTPException as exc:
@@ -403,7 +405,7 @@ class HinaClient(BaseHinaClient):
                 scope.guild_id is not None
                 and self.store.chat_log_enabled(scope)
                 and capture_mode(self.store, scope) == "all"
-                and message.content
+                and (message.content or message_has_visual(message))
             ):
                 self.recent.add(
                     scope,
@@ -411,6 +413,7 @@ class HinaClient(BaseHinaClient):
                     message.author.display_name,
                     message.content,
                     role="bot",
+                    has_visual=message_has_visual(message),
                 )
             return
 
