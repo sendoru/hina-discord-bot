@@ -176,11 +176,14 @@ def _citation_label(url: str) -> str:
 
 def _gemini_output(data: dict):
     output = []
-    text_pieces = []
+    final_text_pieces = []
+    previous_step_was_model_output = False
     web_search_calls = 0
 
     for step in data.get("steps") or []:
         step_type = step.get("type")
+        if step_type != "model_output":
+            previous_step_was_model_output = False
         if step_type == "google_search_call":
             output.append(NS(type="web_search_call"))
             web_search_calls += 1
@@ -219,6 +222,10 @@ def _gemini_output(data: dict):
         if step_type != "model_output":
             continue
 
+        if not previous_step_was_model_output:
+            final_text_pieces = []
+        previous_step_was_model_output = True
+
         parts = []
         for block in step.get("content") or []:
             if block.get("type") != "text":
@@ -243,7 +250,7 @@ def _gemini_output(data: dict):
                     url=url,
                     title=annotation.get("title") or "",
                 ))
-            text_pieces.append(text)
+            final_text_pieces.append(text)
             parts.append(NS(type="output_text", text=text, annotations=annotations))
         if parts:
             output.append(NS(type="message", content=parts))
@@ -258,7 +265,7 @@ def _gemini_output(data: dict):
     )
     response = NS(
         status=data.get("status", "completed"),
-        output_text="".join(text_pieces),
+        output_text="".join(final_text_pieces),
         output=output,
         usage=usage,
     )
