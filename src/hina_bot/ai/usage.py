@@ -245,6 +245,8 @@ class UsageLogger:
                 "semantic_route_mode", "semantic_route_status", "semantic_route_level",
                 "semantic_route_codes", "model_route_decision_source",
                 "model_route_baseline_tier", "routing_classifier_provider",
+                "routing_classifier_visual_count",
+                "routing_classifier_visual_context_kinds",
                 "search_route_mode", "search_route_baseline_mode", "search_route_locked",
                 "search_route_reason", "search_route_decision_source",
                 "semantic_web_need", "semantic_web_codes", "semantic_web_uncertain",

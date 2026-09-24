@@ -11,6 +11,7 @@ from hina_bot.ai.routing_plan import RoutingPlan, build_routing_plan
 from hina_bot.ai.rp_output_policy import ProvenanceMode
 from hina_bot.ai.semantic_model_routing import SemanticModelRouter
 from hina_bot.ai.usage import UsageLogger
+from hina_bot.ai.vision import VisualInput
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -170,6 +171,91 @@ async def test_classifier_payload_includes_bounded_anchor_and_context_signals():
         "routing_context",
         "context_signals",
     }
+
+
+@pytest.mark.asyncio
+async def test_classifier_receives_task_linked_visuals_but_not_ambient_visuals():
+    config = settings()
+    classifier_client = client(response(classification(level="high")))
+    router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
+    routing = RoutingPlan(
+        "자 여깄어",
+        "자 여깄어",
+        prior_user_request="히나야 사과게임 풀어줘",
+    )
+    visuals = (
+        VisualInput(
+            data=b"\x89PNG\r\n\x1a\ncurrent",
+            mime_type="image/png",
+            source="attachment",
+            context_kind="current_message",
+            reference_strength="current_message",
+        ),
+        VisualInput(
+            data=b"\x89PNG\r\n\x1a\nthread",
+            mime_type="image/png",
+            source="attachment",
+            context_kind="speaker_thread",
+            reference_strength="same_speaker",
+        ),
+        VisualInput(
+            data=b"\x89PNG\r\n\x1a\nambient",
+            mime_type="image/png",
+            source="attachment",
+            context_kind="channel_ambient",
+            reference_strength="ambient",
+        ),
+    )
+
+    outcome = await router.classify(
+        information(routing),
+        baseline_tier="fast",
+        visual_inputs=visuals,
+    )
+
+    assert outcome.status == "completed"
+    request = classifier_client.responses.create.await_args.kwargs
+    assert isinstance(request["input"], list)
+    content = request["input"][0]["content"]
+    payload = json.loads(content[0]["text"])
+    assert payload["current_request"] == "자 여깄어"
+    assert payload["prior_user_request"] == "히나야 사과게임 풀어줘"
+
+    image_blocks = [block for block in content if block["type"] == "input_image"]
+    assert len(image_blocks) == 2
+    assert all(block["image_url"].startswith("data:image/png;base64,") for block in image_blocks)
+    metadata_blocks = [
+        json.loads(block["text"].removeprefix("Untrusted visual evidence metadata(JSON):"))
+        for block in content
+        if block["type"] == "input_text"
+        and block["text"].startswith("Untrusted visual evidence metadata(JSON):")
+    ]
+    assert metadata_blocks == [
+        {
+            "index": 1,
+            "context_kind": "current_message",
+            "reference_strength": "current_message",
+        },
+        {
+            "index": 2,
+            "context_kind": "speaker_thread",
+            "reference_strength": "same_speaker",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_classifier_no_visual_request_keeps_legacy_string_input():
+    config = settings()
+    classifier_client = client(response(classification()))
+    router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
+    routing = RoutingPlan("안녕", "안녕")
+
+    await router.classify(information(routing), baseline_tier="fast")
+
+    request = classifier_client.responses.create.await_args.kwargs
+    assert isinstance(request["input"], str)
+    assert json.loads(request["input"])["current_request"] == "안녕"
 
 
 @pytest.mark.asyncio
