@@ -443,6 +443,7 @@ class TargetAwareRecentMessages(RecentMessages):
                     "author_user_id": str(target.get("user_id", "")),
                     "reply_target_user_id": None,
                     "direct_trigger": sampled.get("direct_trigger"),
+                    "has_visual": bool(sampled.get("has_visual", False)),
                     "target_retrieval_mode": str(target.get("retrieval_mode", "")),
                     "explicit_history_request": bool(
                         target.get("explicit_history_request", False)
