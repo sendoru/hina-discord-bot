@@ -28,7 +28,7 @@ def _row(target, bot_id: int) -> dict | None:
         "author_user_id": str(user_id),
         "reply_target_user_id": None,
         "direct_trigger": None,
-        "has_visual": has_visual,
+        **({"has_visual": True} if has_visual else {}),
         "name": str(getattr(author, "display_name", getattr(author, "name", "")))[:100],
         "content": content[:4000],
         "truncated": len(content) > 4000,
