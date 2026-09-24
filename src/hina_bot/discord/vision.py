@@ -15,8 +15,7 @@ log = logging.getLogger("hina")
 
 MAX_VISUAL_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_VISUAL_BYTES = 12 * 1024 * 1024
-RECENT_VISUAL_SCAN_LIMIT = 12
-MAX_RECENT_VISUAL_MESSAGES = 3
+MAX_CONTEXT_VISUAL_MESSAGES = 3
 _CUSTOM_EMOJI = re.compile(r"<(?P<animated>a?):(?P<name>[^:<>\s]{1,32}):(?P<id>[0-9]{1,20})>")
 
 
@@ -141,6 +140,33 @@ def visual_context_refs(rows) -> list[VisualContextRef]:
     return result
 
 
+_VISUAL_CONTEXT_RANK = {
+    "replied_message": 0,
+    "reply_reference_source": 1,
+    "reply_origin_source": 1,
+    "reply_origin_request": 1,
+    "prior_reply_source": 2,
+    "speaker_thread": 3,
+    "target_user_history": 4,
+    "channel_ambient": 5,
+}
+
+
+def rank_visual_context_refs(rows) -> list[VisualContextRef]:
+    """Rank already-admitted visual message refs by provenance before recency."""
+    refs = visual_context_refs(rows)
+
+    def key(ref: VisualContextRef):
+        rank = _VISUAL_CONTEXT_RANK.get(ref.context_kind, 6)
+        try:
+            recency = -int(ref.message_id)
+        except (TypeError, ValueError):
+            recency = 0
+        return rank, recency
+
+    return sorted(refs, key=key)
+
+
 def _message_metadata(message, context_kind: str, reference_strength: str) -> dict[str, str]:
     author = getattr(message, "author", None)
     return {
@@ -160,67 +186,15 @@ def _message_metadata(message, context_kind: str, reference_strength: str) -> di
     }
 
 
-async def _resolve_reply_message(message):
-    reference = getattr(message, "reference", None)
-    if reference is None:
-        return None
-
-    channel = getattr(message, "channel", None)
-    current_channel_id = getattr(channel, "id", None)
-    reference_channel_id = getattr(reference, "channel_id", None)
-    if (
-        current_channel_id is not None
-        and reference_channel_id is not None
-        and current_channel_id != reference_channel_id
-    ):
-        return None
-
-    target = getattr(reference, "resolved", None)
-    if target is not None and getattr(target, "author", None) is None:
-        target = None
-    if target is None:
-        message_id = getattr(reference, "message_id", None)
-        fetch_message = getattr(channel, "fetch_message", None)
-        if message_id is None or fetch_message is None:
-            return None
-        try:
-            target = await fetch_message(message_id)
-        except (discord.Forbidden, discord.NotFound, discord.HTTPException) as exc:
-            log.warning("Reply visual lookup failed (%s)", type(exc).__name__)
-            return None
-
-    target_channel = getattr(target, "channel", None)
-    target_channel_id = getattr(target_channel, "id", current_channel_id)
-    if (
-        current_channel_id is not None
-        and target_channel_id is not None
-        and current_channel_id != target_channel_id
-    ):
-        return None
-    return target
-
-
-def _has_passive_visual_candidate(message) -> bool:
-    return message_has_visual(message, include_inline_emojis=False)
-
-
 async def collect_visual_inputs(
     message,
     *,
+    context_refs: list[VisualContextRef] | tuple[VisualContextRef, ...] = (),
     limits: VisionLimits | None = None,
     downloader=_download,
-    include_reply: bool = False,
-    include_recent: bool = False,
-    allowed_reply_author_id: int | set[int] | tuple[int, ...] | None = None,
-    allowed_context_author_id: int | None = None,
-    context_message_ids: tuple[str, ...] | list[str] = (),
-    recent_filter=None,
-    recent_scan_limit: int = RECENT_VISUAL_SCAN_LIMIT,
-    recent_message_limit: int = MAX_RECENT_VISUAL_MESSAGES,
+    max_context_messages: int = MAX_CONTEXT_VISUAL_MESSAGES,
 ) -> list[VisualInput]:
-    """Return bounded request-scoped visual context without retaining image bytes."""
-    if allowed_reply_author_id is None:
-        allowed_reply_author_id = allowed_context_author_id
+    """Fetch visuals only from the current message and already-selected message context."""
     limits = limits or VisionLimits()
     result: list[VisualInput] = []
     counts = {"attachment": 0, "emoji": 0, "sticker": 0}
@@ -311,87 +285,34 @@ async def collect_visual_inputs(
         include_inline_emojis=True,
     )
 
-    if include_reply:
-        target = await _resolve_reply_message(message)
-        target_author_id = getattr(getattr(target, "author", None), "id", None)
-        allowed_reply_ids = (
-            None
-            if allowed_reply_author_id is None
-            else (
-                {allowed_reply_author_id}
-                if isinstance(allowed_reply_author_id, int)
-                else set(allowed_reply_author_id)
-            )
-        )
-        if (
-            target is not None
-            and (
-                allowed_reply_ids is None
-                or target_author_id in allowed_reply_ids
-            )
-        ):
-            await collect_message(
-                target,
-                context_kind="replied_message",
-                reference_strength="explicit_reply",
-                include_inline_emojis=True,
-            )
-
-    if context_message_ids:
-        channel = getattr(message, "channel", None)
-        fetch_message = getattr(channel, "fetch_message", None)
-        if fetch_message is not None:
-            for message_id in context_message_ids:
-                if str(message_id) in seen_message_ids:
-                    continue
-                try:
-                    target = await fetch_message(int(message_id))
-                except (TypeError, ValueError, discord.Forbidden, discord.NotFound,
-                        discord.HTTPException) as exc:
-                    log.warning("Reply-origin visual lookup failed (%s)", type(exc).__name__)
-                    continue
-                target_author_id = getattr(getattr(target, "author", None), "id", None)
-                if (
-                    allowed_context_author_id is not None
-                    and target_author_id != allowed_context_author_id
-                ):
-                    continue
-                await collect_message(
-                    target,
-                    context_kind="reply_origin_source",
-                    reference_strength="prior_explicit_reply",
-                    include_inline_emojis=False,
-                )
-
-    if include_recent and recent_scan_limit > 0 and recent_message_limit > 0:
-        channel = getattr(message, "channel", None)
-        history = getattr(channel, "history", None)
-        if history is not None:
-            recent_with_visuals = 0
+    channel = getattr(message, "channel", None)
+    fetch_message = getattr(channel, "fetch_message", None)
+    accepted_context_messages = 0
+    if fetch_message is not None and max_context_messages > 0:
+        for ref in context_refs:
+            if accepted_context_messages >= max_context_messages:
+                break
+            if ref.message_id in seen_message_ids:
+                continue
             try:
-                async for old in history(
-                    limit=max(1, int(recent_scan_limit)),
-                    before=message,
-                    oldest_first=False,
-                ):
-                    old_id = str(getattr(old, "id", "") or "")
-                    if old_id and old_id in seen_message_ids:
-                        continue
-                    if recent_filter is not None and not recent_filter(old):
-                        continue
-                    if not _has_passive_visual_candidate(old):
-                        continue
-                    added = await collect_message(
-                        old,
-                        context_kind="recent_channel_message",
-                        reference_strength="passive_recent",
-                        include_inline_emojis=False,
-                    )
-                    if added:
-                        recent_with_visuals += 1
-                    if recent_with_visuals >= recent_message_limit:
-                        break
-            except (discord.Forbidden, discord.HTTPException) as exc:
-                log.warning("Recent visual history lookup failed (%s)", type(exc).__name__)
+                target = await fetch_message(int(ref.message_id))
+            except (
+                TypeError,
+                ValueError,
+                discord.Forbidden,
+                discord.NotFound,
+                discord.HTTPException,
+            ) as exc:
+                log.warning("Selected visual lookup failed (%s)", type(exc).__name__)
+                continue
+            added = await collect_message(
+                target,
+                context_kind=ref.context_kind,
+                reference_strength=ref.reference_strength,
+                include_inline_emojis=ref.context_kind == "replied_message",
+            )
+            if added:
+                accepted_context_messages += 1
 
     return result
+
