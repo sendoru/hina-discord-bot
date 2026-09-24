@@ -271,7 +271,10 @@ def test_reply_chain_is_not_available_to_a_different_user():
         rows = recent.context(other_scope, 4)
         assert not any(str(row.get("context_kind", "")).startswith("reply_origin")
                        for row in rows)
-        assert visual_context_refs(rows) == []
+        refs = visual_context_refs(rows)
+        assert [(ref.message_id, ref.context_kind) for ref in refs] == [
+            ("1", "prior_reply_source")
+        ]
     finally:
         REPLY_CONTEXT.reset(reply_token)
 
