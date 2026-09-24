@@ -21,6 +21,19 @@ _CUSTOM_EMOJI = re.compile(r"<(?P<animated>a?):(?P<name>[^:<>\s]{1,32}):(?P<id>[
 
 
 @dataclass(frozen=True)
+class VisualContextRef:
+    """Content-free reference to a selected Discord message that carries visual data."""
+
+    message_id: str
+    context_kind: str
+    reference_strength: str = ""
+    provenance_class: str = ""
+    author_user_id: str = ""
+    source_turn_message_id: str = ""
+    at: str = ""
+
+
+@dataclass(frozen=True)
 class VisionLimits:
     """Per-source count quotas for one request-scoped vision context."""
 
@@ -88,6 +101,46 @@ def _sticker_candidate(sticker):
     return url, str(getattr(sticker, "name", "") or "")
 
 
+def message_has_visual(message, *, include_inline_emojis: bool = True) -> bool:
+    """Return whether a Discord message carries a supported visual source without fetching bytes."""
+    for attachment in getattr(message, "attachments", ()):
+        content_type = str(getattr(attachment, "content_type", "") or "").lower()
+        if not content_type or content_type.startswith("image/"):
+            return True
+    if any(
+        _sticker_candidate(sticker) is not None
+        for sticker in getattr(message, "stickers", ())
+    ):
+        return True
+    return bool(
+        include_inline_emojis
+        and next(_emoji_candidates(str(getattr(message, "content", "") or "")), None)
+    )
+
+
+def visual_context_refs(rows) -> list[VisualContextRef]:
+    """Project selected message context into content-free visual references."""
+    result = []
+    seen = set()
+    for row in rows or ():
+        if not row.get("has_visual"):
+            continue
+        message_id = str(row.get("message_id") or "")
+        if not message_id or message_id in seen:
+            continue
+        seen.add(message_id)
+        result.append(VisualContextRef(
+            message_id=message_id,
+            context_kind=str(row.get("context_kind") or ""),
+            reference_strength=str(row.get("reference_strength") or ""),
+            provenance_class=str(row.get("provenance_class") or ""),
+            author_user_id=str(row.get("author_user_id") or row.get("user_id") or ""),
+            source_turn_message_id=str(row.get("source_turn_message_id") or ""),
+            at=str(row.get("at") or ""),
+        ))
+    return result
+
+
 def _message_metadata(message, context_kind: str, reference_strength: str) -> dict[str, str]:
     author = getattr(message, "author", None)
     return {
@@ -148,14 +201,7 @@ async def _resolve_reply_message(message):
 
 
 def _has_passive_visual_candidate(message) -> bool:
-    for attachment in getattr(message, "attachments", ()):
-        content_type = str(getattr(attachment, "content_type", "") or "").lower()
-        if not content_type or content_type.startswith("image/"):
-            return True
-    return any(
-        _sticker_candidate(sticker) is not None
-        for sticker in getattr(message, "stickers", ())
-    )
+    return message_has_visual(message, include_inline_emojis=False)
 
 
 async def collect_visual_inputs(
