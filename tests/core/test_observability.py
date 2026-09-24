@@ -32,6 +32,9 @@ def test_event_logger_correlates_turn_without_serializing_exception_message(tmp_
     row = json.loads(raw)
     assert row["turn_id"] == "opaque-turn-id"
     assert row["event"] == "turn.failed"
+    assert row["app_version"]
+    assert row["build_revision"].startswith(("git:", "src:"))
+    assert len(row["runtime_id"]) == 16
     assert row["error_type"] == "ValueError"
     assert row["error_location"].endswith(":test_event_logger_correlates_turn_without_serializing_exception_message")
     assert len(row["error_fingerprint"]) == 16

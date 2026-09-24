@@ -244,6 +244,8 @@ async def test_turn_id_connects_detail_and_exchange_rows(tmp_path):
     exchange = json.loads((tmp_path / 'discord-usage.jsonl').read_text())
     assert detail['turn_id'] == 'opaque-turn-id'
     assert exchange['turn_id'] == 'opaque-turn-id'
+    for field in ('app_version', 'build_revision', 'runtime_id'):
+        assert detail[field] == exchange[field]
     assert 'secret' not in path.read_text()
 
 
