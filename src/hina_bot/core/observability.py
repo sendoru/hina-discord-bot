@@ -90,12 +90,12 @@ class EventLogger:
             "at": datetime.now(UTC).isoformat(),
             "level": level,
             "event": event,
-            **self.build,
         }
         turn_id = current_turn_id()
         if turn_id:
             row["turn_id"] = turn_id
         row.update(fields)
+        row.update(self.build)
         try:
             payload = json.dumps(row, ensure_ascii=False, separators=(",", ":"))
             self.handler.handle(logging.LogRecord(
