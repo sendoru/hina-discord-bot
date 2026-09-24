@@ -68,6 +68,51 @@ async def test_explicit_reply_is_available_even_when_direct_capture_omits_side_c
 
 
 @pytest.mark.asyncio
+async def test_explicit_reply_to_old_hina_message_survives_without_recent_buffer_state():
+    now = datetime.now(UTC)
+    channel = FakeHistoryChannel(10)
+    old_hina = NS(
+        id=45,
+        content="재시작 전에 한 히나 답변",
+        author=NS(id=99, bot=True, display_name="히나", name="히나"),
+        webhook_id=None,
+        created_at=now - timedelta(minutes=2),
+        channel=channel,
+    )
+    channel.fetch_message = AsyncMock(return_value=old_hina)
+    message = NS(
+        id=46,
+        content="히나야 그건 왜?",
+        author=NS(id=100, bot=False),
+        channel=channel,
+        reference=NS(message_id=45, channel_id=10, resolved=None),
+    )
+    recent = TargetAwareRecentMessages()
+    scope = Scope(1, 10, 100)
+
+    # Simulate a restart: no in-memory assistant row or turn provenance exists.
+    assert recent.context(scope, message.id) == []
+
+    rows = await collect_reply_context(message, 99)
+    token = REPLY_CONTEXT.set(tuple(rows))
+    try:
+        context = recent.context(scope, message.id)
+    finally:
+        REPLY_CONTEXT.reset(token)
+
+    assert len(context) == 1
+    assert context[0]["message_id"] == "45"
+    assert context[0]["role"] == "assistant"
+    assert context[0]["context_kind"] == "replied_message"
+    assert context[0]["reference_strength"] == "explicit_reply"
+    assert context[0]["reply_target_user_id"] is None
+    assert not any(
+        str(row.get("context_kind", "")).startswith("reply_origin")
+        for row in context
+    )
+
+
+@pytest.mark.asyncio
 async def test_reply_to_other_bot_is_marked_as_bot_context():
     now = datetime.now(UTC)
     channel = FakeHistoryChannel(10)
