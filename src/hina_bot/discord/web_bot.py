@@ -23,7 +23,7 @@ from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect
 from .target_recent import TargetAwareRecentMessages
 from .turn_provenance import CURRENT_TURN_PROVENANCE, build_turn_provenance
-from .vision import VisionLimits, collect_visual_inputs
+from .vision import VisionLimits, collect_visual_inputs, message_has_visual
 
 log = logging.getLogger("hina")
 
@@ -411,6 +411,7 @@ class HinaClient(BaseHinaClient):
                     message.author.display_name,
                     message.content,
                     role="bot",
+                    has_visual=message_has_visual(message),
                 )
             return
 
