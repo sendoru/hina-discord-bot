@@ -125,7 +125,7 @@ async def collect(
                 "at": old.created_at.isoformat() if getattr(old, "created_at", None) else "",
                 "content": text_value,
                 "direct_trigger": direct_trigger,
-                "has_visual": has_visual,
+                **({"has_visual": True} if has_visual else {}),
             })
             if all(len(found[x]) >= limits["messages"]
                    or sizes[x] >= limits["chars"] for x in chosen):
