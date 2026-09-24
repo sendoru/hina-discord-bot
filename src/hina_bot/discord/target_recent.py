@@ -65,6 +65,7 @@ class TargetAwareRecentMessages(RecentMessages):
         author_user_id=None,
         reply_target_user_id=None,
         direct_trigger=None,
+        capture_turn_provenance=False,
     ):
         direct = direct_trigger
         if role != "assistant" and direct is None:
@@ -77,18 +78,12 @@ class TargetAwareRecentMessages(RecentMessages):
         ):
             return
 
-        # Existing callers use the triggering user's scope for live assistant replies, while
-        # Discord history hydration uses the bot author's scope and supplies an original timestamp.
-        # Translate those two call shapes into explicit metadata instead of overloading `user_id`.
-        if role == "assistant" and author_user_id is None and reply_target_user_id is None:
-            if unix_time is None:
-                reply_target_user_id = scope.user_id
-            else:
-                author_user_id = scope.user_id
-
+        # Live capture and Discord-history hydration must use the same row contract.
+        # Callers provide assistant author/target identity explicitly; timestamps never imply
+        # whether a row is live or hydrated.
         inherited_turn = (
             self._explicit_assistant_turn(scope, REPLY_CONTEXT.get())
-            if role == "assistant" and unix_time is None
+            if role == "assistant" and capture_turn_provenance
             else None
         )
 
@@ -102,9 +97,10 @@ class TargetAwareRecentMessages(RecentMessages):
             author_user_id=author_user_id,
             reply_target_user_id=reply_target_user_id,
             direct_trigger=direct,
+            capture_turn_provenance=capture_turn_provenance,
         )
-        # Delivered answers own ephemeral sources; buffer eviction/deletion removes both.
-        if role == "assistant" and unix_time is None:
+        # Delivered live answers own ephemeral sources; buffer eviction/deletion removes both.
+        if role == "assistant" and capture_turn_provenance:
             for row in self.buffers.get(self._key(scope), ()):
                 if row["message_id"] == message_id:
                     row["reply_sources"] = [dict(source) for source in REPLY_CONTEXT.get()][:1]
