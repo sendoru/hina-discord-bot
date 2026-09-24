@@ -220,6 +220,20 @@ class SharedContextTests(unittest.TestCase):
         recent.forget(a)
         self.assertEqual(recent.context(b, 3), [])
 
+    def test_recent_context_keeps_visual_only_message_rows(self):
+        from hina_bot.core.recent import RecentMessages
+
+        recent = RecentMessages()
+        scope = Scope(1, 10, 100)
+        recent.add(scope, 1, "A", "", has_visual=True)
+
+        rows = recent.context(scope, 2)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["message_id"], 1)
+        self.assertEqual(rows[0]["content"], "")
+        self.assertTrue(rows[0]["has_visual"])
+
     def test_recent_ttl_and_capacity(self):
         from unittest.mock import patch
 
