@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from .build_info import build_metadata
+
 CURRENT_TURN_ID: ContextVar[str | None] = ContextVar("hina_turn_id", default=None)
 
 
@@ -64,6 +66,7 @@ class EventLogger:
 
     def __init__(self, path: str):
         self.handler = self._handler(path)
+        self.build = build_metadata()
 
     @staticmethod
     def _handler(path: str):
@@ -87,6 +90,7 @@ class EventLogger:
             "at": datetime.now(UTC).isoformat(),
             "level": level,
             "event": event,
+            **self.build,
         }
         turn_id = current_turn_id()
         if turn_id:
