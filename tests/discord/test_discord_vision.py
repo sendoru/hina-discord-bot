@@ -6,6 +6,7 @@ import pytest
 
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
+from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.discord.vision import (
     VisualContextRef,
@@ -66,6 +67,43 @@ def test_visual_context_refs_follow_selected_message_provenance():
     assert refs[0].context_kind == "speaker_thread"
     assert refs[0].reference_strength == "same_speaker"
     assert refs[0].author_user_id == "100"
+
+
+def test_visual_context_ranking_prefers_causal_context_before_recency():
+    rows = [
+        {
+            "message_id": "300",
+            "has_visual": True,
+            "context_kind": "channel_ambient",
+        },
+        {
+            "message_id": "100",
+            "has_visual": True,
+            "context_kind": "replied_message",
+            "reference_strength": "explicit_reply",
+        },
+        {
+            "message_id": "250",
+            "has_visual": True,
+            "context_kind": "speaker_thread",
+            "reference_strength": "same_speaker",
+        },
+        {
+            "message_id": "240",
+            "has_visual": True,
+            "context_kind": "speaker_thread",
+            "reference_strength": "same_speaker",
+        },
+    ]
+
+    refs = rank_visual_context_refs(rows)
+
+    assert [(ref.message_id, ref.context_kind) for ref in refs] == [
+        ("100", "replied_message"),
+        ("250", "speaker_thread"),
+        ("240", "speaker_thread"),
+        ("300", "channel_ambient"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -497,6 +535,115 @@ async def test_selected_speaker_visual_does_not_depend_on_nearby_embed_reply():
     assert [(v.name, v.context_kind, v.message_content) for v in visuals] == [
         ("mushroom.png", "speaker_thread", "히나야 버섯 씌워놨어")
     ]
+
+@pytest.mark.asyncio
+async def test_selected_speaker_context_drives_text_and_visual_from_one_snapshot():
+    observed_context = []
+    observed_visuals = []
+
+    async def answer(*args, **kwargs):
+        observed_context.extend(kwargs["channel_context"])
+        observed_visuals.extend(CURRENT_VISUAL_INPUTS.get())
+        return "다시 풀어볼게."
+
+    llm = NS(
+        answer=AsyncMock(side_effect=answer),
+        summarize=AsyncMock(),
+        extract_structured_memory=AsyncMock(),
+        summarize_shared=AsyncMock(),
+        close=AsyncMock(),
+    )
+    store = Store(":memory:")
+    store.set_memory_mode_override("global", "off")
+    store.set_chat_log_mode_override("global", "on")
+    bot = HinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
+    bot._connection.user = NS(id=99, display_name="히나")
+    bot.emoji_registry.catalog = AsyncMock(return_value=[])
+
+    attachment = NS(
+        size=len(PNG),
+        content_type="image/png",
+        filename="problem.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    author = NS(
+        id=100,
+        bot=False,
+        display_name="사용자",
+        guild_permissions=NS(manage_guild=False),
+    )
+    visual_source = NS(
+        id=10,
+        content="자 여깄어",
+        author=author,
+        attachments=[attachment],
+        stickers=[],
+    )
+    channel = MagicMock()
+    channel.id = 20
+    channel.fetch_message = AsyncMock(return_value=visual_source)
+    channel.history.side_effect = lambda **kwargs: _history([])
+    channel.send = AsyncMock(return_value=NS(id=1000, created_at=None))
+    channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
+    channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
+    guild = NS(id=1, default_role=NS())
+    scope = Scope(1, 20, 100)
+    other = Scope(1, 20, 200)
+
+    bot.recent.add(
+        scope,
+        10,
+        "사용자",
+        "자 여깄어",
+        direct_trigger=True,
+        has_visual=True,
+    )
+    bot.recent.add(
+        scope,
+        11,
+        "히나",
+        "이전 답변",
+        role="assistant",
+        author_user_id=99,
+        reply_target_user_id=100,
+    )
+    for message_id in range(12, 28):
+        bot.recent.add(other, message_id, "다른 사용자", f"주변 텍스트 {message_id}")
+    bot.recent.mark_hydrated(scope)
+
+    real_context = bot.recent.context
+    bot.recent.context = MagicMock(side_effect=real_context)
+
+    message = NS(
+        id=30,
+        content="히나야 괜찮으면 다시 풀어봐",
+        author=author,
+        guild=guild,
+        channel=channel,
+        mentions=[],
+        webhook_id=None,
+        reference=None,
+        attachments=[],
+        stickers=[],
+        created_at=None,
+    )
+
+    try:
+        await bot.on_message(message)
+
+        llm.answer.assert_awaited_once()
+        assert bot.recent.context.call_count == 1
+        selected = next(row for row in observed_context if str(row["message_id"]) == "10")
+        assert selected["context_kind"] == "speaker_thread"
+        assert selected["has_visual"] is True
+        assert [(v.message_id, v.context_kind) for v in observed_visuals] == [
+            ("10", "speaker_thread")
+        ]
+        channel.fetch_message.assert_awaited_once_with(10)
+        channel.history.assert_not_called()
+    finally:
+        await bot.close()
+
 
 @pytest.mark.asyncio
 async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
