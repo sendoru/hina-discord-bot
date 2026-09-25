@@ -29,7 +29,7 @@ on:
       fast_thinking:
         description: FAST Gemini thinking level
         required: true
-        default: medium
+        default: minimal
       smart_thinking:
         description: SMART Gemini thinking level
         required: true
