@@ -310,6 +310,22 @@ def test_context_size_event_keeps_only_numeric_attribution(tmp_path):
             context_lore_chars=90,
             context_emoji_chars=20,
             instruction_chars=1400,
+            instruction_base_chars=300,
+            instruction_reference_chars=200,
+            instruction_identity_chars=150,
+            instruction_character_chars=250,
+            instruction_relationship_chars=100,
+            instruction_runtime_chars=80,
+            instruction_memory_chars=40,
+            instruction_context_policy_chars=30,
+            instruction_search_chars=60,
+            instruction_world_chars=20,
+            instruction_tools_chars=10,
+            instruction_dynamic_chars=50,
+            instruction_response_chars=100,
+            instruction_separator_chars=10,
+            request_input_chars=900,
+            request_chars_total=2300,
             visible_input_chars=30,
             content="must-not-log",
         )
@@ -324,4 +340,9 @@ def test_context_size_event_keeps_only_numeric_attribution(tmp_path):
     assert row["operation"] == "context.size"
     assert row["context_chars_total"] == 1200
     assert row["instruction_chars"] == 1400
+    assert row["instruction_character_chars"] == 250
+    assert row["instruction_search_chars"] == 60
+    assert row["instruction_separator_chars"] == 10
+    assert row["request_input_chars"] == 900
+    assert row["request_chars_total"] == 2300
     assert row["visible_input_chars"] == 30
