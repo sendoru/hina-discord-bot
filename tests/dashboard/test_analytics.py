@@ -149,6 +149,14 @@ def snapshot():
             "target_context_ms": 10,
             "reply_context_ms": 15,
             "visual_context_ms": 40,
+            "history_hydration_ms": 25,
+            "history_hydration_needed": True,
+            "channel_context_select_ms": 3,
+            "channel_context_count": 4,
+            "visual_ref_select_ms": 1,
+            "visual_ref_count": 2,
+            "visual_fetch_ms": 11,
+            "visual_input_count": 1,
         },
         {
             "at": "2026-09-21T00:00:02+00:00",
@@ -297,6 +305,11 @@ def test_analytics_exposes_user_visible_latency_and_generation_residual():
     assert data["performance"]["post_reply"]["average"] == 175
     assert data["performance"]["stages"]["recent_history_ms"]["known"] == 1
     assert data["performance"]["stages"]["recent_history_ms"]["missing"] == 1
+    assert data["performance"]["stages"]["history_hydration_ms"]["known"] == 1
+    assert data["performance"]["stages"]["history_hydration_ms"]["average"] == 25
+    assert data["performance"]["stages"]["channel_context_select_ms"]["average"] == 3
+    assert data["performance"]["stages"]["visual_ref_select_ms"]["average"] == 1
+    assert data["performance"]["stages"]["visual_fetch_ms"]["average"] == 11
     assert data["performance"]["generation"]["api_time"]["average"] == 700
     assert data["performance"]["generation"]["residual"]["average"] == 75
 

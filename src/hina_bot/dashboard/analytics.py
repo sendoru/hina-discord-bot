@@ -547,6 +547,12 @@ def build_analytics(
             "target_context_ms": _field_latency(preflight_rows, "target_context_ms"),
             "reply_context_ms": _field_latency(preflight_rows, "reply_context_ms"),
             "visual_context_ms": _field_latency(preflight_rows, "visual_context_ms"),
+            "history_hydration_ms": _field_latency(preflight_rows, "history_hydration_ms"),
+            "channel_context_select_ms": _field_latency(
+                preflight_rows, "channel_context_select_ms"
+            ),
+            "visual_ref_select_ms": _field_latency(preflight_rows, "visual_ref_select_ms"),
+            "visual_fetch_ms": _field_latency(preflight_rows, "visual_fetch_ms"),
             "lock_wait_ms": _field_latency(completed_rows, "lock_wait_ms"),
             "slot_wait_ms": _field_latency(completed_rows, "slot_wait_ms"),
             "recent_history_ms": _field_latency(completed_rows, "recent_history_ms"),
