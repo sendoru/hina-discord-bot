@@ -40,6 +40,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "ROUTING_CLASSIFIER_API_KEY",
         "ROUTING_CLASSIFIER_TIMEOUT_SECONDS",
         "ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS",
+        "GEMINI_THINKING_LEVEL",
         "GEMINI_FAST_THINKING_LEVEL",
         "GEMINI_SMART_THINKING_LEVEL",
         "CHANNEL_CONTEXT_CHARS",
@@ -176,6 +177,9 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
         assert settings.chat_web_search is True
         assert settings.community_lore is True
         assert settings.output_tokens == 1000
+        assert settings.gemini_thinking_level == "low"
+        assert settings.gemini_fast_thinking_level == "minimal"
+        assert settings.gemini_smart_thinking_level == "medium"
         assert settings.model_routing_smart_threshold == pytest.approx(2.0)
         assert settings.memory_routing_smart_threshold == pytest.approx(2.0)
         assert settings.channel_context_chars == 6000
@@ -194,6 +198,9 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         chat_web_search=True,
         model_routing_smart_threshold=2.0,
         memory_routing_smart_threshold=2.0,
+        gemini_thinking_level="low",
+        gemini_fast_thinking_level="minimal",
+        gemini_smart_thinking_level="medium",
     )
 
     store = Store(str(db))
@@ -203,6 +210,9 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
     assert settings.set_text("CALL_PREFIXES", "히나야, 히나") == ("히나야", "히나")
     assert settings.set_text("MODEL_ROUTING_SMART_THRESHOLD", "1.8") == pytest.approx(1.8)
     assert settings.set_text("MEMORY_ROUTING_SMART_THRESHOLD", "2.3") == pytest.approx(2.3)
+    assert settings.set_text("GEMINI_THINKING_LEVEL", "HIGH") == "high"
+    assert settings.set_text("GEMINI_FAST_THINKING_LEVEL", "low") == "low"
+    assert settings.set_text("GEMINI_SMART_THINKING_LEVEL", "high") == "high"
     store.close()
 
     store = Store(str(db))
@@ -213,6 +223,12 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         assert reloaded.call_prefixes == ("히나야", "히나")
         assert reloaded.model_routing_smart_threshold == pytest.approx(1.8)
         assert reloaded.memory_routing_smart_threshold == pytest.approx(2.3)
+        assert reloaded.gemini_thinking_level == "high"
+        assert reloaded.gemini_fast_thinking_level == "low"
+        assert reloaded.gemini_smart_thinking_level == "high"
+        assert reloaded.source("GEMINI_THINKING_LEVEL") == "db"
+        assert reloaded.source("GEMINI_FAST_THINKING_LEVEL") == "db"
+        assert reloaded.source("GEMINI_SMART_THINKING_LEVEL") == "db"
         assert reloaded.source("CHANNEL_CONTEXT_CHARS") == "db"
         assert reloaded.source("MODEL_ROUTING_SMART_THRESHOLD") == "db"
         assert reloaded.source("MEMORY_ROUTING_SMART_THRESHOLD") == "db"
@@ -281,6 +297,9 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
         ("LORE_MAX_CHARS", "12001"),
         ("DM_ALWAYS_REPLY", "maybe"),
         ("CALL_PREFIXES", ""),
+        ("GEMINI_THINKING_LEVEL", "extreme"),
+        ("GEMINI_FAST_THINKING_LEVEL", "off"),
+        ("GEMINI_SMART_THINKING_LEVEL", "max"),
     ],
 )
 def test_runtime_setting_validation_rejects_invalid_values(key: str, value: str):
