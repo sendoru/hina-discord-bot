@@ -106,6 +106,22 @@ def snapshot():
             "context_lore_chars": 90,
             "context_emoji_chars": 20,
             "instruction_chars": 1400,
+            "instruction_base_chars": 300,
+            "instruction_reference_chars": 200,
+            "instruction_identity_chars": 150,
+            "instruction_character_chars": 250,
+            "instruction_relationship_chars": 100,
+            "instruction_runtime_chars": 80,
+            "instruction_memory_chars": 40,
+            "instruction_context_policy_chars": 30,
+            "instruction_search_chars": 60,
+            "instruction_world_chars": 20,
+            "instruction_tools_chars": 10,
+            "instruction_dynamic_chars": 50,
+            "instruction_response_chars": 100,
+            "instruction_separator_chars": 10,
+            "request_input_chars": 900,
+            "request_chars_total": 2300,
             "visible_input_chars": 30,
         },
         {
@@ -323,3 +339,7 @@ def test_analytics_exposes_api_categories_and_context_char_attribution():
     assert data["performance"]["api_categories"]["memory"]["calls"] == 1
     assert data["performance"]["context_chars"]["context_chars_total"]["average"] == 1000
     assert data["performance"]["context_chars"]["instruction_chars"]["average"] == 1400
+    assert data["performance"]["context_chars"]["instruction_character_chars"]["average"] == 250
+    assert data["performance"]["context_chars"]["instruction_search_chars"]["average"] == 60
+    assert data["performance"]["context_chars"]["request_input_chars"]["average"] == 900
+    assert data["performance"]["context_chars"]["request_chars_total"]["average"] == 2300
