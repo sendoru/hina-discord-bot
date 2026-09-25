@@ -571,6 +571,23 @@ class RequestAssembler(BaseLLM):
             self.relationship_instructions(scope),
             runtime_instruction(runtime),
         ]
+        instruction_group_chars = {
+            "instruction_base_chars": len(POLICY),
+            "instruction_reference_chars": len(REFERENCE_CONTINUITY_POLICY),
+            "instruction_identity_chars": (
+                len(CURRENT_SPEAKER_POLICY) + len(CURRENT_INTERACTION_POLICY)
+            ),
+            "instruction_character_chars": len(self.character),
+            "instruction_relationship_chars": len(instruction_parts[5]),
+            "instruction_runtime_chars": len(instruction_parts[6]),
+            "instruction_memory_chars": 0,
+            "instruction_context_policy_chars": 0,
+            "instruction_search_chars": 0,
+            "instruction_world_chars": 0,
+            "instruction_tools_chars": 0,
+            "instruction_dynamic_chars": 0,
+            "instruction_response_chars": 0,
+        }
         if (
             structured_memory["structured_owner_memory"]
             or structured_memory["structured_relationship_memory"]
@@ -578,36 +595,72 @@ class RequestAssembler(BaseLLM):
             or structured_memory["authorized_factual_memory"]
         ):
             instruction_parts.append(STRUCTURED_MEMORY_POLICY)
+            instruction_group_chars["instruction_memory_chars"] += len(
+                STRUCTURED_MEMORY_POLICY
+            )
         if current_channel_only:
             instruction_parts.append(CURRENT_CHANNEL_SCOPE_POLICY)
+            instruction_group_chars["instruction_context_policy_chars"] += len(
+                CURRENT_CHANNEL_SCOPE_POLICY
+            )
         if any(
             row.get("context_kind") == "target_user_history"
             for row in context.get("channel_recent_messages", ())
         ):
             instruction_parts.append(TARGET_HISTORY_POLICY)
+            instruction_group_chars["instruction_context_policy_chars"] += len(
+                TARGET_HISTORY_POLICY
+            )
         if freshness in {FreshnessMode.AUTO, FreshnessMode.REQUIRED}:
             instruction_parts.append(LIVE_INFORMATION_POLICY)
+            instruction_group_chars["instruction_search_chars"] += len(
+                LIVE_INFORMATION_POLICY
+            )
         if search_mode in {"auto", "required"}:
             instruction_parts.append(WEB_SEARCH_POLICY)
+            instruction_group_chars["instruction_search_chars"] += len(
+                WEB_SEARCH_POLICY
+            )
         if search_mode == "required":
-            instruction_parts.append(provenance_instruction(provenance))
+            provenance_policy = provenance_instruction(provenance)
+            instruction_parts.append(provenance_policy)
+            instruction_group_chars["instruction_search_chars"] += len(provenance_policy)
         if fact_question:
             instruction_parts.append(WORLD_FACT_DETAIL_POLICY)
+            instruction_group_chars["instruction_world_chars"] += len(
+                WORLD_FACT_DETAIL_POLICY
+            )
             if search_mode in {"auto", "required"}:
                 instruction_parts.append(WORLD_WEB_SEARCH_POLICY)
+                instruction_group_chars["instruction_world_chars"] += len(
+                    WORLD_WEB_SEARCH_POLICY
+                )
         if managed_tool_config(self.settings.provider):
             instruction_parts.append(CODE_EXECUTION_POLICY)
+            instruction_group_chars["instruction_tools_chars"] += len(
+                CODE_EXECUTION_POLICY
+            )
         instruction_parts.append(TURN_RESPONSE_POLICY)
+        instruction_group_chars["instruction_response_chars"] += len(
+            TURN_RESPONSE_POLICY
+        )
         dynamic = self.instructions.active_text()
         if dynamic:
             instruction_parts.append(dynamic)
+            instruction_group_chars["instruction_dynamic_chars"] += len(dynamic)
 
         instructions = "\n".join(instruction_parts)
+        instruction_separator_chars = max(0, len(instruction_parts) - 1)
+        request_input_chars = _serialized_chars(messages)
         self.usage.routing_event(
             "context.size",
             status="completed",
             **context_size_metrics,
+            **instruction_group_chars,
             instruction_chars=len(instructions),
+            instruction_separator_chars=instruction_separator_chars,
+            request_input_chars=request_input_chars,
+            request_chars_total=len(instructions) + request_input_chars,
         )
 
         request = {

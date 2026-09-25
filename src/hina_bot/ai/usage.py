@@ -333,7 +333,14 @@ class UsageLogger:
             "context_structured_memory_chars", "context_recent_chars",
             "context_public_chars", "context_channel_chars", "context_reply_chars",
             "context_history_chars", "context_lore_chars", "context_emoji_chars",
-            "instruction_chars", "visible_input_chars",
+            "instruction_chars", "instruction_base_chars", "instruction_reference_chars",
+            "instruction_identity_chars", "instruction_character_chars",
+            "instruction_relationship_chars", "instruction_runtime_chars",
+            "instruction_memory_chars", "instruction_context_policy_chars",
+            "instruction_search_chars", "instruction_world_chars",
+            "instruction_tools_chars", "instruction_dynamic_chars",
+            "instruction_response_chars", "instruction_separator_chars",
+            "request_input_chars", "request_chars_total", "visible_input_chars",
         }
         row = {
             "at": datetime.now(UTC).isoformat(),
