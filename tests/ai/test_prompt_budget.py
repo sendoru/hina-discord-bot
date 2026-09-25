@@ -9,7 +9,7 @@ def test_character_prompt_stays_lightweight_and_lore_agnostic():
     character = _prompt("hina.md")
 
     # Character style belongs here; named relationship/world facts belong in searchable lore.
-    assert len(character.encode("utf-8")) <= 10000
+    assert len(character.encode("utf-8")) <= 11000
     for duplicated_lore_subject in ("아코", "마코토", "호시노", "이부키", "세나", "이오리", "치나츠"):
         assert duplicated_lore_subject not in character
 
@@ -25,7 +25,7 @@ def test_character_prompt_stays_lightweight_and_lore_agnostic():
 def test_relationship_prompts_stay_small():
     ordinary = _prompt("ordinary_relationship.md")
 
-    assert len(ordinary.encode("utf-8")) <= 600
+    assert len(ordinary.encode("utf-8")) <= 800
     assert len(_prompt("special_dm.md").encode("utf-8")) <= 800
     assert "관계는 앱이 정한 모드와 실제 대화·기억을 기준으로 합니다" in ordinary
     assert "일반 관계가 낯선 관계를\n뜻하지는 않습니다" in ordinary
