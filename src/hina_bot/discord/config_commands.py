@@ -121,7 +121,7 @@ class ConfigCommands(app_commands.Group):
     @app_commands.command(name="set", description="런타임 설정을 DB에 저장하고 즉시 적용")
     @app_commands.describe(
         key="변경할 설정",
-        value="새 값. bool은 on/off, CALL_PREFIXES는 쉼표 구분, 위치를 비우려면 none",
+        value="새 값. bool은 on/off, 추론 강도는 minimal/low/medium/high",
     )
     @app_commands.choices(key=_KEY_CHOICES)
     async def set_config(self, interaction: discord.Interaction, key: str, value: str):
