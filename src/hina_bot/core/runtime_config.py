@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Any
 
-from .config import Settings, parse_call_prefixes, parse_external_context_policy
+from .config import (
+    GEMINI_THINKING_LEVELS,
+    Settings,
+    parse_call_prefixes,
+    parse_external_context_policy,
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +38,19 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "community_lore": RuntimeSettingSpec("community_lore", "COMMUNITY_LORE", "bool"),
     "output_tokens": RuntimeSettingSpec(
         "output_tokens", "MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
+    ),
+    "gemini_thinking_level": RuntimeSettingSpec(
+        "gemini_thinking_level", "GEMINI_THINKING_LEVEL", "gemini_thinking_level"
+    ),
+    "gemini_fast_thinking_level": RuntimeSettingSpec(
+        "gemini_fast_thinking_level",
+        "GEMINI_FAST_THINKING_LEVEL",
+        "gemini_thinking_level",
+    ),
+    "gemini_smart_thinking_level": RuntimeSettingSpec(
+        "gemini_smart_thinking_level",
+        "GEMINI_SMART_THINKING_LEVEL",
+        "gemini_thinking_level",
     ),
     "model_routing_smart_threshold": RuntimeSettingSpec(
         "model_routing_smart_threshold",
@@ -119,6 +137,13 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             raise ValueError(f"{spec.env_name}는 {spec.maximum} 이하여야 해요.")
         return value
 
+    if spec.kind == "gemini_thinking_level":
+        level = text.lower()
+        if level not in GEMINI_THINKING_LEVELS:
+            allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
+            raise ValueError(f"{spec.env_name}은 {allowed} 중 하나여야 해요.")
+        return level
+
     if spec.kind == "prefixes":
         return parse_call_prefixes(text)
 
@@ -158,6 +183,10 @@ def decode_runtime_value(spec: RuntimeSettingSpec, encoded: str, *, settings=Non
         if type(value) not in {int, float}:
             raise ValueError("stored value is not numeric")
         return parse_runtime_value(spec, str(value), settings=settings)
+    if spec.kind == "gemini_thinking_level":
+        if not isinstance(value, str):
+            raise ValueError("stored value is not a Gemini thinking level")
+        return parse_runtime_value(spec, value, settings=settings)
     if spec.kind == "prefixes":
         if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
             raise ValueError("stored value is not a prefix list")
