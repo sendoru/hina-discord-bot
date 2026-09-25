@@ -310,6 +310,14 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
         "target_context_ms",
         "reply_context_ms",
         "visual_context_ms",
+        "history_hydration_ms",
+        "history_hydration_needed",
+        "channel_context_select_ms",
+        "channel_context_count",
+        "visual_ref_select_ms",
+        "visual_ref_count",
+        "visual_fetch_ms",
+        "visual_input_count",
     }
 
     await client.close()
