@@ -485,6 +485,9 @@ class HinaClient(BaseHinaClient):
 
         visual_context_started = time.perf_counter()
         selected_context = []
+        history_hydration_ms = 0
+        history_hydration_needed = False
+        channel_context_select_ms = 0
         if (
             text is not None
             and scope.guild_id is not None
@@ -493,13 +496,27 @@ class HinaClient(BaseHinaClient):
             target_selection_token = TARGET_CONTEXT.set(tuple(sampled))
             reply_selection_token = REPLY_CONTEXT.set(tuple(replied))
             try:
+                history_hydration_needed = self.recent.needs_hydration(scope)
+                history_hydration_started = time.perf_counter()
                 await self.hydrate_recent_history(message, scope)
+                history_hydration_ms = round(
+                    (time.perf_counter() - history_hydration_started) * 1000
+                )
+                channel_context_select_started = time.perf_counter()
                 selected_context = self.recent.context(scope, message.id)
+                channel_context_select_ms = round(
+                    (time.perf_counter() - channel_context_select_started) * 1000
+                )
             finally:
                 REPLY_CONTEXT.reset(reply_selection_token)
                 TARGET_CONTEXT.reset(target_selection_token)
 
+        visual_ref_select_started = time.perf_counter()
         visual_refs = rank_visual_context_refs(selected_context)
+        visual_ref_select_ms = round(
+            (time.perf_counter() - visual_ref_select_started) * 1000
+        )
+        visual_fetch_started = time.perf_counter()
         visuals = (
             await collect_visual_inputs(
                 message,
@@ -509,6 +526,7 @@ class HinaClient(BaseHinaClient):
             if text is not None
             else []
         )
+        visual_fetch_ms = round((time.perf_counter() - visual_fetch_started) * 1000)
         visual_context_ms = round((time.perf_counter() - visual_context_started) * 1000)
         public_request = (
             (
@@ -536,6 +554,14 @@ class HinaClient(BaseHinaClient):
                     target_context_ms=target_context_ms,
                     reply_context_ms=reply_context_ms,
                     visual_context_ms=visual_context_ms,
+                    history_hydration_ms=history_hydration_ms,
+                    history_hydration_needed=history_hydration_needed,
+                    channel_context_select_ms=channel_context_select_ms,
+                    channel_context_count=len(selected_context),
+                    visual_ref_select_ms=visual_ref_select_ms,
+                    visual_ref_count=len(visual_refs),
+                    visual_fetch_ms=visual_fetch_ms,
+                    visual_input_count=len(visuals),
                 )
             finally:
                 CURRENT_TURN_ID.reset(event_token)
