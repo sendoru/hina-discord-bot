@@ -40,6 +40,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "ROUTING_CLASSIFIER_API_KEY",
         "ROUTING_CLASSIFIER_TIMEOUT_SECONDS",
         "ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS",
+        "GEMINI_THINKING_LEVEL",
         "GEMINI_FAST_THINKING_LEVEL",
         "GEMINI_SMART_THINKING_LEVEL",
         "CHANNEL_CONTEXT_CHARS",
