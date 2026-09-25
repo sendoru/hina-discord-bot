@@ -39,7 +39,7 @@ LLM_SMART_MODEL=gemini-3.6-flash
 FAST_MAX_OUTPUT_TOKENS=4096
 SMART_MAX_OUTPUT_TOKENS=8192
 MEMORY_MAX_OUTPUT_TOKENS=4096
-GEMINI_FAST_THINKING_LEVEL=medium
+GEMINI_FAST_THINKING_LEVEL=minimal
 GEMINI_SMART_THINKING_LEVEL=medium
 
 # 선택 사항: off | shadow | active
@@ -201,7 +201,7 @@ GEMINI_API_KEY=...
 MODEL_ROUTING_MODE=adaptive
 LLM_FAST_MODEL=gemini-3.5-flash-lite
 LLM_SMART_MODEL=gemini-3.6-flash
-GEMINI_FAST_THINKING_LEVEL=medium
+GEMINI_FAST_THINKING_LEVEL=minimal
 GEMINI_SMART_THINKING_LEVEL=medium
 MEMORY_MAX_OUTPUT_TOKENS=4096
 ```
@@ -212,7 +212,7 @@ Gemini는 Interactions API를 직접 사용합니다. `CHAT_WEB_SEARCH=true`일 
 포함됩니다.
 
 - `GEMINI_THINKING_LEVEL`: fixed 모드 답변과 기억 요약의 추론 강도
-- `GEMINI_FAST_THINKING_LEVEL`, `GEMINI_SMART_THINKING_LEVEL`: adaptive fast/smart 추론 강도
+- `GEMINI_FAST_THINKING_LEVEL`, `GEMINI_SMART_THINKING_LEVEL`: adaptive fast/smart 추론 강도. 기본값은 각각 `minimal`, `medium`입니다.
 
 Gemini에서 생성 예산이 너무 작으면 thought token이 예산을 대부분 소진해 빈 출력이 발생할 수 있습니다.
 문제가 발생하면 `usage.jsonl`의 `status`, `reasoning_tokens`, `response_error_codes`,
