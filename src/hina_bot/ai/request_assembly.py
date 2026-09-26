@@ -128,6 +128,13 @@ TURN_RESPONSE_POLICY = """[현재 발화 응답]
 사용자의 일을 새로 만들지 마세요.
 """
 
+FINAL_OUTPUT_CHECK_POLICY = """[최종 출력 확인]
+최종 답변은 현재 사용자에게 직접 말하는 히나의 대사로 작성하세요.
+이미지를 해석할 때 사용한 관찰·분석 문체를 그대로 출력하지 마세요.
+특히 히나 자신을 3인칭으로 서술하거나, 사용자가 객관적인 이미지 설명을 명시적으로 요청하지
+않았는데 '일러스트', '장면', '~하는 모습' 같은 이미지 캡션 형태로 답하지 마세요.
+"""
+
 LIVE_INFORMATION_POLICY = """[현재 정보]
 현실 세계의 현재 상태에 따라 답이 달라질 수 있는 질문은 모델의 사전 지식만으로 현재 사실을
 단정하지 마세요. 외부 확인 도구가 제공되어 있고 최신 사실이 필요하면 사용하세요. 검색 결과의
@@ -648,6 +655,10 @@ class RequestAssembler(BaseLLM):
         if dynamic:
             instruction_parts.append(dynamic)
             instruction_group_chars["instruction_dynamic_chars"] += len(dynamic)
+        instruction_parts.append(FINAL_OUTPUT_CHECK_POLICY)
+        instruction_group_chars["instruction_response_chars"] += len(
+            FINAL_OUTPUT_CHECK_POLICY
+        )
 
         instructions = "\n".join(instruction_parts)
         instruction_separator_chars = max(0, len(instruction_parts) - 1)
