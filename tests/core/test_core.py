@@ -61,6 +61,21 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(trigger_text(message("안녕", dm=True), 99, True), "안녕")
         self.assertEqual(trigger_text(message("히나야 안녕", dm=True), 99), "히나야 안녕")
 
+    def test_dm_always_reply_preserves_call_syntax(self):
+        self.assertEqual(trigger_text(message("히나야", dm=True), 99, True), "히나야")
+        self.assertEqual(
+            trigger_text(message("<@99>", mentions=[99], dm=True), 99, True),
+            "<@99>",
+        )
+        self.assertEqual(
+            trigger_text(message("<@!99> 안녕", mentions=[99], dm=True), 99, True),
+            "<@!99> 안녕",
+        )
+        self.assertEqual(
+            trigger_text(message("안녕 <@99>", mentions=[99], dm=True), 99, True),
+            "안녕 <@99>",
+        )
+
     def test_configured_prefixes_are_preserved_except_for_bare_calls(self):
         prefixes = ("assistant", "assistant-bot")
         for dm, always_reply in ((True, True), (True, False), (False, True)):
@@ -75,7 +90,7 @@ class RoutingTests(unittest.TestCase):
                 True,
                 prefixes,
             ),
-            "assistant, hello",
+            "<@99> assistant, hello",
         )
         self.assertEqual(trigger_text(message("assistant-bot"), 99, prefixes=prefixes), "")
         self.assertEqual(
