@@ -65,7 +65,11 @@ def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
     matched = _matched_prefix(raw, prefixes)
     keyword = matched is not None
     implicit_dm = message.guild is None and dm_always_reply
-    if not (ping or keyword or implicit_dm):
+    if implicit_dm:
+        # In always-reply DMs, every human message is already a conversation turn rather than
+        # an explicit call. Preserve call prefixes and boundary mentions as part of the utterance.
+        return raw
+    if not (ping or keyword):
         return None
 
     # A Discord mention at the start or end is call syntax. Mentions in the middle may be
