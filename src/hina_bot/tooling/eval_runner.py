@@ -162,6 +162,61 @@ def _arg(args, name: str, default=None):
     return getattr(args, name, default)
 
 
+_CHANNEL_CONTEXT_PRIORITY = {
+    "reply_reference_source": 0,
+    "reply_origin_source": 0,
+    "reply_origin_request": 0,
+    "replied_message": 0,
+    "prior_reply_source": 1,
+    "speaker_thread": 2,
+    "target_user_history": 3,
+    "channel_ambient": 4,
+}
+
+
+def rebudget_channel_context(
+    rows: list[dict],
+    budget: int | None,
+    current_user_id: int | str,
+) -> list[dict]:
+    """Apply an eval-only char budget while preserving stronger context first."""
+
+    copied = [dict(row) for row in rows]
+    if budget is None:
+        return copied
+
+    remaining = max(0, int(budget))
+    current = str(current_user_id)
+
+    def priority(index_row):
+        index, row = index_row
+        kind = str(row.get("context_kind") or "")
+        if kind in _CHANNEL_CONTEXT_PRIORITY:
+            level = _CHANNEL_CONTEXT_PRIORITY[kind]
+        else:
+            author = str(row.get("author_user_id") or row.get("user_id") or "")
+            reply_target = str(row.get("reply_target_user_id") or "")
+            level = 2 if author == current or reply_target == current else 4
+        return level, -index
+
+    selected: list[tuple[int, dict]] = []
+    for index, row in sorted(enumerate(copied), key=priority):
+        if remaining <= 0:
+            break
+        content = str(row.get("content", ""))
+        if not content and not row.get("has_visual"):
+            continue
+        item = dict(row)
+        if len(content) > remaining:
+            item["content"] = content[:remaining]
+            item["truncated"] = True
+        remaining -= len(item.get("content", ""))
+        selected.append((index, item))
+
+    selected.sort(key=lambda item: item[0])
+    return [row for _, row in selected]
+
+
 def eval_settings(args) -> Settings:
     load_dotenv(Path.cwd() / ".env.local", override=False)
     load_dotenv(Path.cwd() / ".env", override=False)
@@ -277,12 +332,24 @@ def eval_settings(args) -> Settings:
         prompt_path=os.getenv("CHARACTER_PROMPT_PATH", ""),
         output_tokens=int(os.getenv("MAX_OUTPUT_TOKENS", "1000")),
         history_turns=int(os.getenv("HISTORY_TURNS", "12")),
-        history_max_chars=int(os.getenv("HISTORY_MAX_CHARS", "12000")),
+        history_max_chars=(
+            _arg(args, "history_max_chars", None)
+            if _arg(args, "history_max_chars", None) is not None
+            else int(os.getenv("HISTORY_MAX_CHARS", "12000"))
+        ),
         usage_log_path=args.usage_log,
         special_dm_user_id=SPECIAL_EVAL_USER_ID,
         lore_path=os.getenv("LORE_PATH", ""),
-        lore_max_items=int(os.getenv("LORE_MAX_ITEMS", "6")),
-        lore_max_chars=int(os.getenv("LORE_MAX_CHARS", "3200")),
+        lore_max_items=(
+            _arg(args, "lore_max_items", None)
+            if _arg(args, "lore_max_items", None) is not None
+            else int(os.getenv("LORE_MAX_ITEMS", "6"))
+        ),
+        lore_max_chars=(
+            _arg(args, "lore_max_chars", None)
+            if _arg(args, "lore_max_chars", None) is not None
+            else int(os.getenv("LORE_MAX_CHARS", "3200"))
+        ),
         community_lore=community == "true",
         gemini_thinking_level=gemini_thinking_level,
         gemini_fast_thinking_level=gemini_fast_thinking_level,
@@ -334,7 +401,12 @@ def case_visuals(case: dict) -> tuple[VisualInput, ...]:
     return tuple(visuals)
 
 
-async def run_case(llm: LLM, case: dict) -> dict:
+async def run_case(
+    llm: LLM,
+    case: dict,
+    *,
+    eval_channel_context_chars: int | None = None,
+) -> dict:
     mode = case.get("mode", "dm")
     scope = scope_for(mode)
     store = Store(":memory:", history_turns=llm.settings.history_turns)
@@ -352,9 +424,14 @@ async def run_case(llm: LLM, case: dict) -> dict:
             turn_token = CURRENT_TURN_ID.set(turn_id)
             visual_token = CURRENT_VISUAL_INPUTS.set(case_visuals(case))
             try:
+                effective_channel_context = rebudget_channel_context(
+                    channel_context,
+                    eval_channel_context_chars,
+                    scope.user_id,
+                )
                 reply = await llm.answer(
                     store, scope, speaker["speaker"], turn,
-                    public_context=[], channel_context=list(channel_context),
+                    public_context=[], channel_context=effective_channel_context,
                     emoji_catalog=[], use_memory=True,
                 )
             finally:
@@ -407,6 +484,12 @@ async def run_case(llm: LLM, case: dict) -> dict:
             if llm.settings.provider == "gemini"
             else ""
         ),
+        "eval_budgets": {
+            "channel_context_chars": eval_channel_context_chars,
+            "history_max_chars": getattr(llm.settings, "history_max_chars", None),
+            "lore_max_chars": getattr(llm.settings, "lore_max_chars", None),
+            "lore_max_items": getattr(llm.settings, "lore_max_items", None),
+        },
     }
 
 
@@ -479,6 +562,14 @@ def write_results(results: list[dict], output: Path) -> tuple[Path, Path]:
             f"`{results[0]['smart_model'] if results else ''}`"
         ),
         f"- thinking level: `{results[0]['thinking_level'] if results else ''}`",
+        (
+            "- eval budgets: "
+            + (
+                json.dumps(results[0]["eval_budgets"], ensure_ascii=False)
+                if results
+                else "{}"
+            )
+        ),
         f"- errors: {sum(bool(row['error']) for row in results)}",
         f"- validator failures: {sum(bool(row['validation_errors']) for row in results)}",
         "",
@@ -550,7 +641,13 @@ async def run(args) -> None:
                     f"[{completed}/{total}] {case['id']} (attempt {attempt}/{args.repeat})",
                     flush=True,
                 )
-                result = await run_case(llm, case)
+                result = await run_case(
+                    llm,
+                    case,
+                    eval_channel_context_chars=_arg(
+                        args, "eval_channel_context_chars", None
+                    ),
+                )
                 result["attempt"] = attempt
                 results.append(result)
     finally:
@@ -616,6 +713,17 @@ def parser() -> argparse.ArgumentParser:
         choices=sorted(GEMINI_THINKING_LEVELS),
         help="adaptive Gemini SMART thinking level.",
     )
+    root.add_argument(
+        "--eval-channel-context-chars",
+        type=int,
+        help=(
+            "eval fixture channel_context에만 적용할 문자 budget. "
+            "미지정 시 기존 fixture를 그대로 사용합니다."
+        ),
+    )
+    root.add_argument("--history-max-chars", type=int, help="eval HISTORY_MAX_CHARS override.")
+    root.add_argument("--lore-max-chars", type=int, help="eval LORE_MAX_CHARS override.")
+    root.add_argument("--lore-max-items", type=int, help="eval LORE_MAX_ITEMS override.")
     root.add_argument("--output", help="결과 JSONL 경로. 같은 이름의 .md 리포트도 생성합니다.")
     root.add_argument("--usage-log", default="data/logs/eval-usage.jsonl")
     return root
@@ -627,6 +735,15 @@ def main() -> None:
         raise SystemExit("--limit은 양수여야 합니다.")
     if args.repeat <= 0:
         raise SystemExit("--repeat은 양수여야 합니다.")
+    for name in (
+        "eval_channel_context_chars",
+        "history_max_chars",
+        "lore_max_chars",
+        "lore_max_items",
+    ):
+        value = getattr(args, name, None)
+        if value is not None and value <= 0:
+            raise SystemExit(f"--{name.replace('_', '-')}은 양수여야 합니다.")
     try:
         asyncio.run(run(args))
     except (OSError, ValueError) as exc:
