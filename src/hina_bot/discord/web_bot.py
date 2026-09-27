@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import time
@@ -36,6 +37,12 @@ CURRENT_PUBLIC_CONTEXT_REQUEST = ContextVar(
     "current_public_context_request",
     default=(False, ()),
 )
+async def _timed(awaitable):
+    started = time.perf_counter()
+    result = await awaitable
+    return result, round((time.perf_counter() - started) * 1000)
+
+
 _PUBLIC_MEMORY_QUERY = re.compile(
     r"(?:기억(?:나|해|하고)|전에|저번|지난번|예전에|다른\s*(?:채널|방)|"
     r"서버(?:에서|의)|평소|원래|(?:말|얘기)했|어떤\s*(?:사람|애|유저)|"
@@ -456,32 +463,35 @@ class HinaClient(BaseHinaClient):
             scope,
             strict_egress=strict_egress,
         )
-        target_context_started = time.perf_counter()
-        sampled = (
-            await collect(
-                message,
-                self.user.id,
-                text,
-                visibility_mode=target_visibility,
-                call_prefixes=self.settings.call_prefixes,
-                extra_targets=resolved_targets,
+        if text is not None:
+            target_result, reply_result = await asyncio.gather(
+                _timed(
+                    collect(
+                        message,
+                        self.user.id,
+                        text,
+                        visibility_mode=target_visibility,
+                        call_prefixes=self.settings.call_prefixes,
+                        extra_targets=resolved_targets,
+                    )
+                ),
+                _timed(
+                    collect_reply_context(
+                        message,
+                        self.user.id,
+                        allowed_author_id=(
+                            {scope.user_id, self.user.id} if strict_egress else None
+                        ),
+                    )
+                ),
             )
-            if text is not None
-            else []
-        )
-        target_context_ms = round((time.perf_counter() - target_context_started) * 1000)
-
-        reply_context_started = time.perf_counter()
-        replied = (
-            await collect_reply_context(
-                message,
-                self.user.id,
-                allowed_author_id={scope.user_id, self.user.id} if strict_egress else None,
-            )
-            if text is not None
-            else []
-        )
-        reply_context_ms = round((time.perf_counter() - reply_context_started) * 1000)
+            sampled, target_context_ms = target_result
+            replied, reply_context_ms = reply_result
+        else:
+            sampled = []
+            replied = []
+            target_context_ms = 0
+            reply_context_ms = 0
 
         visual_context_started = time.perf_counter()
         selected_context = []
