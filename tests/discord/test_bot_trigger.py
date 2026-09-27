@@ -1,3 +1,4 @@
+import asyncio
 import json
 import tempfile
 from datetime import UTC, datetime
@@ -15,6 +16,8 @@ from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.store import Store
 from hina_bot.discord.bot import BOT_TRIGGER_CHAIN_LIMIT
 from hina_bot.discord.bot import HinaClient as BaseHinaClient
+from hina_bot.discord.reply_context import REPLY_CONTEXT
+from hina_bot.discord.target_context import TARGET_CONTEXT
 from hina_bot.discord.turn_provenance import build_turn_provenance
 from hina_bot.discord.web_bot import HinaClient as ProductionHinaClient
 
@@ -319,5 +322,120 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
         "visual_fetch_ms",
         "visual_input_count",
     }
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_production_wrapper_collects_target_and_reply_context_concurrently(tmp_path):
+    store = Store(":memory:")
+    llm = NS(close=AsyncMock())
+    client = ProductionHinaClient(
+        Settings("test", "test", cooldown=0, event_log_path=str(tmp_path / "events.jsonl")),
+        store=store,
+        llm=llm,
+    )
+    client._connection.user = NS(id=99)
+    channel = NS(id=10)
+    guild = NS(id=1)
+    author = NS(id=100, bot=False, display_name="사용자", guild_permissions=NS(manage_guild=False))
+    message = make_message(
+        channel,
+        guild,
+        message_id=30,
+        author=author,
+        text="히나야 아까 뭐라고 했어?",
+    )
+
+    target_started = asyncio.Event()
+    reply_started = asyncio.Event()
+
+    async def collect_target(*args, **kwargs):
+        target_started.set()
+        await reply_started.wait()
+        return []
+
+    async def collect_reply(*args, **kwargs):
+        reply_started.set()
+        await target_started.wait()
+        return []
+
+    with (
+        patch("hina_bot.discord.web_bot.collect", new=collect_target),
+        patch("hina_bot.discord.web_bot.collect_reply_context", new=collect_reply),
+        patch("hina_bot.discord.web_bot.collect_visual_inputs", new=AsyncMock(return_value=[])),
+        patch.object(BaseHinaClient, "on_message", new=AsyncMock()) as forwarded,
+    ):
+        await asyncio.wait_for(client.on_message(message), timeout=1.0)
+
+    assert target_started.is_set()
+    assert reply_started.is_set()
+    assert forwarded.await_count == 1
+
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "events.jsonl").read_text().splitlines()
+    ]
+    preflight = next(row for row in rows if row["event"] == "turn.preflight")
+    assert preflight["target_context_ms"] >= 0
+    assert preflight["reply_context_ms"] >= 0
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_production_wrapper_preserves_target_and_reply_results_after_parallel_collection(tmp_path):
+    store = Store(":memory:")
+    llm = NS(close=AsyncMock())
+    client = ProductionHinaClient(
+        Settings("test", "test", cooldown=0, event_log_path=str(tmp_path / "events.jsonl")),
+        store=store,
+        llm=llm,
+    )
+    client._connection.user = NS(id=99)
+    channel = NS(id=10)
+    guild = NS(id=1)
+    author = NS(id=100, bot=False, display_name="사용자", guild_permissions=NS(manage_guild=False))
+    message = make_message(
+        channel,
+        guild,
+        message_id=31,
+        author=author,
+        text="히나야 아까 뭐라고 했어?",
+    )
+
+    target_rows = [{
+        "user_id": "200",
+        "name": "대상",
+        "sampled_messages": [{"message_id": "target-1", "content": "target context"}],
+    }]
+    reply_rows = [{
+        "message_id": "reply-1",
+        "user_id": "100",
+        "author_user_id": "100",
+        "content": "reply context",
+        "role": "user",
+        "context_kind": "replied_message",
+        "reference_strength": "explicit_reply",
+    }]
+    captured = {}
+
+    async def capture_forwarded(_message):
+        captured["target"] = TARGET_CONTEXT.get()
+        captured["reply"] = REPLY_CONTEXT.get()
+
+    with (
+        patch("hina_bot.discord.web_bot.collect", new=AsyncMock(return_value=target_rows)),
+        patch(
+            "hina_bot.discord.web_bot.collect_reply_context",
+            new=AsyncMock(return_value=reply_rows),
+        ),
+        patch("hina_bot.discord.web_bot.collect_visual_inputs", new=AsyncMock(return_value=[])),
+        patch.object(BaseHinaClient, "on_message", new=AsyncMock(side_effect=capture_forwarded)),
+    ):
+        await client.on_message(message)
+
+    assert captured["target"] == tuple(target_rows)
+    assert captured["reply"] == tuple(reply_rows)
 
     await client.close()
