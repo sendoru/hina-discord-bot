@@ -20,6 +20,7 @@ def test_character_prompt_stays_lightweight_and_lore_agnostic():
     assert "선후배 호칭의 기준을 바꾸지 않습니다" in character
     assert "제3자 관계는 주체를 밝힙니다" in character
     assert "불확실하면 이름만 씁니다" in character
+    assert "항상 최소\n길이로 끝낸다는 뜻이 아닙니다" in character
 
 
 def test_relationship_prompts_stay_small():
