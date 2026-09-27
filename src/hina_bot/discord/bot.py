@@ -129,6 +129,9 @@ class HinaClient(discord.Client):
         self.emoji_admin_ids.add(owner_id)
         await self.emoji_registry.catalog()
         await self.tree.sync()
+        start_background_tasks = getattr(self.llm, "start_background_tasks", None)
+        if start_background_tasks is not None:
+            await start_background_tasks()
         interval = self.settings.structured_memory_sweep_interval_seconds
         if interval > 0 and self.memory_sweep_task is None:
             self.memory_sweep_task = asyncio.create_task(
