@@ -15,6 +15,8 @@ from urllib.request import Request, urlopen
 log = logging.getLogger("hina")
 
 WEATHER_TTL_SECONDS = 20 * 60
+WEATHER_POLL_SECONDS = 10 * 60
+WEATHER_MAX_STALE_SECONDS = 60 * 60
 WEATHER_RETRY_SECONDS = 60
 _REQUEST_TIMEOUT_SECONDS = 4
 _MAX_RESPONSE_BYTES = 1_000_000
@@ -179,54 +181,158 @@ def fetch_weather_snapshot(location: str, locale: str, timezone: str) -> Weather
 
 
 class AmbientWeatherCache:
-    """Refresh current weather at most once per TTL for the configured fallback location."""
+    """Keep ambient weather warm without putting network I/O on the request path."""
 
     def __init__(self, *, fetcher=fetch_weather_snapshot, clock=time.monotonic):
         self._fetcher = fetcher
         self._clock = clock
-        self._key: tuple[str, str, str] | None = None
+        self._snapshot_key: tuple[str, str, str] | None = None
         self._snapshot: WeatherSnapshot | None = None
         self._fetched_at = 0.0
+        self._retry_key: tuple[str, str, str] | None = None
         self._retry_after = 0.0
         self._lock = asyncio.Lock()
+        self._refresh_task: asyncio.Task | None = None
+        self._poll_task: asyncio.Task | None = None
 
-    async def current(self, settings) -> WeatherSnapshot | None:
+    @staticmethod
+    def _settings_key(settings) -> tuple[str, str, str] | None:
         location = (getattr(settings, "runtime_default_location", "") or "").strip()
         if not location:
             return None
         locale = getattr(settings, "runtime_locale", "ko-KR") or "ko-KR"
         timezone = getattr(settings, "runtime_timezone", "Asia/Seoul") or "Asia/Seoul"
-        key = (location, locale, timezone)
+        return location, locale, timezone
+
+    def current(self, settings) -> WeatherSnapshot | None:
+        """Return cached weather immediately and refresh stale/missing data in the background."""
+
+        key = self._settings_key(settings)
+        if key is None:
+            return None
+
+        now = self._clock()
+        if self._snapshot_key == key and self._snapshot is not None:
+            age = now - self._fetched_at
+            if age < WEATHER_TTL_SECONDS:
+                return self._snapshot
+            if age < WEATHER_MAX_STALE_SECONDS:
+                self._schedule_refresh(settings)
+                return self._snapshot
+
+        self._schedule_refresh(settings)
+        return None
+
+    def start_polling(self, settings) -> None:
+        """Start one non-blocking refresh loop when ambient weather is configured."""
+
+        if self._settings_key(settings) is None:
+            return
+        if self._poll_task is not None and not self._poll_task.done():
+            return
+        self._poll_task = asyncio.create_task(
+            self._poll_loop(settings),
+            name="ambient-weather-poll",
+        )
+
+    async def close(self) -> None:
+        tasks = [
+            task
+            for task in (self._refresh_task, self._poll_task)
+            if task is not None and not task.done()
+        ]
+        self._refresh_task = None
+        self._poll_task = None
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def refresh(self, settings, *, force: bool = False) -> bool:
+        """Refresh the configured snapshot. Failures preserve any prior snapshot."""
+
+        key = self._settings_key(settings)
+        if key is None:
+            return False
+
         now = self._clock()
         if (
-            key == self._key
+            not force
+            and self._snapshot_key == key
             and self._snapshot is not None
             and now - self._fetched_at < WEATHER_TTL_SECONDS
         ):
-            return self._snapshot
-        if key == self._key and now < self._retry_after:
-            return None
+            return True
+        if self._retry_key == key and now < self._retry_after:
+            return False
 
         async with self._lock:
             now = self._clock()
             if (
-                key == self._key
+                not force
+                and self._snapshot_key == key
                 and self._snapshot is not None
                 and now - self._fetched_at < WEATHER_TTL_SECONDS
             ):
-                return self._snapshot
-            if key == self._key and now < self._retry_after:
-                return None
+                return True
+            if self._retry_key == key and now < self._retry_after:
+                return False
+
+            location, locale, timezone = key
             try:
-                snapshot = await asyncio.to_thread(self._fetcher, location, locale, timezone)
+                snapshot = await asyncio.to_thread(
+                    self._fetcher,
+                    location,
+                    locale,
+                    timezone,
+                )
             except (OSError, TypeError, ValueError) as exc:
-                self._key = key
-                self._snapshot = None
+                self._retry_key = key
                 self._retry_after = now + WEATHER_RETRY_SECONDS
                 log.warning("Ambient weather refresh failed (%s)", type(exc).__name__)
-                return None
-            self._key = key
+                return False
+
+            self._snapshot_key = key
             self._snapshot = snapshot
-            self._fetched_at = now
+            self._fetched_at = self._clock()
+            self._retry_key = None
             self._retry_after = 0.0
-            return snapshot
+            return True
+
+    async def _poll_loop(self, settings) -> None:
+        while True:
+            refreshed = await self.refresh(settings, force=True)
+            await asyncio.sleep(
+                WEATHER_POLL_SECONDS if refreshed else WEATHER_RETRY_SECONDS
+            )
+
+    def _schedule_refresh(self, settings) -> None:
+        key = self._settings_key(settings)
+        if key is None:
+            return
+        now = self._clock()
+        if self._retry_key == key and now < self._retry_after:
+            return
+        if self._refresh_task is not None and not self._refresh_task.done():
+            return
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = asyncio.create_task(
+            self.refresh(settings),
+            name="ambient-weather-refresh",
+        )
+        self._refresh_task = task
+        task.add_done_callback(self._finish_refresh)
+
+    def _finish_refresh(self, task: asyncio.Task) -> None:
+        if self._refresh_task is task:
+            self._refresh_task = None
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:  # noqa: BLE001 - isolate background refresh failures
+            log.warning("Ambient weather background refresh failed (%s)", type(exc).__name__)
+

@@ -439,3 +439,33 @@ async def test_production_wrapper_preserves_target_and_reply_results_after_paral
     assert captured["reply"] == tuple(reply_rows)
 
     await client.close()
+
+
+
+@pytest.mark.asyncio
+async def test_setup_hook_starts_llm_background_tasks(tmp_path):
+    store = Store(":memory:")
+    llm = NS(
+        close=AsyncMock(),
+        start_background_tasks=AsyncMock(),
+    )
+    client = BaseHinaClient(
+        Settings(
+            "test",
+            "test",
+            structured_memory_sweep_interval_seconds=0,
+            event_log_path=str(tmp_path / "events.jsonl"),
+        ),
+        store=store,
+        llm=llm,
+    )
+    client.application_info = AsyncMock(
+        return_value=NS(team=None, owner=NS(id=123))
+    )
+    client.emoji_registry.catalog = AsyncMock(return_value=[])
+    client.tree.sync = AsyncMock(return_value=[])
+
+    await client.setup_hook()
+
+    llm.start_background_tasks.assert_awaited_once_with()
+    await client.close()
