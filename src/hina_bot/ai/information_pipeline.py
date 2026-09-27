@@ -92,9 +92,13 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             self.usage,
         )
 
+    async def start_background_tasks(self):
+        self.ambient_weather.start_polling(self.settings)
+
     async def close(self):
         if self._routing_shadow_tasks:
             await asyncio.gather(*tuple(self._routing_shadow_tasks), return_exceptions=True)
+        await self.ambient_weather.close()
         try:
             if self.routing_classifier_client is not None:
                 await self.routing_classifier_client.close()
@@ -406,7 +410,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
 
         weather = None
         if information.route == InformationRoute.GENERAL:
-            weather = await self.ambient_weather.current(self.settings)
+            weather = self.ambient_weather.current(self.settings)
         token = CURRENT_AMBIENT_WEATHER.set(weather)
         try:
             return await super().answer(
