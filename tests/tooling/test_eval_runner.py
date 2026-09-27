@@ -471,6 +471,7 @@ def test_tone_cases_include_conversational_baseline_regressions():
     assert "informational_question_not_rejected_as_off_topic" in ids
     assert "single_silly_message_not_scolded" in ids
     assert "avoid_repetitive_reaction_vocabulary" in ids
+    assert "low_energy_still_uses_clear_context" in ids
 
 
 def test_invalid_speaker_turns_are_rejected(tmp_path):
