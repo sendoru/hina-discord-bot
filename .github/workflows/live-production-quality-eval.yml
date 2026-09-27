@@ -38,6 +38,26 @@ on:
         description: SMART Gemini thinking level
         required: true
         default: medium
+      baseline_channel_context_chars:
+        description: Baseline eval-only channel context char budget
+        required: true
+        default: "6000"
+      candidate_channel_context_chars:
+        description: Candidate eval-only channel context char budget
+        required: true
+        default: "4000"
+      history_max_chars:
+        description: Shared eval history max chars
+        required: true
+        default: "12000"
+      lore_max_chars:
+        description: Shared eval lore max chars
+        required: true
+        default: "3200"
+      lore_max_items:
+        description: Shared eval lore max items
+        required: true
+        default: "6"
 
 permissions:
   contents: read
@@ -86,6 +106,11 @@ jobs:
         env:
           REPEAT: ${{ inputs.repeat }}
           SMART_THRESHOLD: ${{ inputs.smart_threshold }}
+          BASELINE_CHANNEL_CONTEXT_CHARS: ${{ inputs.baseline_channel_context_chars }}
+          CANDIDATE_CHANNEL_CONTEXT_CHARS: ${{ inputs.candidate_channel_context_chars }}
+          HISTORY_MAX_CHARS_INPUT: ${{ inputs.history_max_chars }}
+          LORE_MAX_CHARS_INPUT: ${{ inputs.lore_max_chars }}
+          LORE_MAX_ITEMS_INPUT: ${{ inputs.lore_max_items }}
         run: |
           set -euo pipefail
           test -n "$GEMINI_API_KEY" || {
@@ -100,9 +125,21 @@ jobs:
           }
           python - <<'PY'
           import os
+
           value = float(os.environ["SMART_THRESHOLD"])
           if not 0.1 <= value <= 10.0:
               raise SystemExit("smart_threshold must be between 0.1 and 10.0")
+
+          for name in (
+              "BASELINE_CHANNEL_CONTEXT_CHARS",
+              "CANDIDATE_CHANNEL_CONTEXT_CHARS",
+              "HISTORY_MAX_CHARS_INPUT",
+              "LORE_MAX_CHARS_INPUT",
+              "LORE_MAX_ITEMS_INPUT",
+          ):
+              raw = os.environ[name]
+              if not raw.isdigit() or int(raw) <= 0:
+                  raise SystemExit(f"{name.lower()} must be a positive integer")
           PY
           mkdir -p results
           cp control/evals/production_quality_cases.jsonl results/cases.jsonl
@@ -135,6 +172,10 @@ jobs:
             --routing-classifier-model "${{ inputs.classifier_model }}" \
             --gemini-fast-thinking-level "${{ inputs.fast_thinking }}" \
             --gemini-smart-thinking-level "${{ inputs.smart_thinking }}" \
+            --eval-channel-context-chars "${{ inputs.baseline_channel_context_chars }}" \
+            --history-max-chars "${{ inputs.history_max_chars }}" \
+            --lore-max-chars "${{ inputs.lore_max_chars }}" \
+            --lore-max-items "${{ inputs.lore_max_items }}" \
             --repeat "$REPEAT" \
             --usage-log ../results/baseline-adaptive-usage.jsonl \
             --output ../results/baseline-adaptive.jsonl \
@@ -168,6 +209,10 @@ jobs:
             --routing-classifier-model "${{ inputs.classifier_model }}" \
             --gemini-fast-thinking-level "${{ inputs.fast_thinking }}" \
             --gemini-smart-thinking-level "${{ inputs.smart_thinking }}" \
+            --eval-channel-context-chars "${{ inputs.candidate_channel_context_chars }}" \
+            --history-max-chars "${{ inputs.history_max_chars }}" \
+            --lore-max-chars "${{ inputs.lore_max_chars }}" \
+            --lore-max-items "${{ inputs.lore_max_items }}" \
             --repeat "$REPEAT" \
             --usage-log ../results/candidate-adaptive-usage.jsonl \
             --output ../results/candidate-adaptive.jsonl \
@@ -185,6 +230,9 @@ jobs:
             printf -- '- SMART: `%s` / `%s`\n' "${{ inputs.smart_model }}" "${{ inputs.smart_thinking }}"
             printf -- '- classifier: `%s`\n' "${{ inputs.classifier_model }}"
             printf -- '- threshold: `%s`\n' "${{ inputs.smart_threshold }}"
+            printf -- '- channel context chars: baseline=`%s`, candidate=`%s`\n' "${{ inputs.baseline_channel_context_chars }}" "${{ inputs.candidate_channel_context_chars }}"
+            printf -- '- history max chars: `%s`\n' "${{ inputs.history_max_chars }}"
+            printf -- '- lore: max chars=`%s`, max items=`%s`\n' "${{ inputs.lore_max_chars }}" "${{ inputs.lore_max_items }}"
             echo
             echo "Each Markdown report includes the actual model/tier chosen per turn."
             echo "Quality PASS/FAIL remains a manual review."
