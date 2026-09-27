@@ -379,3 +379,61 @@ async def test_production_wrapper_collects_target_and_reply_context_concurrently
     assert preflight["reply_context_ms"] >= 0
 
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_production_wrapper_preserves_target_and_reply_results_after_parallel_collection(tmp_path):
+    store = Store(":memory:")
+    llm = NS(close=AsyncMock())
+    client = ProductionHinaClient(
+        Settings("test", "test", cooldown=0, event_log_path=str(tmp_path / "events.jsonl")),
+        store=store,
+        llm=llm,
+    )
+    client._connection.user = NS(id=99)
+    channel = NS(id=10)
+    guild = NS(id=1)
+    author = NS(id=100, bot=False, display_name="사용자", guild_permissions=NS(manage_guild=False))
+    message = make_message(
+        channel,
+        guild,
+        message_id=31,
+        author=author,
+        text="히나야 아까 뭐라고 했어?",
+    )
+
+    target_rows = [{
+        "user_id": "200",
+        "name": "대상",
+        "sampled_messages": [{"message_id": "target-1", "content": "target context"}],
+    }]
+    reply_rows = [{
+        "message_id": "reply-1",
+        "user_id": "100",
+        "author_user_id": "100",
+        "content": "reply context",
+        "role": "user",
+        "context_kind": "replied_message",
+        "reference_strength": "explicit_reply",
+    }]
+    captured = {}
+
+    async def capture_forwarded(_message):
+        captured["target"] = TARGET_CONTEXT.get()
+        captured["reply"] = REPLY_CONTEXT.get()
+
+    with (
+        patch("hina_bot.discord.web_bot.collect", new=AsyncMock(return_value=target_rows)),
+        patch(
+            "hina_bot.discord.web_bot.collect_reply_context",
+            new=AsyncMock(return_value=reply_rows),
+        ),
+        patch("hina_bot.discord.web_bot.collect_visual_inputs", new=AsyncMock(return_value=[])),
+        patch.object(BaseHinaClient, "on_message", new=AsyncMock(side_effect=capture_forwarded)),
+    ):
+        await client.on_message(message)
+
+    assert captured["target"] == tuple(target_rows)
+    assert captured["reply"] == tuple(reply_rows)
+
+    await client.close()
