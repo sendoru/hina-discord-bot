@@ -12,6 +12,7 @@ from hina_bot.tooling.eval_runner import (
     case_visuals,
     eval_settings,
     read_cases,
+    rebudget_channel_context,
     response_validation_errors,
     run_case,
     scope_for,
@@ -120,6 +121,80 @@ class EvalRunnerTests(unittest.TestCase):
         self.assertEqual(settings.gemini_thinking_level, "minimal")
         self.assertFalse(settings.chat_web_search)
 
+    def test_eval_settings_honors_context_budget_overrides(self):
+        args = SimpleNamespace(
+            provider="gemini",
+            model="gemini-3.5-flash-lite",
+            usage_log="",
+            gemini_thinking_level="minimal",
+            routing_mode="fixed",
+            history_max_chars=7000,
+            lore_max_chars=1800,
+            lore_max_items=4,
+        )
+        with patch.dict(
+            "os.environ",
+            {
+                "GEMINI_API_KEY": "test-key",
+                "CHAT_WEB_SEARCH": "false",
+                "COMMUNITY_LORE": "true",
+                "HISTORY_MAX_CHARS": "12000",
+                "LORE_MAX_CHARS": "3200",
+                "LORE_MAX_ITEMS": "6",
+            },
+            clear=False,
+        ):
+            settings = eval_settings(args)
+
+        self.assertEqual(settings.history_max_chars, 7000)
+        self.assertEqual(settings.lore_max_chars, 1800)
+        self.assertEqual(settings.lore_max_items, 4)
+
+    def test_eval_channel_rebudget_preserves_stronger_context_before_ambient(self):
+        rows = [
+            {
+                "message_id": "1",
+                "context_kind": "channel_ambient",
+                "author_user_id": "200",
+                "content": "a" * 100,
+            },
+            {
+                "message_id": "2",
+                "context_kind": "speaker_thread",
+                "author_user_id": "100",
+                "content": "s" * 100,
+            },
+            {
+                "message_id": "3",
+                "context_kind": "target_user_history",
+                "author_user_id": "300",
+                "content": "t" * 100,
+            },
+            {
+                "message_id": "4",
+                "context_kind": "replied_message",
+                "author_user_id": "200",
+                "content": "r" * 100,
+            },
+        ]
+
+        selected = rebudget_channel_context(rows, 220, 100)
+
+        self.assertEqual([row["message_id"] for row in selected], ["2", "3", "4"])
+        self.assertEqual(len(selected[0]["content"]), 100)
+        self.assertEqual(len(selected[1]["content"]), 20)
+        self.assertTrue(selected[1]["truncated"])
+        self.assertEqual(len(selected[2]["content"]), 100)
+        self.assertNotIn("truncated", selected[2])
+
+    def test_eval_channel_rebudget_does_not_mutate_fixture_rows(self):
+        rows = [{"message_id": "1", "user_id": "100", "content": "x" * 20}]
+        selected = rebudget_channel_context(rows, 5, 100)
+
+        self.assertEqual(rows[0]["content"], "x" * 20)
+        self.assertEqual(selected[0]["content"], "x" * 5)
+        self.assertTrue(selected[0]["truncated"])
+
     def test_eval_settings_can_reproduce_adaptive_runtime_routing(self):
         args = SimpleNamespace(
             provider="gemini",
@@ -223,6 +298,61 @@ class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result["turn_ids"]), 1)
         self.assertTrue(result["turn_ids"][0])
         self.assertEqual(result["routing"], [])
+
+    async def test_run_case_applies_eval_only_channel_budget_and_reports_budgets(self):
+        class FakeLLM:
+            settings = SimpleNamespace(
+                history_turns=12,
+                history_max_chars=12000,
+                lore_max_chars=3200,
+                lore_max_items=6,
+                provider="test",
+                model="fake",
+            )
+
+            def __init__(self):
+                self.contexts = []
+
+            async def answer(self, store, scope, name, content, **kwargs):
+                self.contexts.append(kwargs["channel_context"])
+                return "ok"
+
+        context = [
+            {
+                "message_id": "1",
+                "context_kind": "channel_ambient",
+                "user_id": "99",
+                "content": "a" * 100,
+            },
+            {
+                "message_id": "2",
+                "context_kind": "speaker_thread",
+                "user_id": str(910001),
+                "content": "s" * 100,
+            },
+        ]
+        case = {
+            "id": "budget",
+            "mode": "server",
+            "speaker": "B",
+            "input": "계속",
+            "channel_context": context,
+            "expected": "문맥을 유지한다.",
+        }
+        llm = FakeLLM()
+
+        result = await run_case(llm, case, eval_channel_context_chars=80)
+
+        self.assertEqual(len(llm.contexts), 1)
+        self.assertEqual([row["message_id"] for row in llm.contexts[0]], ["2"])
+        self.assertEqual(len(llm.contexts[0][0]["content"]), 80)
+        self.assertEqual(result["channel_context"], context)
+        self.assertEqual(result["eval_budgets"], {
+            "channel_context_chars": 80,
+            "history_max_chars": 12000,
+            "lore_max_chars": 3200,
+            "lore_max_items": 6,
+        })
 
     async def test_run_case_exposes_sanitized_visual_fixture_to_llm(self):
         class FakeLLM:
