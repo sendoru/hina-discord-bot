@@ -136,7 +136,21 @@ decision source가 표시됩니다. 따라서 같은 사례가 실패했을 때 
 - adaptive가 SMART를 골라도 실패: 단순 tier 승격보다 context/policy 검토 우선
 
 GitHub Actions의 `Live production quality eval` workflow는
-`evals/suites/production-quality.txt`를 baseline/candidate 양쪽에 같은 adaptive 설정으로 실행합니다.
+`evals/suites/production-quality.txt`를 baseline/candidate 양쪽에 adaptive 설정으로 실행합니다.
+context budget 실험을 위해 baseline/candidate의 eval-only channel budget을 서로 다르게 지정할 수 있고,
+history/lore budget은 두 실행에 공통으로 지정할 수 있습니다. 예를 들어 같은 `main` ref를 양쪽에
+지정하고 channel budget만 6000/4000으로 두면 코드 차이 없이 context 축소만 A/B 비교할 수 있습니다.
+
+`--eval-channel-context-chars`는 **eval fixture에 이미 들어 있는 `channel_context`를 다시 줄이는
+실험용 budget**입니다. production의 Discord history 후보 수집/선택 단계를 그대로 재현하지 않으며,
+reply/reference → prior source → current-speaker thread → target history → ambient 순으로 강한 문맥을
+먼저 보존하는 보수적인 rebudget입니다. 이 옵션을 지정하지 않으면 기존 eval fixture를 그대로
+사용합니다. production의 `CHANNEL_CONTEXT_CHARS` 값이나 실제 Discord 봇 동작은 변경하지 않습니다.
+
+`--history-max-chars`, `--lore-max-chars`, `--lore-max-items`는 eval에서 생성하는 `Settings`에만
+override됩니다. JSONL/Markdown 결과에는 실제 eval budget이 기록되고 usage log의
+`context.size`/provider token telemetry와 함께 비교할 수 있습니다.
+
 이 workflow의 새 CLI 옵션을 사용하므로 baseline과 candidate ref 모두 이 eval infrastructure를 포함한
 커밋 이후를 사용해야 합니다. 결과 artifact에는 JSONL, Markdown report, usage log가 함께 남습니다.
 
