@@ -486,9 +486,9 @@ async def run_case(
         ),
         "eval_budgets": {
             "channel_context_chars": eval_channel_context_chars,
-            "history_max_chars": llm.settings.history_max_chars,
-            "lore_max_chars": llm.settings.lore_max_chars,
-            "lore_max_items": llm.settings.lore_max_items,
+            "history_max_chars": getattr(llm.settings, "history_max_chars", None),
+            "lore_max_chars": getattr(llm.settings, "lore_max_chars", None),
+            "lore_max_items": getattr(llm.settings, "lore_max_items", None),
         },
     }
 
@@ -644,7 +644,9 @@ async def run(args) -> None:
                 result = await run_case(
                     llm,
                     case,
-                    eval_channel_context_chars=args.eval_channel_context_chars,
+                    eval_channel_context_chars=_arg(
+                        args, "eval_channel_context_chars", None
+                    ),
                 )
                 result["attempt"] = attempt
                 results.append(result)
