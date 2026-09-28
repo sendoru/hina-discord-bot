@@ -25,7 +25,7 @@ def test_in_world_present_incident_does_not_offer_live_search():
 
     freshness = classify_freshness(content)
     assert freshness == FreshnessMode.AUTO
-    assert llm._web_search_mode(content, _world_reference(), freshness) == "none"
+    assert llm._web_search_decision(content, _world_reference(), freshness).mode == "none"
 
 
 def test_real_world_present_incident_keeps_optional_live_search():
@@ -34,7 +34,7 @@ def test_real_world_present_incident_keeps_optional_live_search():
 
     freshness = classify_freshness(content)
     assert freshness == FreshnessMode.AUTO
-    assert llm._web_search_mode(content, [], freshness) == "auto"
+    assert llm._web_search_decision(content, [], freshness).mode == "auto"
 
 
 def test_external_current_question_with_lore_anchor_still_allows_search():
@@ -43,7 +43,7 @@ def test_external_current_question_with_lore_anchor_still_allows_search():
 
     freshness = classify_freshness(content)
     assert freshness == FreshnessMode.AUTO
-    assert llm._web_search_mode(content, _world_reference(), freshness) == "auto"
+    assert llm._web_search_decision(content, _world_reference(), freshness).mode == "auto"
 
 
 def test_in_world_rule_requires_actual_lore_anchor():
@@ -52,4 +52,4 @@ def test_in_world_rule_requires_actual_lore_anchor():
 
     freshness = classify_freshness(content)
     assert freshness == FreshnessMode.AUTO
-    assert llm._web_search_mode(content, [], freshness) == "auto"
+    assert llm._web_search_decision(content, [], freshness).mode == "auto"

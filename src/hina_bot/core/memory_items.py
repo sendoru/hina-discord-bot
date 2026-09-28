@@ -125,16 +125,13 @@ def memory_access(
     current_scope: Scope,
     *,
     explicitly_referenced: bool = False,
-    public_server_memory_in_dm: bool = True,
 ) -> MemoryAccess:
     """Return how much of one memory item may reach the current response context.
 
     This is a pure policy primitive. Phase 1 does not wire it into request assembly yet.
     The current speaker must own the item before any cross-space rule is considered.
-    The public-server-to-DM flag is retained for compatibility with legacy callers;
-    structured owner memories are always full in that owner's DM.
+    Structured owner memories are always full in that owner's DM.
     """
-    _ = public_server_memory_in_dm
 
     if item.user_id != str(current_scope.user_id):
         return MemoryAccess.HIDDEN

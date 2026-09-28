@@ -52,4 +52,4 @@ def test_chat_llm_does_not_offer_web_for_self_profile():
         runtime_default_location="",
         call_prefixes=("히나야",),
     )
-    assert llm._web_search_mode("히나야 생일 언제야?", []) == "none"
+    assert llm._web_search_decision("히나야 생일 언제야?", []).mode == "none"

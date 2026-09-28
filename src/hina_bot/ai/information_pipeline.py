@@ -196,10 +196,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             default_location=getattr(self.settings, "runtime_default_location", ""),
         )
 
-    def _web_search_mode(self, content, references, freshness=None) -> str:
-        """Compatibility helper for focused routing tests."""
-        return self._web_search_decision(content, references, freshness).mode
-
     @staticmethod
     def _with_search_provenance(information: InformationPlan) -> InformationPlan:
         return replace(
