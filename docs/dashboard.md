@@ -411,10 +411,10 @@ explicit:
 - `dashboard/app.py` is the composition root: settings, read-only repository/telemetry construction,
   templates/static setup, router registration, and health checks.
 - `dashboard/routes/` owns FastAPI request/response wiring by domain.
-- `dashboard/services/` owns trace, memory, context-state, and reconciliation read models. The legacy
-  `DashboardService` name remains as a compatibility facade so callers do not need to change all at once.
+- `dashboard/services/` owns trace, memory, context-state, and reconciliation read models. Routes receive
+  the specific domain service they need rather than a shared compatibility facade.
 - `dashboard/analytics.py` and `dashboard/identity.py` remain pure read-model builders instead of being
-  wrapped in unnecessary service classes.
+  wrapped in unnecessary service classes; their routes compose observability-epoch selection directly.
 - `dashboard/repository.py` remains the explicit SQLite read boundary. It still opens the database
   read-only and does not construct the production `Store`.
 

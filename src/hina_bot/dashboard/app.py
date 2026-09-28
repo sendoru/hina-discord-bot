@@ -9,7 +9,12 @@ from fastapi.templating import Jinja2Templates
 from .config import DashboardSettings
 from .repository import AdminRepository
 from .routes import build_routers
-from .service import DashboardService
+from .services import (
+    ContextStateService,
+    MemoryService,
+    ReconciliationService,
+    TraceService,
+)
 from .telemetry import TelemetryReader
 from .timeutils import format_local_time
 
@@ -18,7 +23,14 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     settings = settings or DashboardSettings.load()
     repository = AdminRepository(settings.database_path)
     telemetry = TelemetryReader(settings.usage_log_path, settings.event_log_path)
-    service = DashboardService(repository, telemetry, timezone=settings.timezone)
+    trace_service = TraceService(repository, telemetry, timezone=settings.timezone)
+    memory_service = MemoryService(repository, timezone=settings.timezone)
+    context_state_service = ContextStateService(repository, timezone=settings.timezone)
+    reconciliation_service = ReconciliationService(
+        repository,
+        telemetry,
+        timezone=settings.timezone,
+    )
 
     package_dir = Path(__file__).parent
     templates = Jinja2Templates(directory=str(package_dir / "templates"))
@@ -31,7 +43,6 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")
     app.state.repository = repository
     app.state.telemetry = telemetry
-    app.state.service = service
 
     @app.get("/healthz")
     def healthz():
@@ -41,7 +52,16 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
             "telemetry_sources": telemetry.source_status(),
         }
 
-    for router in build_routers(service, templates):
+    for router in build_routers(
+        repository=repository,
+        telemetry=telemetry,
+        trace_service=trace_service,
+        memory_service=memory_service,
+        context_state_service=context_state_service,
+        reconciliation_service=reconciliation_service,
+        templates=templates,
+        timezone=settings.timezone,
+    ):
         app.include_router(router)
 
     return app

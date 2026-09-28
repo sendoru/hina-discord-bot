@@ -3,8 +3,16 @@ import json
 from hina_bot.core.observability import CURRENT_TURN_ID
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.dashboard.analytics import build_analytics
+from hina_bot.dashboard.epochs import select_observability_epoch
+from hina_bot.dashboard.identity import build_identity_observability
 from hina_bot.dashboard.repository import AdminRepository
-from hina_bot.dashboard.service import DashboardService
+from hina_bot.dashboard.services import (
+    ContextStateService,
+    MemoryService,
+    ReconciliationService,
+    TraceService,
+)
 from hina_bot.dashboard.telemetry import TelemetryReader
 
 
@@ -244,7 +252,7 @@ def build_service(tmp_path):
             },
         ],
     )
-    return DashboardService(
+    return TraceService(
         AdminRepository(database),
         TelemetryReader(usage, events),
     )
@@ -359,10 +367,7 @@ def build_memory_service(tmp_path):
     )
     store.close()
     return (
-        DashboardService(
-            AdminRepository(database),
-            TelemetryReader("", ""),
-        ),
+        MemoryService(AdminRepository(database)),
         item_id,
         scope,
     )
@@ -491,7 +496,10 @@ def build_reconciliation_service(tmp_path):
         ],
     )
     return (
-        DashboardService(AdminRepository(database), TelemetryReader(usage, events)),
+        ReconciliationService(
+            AdminRepository(database),
+            TelemetryReader(usage, events),
+        ),
         proposal_id,
     )
 
@@ -534,7 +542,6 @@ def test_reconciliation_service_list_stats_and_detail_context(tmp_path):
 def test_conversation_service_local_time_filter_and_search_match(tmp_path):
     service = build_service(tmp_path)
     service.timezone = "Asia/Seoul"
-    service.traces_service.timezone = "Asia/Seoul"
 
     data = service.conversations(
         query="question",
@@ -614,10 +621,7 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     )
     store.close()
 
-    service = DashboardService(
-        AdminRepository(database),
-        TelemetryReader("", ""),
-    )
+    service = MemoryService(AdminRepository(database))
 
     data = service.relationship_profiles(
         target_guild_id="1",
@@ -674,10 +678,7 @@ def test_relationship_profiles_include_users_with_only_full_relationships(tmp_pa
     )
     store.close()
 
-    service = DashboardService(
-        AdminRepository(database),
-        TelemetryReader("", ""),
-    )
+    service = MemoryService(AdminRepository(database))
 
     data = service.relationship_profiles(
         target_guild_id="1",
@@ -715,10 +716,7 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     store.set_note(dm.user_note, "dm user manual note")
     store.close()
 
-    service = DashboardService(
-        AdminRepository(database),
-        TelemetryReader("", ""),
-    )
+    service = ContextStateService(AdminRepository(database))
 
     data = service.context_state(
         target_guild_id="1",
@@ -776,7 +774,8 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
 
 
 def test_context_state_rejects_partial_or_invalid_target(tmp_path):
-    service, _, _ = build_memory_service(tmp_path)
+    memory_service, _, _ = build_memory_service(tmp_path)
+    service = ContextStateService(memory_service.repository)
 
     partial = service.context_state(target_guild_id="1", target_user_id="100")
     assert partial["effective"] is None
@@ -865,31 +864,40 @@ def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
         ],
     )
 
-    service = DashboardService(
-        AdminRepository(database),
-        TelemetryReader(usage, events),
-    )
+    repository = AdminRepository(database)
+    telemetry = TelemetryReader(usage, events)
+    trace_service = TraceService(repository, telemetry)
 
-    analytics = service.analytics()
-    assert analytics["epoch"]["selected"] == "1"
-    assert analytics["epoch"]["is_current"] is True
+    current = select_observability_epoch(
+        telemetry.snapshot(),
+        repository.observability_epochs(),
+        "",
+    )
+    analytics = build_analytics(current.snapshot)
+    assert current.selected == "1"
+    assert current.selected == current.current
     assert analytics["usage"]["api_calls"] == 1
     assert analytics["usage"]["models"][0]["name"] == "new-model"
 
-    all_analytics = service.analytics(epoch="all")
+    all_selection = select_observability_epoch(
+        telemetry.snapshot(),
+        repository.observability_epochs(),
+        "all",
+    )
+    all_analytics = build_analytics(all_selection.snapshot)
     assert all_analytics["usage"]["api_calls"] == 2
-    assert all_analytics["epoch"]["selected"] == "all"
+    assert all_selection.selected == "all"
 
-    traces = service.traces()
+    traces = trace_service.traces()
     assert traces["page"].total == 1
     assert traces["rows"][0]["turn_id"] == "new-turn"
-    assert service.traces(epoch="all")["page"].total == 2
+    assert trace_service.traces(epoch="all")["page"].total == 2
 
-    identity = service.identity_observability()
-    assert identity["epoch"]["selected"] == "1"
+    identity = build_identity_observability(current.snapshot)
     assert identity["summary"]["resolved"] == 1
-    assert service.identity_observability(epoch="all")["summary"]["resolved"] == 2
+    all_identity = build_identity_observability(all_selection.snapshot)
+    assert all_identity["summary"]["resolved"] == 2
 
-    overview = service.overview()
+    overview = trace_service.overview()
     assert overview["epoch"]["selected"] == "1"
     assert overview["trace_count"] == 1
