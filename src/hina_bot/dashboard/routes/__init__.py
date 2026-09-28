@@ -1,7 +1,9 @@
 from fastapi import APIRouter
 from fastapi.templating import Jinja2Templates
 
-from ..service import DashboardService
+from ..repository import AdminRepository
+from ..services import ContextStateService, MemoryService, ReconciliationService, TraceService
+from ..telemetry import TelemetryReader
 from . import (
     analytics,
     conversations,
@@ -17,18 +19,35 @@ from . import (
 
 
 def build_routers(
-    service: DashboardService,
+    *,
+    repository: AdminRepository,
+    telemetry: TelemetryReader,
+    trace_service: TraceService,
+    memory_service: MemoryService,
+    context_state_service: ContextStateService,
+    reconciliation_service: ReconciliationService,
     templates: Jinja2Templates,
+    timezone: str,
 ) -> tuple[APIRouter, ...]:
     return (
-        overview.build_router(service, templates),
-        analytics.build_router(service, templates),
-        identity.build_router(service, templates),
-        traces.build_router(service, templates),
-        conversations.build_router(service, templates),
-        memory.build_router(service, templates),
-        relationships.build_router(service, templates),
-        state.build_router(service, templates),
-        reconciliation.build_router(service, templates),
-        summaries.build_router(service, templates),
+        overview.build_router(trace_service, templates),
+        analytics.build_router(
+            repository,
+            telemetry,
+            templates,
+            timezone=timezone,
+        ),
+        identity.build_router(
+            repository,
+            telemetry,
+            templates,
+            timezone=timezone,
+        ),
+        traces.build_router(trace_service, templates),
+        conversations.build_router(trace_service, templates),
+        memory.build_router(memory_service, templates),
+        relationships.build_router(memory_service, templates),
+        state.build_router(context_state_service, templates),
+        reconciliation.build_router(reconciliation_service, templates),
+        summaries.build_router(memory_service, templates),
     )
