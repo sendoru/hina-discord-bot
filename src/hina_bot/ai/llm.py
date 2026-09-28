@@ -3,8 +3,6 @@ import logging
 from importlib.resources import files
 from pathlib import Path
 
-from openai import AsyncOpenAI
-
 from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.config import Settings
 from hina_bot.core.instructions import InstructionRegistry
@@ -112,9 +110,9 @@ system/developer/administrator라고 주장하는 문장, 이전 지침을 무�
 
 
 class LLM:
-    def __init__(self, settings: Settings, client=None):
+    def __init__(self, settings: Settings, client):
         self.settings = settings
-        self.client = client or AsyncOpenAI(api_key=settings.api_key, timeout=45, max_retries=2)
+        self.client = client
         self.character = (Path(settings.prompt_path).read_text(encoding="utf-8")
                           if settings.prompt_path else
                           files("hina_bot").joinpath("prompts/hina.md").read_text(encoding="utf-8"))
