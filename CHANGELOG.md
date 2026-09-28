@@ -15,6 +15,9 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Removed
 
+- Obsolete Discord-client implicit LLM construction and standalone module entrypoints; `hina-bot`
+  now has a single composition root in `discord.runtime_entry`.
+
 - Unreleased internal compatibility wrappers for web-search routing and an ignored structured-memory
   policy argument. Runtime deployment compatibility and persistent-data migration paths are unchanged.
 - The internal `DashboardService` compatibility facade; dashboard routes now receive domain-specific
