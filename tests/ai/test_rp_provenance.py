@@ -30,10 +30,10 @@ def test_natural_lookup_instruction_is_in_character():
 def test_source_request_forces_web_search_when_enabled():
     llm = object.__new__(InformationPipeline)
     llm.settings = SimpleNamespace(chat_web_search=True)
-    assert llm._web_search_mode("그거 출처 어디야?", []) == "required"
+    assert llm._web_search_decision("그거 출처 어디야?", []).mode == "required"
 
 
 def test_personal_context_does_not_offer_external_search():
     llm = object.__new__(InformationPipeline)
     llm.settings = SimpleNamespace(chat_web_search=True)
-    assert llm._web_search_mode("내 생일 기억하고 있어?", []) == "none"
+    assert llm._web_search_decision("내 생일 기억하고 있어?", []).mode == "none"
