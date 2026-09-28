@@ -875,7 +875,7 @@ def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
     )
     analytics = build_analytics(current.snapshot)
     assert current.selected == "1"
-    assert current.is_current is True
+    assert current.selected == current.current
     assert analytics["usage"]["api_calls"] == 1
     assert analytics["usage"]["models"][0]["name"] == "new-model"
 
