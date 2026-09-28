@@ -252,18 +252,8 @@ class StructuredMemoryPrivacyTests(unittest.TestCase):
     def test_owner_dm_aggregates_reference_gated_memory_from_every_origin(self):
         public_item = self.item(self.guild_a, MemoryDisclosure.REFERENCE_GATED)
         self.assertEqual(memory_access(public_item, self.dm), MemoryAccess.FULL)
-        self.assertEqual(
-            memory_access(public_item, self.dm, public_server_memory_in_dm=False),
-            MemoryAccess.FULL,
-        )
-
         private_item = self.item(self.guild_a_private, MemoryDisclosure.REFERENCE_GATED)
         self.assertEqual(memory_access(private_item, self.dm), MemoryAccess.FULL)
-        self.assertEqual(
-            memory_access(private_item, self.dm, public_server_memory_in_dm=False),
-            MemoryAccess.FULL,
-        )
-
     def test_owner_dm_never_aggregates_another_users_memory(self):
         self.store.add_memory_item(
             self.other_user_guild,

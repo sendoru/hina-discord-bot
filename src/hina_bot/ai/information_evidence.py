@@ -69,14 +69,3 @@ def search_decision(request, references, *, enabled, default_location="") -> Sea
     # classifier can catch version/status questions whose time dependence is not expressed by a
     # small set of freshness keywords.
     return SearchDecision("none", False, "semantic_open")
-
-
-def search_mode(request, references, *, enabled, default_location=""):
-    """Compatibility wrapper for callers that only need the mode string."""
-
-    return search_decision(
-        request,
-        references,
-        enabled=enabled,
-        default_location=default_location,
-    ).mode
