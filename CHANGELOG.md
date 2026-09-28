@@ -13,6 +13,11 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 - Clarified the distinct roles of `app_version`, `build_revision`, and `runtime_id`.
 
+### Removed
+
+- Unreleased internal compatibility wrappers for web-search routing and an ignored structured-memory
+  policy argument. Runtime deployment compatibility and persistent-data migration paths are unchanged.
+
 ## 0.1.0
 
 - Existing package-version baseline from before formal release tracking.
