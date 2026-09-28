@@ -19,6 +19,8 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
   policy argument. Runtime deployment compatibility and persistent-data migration paths are unchanged.
 - The internal `DashboardService` compatibility facade; dashboard routes now receive domain-specific
   read services directly.
+- Shadowed legacy `answer`, `summarize`, and `summarize_shared` implementations from the base LLM;
+  current request assembly and memory-summary layers remain the active implementations.
 
 ## 0.1.0
 
