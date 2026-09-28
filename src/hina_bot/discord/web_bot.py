@@ -9,7 +9,6 @@ import discord
 
 from hina_bot.ai.egress_policy import strict_policy
 from hina_bot.ai.identity_resolution import identity_group, identity_resolution_needed
-from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
@@ -116,9 +115,7 @@ def _public_context_request(
 class HinaClient(BaseHinaClient):
     """Production Discord client wired to current context, web search, and vision."""
 
-    def __init__(self, settings: Settings, *, store=None, llm=None):
-        if llm is None:
-            llm = LLM(settings)
+    def __init__(self, settings: Settings, *, store=None, llm):
         super().__init__(settings, store=store, llm=llm)
         self.recent = TargetAwareRecentMessages(
             budget=settings.channel_context_chars,
@@ -625,18 +622,3 @@ class HinaClient(BaseHinaClient):
             REPLY_CONTEXT.reset(reply_token)
             TARGET_CONTEXT.reset(target_token)
             CURRENT_INTERACTION_CONTEXT.reset(interaction_token)
-
-
-def main():
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
-    log.setLevel(logging.INFO)
-    try:
-        settings = Settings.load()
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from None
-    bot = HinaClient(settings)
-    bot.run(settings.discord_token, log_handler=None)
-
-
-if __name__ == "__main__":
-    main()
