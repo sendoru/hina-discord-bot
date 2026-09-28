@@ -2,10 +2,10 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from ..service import DashboardService
+from ..services import MemoryService
 
 
-def build_router(service: DashboardService, templates: Jinja2Templates) -> APIRouter:
+def build_router(service: MemoryService, templates: Jinja2Templates) -> APIRouter:
     router = APIRouter()
 
     @router.get("/summaries", response_class=HTMLResponse)
