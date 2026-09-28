@@ -55,10 +55,12 @@ def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
     bot_author = bool(getattr(message.author, "bot", False))
 
     if bot_author:
-        # Never react to our own Gateway message. Other bots may call Hina only through an
-        # explicit Discord mention/reply ping; natural-language prefixes and DM auto-reply are
-        # intentionally human-only so arbitrary bot chatter cannot spend model quota.
-        if getattr(message.author, "id", None) == bot_id or not ping:
+        # Never react to our own Gateway message. DMs are human-only; in guilds, other bots may
+        # call Hina only through an explicit Discord mention/reply ping so arbitrary bot chatter
+        # cannot spend model quota.
+        if getattr(message.author, "id", None) == bot_id:
+            return None
+        if getattr(message, "guild", None) is None or not ping:
             return None
         return _strip_boundary_bot_mentions(raw, bot_id)
 
