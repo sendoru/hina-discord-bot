@@ -8,7 +8,6 @@ from datetime import timedelta
 
 import discord
 
-from hina_bot.ai.information_pipeline import LLM
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
 from hina_bot.core.observability import (
@@ -88,7 +87,7 @@ def _bare_call_reply(
 
 
 class HinaClient(discord.Client):
-    def __init__(self, settings: Settings, *, store=None, llm=None):
+    def __init__(self, settings: Settings, *, store=None, llm):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.emojis_and_stickers = True
@@ -99,7 +98,7 @@ class HinaClient(discord.Client):
         )
         self.settings = settings
         self.store = store or Store(settings.db_path, settings.history_turns)
-        self.llm = llm or LLM(settings)
+        self.llm = llm
         self.emoji_registry = EmojiRegistry(self, self.store)
         self.emoji_admin_ids = set(settings.bot_admin_ids)
         self.tree = discord.app_commands.CommandTree(self)
@@ -741,19 +740,3 @@ class HinaClient(discord.Client):
             self.active_tasks.discard(task)
             self.pending_count -= 1
             CURRENT_TURN_ID.reset(turn_token)
-
-
-def main():
-    # Do not log SDK request bodies, prompts, credentials, or Discord message content.
-    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
-    log.setLevel(logging.INFO)
-    try:
-        settings = Settings.load()
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from None
-    bot = HinaClient(settings)
-    bot.run(settings.discord_token, log_handler=None)
-
-
-if __name__ == "__main__":
-    main()
