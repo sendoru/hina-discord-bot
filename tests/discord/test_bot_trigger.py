@@ -16,6 +16,7 @@ from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.store import Store
 from hina_bot.discord.bot import BOT_TRIGGER_CHAIN_LIMIT
 from hina_bot.discord.bot import HinaClient as BaseHinaClient
+from hina_bot.discord.bot import _timed_turn_locks
 from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.target_context import TARGET_CONTEXT
 from hina_bot.discord.turn_provenance import build_turn_provenance
@@ -469,3 +470,43 @@ async def test_setup_hook_starts_llm_background_tasks(tmp_path):
 
     llm.start_background_tasks.assert_awaited_once_with()
     await client.close()
+
+
+
+@pytest.mark.asyncio
+async def test_timed_turn_locks_preserves_order_and_records_split_waits():
+    events = []
+
+    class Lock:
+        def __init__(self, name):
+            self.name = name
+
+        async def acquire(self):
+            events.append(f"acquire:{self.name}")
+
+        def release(self):
+            events.append(f"release:{self.name}")
+
+    times = iter((10.0, 10.004, 10.004, 10.010))
+    timings = {}
+    async with _timed_turn_locks(
+        Lock("channel"),
+        Lock("memory"),
+        timings,
+        10.0,
+        clock=lambda: next(times),
+    ):
+        events.append("body")
+
+    assert events == [
+        "acquire:channel",
+        "acquire:memory",
+        "body",
+        "release:memory",
+        "release:channel",
+    ]
+    assert timings == {
+        "channel_lock_wait_ms": 4,
+        "memory_lock_wait_ms": 6,
+        "lock_wait_ms": 10,
+    }
