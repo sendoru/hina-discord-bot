@@ -1,3 +1,5 @@
+import inspect
+
 from hina_bot.ai.information_pipeline import InformationPipeline
 from hina_bot.ai.llm import LLM as BaseLLM
 from hina_bot.ai.memory_summary import MemorySummaryMixin
@@ -20,3 +22,11 @@ def test_base_llm_does_not_keep_shadowed_generation_paths():
     assert "answer" in RequestAssembler.__dict__
     assert "summarize" in MemorySummaryMixin.__dict__
     assert "summarize_shared" in MemorySummaryMixin.__dict__
+
+
+def test_base_pipeline_requires_explicit_provider_client():
+    assert inspect.signature(BaseLLM.__init__).parameters["client"].default is inspect.Parameter.empty
+    assert (
+        inspect.signature(InformationPipeline.__init__).parameters["client"].default
+        is inspect.Parameter.empty
+    )
