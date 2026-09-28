@@ -9,7 +9,12 @@ from fastapi.templating import Jinja2Templates
 from .config import DashboardSettings
 from .repository import AdminRepository
 from .routes import build_routers
-from .services import ContextStateService, MemoryService, ReconciliationService, TraceService
+from .services import (
+    ContextStateService,
+    MemoryService,
+    ReconciliationService,
+    TraceService,
+)
 from .telemetry import TelemetryReader
 from .timeutils import format_local_time
 
