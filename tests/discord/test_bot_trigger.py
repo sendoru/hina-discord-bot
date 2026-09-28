@@ -14,9 +14,8 @@ from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.observability import current_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.store import Store
-from hina_bot.discord.bot import BOT_TRIGGER_CHAIN_LIMIT
+from hina_bot.discord.bot import BOT_TRIGGER_CHAIN_LIMIT, _timed_turn_locks
 from hina_bot.discord.bot import HinaClient as BaseHinaClient
-from hina_bot.discord.bot import _timed_turn_locks
 from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.target_context import TARGET_CONTEXT
 from hina_bot.discord.turn_provenance import build_turn_provenance
