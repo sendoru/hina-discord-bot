@@ -3,7 +3,7 @@ import logging
 import sys
 import time
 import weakref
-from contextlib import nullcontext
+from contextlib import asynccontextmanager, nullcontext
 from datetime import timedelta
 
 import discord
@@ -38,6 +38,37 @@ USER_ONLY_ALLOWED_MENTIONS = discord.AllowedMentions(
 )
 BOT_TRIGGER_CHAIN_LIMIT = 2
 BOT_TRIGGER_CHAIN_WINDOW_SECONDS = 15.0
+
+
+@asynccontextmanager
+async def _timed_turn_locks(
+    channel_lock,
+    memory_lock,
+    timings: dict,
+    turn_started: float,
+    *,
+    clock=time.perf_counter,
+):
+    channel_wait_started = clock()
+    await channel_lock.acquire()
+    channel_acquired = clock()
+    timings["channel_lock_wait_ms"] = round(
+        (channel_acquired - channel_wait_started) * 1000
+    )
+    try:
+        memory_wait_started = clock()
+        await memory_lock.acquire()
+        memory_acquired = clock()
+        timings["memory_lock_wait_ms"] = round(
+            (memory_acquired - memory_wait_started) * 1000
+        )
+        timings["lock_wait_ms"] = round((memory_acquired - turn_started) * 1000)
+        try:
+            yield
+        finally:
+            memory_lock.release()
+    finally:
+        channel_lock.release()
 
 
 def _bare_call_reply(
@@ -424,8 +455,12 @@ class HinaClient(discord.Client):
         terminal_emitted = False
         timings = {}
         try:
-            async with channel_lock, lock:
-                timings["lock_wait_ms"] = round((time.perf_counter() - turn_started) * 1000)
+            async with _timed_turn_locks(
+                channel_lock,
+                lock,
+                timings,
+                turn_started,
+            ):
                 mode = (
                     MemoryMode.off if bot_author else MemoryMode(self.store.memory_mode(scope))
                 )

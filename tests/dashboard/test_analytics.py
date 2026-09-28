@@ -188,6 +188,8 @@ def snapshot():
             "event": "turn.completed",
             "elapsed_ms": 1800,
             "lock_wait_ms": 10,
+            "channel_lock_wait_ms": 4,
+            "memory_lock_wait_ms": 6,
             "slot_wait_ms": 20,
             "recent_history_ms": 30,
             "context_ms": 100,
@@ -319,6 +321,8 @@ def test_analytics_exposes_user_visible_latency_and_generation_residual():
     }
     assert data["performance"]["turn_latency"]["p95"] == 1900
     assert data["performance"]["post_reply"]["average"] == 175
+    assert data["performance"]["stages"]["channel_lock_wait_ms"]["average"] == 4
+    assert data["performance"]["stages"]["memory_lock_wait_ms"]["average"] == 6
     assert data["performance"]["stages"]["recent_history_ms"]["known"] == 1
     assert data["performance"]["stages"]["recent_history_ms"]["missing"] == 1
     assert data["performance"]["stages"]["history_hydration_ms"]["known"] == 1
