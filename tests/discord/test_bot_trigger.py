@@ -41,9 +41,15 @@ def routing_message(
     )
 
 
-def test_other_bots_require_an_explicit_discord_mention():
+def test_other_bots_require_an_explicit_guild_mention():
     assert trigger_text(routing_message("히나야 안녕"), 99) is None
     assert trigger_text(routing_message("히나야 안녕", dm=True), 99, True) is None
+    assert trigger_text(
+        routing_message("<@99> 안녕", mentions=(99,), dm=True), 99, True
+    ) is None
+    assert trigger_text(
+        routing_message("<@99>", mentions=(99,), dm=True), 99, True
+    ) is None
     assert trigger_text(routing_message("<@99> 안녕", mentions=(99,)), 99) == "안녕"
     assert trigger_text(routing_message("안녕 <@!99>", mentions=(99,)), 99) == "안녕"
     assert trigger_text(routing_message("<@99>", mentions=(99,)), 99) == ""
@@ -276,6 +282,14 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
         author=bot_author,
         text="히나야 안녕",
     )
+    dm_direct = make_message(
+        channel,
+        None,
+        message_id=22,
+        author=bot_author,
+        text="<@99> DM에서 안녕",
+        mentions=(99,),
+    )
     forwarded_turn_ids = []
     forwarded_interactions = []
 
@@ -301,6 +315,8 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
             "is_self": True,
         }]
         await client.on_message(passive)
+        assert forwarded.await_count == 1
+        await client.on_message(dm_direct)
         assert forwarded.await_count == 1
 
     rows = [json.loads(line) for line in event_path.read_text().splitlines()]
