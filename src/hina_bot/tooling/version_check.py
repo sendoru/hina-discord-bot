@@ -7,8 +7,8 @@ import os
 import re
 import sys
 import tomllib
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Mapping, Sequence
 
 _VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
@@ -23,7 +23,7 @@ def read_project_version(path: Path) -> str:
     except (KeyError, TypeError) as exc:
         raise ValueError(f"{path}: missing [project].version") from exc
     if not isinstance(version, str):
-        raise ValueError(f"{path}: [project].version must be a string")
+        raise TypeError(f"{path}: [project].version must be a string")
     return version
 
 
