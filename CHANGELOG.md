@@ -17,6 +17,8 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 - Unreleased internal compatibility wrappers for web-search routing and an ignored structured-memory
   policy argument. Runtime deployment compatibility and persistent-data migration paths are unchanged.
+- The internal `DashboardService` compatibility facade; dashboard routes now receive domain-specific
+  read services directly.
 
 ## 0.1.0
 

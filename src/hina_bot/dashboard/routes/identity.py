@@ -2,10 +2,19 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from ..service import DashboardService
+from ..epochs import epoch_view, select_observability_epoch
+from ..identity import build_identity_observability
+from ..repository import AdminRepository
+from ..telemetry import TelemetryReader
 
 
-def build_router(service: DashboardService, templates: Jinja2Templates) -> APIRouter:
+def build_router(
+    repository: AdminRepository,
+    telemetry: TelemetryReader,
+    templates: Jinja2Templates,
+    *,
+    timezone: str,
+) -> APIRouter:
     router = APIRouter()
 
     @router.get("/identity", response_class=HTMLResponse)
@@ -17,13 +26,21 @@ def build_router(service: DashboardService, templates: Jinja2Templates) -> APIRo
         before: str = "",
         epoch: str = "",
     ):
-        data = service.identity_observability(
+        selection = select_observability_epoch(
+            telemetry.snapshot(),
+            repository.observability_epochs(),
+            epoch,
+        )
+        data = build_identity_observability(
+            selection.snapshot,
             outcome=outcome,
             blocked_reason=blocked_reason,
             after=after,
             before=before,
-            epoch=epoch,
+            timezone=timezone,
         )
+        data["epoch"] = epoch_view(selection)
+        data["filters"]["epoch"] = selection.selected
         return templates.TemplateResponse(
             request=request,
             name="identity.html",
