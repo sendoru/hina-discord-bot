@@ -8,28 +8,131 @@ import discord
 
 log = logging.getLogger("hina")
 
+EMOJI_REFRESH_SECONDS = 5 * 60
+EMOJI_RETRY_SECONDS = 60
+
 
 class EmojiRegistry:
-    def __init__(self, client, store):
+    def __init__(self, client, store, *, clock=time.monotonic):
         self.client, self.store = client, store
         self.lock = asyncio.Lock()
+        self._refresh_lock = asyncio.Lock()
         self.live = {}
         self.checked_at = 0.0
+        self._retry_after = 0.0
+        self._clock = clock
+        self._refresh_task: asyncio.Task | None = None
+        self._poll_task: asyncio.Task | None = None
 
-    async def refresh(self):
-        self.live = {str(e.id): e for e in await self.client.fetch_application_emojis()}
-        self.checked_at = time.monotonic()
+    def _application_rows(self):
+        return [row for row in self.store.emoji_rows() if row["source_guild_id"] is None]
+
+    async def refresh(self) -> bool:
+        """Refresh application emoji without blocking request-time catalog reads."""
+
+        async with self._refresh_lock:
+            rows = self._application_rows()
+            if not rows:
+                async with self.lock:
+                    self.live = {}
+                    self.checked_at = self._clock()
+                    self._retry_after = 0.0
+                return True
+
+            now = self._clock()
+            if now < self._retry_after:
+                return False
+            if self.checked_at and now - self.checked_at < EMOJI_REFRESH_SECONDS:
+                return True
+
+            try:
+                fetched = {
+                    str(emoji.id): emoji
+                    for emoji in await self.client.fetch_application_emojis()
+                }
+            except discord.HTTPException as exc:
+                self._retry_after = now + EMOJI_RETRY_SECONDS
+                log.warning("Application emoji refresh failed (%s)", type(exc).__name__)
+                return False
+
+            async with self.lock:
+                # Preserve an app emoji created locally while the remote fetch was in flight.
+                current_ids = {
+                    row["emoji_id"]
+                    for row in self._application_rows()
+                }
+                live = {
+                    emoji_id: emoji
+                    for emoji_id, emoji in fetched.items()
+                    if emoji_id in current_ids
+                }
+                for emoji_id in current_ids:
+                    if emoji_id not in live and emoji_id in self.live:
+                        live[emoji_id] = self.live[emoji_id]
+                self.live = live
+                self.checked_at = self._clock()
+                self._retry_after = 0.0
+            return True
+
+    def start_polling(self) -> None:
+        if self._poll_task is not None and not self._poll_task.done():
+            return
+        self._poll_task = asyncio.create_task(
+            self._poll_loop(),
+            name="application-emoji-poll",
+        )
+
+    async def close(self) -> None:
+        tasks = [
+            task
+            for task in (self._refresh_task, self._poll_task)
+            if task is not None and not task.done()
+        ]
+        self._refresh_task = None
+        self._poll_task = None
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _poll_loop(self) -> None:
+        while True:
+            refreshed = await self.refresh()
+            await asyncio.sleep(
+                EMOJI_REFRESH_SECONDS if refreshed else EMOJI_RETRY_SECONDS
+            )
+
+    def _schedule_refresh(self) -> None:
+        if not self._application_rows():
+            return
+        now = self._clock()
+        if now < self._retry_after:
+            return
+        if self.checked_at and now - self.checked_at < EMOJI_REFRESH_SECONDS:
+            return
+        if self._refresh_task is not None and not self._refresh_task.done():
+            return
+        task = asyncio.create_task(
+            self.refresh(),
+            name="application-emoji-refresh",
+        )
+        self._refresh_task = task
+        task.add_done_callback(self._finish_refresh)
+
+    def _finish_refresh(self, task: asyncio.Task) -> None:
+        if self._refresh_task is task:
+            self._refresh_task = None
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:  # noqa: BLE001 - isolate background refresh failures
+            log.warning("Application emoji background refresh failed (%s)", type(exc).__name__)
 
     async def catalog(self, channel=None):
+        self._schedule_refresh()
         async with self.lock:
             rows = self.store.emoji_rows()
-            if any(r["source_guild_id"] is None for r in rows) and time.monotonic() - self.checked_at > 300:
-                try:
-                    await self.refresh()
-                except discord.HTTPException:
-                    # Do not fall back to unregistered guild emoji or stale app IDs.
-                    self.live = {}
-                    self.checked_at = time.monotonic()
             catalog = []
             for row in rows:
                 if row["source_guild_id"] is None:
@@ -89,6 +192,8 @@ class EmojiRegistry:
                     log.warning("Emoji registration rollback failed; inspect Developer Portal")
                 raise
             self.live[str(emoji.id)] = emoji
+            self.checked_at = self._clock()
+            self._retry_after = 0.0
             return str(emoji)
 
     async def edit(self, alias, description):
