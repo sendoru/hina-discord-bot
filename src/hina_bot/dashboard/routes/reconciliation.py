@@ -2,10 +2,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from ..service import DashboardService
+from ..services import ReconciliationService
 
 
-def build_router(service: DashboardService, templates: Jinja2Templates) -> APIRouter:
+def build_router(service: ReconciliationService, templates: Jinja2Templates) -> APIRouter:
     router = APIRouter()
 
     @router.get("/reconciliation", response_class=HTMLResponse)
