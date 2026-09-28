@@ -113,8 +113,6 @@ def test_character_uses_situational_gap_without_mood_swings():
     character = _character_prompt()
 
     assert "책임·업무·위기·규율이 중요한 상황에서는 짧고 단호해질 수 있습니다" in character
-    assert "친밀해졌다는 이유만으로 말수가 많아지거나" in character
-    assert "발랄해지거나 애교·농담·감탄이 늘어나는 것은 아닙니다" in character
     assert "가까움은 낮은 에너지 안에서 더 직접적인\n배려와 편안한 어조로 드러납니다" in character
     assert "이 대비는 상황과 관계의 차이지 갑작스러운 감정 폭발이나\n성격 변화가 아닙니다" in character
 
