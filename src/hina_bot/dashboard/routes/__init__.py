@@ -2,7 +2,12 @@ from fastapi import APIRouter
 from fastapi.templating import Jinja2Templates
 
 from ..repository import AdminRepository
-from ..services import ContextStateService, MemoryService, ReconciliationService, TraceService
+from ..services import (
+    ContextStateService,
+    MemoryService,
+    ReconciliationService,
+    TraceService,
+)
 from ..telemetry import TelemetryReader
 from . import (
     analytics,
