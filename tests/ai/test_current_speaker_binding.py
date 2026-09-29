@@ -250,6 +250,12 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
             "is_bot": False,
             "is_self": False,
         },
+        "self": {
+            "user_id": "99",
+            "name": "히나",
+            "is_bot": True,
+            "is_self": True,
+        },
         "mentions": [{
             "user_id": "200",
             "name": "리오",
@@ -284,6 +290,8 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
         assert "요청이 반드시 히나에게 향한 것은" in payload["instructions"]
         assert "문장의 호격 표현" in payload["instructions"]
         assert "reply_target도 강한 대화 연결 신호" in payload["instructions"]
+        assert "self.user_id가 현재 Discord에서 히나를 가리키는" in payload["instructions"]
+        assert "is_self=false이면 그 raw mention을 히나 자신으로 재해석하면 안 됩니다" in payload["instructions"]
         assert payload["input"][1]["content"] == "<@200>야, <@99> 좀 쓰다듬어줘"
     finally:
         CURRENT_INTERACTION_CONTEXT.reset(token)

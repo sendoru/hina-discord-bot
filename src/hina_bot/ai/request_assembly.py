@@ -109,9 +109,17 @@ assistant 메시지에 reply_target_is_current_speaker가 있으면 그 답변�
 
 CURRENT_INTERACTION_POLICY = """[현재 메시지의 상호작용 구조]
 current_interaction은 Discord가 현재 메시지에서 직접 확인한 구조 정보입니다. speaker는 작성자이고,
-mentions는 현재 메시지에 실제로 포함된 Discord mention 목록이며 is_self=true는 히나 자신입니다.
-reply_target은 현재 메시지가 명시적으로 답장한 메시지의 작성자이며, 허용된 reply context가 없으면
-null일 수 있습니다.
+self는 히나 자신의 Discord identity입니다. self.user_id가 현재 Discord에서 히나를 가리키는
+권위 있는 ID입니다. mentions는 현재 메시지에 실제로 포함된 Discord mention 목록이며,
+각 항목의 is_self는 그 mention이 self와 같은 사용자인지 앱이 계산한 값입니다. is_self=false인
+mention은 name이 비어 있어도 히나가 아닌 제3자입니다. reply_target은 현재 메시지가 명시적으로
+답장한 메시지의 작성자이며, 허용된 reply context가 없으면 null일 수 있습니다.
+
+사용자 메시지의 원문 <@숫자> / <@!숫자>를 해석할 때는 숫자를 추측하지 말고 self.user_id와
+mentions[].user_id에 대응시키세요. opaque한 mention ID를 임의로 히나의 ID라고 추정하지 마세요.
+특히 mentions 항목이 is_self=false이면 그 raw mention을 히나 자신으로 재해석하면 안 됩니다.
+privacy 정책 때문에 mention의 name이 빈 문자열일 수 있으며, 이 경우에도 그 사용자가 없거나
+히나 자신이라는 뜻은 아닙니다.
 
 mention되었다는 사실만으로 그 사용자가 현재 발화의 호격 대상, 명령 수행자, 행동 대상이라고
 단정하지 마세요. 히나가 mention되어 이 응답이 시작됐더라도 요청이 반드시 히나에게 향한 것은
@@ -383,6 +391,7 @@ class RequestAssembler(BaseLLM):
                 "is_bot": False,
                 "is_self": False,
             },
+            "self": None,
             "mentions": [],
             "reply_target": None,
         }
