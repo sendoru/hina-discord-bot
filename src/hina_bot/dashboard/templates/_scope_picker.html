@@ -18,11 +18,11 @@
     </label>
   </div>
   <div class="scope-picker-fields">
-    <label class="scope-picker-field scope-picker-guild-field">
+    <label class="scope-picker-field scope-picker-guild-field" data-scope-field="guild">
       <span>Guild ID</span>
       <input name="{{ prefix }}_guild_id" inputmode="numeric" value="{{ guild_id }}" placeholder="guild id">
     </label>
-    <label class="scope-picker-field scope-picker-channel-field">
+    <label class="scope-picker-field scope-picker-channel-field" data-scope-field="channel">
       <span>Channel ID</span>
       <input name="{{ prefix }}_channel_id" inputmode="numeric" value="{{ channel_id }}" placeholder="{{ "DM channel id" if scope_type == "dm" else "channel id" }}">
     </label>
