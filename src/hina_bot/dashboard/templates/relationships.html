@@ -53,11 +53,16 @@
       <button type="submit">Apply</button>
     </div>
   </div>
-  <div class="filter-row">
-    <input name="target_guild_id" inputmode="numeric" value="{{ data.filters.target_guild_id }}" placeholder="target guild id">
-    <input name="target_channel_id" inputmode="numeric" value="{{ data.filters.target_channel_id }}" placeholder="target channel id">
-    <button type="submit">Compute profile</button>
-    <a class="button secondary" href="/relationships">Reset</a>
+  <div class="filter-row grouped-filter-row">
+    <fieldset class="filter-cluster filter-cluster-2">
+      <legend>Target context</legend>
+      <input name="target_guild_id" inputmode="numeric" value="{{ data.filters.target_guild_id }}" placeholder="target guild id">
+      <input name="target_channel_id" inputmode="numeric" value="{{ data.filters.target_channel_id }}" placeholder="target channel id">
+    </fieldset>
+    <div class="filter-actions filter-row-actions">
+      <button type="submit">Compute profile</button>
+      <a class="button secondary" href="/relationships">Reset</a>
+    </div>
   </div>
 </form>
 

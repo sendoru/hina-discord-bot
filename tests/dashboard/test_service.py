@@ -341,6 +341,9 @@ def test_conversations_use_bounded_repository_filters(tmp_path):
 
     assert data["page"].total == 1
     assert data["rows"][0]["reply"] == "answer"
+    assert data["rows"][0]["scope_type"] == "guild"
+    assert data["rows"][0]["guild_id"] == "1"
+    assert data["rows"][0]["channel_id"] == "10"
     assert service.conversations(query="not-found")["page"].total == 0
 
 
@@ -390,6 +393,74 @@ def test_memory_service_filters_and_source_drilldown(tmp_path):
     assert detail is not None
     assert detail["item"]["content"] == "remembered fact"
     assert detail["sources"][0]["turn"]["turn_id"] == "memory-trace"
+
+
+def test_memory_scope_picker_filters_guild_and_dm_without_raw_realms(tmp_path):
+    database = tmp_path / "scope-filter-memory.sqlite3"
+    store = Store(str(database))
+    guild_scope = Scope(1, 10, 100, True)
+    other_guild_scope = Scope(2, 11, 100, True)
+    dm_scope = Scope(None, 20, 100)
+    other_dm_scope = Scope(None, 21, 100)
+
+    store.add_memory_item(
+        guild_scope,
+        "guild one",
+        kind="fact",
+        disclosure="local",
+    )
+    store.add_memory_item(
+        other_guild_scope,
+        "guild two",
+        kind="fact",
+        disclosure="local",
+    )
+    store.add_memory_item(
+        dm_scope,
+        "dm one",
+        kind="fact",
+        disclosure="local",
+    )
+    store.add_memory_item(
+        other_dm_scope,
+        "dm two",
+        kind="fact",
+        disclosure="local",
+    )
+    store.close()
+
+    service = MemoryService(AdminRepository(database))
+
+    all_dms = service.memory_items(origin_scope_type="dm")
+    assert {row["content"] for row in all_dms["rows"]} == {"dm one", "dm two"}
+    assert all_dms["filters"]["origin_scope_type"] == "dm"
+    assert all_dms["filters"]["origin_guild_id"] == ""
+
+    exact_dm = service.memory_items(
+        origin_scope_type="dm",
+        origin_channel_id="20",
+    )
+    assert [row["content"] for row in exact_dm["rows"]] == ["dm one"]
+
+    all_guilds = service.memory_items(origin_scope_type="guild")
+    assert {row["content"] for row in all_guilds["rows"]} == {
+        "guild one",
+        "guild two",
+    }
+
+    exact_guild = service.memory_items(
+        origin_scope_type="guild",
+        origin_guild_id="1",
+    )
+    assert [row["content"] for row in exact_guild["rows"]] == ["guild one"]
+
+    legacy = service.memory_items(
+        origin_realm="dm:100",
+        origin_channel_id="20",
+    )
+    assert [row["content"] for row in legacy["rows"]] == ["dm one"]
+    assert legacy["filters"]["origin_scope_type"] == "dm"
+    assert legacy["filters"]["origin_channel_id"] == "20"
 
 
 def test_summary_and_cursor_service_show_rollout_state(tmp_path):
@@ -521,6 +592,11 @@ def test_reconciliation_service_list_stats_and_detail_context(tmp_path):
     assert listing["rows"][0]["same_source_set"] is True
     assert listing["rows"][0]["source_overlap_ids"] == ("101", "102")
 
+    dm_scope = service.reconciliation_proposals(origin_scope_type="dm")
+    assert dm_scope["page"].total == 1
+    assert dm_scope["filters"]["origin_scope_type"] == "dm"
+    assert service.reconciliation_proposals(origin_scope_type="guild")["page"].total == 0
+
     detail = service.reconciliation_proposal(proposal_id)
     assert detail is not None
     assert detail["proposal"]["user_name"] == "Reconciliation User"
@@ -565,6 +641,8 @@ def test_conversation_context_marks_selected_turn(tmp_path):
     selected = [row for row in data["rows"] if row["selected"]]
     assert len(selected) == 1
     assert selected[0]["id"] == row_id
+    assert selected[0]["guild_id"] == "1"
+    assert selected[0]["channel_id"] == "10"
 
 
 
@@ -771,6 +849,17 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     assert dm_effective["chat_log"]["guild_recent_context_applicable"] is False
     assert dm_effective["notes"]["server"] == ""
     assert dm_effective["notes"]["user"] == "dm user manual note"
+    assert dm_data["filters"]["target_scope_type"] == "dm"
+
+    explicit_dm = service.context_state(
+        target_scope_type="dm",
+        target_guild_id="999",
+        target_channel_id="20",
+        target_user_id="100",
+    )
+    assert explicit_dm["effective"] is not None
+    assert explicit_dm["effective"]["scope"].guild_id is None
+    assert explicit_dm["filters"]["target_guild_id"] == ""
 
 
 def test_context_state_rejects_partial_or_invalid_target(tmp_path):
@@ -780,6 +869,14 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
     partial = service.context_state(target_guild_id="1", target_user_id="100")
     assert partial["effective"] is None
     assert "Channel ID and user ID are required" in partial["target_error"]
+
+    missing_guild = service.context_state(
+        target_scope_type="guild",
+        target_channel_id="10",
+        target_user_id="100",
+    )
+    assert missing_guild["effective"] is None
+    assert "Guild ID is required" in missing_guild["target_error"]
 
     invalid = service.context_state(
         target_guild_id="-1",

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
+{% from "_telemetry_ui.html" import telemetry_window %}
 {% block title %}Identity · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -7,31 +8,37 @@
     <h1>Speaker Identity Observability</h1>
     <p>Resolver telemetry only. Raw references and candidate names are not persisted here.</p>
   </div>
-  <div class="window">
-    <strong>Available telemetry</strong>
-    <span>{{ data.available.oldest_at | localtime if data.available.oldest_at else "none" }}</span>
-    <span>→ {{ data.available.newest_at | localtime if data.available.newest_at else "none" }}</span>
-  </div>
+  {{ telemetry_window(data.available) }}
 </section>
 
-<form class="filters" method="get">
-  <select name="outcome">
-    <option value="">outcome: any</option>
-    {% for value in ["resolved","ambiguous","none","blocked"] %}
-    <option value="{{ value }}" {% if data.filters.outcome == value %}selected{% endif %}>{{ value }}</option>
-    {% endfor %}
-  </select>
-  <input name="blocked_reason" value="{{ data.filters.blocked_reason }}" placeholder="blocked reason">
-  {{ epoch_selector(data) }}
-  <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
-  <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
-  <button type="submit">Filter</button>
-  <a class="button secondary" href="/identity">Reset</a>
-  <div class="quick-ranges" aria-label="Quick time ranges">
-    <span>Time:</span>
-    {% for preset in data.time_ranges %}
-    <a href="{{ request.url.include_query_params(after=preset.after, before='') }}">{{ preset.label }}</a>
-    {% endfor %}
+<form class="filters filter-layout" method="get">
+  <fieldset class="filter-cluster filter-cluster-3">
+    <legend>Match</legend>
+    <select name="outcome">
+      <option value="">outcome: any</option>
+      {% for value in ["resolved","ambiguous","none","blocked"] %}
+      <option value="{{ value }}" {% if data.filters.outcome == value %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+    <input name="blocked_reason" value="{{ data.filters.blocked_reason }}" placeholder="blocked reason">
+    {{ epoch_selector(data) }}
+  </fieldset>
+  <fieldset class="filter-cluster filter-cluster-2">
+    <legend>Time window</legend>
+    <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
+    <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
+  </fieldset>
+  <div class="filter-footer">
+    <div class="filter-actions">
+      <button type="submit">Filter</button>
+      <a class="button secondary" href="/identity">Reset</a>
+    </div>
+    <div class="quick-ranges" aria-label="Quick time ranges">
+      <span>Time:</span>
+      {% for preset in data.time_ranges %}
+      <a href="{{ request.url.include_query_params(after=preset.after, before='') }}">{{ preset.label }}</a>
+      {% endfor %}
+    </div>
   </div>
 </form>
 

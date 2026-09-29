@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_scope_picker.html" import scope_picker %}
 {% block title %}State · Hina Dashboard{% endblock %}
 {% block content %}
 {% macro chain_rows(chain, include_server=true) -%}
@@ -15,28 +16,55 @@
   </div>
 </section>
 
-<form class="filters search-filter" method="get">
-  <div class="filter-row">
-    <input name="target_guild_id" inputmode="numeric" value="{{ data.filters.target_guild_id }}" placeholder="guild id (empty = DM)">
-    <input name="target_channel_id" inputmode="numeric" value="{{ data.filters.target_channel_id }}" placeholder="channel id">
-    <input name="target_user_id" inputmode="numeric" value="{{ data.filters.target_user_id }}" placeholder="user id">
-    <button type="submit">Evaluate scope</button>
-    <a class="button secondary" href="/state">Reset</a>
-  </div>
-  <div class="search-primary">
-    <label for="state-note-search">Manual note search</label>
-    <div class="search-primary-row">
-      <input id="state-note-search" class="search-input" name="q" value="{{ data.filters.q }}" placeholder="scope / user / note content">
-      <button type="submit">Search notes</button>
+<section class="state-query-panel" aria-label="State lookup controls">
+  <form class="state-control-section state-scope-form" method="get" aria-labelledby="state-scope-title">
+    {% if data.filters.q %}<input type="hidden" name="q" value="{{ data.filters.q }}">{% endif %}
+    <header class="state-control-heading">
+      <div>
+        <h2 id="state-scope-title">Evaluate target scope</h2>
+        <p>Inspect the effective memory and recent-context policy for one Discord scope.</p>
+      </div>
+    </header>
+    <div class="scope-target-row">
+      {{ scope_picker("target", data.filters.target_scope_type, data.filters.target_guild_id, data.filters.target_channel_id, label="Target scope", allow_any=false) }}
+      <label class="scope-target-user">
+        <span>User ID</span>
+        <input name="target_user_id" inputmode="numeric" value="{{ data.filters.target_user_id }}" placeholder="user id">
+      </label>
+      <div class="scope-target-actions">
+        <button type="submit">Evaluate scope</button>
+        <a class="button secondary" href="/state">Reset all</a>
+      </div>
     </div>
-  </div>
-</form>
+  </form>
+
+  <form class="state-control-section state-note-form" method="get" aria-labelledby="state-note-title">
+    <input type="hidden" name="target_scope_type" value="{{ data.filters.target_scope_type }}">
+    <input type="hidden" name="target_guild_id" value="{{ data.filters.target_guild_id }}">
+    <input type="hidden" name="target_channel_id" value="{{ data.filters.target_channel_id }}">
+    <input type="hidden" name="target_user_id" value="{{ data.filters.target_user_id }}">
+    <header class="state-control-heading">
+      <div>
+        <h2 id="state-note-title">Search manual notes</h2>
+        <p>Search by scope, stored user name or ID, and note content.</p>
+      </div>
+    </header>
+    <div class="search-primary state-note-search">
+      <label for="state-note-search">Search query</label>
+      <div class="search-primary-row">
+        <input id="state-note-search" class="search-input" type="search" name="q" value="{{ data.filters.q }}" placeholder="scope / user / note content" enterkeyhint="search">
+        <button type="submit">Search notes</button>
+        {% if data.filters.q %}<a class="button secondary" href="{{ request.url.remove_query_params('q') }}">Clear</a>{% endif %}
+      </div>
+    </div>
+  </form>
+</section>
 
 {% if data.target_error %}
 <section class="notice danger">{{ data.target_error }}</section>
 {% elif not data.effective %}
 <section class="notice info">
-  Enter channel and user IDs to evaluate a scope. Leave guild ID empty to inspect a DM scope.
+  Choose Guild or DM, then enter the IDs needed for that scope.
 </section>
 {% else %}
 <section class="panel">

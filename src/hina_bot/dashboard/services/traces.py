@@ -13,6 +13,20 @@ from .base import Page, ReadService, _as_int, _parse_time, _timestamp, _turn_id
 _TERMINAL_EVENTS = {"turn.completed", "turn.failed", "turn.dropped"}
 
 
+def _conversation_scope_fields(value: object) -> dict[str, str | None]:
+    parts = str(value or "").split(":")
+    fields = {
+        parts[index]: parts[index + 1]
+        for index in range(0, len(parts) - 1, 2)
+    }
+    scope_type = parts[0] if parts and parts[0] in {"guild", "dm"} else None
+    return {
+        "scope_type": scope_type,
+        "guild_id": fields.get("guild"),
+        "channel_id": fields.get("channel"),
+    }
+
+
 class TraceService(ReadService):
     def __init__(
         self,
@@ -377,6 +391,7 @@ class TraceService(ReadService):
         rows = []
         for raw in raw_rows:
             row = dict(raw)
+            row.update(_conversation_scope_fields(row.get("scope")))
             row["search_matches"] = search_matches(
                 query,
                 (
@@ -413,6 +428,7 @@ class TraceService(ReadService):
         rows = []
         for row in self.repository.turn_context(turn_row_id, before=before, after=after):
             value = dict(row)
+            value.update(_conversation_scope_fields(value.get("scope")))
             value["selected"] = int(value["id"]) == int(turn_row_id)
             rows.append(value)
         return {

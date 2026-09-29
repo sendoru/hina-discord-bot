@@ -19,17 +19,25 @@
   </div>
   <details class="advanced-filters" {% if data.filters.scope or data.filters.realm or data.filters.user_id or data.filters.after or data.filters.before %}open{% endif %}>
     <summary>Advanced filters</summary>
-    <div class="filter-row">
-      <input name="scope" value="{{ data.filters.scope }}" placeholder="scope">
-      <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
-      <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
-      <label class="time-field">After
-        <input type="datetime-local" name="after" value="{{ data.filters.after }}">
-      </label>
-      <label class="time-field">Before
-        <input type="datetime-local" name="before" value="{{ data.filters.before }}">
-      </label>
-      <button type="submit">Apply filters</button>
+    <div class="filter-row grouped-filter-row">
+      <fieldset class="filter-cluster filter-cluster-3">
+        <legend>Context</legend>
+        <input name="scope" value="{{ data.filters.scope }}" placeholder="scope">
+        <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
+        <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-2">
+        <legend>Time window</legend>
+        <label class="time-field">After
+          <input type="datetime-local" name="after" value="{{ data.filters.after }}">
+        </label>
+        <label class="time-field">Before
+          <input type="datetime-local" name="before" value="{{ data.filters.before }}">
+        </label>
+      </fieldset>
+      <div class="filter-actions filter-row-actions">
+        <button type="submit">Apply filters</button>
+      </div>
     </div>
   </details>
   <div class="quick-ranges" aria-label="Quick time ranges">
@@ -45,18 +53,25 @@
   {% for row in data.rows %}
   <article class="panel conversation">
     <div class="conversation-head">
-      <div>
-        <strong>{{ row.scope }}</strong>
-        <span>{{ row.created_at | localtime }}</span>
+      <div class="conversation-head-primary">
+        <time class="conversation-time">{{ row.created_at | localtime }}</time>
       </div>
-      <div>
+      <div class="conversation-head-actions">
         <a href="/conversations/{{ row.id }}/context">context</a>
         {% if row.turn_id %}<a href="/traces/{{ row.turn_id }}">trace</a>{% else %}<span class="muted">no trace id</span>{% endif %}
         <code>msg {{ row.message_id }}</code>
       </div>
     </div>
-    <dl class="metadata compact">
-      <div><dt>Realm</dt><dd>{{ row.realm }}</dd></div>
+    <dl class="metadata compact conversation-metadata">
+      <div>
+        <dt>Server</dt>
+        <dd>
+          {% if row.guild_id %}<code>{{ row.guild_id }}</code>
+          {% elif row.scope_type == "dm" %}<span class="muted">Direct message</span>
+          {% else %}—{% endif %}
+        </dd>
+      </div>
+      <div><dt>Channel</dt><dd>{% if row.channel_id %}<code>{{ row.channel_id }}</code>{% else %}—{% endif %}</dd></div>
       <div><dt>User</dt><dd>{% if row.name %}{{ row.name }} · {% endif %}<code>{{ row.user_id }}</code></dd></div>
       <div><dt>Exportable</dt><dd>{{ row.exportable }}</dd></div>
     </dl>
