@@ -149,13 +149,7 @@ async def base_client():
     tempdir = tempfile.TemporaryDirectory()
     event_path = Path(tempdir.name) / "events.jsonl"
     client = BaseHinaClient(
-        Settings(
-            "test",
-            "test",
-            cooldown=0,
-            always_reply_channel_ids=frozenset({10}),
-            event_log_path=str(event_path),
-        ),
+        Settings("test", "test", cooldown=0, event_log_path=str(event_path)),
         store=store,
         llm=llm,
     )
@@ -332,7 +326,13 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
     llm = NS(close=AsyncMock())
     event_path = tmp_path / "events.jsonl"
     client = ProductionHinaClient(
-        Settings("test", "test", cooldown=0, event_log_path=str(event_path)),
+        Settings(
+            "test",
+            "test",
+            cooldown=0,
+            always_reply_channel_ids=frozenset({10}),
+            event_log_path=str(event_path),
+        ),
         store=store,
         llm=llm,
     )
