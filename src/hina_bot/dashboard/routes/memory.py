@@ -13,6 +13,8 @@ def build_router(service: MemoryService, templates: Jinja2Templates) -> APIRoute
         request: Request,
         page: int = 1,
         user_id: str = "",
+        origin_scope_type: str = "",
+        origin_guild_id: str = "",
         origin_realm: str = "",
         origin_channel_id: str = "",
         kind: str = "",
@@ -30,6 +32,8 @@ def build_router(service: MemoryService, templates: Jinja2Templates) -> APIRoute
         data = service.memory_items(
             page=page,
             user_id=user_id,
+            origin_scope_type=origin_scope_type,
+            origin_guild_id=origin_guild_id,
             origin_realm=origin_realm,
             origin_channel_id=origin_channel_id,
             kind=kind,
