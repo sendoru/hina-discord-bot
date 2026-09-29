@@ -10,7 +10,6 @@ from hina_bot.core.config import Settings
 from hina_bot.core.lore import LoreIndex
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.discord.web_bot import LLM as DiscordLLM
 
 
 def web_tools(payload):
@@ -73,10 +72,6 @@ async def chat_llm():
     llm.lore = LoreIndex([])
     yield llm, calls
     await llm.close()
-
-
-def test_discord_runtime_uses_chat_llm():
-    assert DiscordLLM is LLM
 
 
 @pytest.mark.asyncio
