@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_filter_ui.html" import active_filter_chips %}
+{% from "_scope_picker.html" import scope_picker %}
 {% block title %}Memory · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -21,12 +22,11 @@
       <button type="submit">Search</button>
     </div>
   </div>
-  <details class="advanced-filters" {% if data.filters.user_id or data.filters.origin_realm or data.filters.origin_channel_id or data.filters.kind or data.filters.disclosure or data.filters.status or data.filters.relationship or data.filters.confidence_min or data.filters.confidence_max or data.filters.created_after or data.filters.created_before or data.filters.updated_after or data.filters.updated_before %}open{% endif %}>
+  <details class="advanced-filters" {% if data.filters.user_id or data.filters.origin_scope_type or data.filters.origin_realm or data.filters.origin_channel_id or data.filters.kind or data.filters.disclosure or data.filters.status or data.filters.relationship or data.filters.confidence_min or data.filters.confidence_max or data.filters.created_after or data.filters.created_before or data.filters.updated_after or data.filters.updated_before %}open{% endif %}>
     <summary>Advanced filters</summary>
     <div class="filter-row">
     <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
-    <input name="origin_realm" value="{{ data.filters.origin_realm }}" placeholder="origin realm">
-    <input name="origin_channel_id" value="{{ data.filters.origin_channel_id }}" placeholder="channel id">
+    {{ scope_picker("origin", data.filters.origin_scope_type, data.filters.origin_guild_id, data.filters.origin_channel_id, label="Origin scope") }}
     <select name="kind">
       <option value="">all kinds</option>
       {% for value in ["fact","event","preference","relationship","boundary","task"] %}
