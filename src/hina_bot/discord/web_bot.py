@@ -359,6 +359,7 @@ class HinaClient(BaseHinaClient):
                         self.user.id,
                         self.settings.dm_always_reply,
                         self.settings.call_prefixes,
+                        self.settings.always_reply_channel_ids,
                     )
                 )
                 if policy == "direct" and not own_bot and historical_text is None:
@@ -398,6 +399,7 @@ class HinaClient(BaseHinaClient):
             self.user.id,
             self.settings.dm_always_reply,
             self.settings.call_prefixes,
+            self.settings.always_reply_channel_ids,
         )
         scope = Scope(
             message.guild.id if message.guild else None,
@@ -410,8 +412,9 @@ class HinaClient(BaseHinaClient):
             return
 
         # Passive messages from other bots remain channel context only in chatlog `all` mode.
-        # An explicit mention/reply ping is different: it is a real invocation and continues through
-        # the normal request pipeline, while prefixes and DM auto-reply remain human-only.
+        # Explicit call prefixes and mention/reply pings are real invocations and continue through
+        # the normal request pipeline. DM auto-reply and guild always-reply channels remain
+        # human-only implicit triggers.
         if message.author.bot and text is None:
             if (
                 scope.guild_id is not None
@@ -472,6 +475,7 @@ class HinaClient(BaseHinaClient):
                         text,
                         visibility_mode=target_visibility,
                         call_prefixes=self.settings.call_prefixes,
+                        always_reply_channel_ids=self.settings.always_reply_channel_ids,
                         extra_targets=resolved_targets,
                     )
                 ),
