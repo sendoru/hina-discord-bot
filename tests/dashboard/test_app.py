@@ -214,7 +214,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     conversation_context = client.get("/conversations/1/context")
     memory = client.get("/memory?q=dashboard")
     memory_dm = client.get("/memory?origin_scope_type=dm")
-    memory_legacy_dm = client.get("/memory?origin_realm=dm:10")
+    memory_legacy_dm = client.get(
+        "/memory?origin_realm=dm:100&origin_channel_id=10"
+    )
     memory_by_name = client.get("/memory?user_id=Dashboard%20User")
     memory_detail = client.get("/memory/1")
     relationships = client.get(
@@ -313,7 +315,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'name="target_scope_type" value="guild" checked' in state.text
     assert state_dm.status_code == 200
     assert 'name="target_scope_type" value="dm" checked' in state_dm.text
-    assert "<code>dm:10</code>" in state_dm.text
+    assert "<code>dm:100</code>" in state_dm.text
     assert "dashboard server note" in state.text
     assert "Dashboard User · <code>user:100</code>" in state.text
     assert "dashboard user note" in state.text
