@@ -20,6 +20,25 @@ def test_uses_exact_recent_turns_not_already_in_channel_context():
         store.close()
 
 
+def test_dedup_does_not_backfill_older_turns():
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100, True)
+    try:
+        for i in range(1, 7):
+            store.add(scope, 100 + i, f"q{i}", f"a{i}")
+        rows = LLM._server_recent_conversation(
+            store,
+            scope,
+            [
+                {"message_id": 105, "content": "q5"},
+                {"message_id": 106, "content": "q6"},
+            ],
+        )
+        assert [row["user"] for row in rows] == ["q3", "q4"]
+    finally:
+        store.close()
+
+
 def test_saved_summary_does_not_remove_exact_recent_tail():
     store = Store(":memory:")
     scope = Scope(1, 10, 100, True)
