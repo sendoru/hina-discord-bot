@@ -336,6 +336,7 @@ class AdminRepository:
         *,
         user_id: str = "",
         origin_realm: str = "",
+        origin_realm_prefix: str = "",
         origin_channel_id: str = "",
         kind: str = "",
         disclosure: str = "",
@@ -372,6 +373,10 @@ class AdminRepository:
             if value:
                 clauses.append(f"{column}=?")
                 params.append(value)
+        if origin_realm_prefix and not origin_realm:
+            escaped_realm_prefix = self._like(origin_realm_prefix)
+            clauses.append("origin_realm LIKE ? ESCAPE '\\'")
+            params.append(f"{escaped_realm_prefix}%")
         if status:
             if "status" in columns:
                 clauses.append("status=?")
@@ -710,6 +715,7 @@ class AdminRepository:
         *,
         user_id: str = "",
         origin_realm: str = "",
+        origin_realm_prefix: str = "",
         origin_channel_id: str = "",
         relation: str = "",
         kind: str = "",
@@ -732,6 +738,10 @@ class AdminRepository:
             if value:
                 clauses.append(f"{column}=?")
                 params.append(value)
+        if origin_realm_prefix and not origin_realm:
+            escaped_realm_prefix = self._like(origin_realm_prefix)
+            clauses.append("p.origin_realm LIKE ? ESCAPE '\\'")
+            params.append(f"{escaped_realm_prefix}%")
         if kind:
             clauses.append("(n.kind=? OR t.kind=?)")
             params.extend((kind, kind))
