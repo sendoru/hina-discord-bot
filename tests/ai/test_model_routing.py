@@ -2,12 +2,14 @@ from itertools import pairwise
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from hina_bot.ai.freshness import FreshnessMode
 from hina_bot.ai.information_plan import InformationPlan
 from hina_bot.ai.information_routing import InformationRoute
 from hina_bot.ai.model_routing import ModelTier, build_model_plan
+from hina_bot.ai.providers import ProviderAPIError
 from hina_bot.ai.routing_plan import RoutingPlan
 from hina_bot.ai.rp_output_policy import ProvenanceMode
 from hina_bot.ai.runtime_llm import LLM
@@ -340,6 +342,112 @@ async def test_runtime_forwards_each_tiers_gemini_budget():
         assert smart["model"] == "gemini-smart"
         assert smart["max_output_tokens"] == 8192
         assert smart["thinking_level"] == "medium"
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_smart_503_falls_back_to_fast_once():
+    response = NS(status="completed", output_text="복구됨.", output=[], usage=None)
+    raw = NS(
+        provider_name="gemini",
+        responses=NS(
+            create=AsyncMock(
+                side_effect=[
+                    ProviderAPIError(
+                        "gemini",
+                        503,
+                        code="UNAVAILABLE",
+                        message="high demand",
+                    ),
+                    response,
+                ]
+            )
+        ),
+        close=AsyncMock(),
+    )
+    llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        result = await llm.answer(
+            store,
+            Scope(None, 10, 100),
+            "사용자",
+            "이 알고리즘의 병목을 분석해 줘",
+        )
+        calls = [call.kwargs for call in raw.responses.create.await_args_list]
+        assert result == "복구됨."
+        assert [call["model"] for call in calls] == ["gemini-smart", "gemini-fast"]
+        assert [call["thinking_level"] for call in calls] == ["medium", "minimal"]
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_fast_timeout_retries_same_fast_model_once():
+    response = NS(status="completed", output_text="복구됨.", output=[], usage=None)
+    raw = NS(
+        provider_name="gemini",
+        responses=NS(
+            create=AsyncMock(
+                side_effect=[
+                    httpx.ReadTimeout("timed out"),
+                    response,
+                ]
+            )
+        ),
+        close=AsyncMock(),
+    )
+    llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        result = await llm.answer(
+            store,
+            Scope(None, 10, 100),
+            "사용자",
+            "안녕",
+        )
+        calls = [call.kwargs for call in raw.responses.create.await_args_list]
+        assert result == "복구됨."
+        assert [call["model"] for call in calls] == ["gemini-fast", "gemini-fast"]
+        assert len(calls) == 2
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_nontransient_400_is_not_retried():
+    raw = NS(
+        provider_name="gemini",
+        responses=NS(
+            create=AsyncMock(
+                side_effect=ProviderAPIError(
+                    "gemini",
+                    400,
+                    code="INVALID_ARGUMENT",
+                    message="bad request",
+                )
+            )
+        ),
+        close=AsyncMock(),
+    )
+    llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        with pytest.raises(ProviderAPIError):
+            await llm.answer(
+                store,
+                Scope(None, 10, 100),
+                "사용자",
+                "안녕",
+            )
+        assert raw.responses.create.await_count == 1
     finally:
         await llm.close()
         store.close()
