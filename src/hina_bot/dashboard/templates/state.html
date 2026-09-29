@@ -23,8 +23,10 @@
       <span>User ID</span>
       <input name="target_user_id" inputmode="numeric" value="{{ data.filters.target_user_id }}" placeholder="user id">
     </label>
-    <button type="submit">Evaluate scope</button>
-    <a class="button secondary" href="/state">Reset</a>
+    <div class="scope-target-actions">
+      <button type="submit">Evaluate scope</button>
+      <a class="button secondary" href="/state">Reset</a>
+    </div>
   </div>
   <div class="search-primary">
     <label for="state-note-search">Manual note search</label>
