@@ -2346,10 +2346,6 @@ pre {
   align-items: flex-start !important;
 }
 
-.conversation-head-primary .scope-key {
-  flex: 0 1 auto;
-}
-
 .conversation-time {
   flex: 0 0 auto;
   padding-top: 2px;
@@ -2361,6 +2357,16 @@ pre {
   justify-content: flex-end;
 }
 
+.metadata.compact.conversation-metadata {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+@media (max-width: 1000px) {
+  .metadata.compact.conversation-metadata {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   .conversation-head-primary {
     align-items: flex-start;
@@ -2368,6 +2374,12 @@ pre {
 
   .conversation-head-actions {
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .metadata.compact.conversation-metadata {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
