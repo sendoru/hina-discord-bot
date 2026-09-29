@@ -451,7 +451,10 @@ def test_memory_scope_picker_filters_guild_and_dm_without_raw_realms(tmp_path):
     )
     assert [row["content"] for row in exact_guild["rows"]] == ["guild one"]
 
-    legacy = service.memory_items(origin_realm="dm:20")
+    legacy = service.memory_items(
+        origin_realm="dm:100",
+        origin_channel_id="20",
+    )
     assert [row["content"] for row in legacy["rows"]] == ["dm one"]
     assert legacy["filters"]["origin_scope_type"] == "dm"
     assert legacy["filters"]["origin_channel_id"] == "20"
