@@ -42,6 +42,16 @@ def build_interaction_context(
         if len(mentions) >= _MAX_MENTIONS:
             break
 
+    self_identity = next(
+        (dict(item) for item in mentions if item["is_self"]),
+        {
+            "user_id": str(bot_id),
+            "name": "",
+            "is_bot": True,
+            "is_self": True,
+        },
+    )
+
     reply_target = None
     for row in replied or ():
         user_id = str(row.get("author_user_id") or row.get("user_id") or "")
@@ -57,6 +67,7 @@ def build_interaction_context(
 
     return {
         "speaker": _identity(author, bot_id) if author is not None else None,
+        "self": self_identity,
         "mentions": mentions,
         "reply_target": reply_target,
     }

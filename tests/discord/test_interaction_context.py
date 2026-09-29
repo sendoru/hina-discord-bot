@@ -30,6 +30,12 @@ def test_mentions_and_reply_target_remain_distinct_structural_signals():
             "is_bot": False,
             "is_self": False,
         },
+        "self": {
+            "user_id": "99",
+            "name": "히나",
+            "is_bot": True,
+            "is_self": True,
+        },
         "mentions": [{
             "user_id": "200",
             "name": "리오",
@@ -76,4 +82,34 @@ def test_strict_metadata_can_omit_third_party_mention_names():
     assert context["mentions"][0]["name"] == ""
     assert context["mentions"][1]["user_id"] == "99"
     assert context["mentions"][1]["name"] == "히나"
+    assert context["self"] == {
+        "user_id": "99",
+        "name": "히나",
+        "is_bot": True,
+        "is_self": True,
+    }
+
+
+def test_third_party_only_mention_keeps_authoritative_self_identity_in_strict_mode():
+    rio = user(200, "리오")
+    message = NS(author=user(100, "사용자"), mentions=[rio])
+
+    context = build_interaction_context(
+        message,
+        99,
+        include_mention_names=False,
+    )
+
+    assert context["self"] == {
+        "user_id": "99",
+        "name": "",
+        "is_bot": True,
+        "is_self": True,
+    }
+    assert context["mentions"] == [{
+        "user_id": "200",
+        "name": "",
+        "is_bot": False,
+        "is_self": False,
+    }]
 
