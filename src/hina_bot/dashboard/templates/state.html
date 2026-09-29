@@ -16,39 +16,25 @@
   </div>
 </section>
 
-<form class="filter-stack" method="get">
-  <section class="filter-card">
-    <div class="filter-card-heading">
-      <div>
-        <strong>Evaluate target scope</strong>
-        <span>Inspect the effective memory and recent-context state for one user.</span>
-      </div>
-      <a class="filter-reset" href="/state">Reset</a>
+<form class="filters search-filter" method="get">
+  <div class="filter-row scope-target-row">
+    {{ scope_picker("target", data.filters.target_scope_type, data.filters.target_guild_id, data.filters.target_channel_id, label="Target scope", allow_any=false) }}
+    <label class="scope-target-user">
+      <span>User ID</span>
+      <input name="target_user_id" inputmode="numeric" value="{{ data.filters.target_user_id }}" placeholder="user id">
+    </label>
+    <div class="scope-target-actions">
+      <button type="submit">Evaluate scope</button>
+      <a class="button secondary" href="/state">Reset</a>
     </div>
-    <div class="scope-target-row">
-      {{ scope_picker("target", data.filters.target_scope_type, data.filters.target_guild_id, data.filters.target_channel_id, label="Target scope", allow_any=false) }}
-      <label class="scope-target-user">
-        <span>User ID</span>
-        <input name="target_user_id" inputmode="numeric" value="{{ data.filters.target_user_id }}" placeholder="user id">
-      </label>
-      <div class="scope-target-actions">
-        <button type="submit">Evaluate scope</button>
-      </div>
-    </div>
-  </section>
-
-  <section class="filter-card">
-    <div class="filter-card-heading">
-      <div>
-        <strong>Search manual notes</strong>
-        <span>Search stored server/user notes independently of the target evaluation above.</span>
-      </div>
-    </div>
+  </div>
+  <div class="search-primary">
+    <label for="state-note-search">Manual note search</label>
     <div class="search-primary-row">
       <input id="state-note-search" class="search-input" name="q" value="{{ data.filters.q }}" placeholder="scope / user / note content">
       <button type="submit">Search notes</button>
     </div>
-  </section>
+  </div>
 </form>
 
 {% if data.target_error %}
