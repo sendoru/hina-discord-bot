@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "_scope_ui.html" import scope_key %}
 {% block title %}Conversation Context · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -15,7 +14,6 @@
   <article class="context-turn {% if row.selected %}selected{% endif %}">
     <div class="conversation-head">
       <div class="conversation-head-primary">
-        {{ scope_key(row.scope) }}
         <time class="conversation-time">{{ row.created_at | localtime }}</time>
       </div>
       <div class="conversation-head-actions">
@@ -23,9 +21,17 @@
         <code>msg {{ row.message_id }}</code>
       </div>
     </div>
-    <dl class="metadata compact">
+    <dl class="metadata compact conversation-metadata">
+      <div>
+        <dt>Server</dt>
+        <dd>
+          {% if row.guild_id %}<code>{{ row.guild_id }}</code>
+          {% elif row.scope_type == "dm" %}<span class="muted">Direct message</span>
+          {% else %}—{% endif %}
+        </dd>
+      </div>
+      <div><dt>Channel</dt><dd>{% if row.channel_id %}<code>{{ row.channel_id }}</code>{% else %}—{% endif %}</dd></div>
       <div><dt>User</dt><dd>{% if row.name %}{{ row.name }} · {% endif %}<code>{{ row.user_id }}</code></dd></div>
-      <div><dt>Realm</dt><dd>{{ row.realm }}</dd></div>
       <div><dt>Selected</dt><dd>{{ "yes" if row.selected else "no" }}</dd></div>
     </dl>
     <h3>Input</h3>

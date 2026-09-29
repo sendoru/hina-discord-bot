@@ -246,7 +246,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
-    assert 'dashboard.css?v=20260930-3' in overview.text
+    assert 'dashboard.css?v=20260930-4' in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -294,7 +294,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="filter-row grouped-filter-row"' in conversations.text
     assert "<legend>Context</legend>" in conversations.text
     assert 'class="conversation-head-primary"' in conversations.text
-    assert 'class="scope-key"' in conversations.text
+    assert 'class="metadata compact conversation-metadata"' in conversations.text
+    assert "<dt>Server</dt>" in conversations.text
+    assert "<dt>Channel</dt>" in conversations.text
+    assert 'class="scope-key"' not in conversations.text
     assert 'aria-label="Active filters"' in conversations.text
     assert 'type="datetime-local"' in conversations.text
     assert "<mark>dashboard</mark>" in conversations.text
@@ -302,7 +305,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "hello dashboard" in conversations_by_name.text
     assert conversation_context.status_code == 200
     assert "Conversation Context" in conversation_context.text
-    assert 'class="scope-key"' in conversation_context.text
+    assert "<dt>Server</dt>" in conversation_context.text
+    assert "<dt>Channel</dt>" in conversation_context.text
+    assert 'class="scope-key"' not in conversation_context.text
     assert "dashboard memory" in memory.text
     assert "Content search" in memory.text
     assert "Advanced filters" in memory.text

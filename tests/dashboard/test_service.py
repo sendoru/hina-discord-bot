@@ -341,6 +341,9 @@ def test_conversations_use_bounded_repository_filters(tmp_path):
 
     assert data["page"].total == 1
     assert data["rows"][0]["reply"] == "answer"
+    assert data["rows"][0]["scope_type"] == "guild"
+    assert data["rows"][0]["guild_id"] == "1"
+    assert data["rows"][0]["channel_id"] == "10"
     assert service.conversations(query="not-found")["page"].total == 0
 
 
@@ -638,6 +641,8 @@ def test_conversation_context_marks_selected_turn(tmp_path):
     selected = [row for row in data["rows"] if row["selected"]]
     assert len(selected) == 1
     assert selected[0]["id"] == row_id
+    assert selected[0]["guild_id"] == "1"
+    assert selected[0]["channel_id"] == "10"
 
 
 
