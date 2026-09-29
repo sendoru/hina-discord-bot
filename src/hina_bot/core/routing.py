@@ -44,8 +44,13 @@ def _strip_boundary_bot_mentions(text: str, bot_id: int) -> str:
     return text.strip()
 
 
-def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
-                 prefixes: tuple[str, ...] = ("히나야",)) -> str | None:
+def trigger_text(
+    message,
+    bot_id: int,
+    dm_always_reply: bool = False,
+    prefixes: tuple[str, ...] = ("히나야",),
+    always_reply_channel_ids: frozenset[int] = frozenset(),
+) -> str | None:
     if message.webhook_id is not None:
         return None
     raw = message.content.lstrip()
@@ -53,23 +58,35 @@ def trigger_text(message, bot_id: int, dm_always_reply: bool = False,
     # Do not infer a ping merely from message.reference.
     ping = any(user.id == bot_id for user in message.mentions)
     bot_author = bool(getattr(message.author, "bot", False))
+    matched = _matched_prefix(raw, prefixes)
+    keyword = matched is not None
 
     if bot_author:
         # Never react to our own Gateway message. DMs are human-only; in guilds, other bots may
-        # call Hina only through an explicit Discord mention/reply ping so arbitrary bot chatter
-        # cannot spend model quota.
+        # call Hina only through an explicit call prefix or Discord mention/reply ping so
+        # arbitrary bot chatter cannot spend model quota.
         if getattr(message.author, "id", None) == bot_id:
             return None
-        if getattr(message, "guild", None) is None or not ping:
+        if getattr(message, "guild", None) is None or not (ping or keyword):
             return None
-        return _strip_boundary_bot_mentions(raw, bot_id)
+        text = _strip_boundary_bot_mentions(raw, bot_id)
+        matched = _matched_prefix(text, prefixes)
+        if matched is not None:
+            remainder = text[len(matched):]
+            if not remainder.strip(f" \t\n{_CALL_PUNCTUATION}"):
+                return ""
+        return text
 
-    matched = _matched_prefix(raw, prefixes)
-    keyword = matched is not None
-    implicit_dm = message.guild is None and dm_always_reply
-    if implicit_dm:
-        # In always-reply DMs, every human message is already a conversation turn rather than
-        # an explicit call. Preserve call prefixes and boundary mentions as part of the utterance.
+    channel_id = getattr(getattr(message, "channel", None), "id", None)
+    implicit_turn = (
+        message.guild is None and dm_always_reply
+    ) or (
+        message.guild is not None and channel_id in always_reply_channel_ids
+    )
+    if implicit_turn:
+        # In always-reply conversations, every human message is already a conversation turn
+        # rather than an explicit call. Preserve call prefixes and boundary mentions as part of
+        # the utterance, matching DM_ALWAYS_REPLY semantics.
         return raw
     if not (ping or keyword):
         return None
