@@ -11,20 +11,30 @@
   {{ telemetry_window(data.available) }}
 </section>
 
-<form class="filters" method="get">
-  <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
-  <input name="model" value="{{ data.filters.model }}" placeholder="model">
-  <input name="provider" value="{{ data.filters.provider }}" placeholder="provider">
-  {{ epoch_selector(data) }}
-  <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
-  <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
-  <button type="submit">Filter</button>
-  <a class="button secondary" href="/analytics">Reset</a>
-  <div class="quick-ranges" aria-label="Quick time ranges">
-    <span>Time:</span>
-    {% for preset in data.time_ranges %}
-    <a href="{{ request.url.include_query_params(after=preset.after, before='') }}">{{ preset.label }}</a>
-    {% endfor %}
+<form class="filters filter-layout" method="get">
+  <fieldset class="filter-cluster filter-cluster-4">
+    <legend>Match</legend>
+    <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
+    <input name="model" value="{{ data.filters.model }}" placeholder="model">
+    <input name="provider" value="{{ data.filters.provider }}" placeholder="provider">
+    {{ epoch_selector(data) }}
+  </fieldset>
+  <fieldset class="filter-cluster filter-cluster-2">
+    <legend>Time window</legend>
+    <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
+    <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
+  </fieldset>
+  <div class="filter-footer">
+    <div class="filter-actions">
+      <button type="submit">Filter</button>
+      <a class="button secondary" href="/analytics">Reset</a>
+    </div>
+    <div class="quick-ranges" aria-label="Quick time ranges">
+      <span>Time:</span>
+      {% for preset in data.time_ranges %}
+      <a href="{{ request.url.include_query_params(after=preset.after, before='') }}">{{ preset.label }}</a>
+      {% endfor %}
+    </div>
   </div>
 </form>
 
