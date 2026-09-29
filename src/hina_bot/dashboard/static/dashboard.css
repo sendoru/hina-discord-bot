@@ -1881,32 +1881,37 @@ pre {
    ------------------------------------------------------------------------- */
 .scope-picker {
   display: grid;
-  gap: 8px;
-  min-width: min(100%, 360px);
+  flex: 1 1 430px;
+  gap: 7px;
+  min-width: 320px;
   margin: 0;
-  padding: 9px 10px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: rgba(13, 16, 22, .24);
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
-.scope-picker legend {
-  padding: 0 5px;
-  color: var(--muted-2);
+.scope-picker-head {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 10px;
+}
+
+.scope-picker-label {
+  flex: 0 0 auto;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 650;
   letter-spacing: .02em;
 }
 
 .scope-picker-types {
-  display: inline-grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 3px;
-  padding: 3px;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(13, 16, 22, .38);
+  background: rgba(13, 16, 22, .32);
 }
 
 .scope-picker-option {
@@ -1919,22 +1924,32 @@ pre {
   position: absolute;
   width: 1px;
   height: 1px;
+  min-height: 0;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
   opacity: 0;
-  pointer-events: none;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .scope-picker-option span {
   display: flex;
+  min-height: 28px;
   align-items: center;
   justify-content: center;
-  min-height: 32px;
-  padding: 5px 9px;
+  padding: 3px 10px;
   border: 1px solid transparent;
   border-radius: 6px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 620;
+  line-height: 1;
   cursor: pointer;
+  transition:
+    border-color .15s ease,
+    background .15s ease,
+    color .15s ease;
 }
 
 .scope-picker-option:hover span {
@@ -1942,26 +1957,26 @@ pre {
   background: rgba(255, 255, 255, .025);
 }
 
-.scope-picker-option:has(input:focus-visible) span {
+.scope-picker-option input:focus-visible + span {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.scope-picker-option:has(input:checked) span {
+.scope-picker-option input:checked + span {
   border-color: rgba(145, 175, 255, .28);
   background: var(--accent-soft);
   color: var(--accent-strong);
 }
 
 .scope-picker-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  gap: 8px;
+  min-width: 0;
 }
 
 .scope-picker-field {
   display: none;
-  flex: 1 1 145px;
   min-width: 0;
   gap: 4px;
 }
@@ -1971,12 +1986,14 @@ pre {
   color: var(--muted-2);
   font-size: 10px;
   font-weight: 620;
+  line-height: 1.2;
 }
 
 .scope-picker-field input,
 .scope-target-user input {
   width: 100%;
   min-width: 0;
+  min-height: 40px;
 }
 
 .scope-picker:has(input[value="guild"]:checked) .scope-picker-guild-field,
@@ -1986,16 +2003,55 @@ pre {
   flex-direction: column;
 }
 
+.scope-picker:has(input[value="dm"]:checked) .scope-picker-channel-field {
+  grid-column: 1 / -1;
+}
+
 .scope-target-row {
+  display: grid;
+  grid-template-columns:
+    minmax(430px, 1.6fr)
+    minmax(180px, .65fr)
+    auto;
+  gap: 12px;
   align-items: end;
+}
+
+.scope-target-row > .scope-picker {
+  width: 100%;
 }
 
 .scope-target-user {
   display: flex;
-  flex: 1 1 170px;
-  min-width: 150px;
+  min-width: 0;
   flex-direction: column;
   gap: 4px;
+}
+
+.scope-target-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scope-target-actions > button,
+.scope-target-actions > .button {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.scope-target-row + .search-primary {
+  margin-top: 16px;
+}
+
+@media (max-width: 1100px) {
+  .scope-target-row {
+    grid-template-columns: minmax(360px, 1fr) minmax(170px, .6fr);
+  }
+
+  .scope-target-actions {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 720px) {
@@ -2004,18 +2060,43 @@ pre {
     min-width: 0;
   }
 
-  .scope-picker-fields {
-    flex-direction: column;
+  .scope-picker-head {
+    flex-wrap: wrap;
   }
 
-  .scope-picker-field,
-  .scope-target-user {
-    flex-basis: auto;
+  .scope-picker-types {
     width: 100%;
   }
 
-  .scope-target-row > button,
-  .scope-target-row > .button {
+  .scope-picker-option {
+    flex: 1 1 0;
+  }
+
+  .scope-picker-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scope-picker:has(input[value="dm"]:checked) .scope-picker-channel-field {
+    grid-column: auto;
+  }
+
+  .scope-target-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .scope-target-actions {
+    grid-column: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+  }
+
+  .scope-target-actions > button {
+    width: 100%;
+  }
+
+  .scope-target-user {
     width: 100%;
   }
 }
