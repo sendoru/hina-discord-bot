@@ -244,10 +244,9 @@ class HinaClient(discord.Client):
         for scope in scopes:
             if self.stopping:
                 return
-            channel_lock = self.channel_lock(scope)
             memory_lock = self.memory_lock(scope)
             try:
-                async with channel_lock, memory_lock:
+                async with memory_lock:
                     mode = MemoryMode(self.store.memory_mode(scope))
                     if not mode.writes:
                         continue
