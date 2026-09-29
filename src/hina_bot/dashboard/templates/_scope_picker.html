@@ -1,21 +1,23 @@
 {% macro scope_picker(prefix, scope_type, guild_id, channel_id, label="Scope", allow_any=true) -%}
-<fieldset class="scope-picker">
-  <legend>{{ label }}</legend>
-  <div class="scope-picker-types" role="group" aria-label="{{ label }} type">
-    {% if allow_any %}
-    <label class="scope-picker-option">
-      <input type="radio" name="{{ prefix }}_scope_type" value="any" {% if not scope_type %}checked{% endif %}>
-      <span>Any</span>
-    </label>
-    {% endif %}
-    <label class="scope-picker-option">
-      <input type="radio" name="{{ prefix }}_scope_type" value="guild" {% if scope_type == "guild" %}checked{% endif %}>
-      <span>Guild</span>
-    </label>
-    <label class="scope-picker-option">
-      <input type="radio" name="{{ prefix }}_scope_type" value="dm" {% if scope_type == "dm" %}checked{% endif %}>
-      <span>DM</span>
-    </label>
+<div class="scope-picker">
+  <div class="scope-picker-head">
+    <span class="scope-picker-label">{{ label }}</span>
+    <div class="scope-picker-types" role="group" aria-label="{{ label }} type">
+      {% if allow_any %}
+      <label class="scope-picker-option">
+        <input type="radio" name="{{ prefix }}_scope_type" value="any" {% if not scope_type %}checked{% endif %}>
+        <span>Any</span>
+      </label>
+      {% endif %}
+      <label class="scope-picker-option">
+        <input type="radio" name="{{ prefix }}_scope_type" value="guild" {% if scope_type == "guild" %}checked{% endif %}>
+        <span>Guild</span>
+      </label>
+      <label class="scope-picker-option">
+        <input type="radio" name="{{ prefix }}_scope_type" value="dm" {% if scope_type == "dm" %}checked{% endif %}>
+        <span>DM</span>
+      </label>
+    </div>
   </div>
   <div class="scope-picker-fields">
     <label class="scope-picker-field scope-picker-guild-field" data-scope-field="guild">
@@ -27,5 +29,5 @@
       <input name="{{ prefix }}_channel_id" inputmode="numeric" value="{{ channel_id }}" placeholder="{{ "DM channel id" if scope_type == "dm" else "channel id" }}">
     </label>
   </div>
-</fieldset>
+</div>
 {%- endmacro %}
