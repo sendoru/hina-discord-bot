@@ -50,6 +50,7 @@ def test_scope_filter_preserves_legacy_raw_realm_urls():
 
 def test_any_scope_ignores_stale_structured_ids():
     scope = normalize_scope_filter(
+        scope_type="any",
         guild_id="123",
         channel_id="456",
     )
@@ -58,6 +59,10 @@ def test_any_scope_ignores_stale_structured_ids():
     assert scope.channel_id == ""
     assert scope.realm == ""
     assert scope.realm_prefix == ""
+
+    legacy_channel_only = normalize_scope_filter(channel_id="456")
+    assert legacy_channel_only.scope_type == ""
+    assert legacy_channel_only.channel_id == "456"
 
 
 def test_target_scope_type_preserves_legacy_dm_and_defaults_to_guild():
