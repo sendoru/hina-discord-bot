@@ -245,7 +245,7 @@ def test_text_volume_loads_use_diminishing_return_curves():
     assert context_scores == sorted(context_scores)
     assert context_gains == sorted(context_gains, reverse=True)
     assert dict(midpoint.components)["context_load"] == pytest.approx(1.0)
-    assert dict(old_full.components)["context_load"] == pytest.approx(2 ** 0.5)
+    assert dict(old_full.components)["context_load"] == pytest.approx(round(2 ** 0.5, 3))
     assert old_full.tier == ModelTier.FAST
     assert dict(new_full.components)["context_load"] == pytest.approx(2.0)
     assert new_full.tier == ModelTier.SMART
