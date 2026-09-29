@@ -163,9 +163,11 @@ Structured memory enters the response path in three deliberately different forms
 Each relationship extractor batch records sparse positive evidence on six 1..4 axes:
 `familiarity`, `comfort`, `casualness`, `teasing_tolerance`, `support_openness`, and
 `task_orientation`. The batch score is evidence from that batch, not a replacement global state. The
-response layer considers at most the eight most recent eligible items and combines each axis with item
-confidence and exponential recency decay using noisy-OR. Repeated moderate observations can therefore
-accumulate gradually, while one batch cannot overwrite the whole relationship profile.
+response layer considers at most the eight most recent eligible observations independently for
+each axis and combines them with item confidence and exponential axis-local recency decay using noisy-OR.
+An observation that carries no evidence for one axis therefore neither ages nor evicts evidence for that
+axis. Repeated moderate observations can still accumulate gradually, while one batch cannot overwrite the
+whole relationship profile.
 
 A missing axis means "no positive evidence", not a negative preference. Current user instructions and
 explicit boundaries always override the relationship profile. The model is explicitly forbidden from
