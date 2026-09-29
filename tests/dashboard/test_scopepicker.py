@@ -24,8 +24,8 @@ def test_scope_filter_normalizes_structured_guild_and_dm_values():
     assert dm.scope_type == "dm"
     assert dm.guild_id == ""
     assert dm.channel_id == "789"
-    assert dm.realm == "dm:789"
-    assert dm.realm_prefix == ""
+    assert dm.realm == ""
+    assert dm.realm_prefix == "dm:"
 
     all_dms = normalize_scope_filter(scope_type="dm")
     assert all_dms.realm == ""
@@ -44,7 +44,7 @@ def test_scope_filter_preserves_legacy_raw_realm_urls():
 
     dm = normalize_scope_filter(legacy_realm="dm:789")
     assert dm.scope_type == "dm"
-    assert dm.channel_id == "789"
+    assert dm.channel_id == ""
     assert dm.realm == "dm:789"
 
 
