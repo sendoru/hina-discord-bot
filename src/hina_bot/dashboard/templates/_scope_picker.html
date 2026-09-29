@@ -4,7 +4,7 @@
   <div class="scope-picker-types" role="group" aria-label="{{ label }} type">
     {% if allow_any %}
     <label class="scope-picker-option">
-      <input type="radio" name="{{ prefix }}_scope_type" value="" {% if not scope_type %}checked{% endif %}>
+      <input type="radio" name="{{ prefix }}_scope_type" value="any" {% if not scope_type %}checked{% endif %}>
       <span>Any</span>
     </label>
     {% endif %}
