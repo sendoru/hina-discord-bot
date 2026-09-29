@@ -79,6 +79,7 @@ async def collect(
     *,
     visibility_mode: str = "all",
     call_prefixes: tuple[str, ...] = ("히나야",),
+    always_reply_channel_ids: frozenset[int] = frozenset(),
     extra_targets=(),
 ):
     if visibility_mode not in {"all", "direct", "off"}:
@@ -109,7 +110,13 @@ async def collect(
             uid = getattr(getattr(old, "author", None), "id", None)
             if uid not in chosen or getattr(old, "webhook_id", None) is not None:
                 continue
-            direct_trigger = trigger_text(old, bot_id, False, call_prefixes) is not None
+            direct_trigger = trigger_text(
+                old,
+                bot_id,
+                False,
+                call_prefixes,
+                always_reply_channel_ids,
+            ) is not None
             if visibility_mode == "direct" and not direct_trigger:
                 continue
             text_value = (getattr(old, "content", "") or "").strip()
