@@ -13,7 +13,7 @@
   {% endfor %}
 </div>
 {%- endmacro %}
-{% macro relationship_memory_card(item, axes, show_disclosure=false) -%}
+{% macro relationship_memory_card(item, axes, show_disclosure=false, projected=false) -%}
 <article class="relationship-memory-card">
   <div class="relationship-memory-head">
     <a href="/memory/{{ item.id }}">Memory #{{ item.id }}</a>
@@ -26,7 +26,7 @@
     {% if show_disclosure %}<div><dt>Disclosure</dt><dd><code>{{ item.disclosure }}</code></dd></div>{% endif %}
     <div><dt>Updated</dt><dd>{{ item.updated_at | localtime }}</dd></div>
   </dl>
-  {{ evidence_grid(item.evidence, axes) }}
+  {{ evidence_grid(item.projected_evidence if projected else item.evidence, axes) }}
   {% if item.source_message_ids %}
   <div class="relationship-memory-sources">sources: {{ item.source_message_ids | join(", ") }}</div>
   {% endif %}
@@ -41,7 +41,7 @@
   </div>
   <div class="window">
     <strong>Runtime policy</strong>
-    <span>FULL newest {{ data.policy.max_observations }} · IMPLICIT confidence ≥ {{ data.policy.min_confidence }} · decay {{ data.policy.recency_decay }}</span>
+    <span>FULL newest {{ data.policy.max_observations }} · IMPLICIT per-axis newest {{ data.policy.max_observations }} · confidence ≥ {{ data.policy.min_confidence }} · decay {{ data.policy.recency_decay }}</span>
   </div>
 </section>
 
@@ -133,7 +133,12 @@
                       <td><code>{{ item.disclosure }}</code></td>
                       <td class="numeric">{{ "%.2f"|format(item.confidence) }}</td>
                       {% for axis in data.axes %}
-                      <td class="numeric">{{ item.evidence.get(axis, "—") }}</td>
+                      <td class="numeric">
+                        {% if item.projected_evidence.get(axis) %}
+                          {{ item.projected_evidence.get(axis) }}
+                          <br><span class="muted">age {{ item.axis_ages.get(axis) }}</span>
+                        {% else %}—{% endif %}
+                      </td>
                       {% endfor %}
                       <td>{{ item.updated_at | localtime }}</td>
                     </tr>
@@ -250,7 +255,7 @@
         {% if row.contributors %}
           <p class="muted">These raw texts are dashboard-only inspection data; runtime cross-space context receives only the aggregated axes.</p>
           {% for item in row.contributors %}
-            {{ relationship_memory_card(item, data.axes) }}
+            {{ relationship_memory_card(item, data.axes, false, true) }}
           {% endfor %}
         {% else %}
           <p class="muted">No implicit observations are eligible in this target scope.</p>
