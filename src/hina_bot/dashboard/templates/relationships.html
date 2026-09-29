@@ -45,42 +45,20 @@
   </div>
 </section>
 
-<form class="filter-stack" method="get">
-  <section class="filter-card">
-    <div class="filter-card-heading">
-      <div>
-        <strong>Find user</strong>
-        <span>Narrow the relationship inventory by stored user name or ID.</span>
-      </div>
-      <a class="filter-reset" href="/relationships">Reset</a>
-    </div>
+<form class="filters search-filter" method="get">
+  <div class="search-primary">
+    <label for="relationship-user-search">User search</label>
     <div class="search-primary-row">
       <input id="relationship-user-search" class="search-input" name="q" value="{{ data.filters.q }}" placeholder="user id / stored name">
-      <button type="submit">Search</button>
+      <button type="submit">Apply</button>
     </div>
-  </section>
-
-  <section class="filter-card">
-    <div class="filter-card-heading">
-      <div>
-        <strong>Evaluate target scope</strong>
-        <span>Compute FULL/raw access and the cross-space IMPLICIT projection for this guild/channel.</span>
-      </div>
-    </div>
-    <div class="filter-grid relationship-target-grid">
-      <label class="filter-field">
-        <span>Guild ID</span>
-        <input name="target_guild_id" inputmode="numeric" value="{{ data.filters.target_guild_id }}" placeholder="guild id">
-      </label>
-      <label class="filter-field">
-        <span>Channel ID</span>
-        <input name="target_channel_id" inputmode="numeric" value="{{ data.filters.target_channel_id }}" placeholder="channel id">
-      </label>
-      <div class="filter-actions">
-        <button type="submit">Compute profile</button>
-      </div>
-    </div>
-  </section>
+  </div>
+  <div class="filter-row">
+    <input name="target_guild_id" inputmode="numeric" value="{{ data.filters.target_guild_id }}" placeholder="target guild id">
+    <input name="target_channel_id" inputmode="numeric" value="{{ data.filters.target_channel_id }}" placeholder="target channel id">
+    <button type="submit">Compute profile</button>
+    <a class="button secondary" href="/relationships">Reset</a>
+  </div>
 </form>
 
 {% if data.target_error %}
