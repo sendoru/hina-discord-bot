@@ -9,7 +9,7 @@
       guildInput.disabled = type !== "guild";
     }
     if (channelInput) {
-      channelInput.disabled = type === "";
+      channelInput.disabled = type !== "guild" && type !== "dm";
     }
   }
 
