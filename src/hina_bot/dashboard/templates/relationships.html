@@ -133,12 +133,7 @@
                       <td><code>{{ item.disclosure }}</code></td>
                       <td class="numeric">{{ "%.2f"|format(item.confidence) }}</td>
                       {% for axis in data.axes %}
-                      <td class="numeric">
-                        {% if item.projected_evidence.get(axis) %}
-                          {{ item.projected_evidence.get(axis) }}
-                          <br><span class="muted">age {{ item.axis_ages.get(axis) }}</span>
-                        {% else %}—{% endif %}
-                      </td>
+                      <td class="numeric">{{ item.evidence.get(axis, "—") }}</td>
                       {% endfor %}
                       <td>{{ item.updated_at | localtime }}</td>
                     </tr>
@@ -183,7 +178,12 @@
                       <td><code>{{ item.origin_realm }}</code><br><span class="muted">#{{ item.origin_channel_id }} · {{ "public" if item.origin_public_at_capture else "private" }}</span></td>
                       <td class="numeric">{{ "%.2f"|format(item.confidence) }}</td>
                       {% for axis in data.axes %}
-                      <td class="numeric">{{ item.evidence.get(axis, "—") }}</td>
+                      <td class="numeric">
+                        {% if item.projected_evidence.get(axis) %}
+                          {{ item.projected_evidence.get(axis) }}
+                          <br><span class="muted">age {{ item.axis_ages.get(axis) }}</span>
+                        {% else %}—{% endif %}
+                      </td>
                       {% endfor %}
                       <td>{{ item.updated_at | localtime }}</td>
                     </tr>
