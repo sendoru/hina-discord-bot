@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_filter_ui.html" import active_filter_chips %}
+{% from "_scope_picker.html" import scope_picker %}
 {% block title %}Reconciliation · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -30,12 +31,11 @@
       <button type="submit">Search</button>
     </div>
   </div>
-  <details class="advanced-filters" {% if data.filters.user_id or data.filters.origin_realm or data.filters.origin_channel_id or data.filters.relation or data.filters.kind or data.filters.retry or data.filters.confidence_min or data.filters.confidence_max or data.filters.created_after or data.filters.created_before %}open{% endif %}>
+  <details class="advanced-filters" {% if data.filters.user_id or data.filters.origin_scope_type or data.filters.origin_realm or data.filters.origin_channel_id or data.filters.relation or data.filters.kind or data.filters.retry or data.filters.confidence_min or data.filters.confidence_max or data.filters.created_after or data.filters.created_before %}open{% endif %}>
     <summary>Advanced filters</summary>
     <div class="filter-row">
   <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
-  <input name="origin_realm" value="{{ data.filters.origin_realm }}" placeholder="origin realm">
-  <input name="origin_channel_id" value="{{ data.filters.origin_channel_id }}" placeholder="channel id">
+  {{ scope_picker("origin", data.filters.origin_scope_type, data.filters.origin_guild_id, data.filters.origin_channel_id, label="Origin scope") }}
   <select name="relation">
     <option value="">all relations</option>
     {% for value in ["duplicate","corrects","conflicts"] %}
