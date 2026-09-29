@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_filter_ui.html" import active_filter_chips %}
 {% from "_scope_picker.html" import scope_picker %}
+{% from "_status_ui.html" import status_badge %}
 {% block title %}Memory · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -96,7 +97,7 @@
           <td class="numeric">{{ "%.2f"|format(row.confidence) }}</td>
           <td class="numeric">{{ row.source_message_ids_decoded|length }}</td>
           <td>{{ "yes" if row.has_relationship_evidence else "—" }}</td>
-          {% if data.schema.has_lifecycle %}<td>{{ row.status or "—" }}</td>{% endif %}
+          {% if data.schema.has_lifecycle %}<td>{{ status_badge(row.status) }}</td>{% endif %}
           <td>{{ row.updated_at | localtime }}</td>
         </tr>
         <tr class="content-row">

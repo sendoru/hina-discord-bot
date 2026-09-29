@@ -1,0 +1,12 @@
+{% macro telemetry_window(available) -%}
+{% set freshness = telemetry_freshness(available.newest_at) %}
+<div class="window telemetry-window">
+  <div class="window-heading">
+    <strong>Available telemetry</strong>
+    <span class="freshness-badge freshness-{{ freshness.tone }}">{{ freshness.label }}</span>
+  </div>
+  <span>{{ available.oldest_at | localtime if available.oldest_at else "none" }}</span>
+  <span>→ {{ available.newest_at | localtime if available.newest_at else "none" }}</span>
+  <small class="freshness-age">{{ freshness.age_label }}</small>
+</div>
+{%- endmacro %}

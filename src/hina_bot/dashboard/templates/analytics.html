@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
+{% from "_telemetry_ui.html" import telemetry_window %}
 {% block title %}Analytics · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -7,11 +8,7 @@
     <h1>Routing & Usage Analytics</h1>
     <p>Retained content-free telemetry only. Missing usage fields stay missing instead of becoming zero.</p>
   </div>
-  <div class="window">
-    <strong>Available telemetry</strong>
-    <span>{{ data.available.oldest_at | localtime if data.available.oldest_at else "none" }}</span>
-    <span>→ {{ data.available.newest_at | localtime if data.available.newest_at else "none" }}</span>
-  </div>
+  {{ telemetry_window(data.available) }}
 </section>
 
 <form class="filters" method="get">
@@ -31,9 +28,17 @@
   </div>
 </form>
 
+<nav class="section-nav" aria-label="Analytics sections">
+  <a href="#analytics-summary">Summary</a>
+  <a href="#runtime-performance">Performance</a>
+  <a href="#model-routing">Routing</a>
+  <a href="#web-search-routing">Search</a>
+  <a href="#usage-breakdown">Usage</a>
+</nav>
+
 {{ epoch_notice(data) }}
 
-<section class="cards">
+<section class="cards section-anchor" id="analytics-summary">
   <article class="card"><span>API calls</span><strong>{{ data.usage.api_calls }}</strong></article>
   <article class="card"><span>API errors</span><strong>{{ data.usage.errors }}</strong></article>
   <article class="card">
@@ -61,7 +66,7 @@
 </section>
 {% endif %}
 
-<section class="section-heading">
+<section class="section-heading section-anchor" id="runtime-performance">
   <h2>Runtime performance</h2>
   <p class="muted">Observed reply latency includes retained web preflight time. Missing preflight or stage fields stay missing.</p>
 </section>
@@ -164,7 +169,7 @@
   </div>
 </section>
 
-<section class="section-heading">
+<section class="section-heading section-anchor" id="model-routing">
   <h2>Model routing</h2>
   <p class="muted">Routing/search panels use answer rows and ignore the operation filter; model/provider/time filters still apply.</p>
 </section>
@@ -300,7 +305,7 @@
   </div>
 </section>
 
-<section class="section-heading">
+<section class="section-heading section-anchor" id="web-search-routing">
   <h2>Web-search routing</h2>
 </section>
 <div class="grid-2">
@@ -342,7 +347,7 @@
   {% else %}<p class="muted">No locked-reason telemetry.</p>{% endif %}
 </section>
 
-<section class="section-heading">
+<section class="section-heading section-anchor" id="usage-breakdown">
   <h2>Usage breakdown</h2>
   <p class="muted">These tables use the operation/model/provider/time filters above.</p>
 </section>

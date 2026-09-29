@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
+{% from "_telemetry_ui.html" import telemetry_window %}
 {% block title %}Identity · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -7,11 +8,7 @@
     <h1>Speaker Identity Observability</h1>
     <p>Resolver telemetry only. Raw references and candidate names are not persisted here.</p>
   </div>
-  <div class="window">
-    <strong>Available telemetry</strong>
-    <span>{{ data.available.oldest_at | localtime if data.available.oldest_at else "none" }}</span>
-    <span>→ {{ data.available.newest_at | localtime if data.available.newest_at else "none" }}</span>
-  </div>
+  {{ telemetry_window(data.available) }}
 </section>
 
 <form class="filters" method="get">
