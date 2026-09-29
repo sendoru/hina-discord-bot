@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_status_ui.html" import status_badge %}
 {% block title %}Trace {{ data.turn_id }} · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -10,7 +11,7 @@
 
 {% if data.summary %}
 <section class="cards">
-  <article class="card"><span>Status</span><strong>{{ data.summary.status }}</strong></article>
+  <article class="card"><span>Status</span><strong>{{ status_badge(data.summary.status) }}</strong></article>
   <article class="card"><span>Scope</span><strong>{{ data.summary.scope or "—" }}</strong></article>
   <article class="card"><span>Tier</span><strong>{{ data.summary.model_tier or "—" }}</strong></article>
   <article class="card"><span>Tokens</span><strong>{{ data.summary.total_tokens if data.summary.total_tokens is not none else "?" }}</strong></article>

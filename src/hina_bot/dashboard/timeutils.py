@@ -47,6 +47,45 @@ def format_local_time(value: object, timezone: str) -> str:
     return local.strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
+def telemetry_freshness(
+    value: object,
+    *,
+    now: datetime | None = None,
+) -> dict[str, str]:
+    parsed = _parse_stored_time(value)
+    if parsed is None:
+        return {
+            "label": "Unknown",
+            "tone": "neutral",
+            "age_label": "No retained events",
+        }
+
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    else:
+        current = current.astimezone(UTC)
+
+    age_seconds = max(0, int((current - parsed.astimezone(UTC)).total_seconds()))
+    if age_seconds <= 60 * 60:
+        label, tone = "Fresh", "good"
+    elif age_seconds <= 24 * 60 * 60:
+        label, tone = "Delayed", "warn"
+    else:
+        label, tone = "Stale", "danger"
+
+    if age_seconds < 60:
+        age_label = "Last event just now"
+    elif age_seconds < 60 * 60:
+        age_label = f"Last event {age_seconds // 60}m ago"
+    elif age_seconds < 24 * 60 * 60:
+        age_label = f"Last event {age_seconds // (60 * 60)}h ago"
+    else:
+        age_label = f"Last event {age_seconds // (24 * 60 * 60)}d ago"
+
+    return {"label": label, "tone": tone, "age_label": age_label}
+
+
 def local_input_value(value: str, timezone: str) -> str:
     text = (value or "").strip()
     if not text:
@@ -86,5 +125,6 @@ __all__ = [
     "local_input_value",
     "parse_local_time",
     "quick_ranges",
+    "telemetry_freshness",
     "utc_iso",
 ]

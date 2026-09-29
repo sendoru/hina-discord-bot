@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
 {% from "_filter_ui.html" import active_filter_chips %}
+{% from "_status_ui.html" import status_badge %}
+{% from "_telemetry_ui.html" import telemetry_window %}
 {% block title %}Traces · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -8,11 +10,7 @@
     <h1>Traces</h1>
     <p>{{ data.page.total }} traces in the current filter.</p>
   </div>
-  <div class="window">
-    <strong>Available telemetry</strong>
-    <span>{{ data.available.oldest_at | localtime if data.available.oldest_at else "none" }}</span>
-    <span>→ {{ data.available.newest_at | localtime if data.available.newest_at else "none" }}</span>
-  </div>
+  {{ telemetry_window(data.available) }}
 </section>
 
 <form class="filters search-filter" method="get">
@@ -77,7 +75,7 @@
         <tr>
           <td><a href="/traces/{{ row.turn_id }}">{{ row.at | localtime }}</a></td>
           <td>{{ row.scope or "—" }}</td>
-          <td><span class="status">{{ row.status }}</span></td>
+          <td>{{ status_badge(row.status) }}</td>
           <td>{{ row.model_tier or "—" }}</td>
           <td>{{ row.models | join(", ") or "—" }}</td>
           <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "?" }}</td>
