@@ -23,6 +23,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     for name in (
         "CALL_PREFIXES",
         "DM_ALWAYS_REPLY",
+        "ALWAYS_REPLY_CHANNEL_IDS",
         "PUBLIC_SERVER_MEMORY_IN_DM",
         "CHAT_WEB_SEARCH",
         "COMMUNITY_LORE",
@@ -55,6 +56,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     settings = Settings.load()
     assert settings.call_prefixes == ("히나야",)
     assert settings.dm_always_reply is False
+    assert settings.always_reply_channel_ids == frozenset()
     assert settings.public_memory_in_dm is True
     assert settings.chat_web_search is True
     assert settings.community_lore is True
@@ -173,6 +175,7 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
         settings = RuntimeSettings(_base(), store)
         assert settings.call_prefixes == ("히나야",)
         assert settings.dm_always_reply is False
+        assert settings.always_reply_channel_ids == frozenset()
         assert settings.public_memory_in_dm is True
         assert settings.chat_web_search is True
         assert settings.community_lore is True
@@ -208,6 +211,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
     assert settings.set_text("CHANNEL_CONTEXT_CHARS", "8000") == 8000
     assert settings.set_text("chat_web_search", "off") is False
     assert settings.set_text("CALL_PREFIXES", "히나야, 히나") == ("히나야", "히나")
+    assert settings.set_text("ALWAYS_REPLY_CHANNEL_IDS", "10, 20, 10") == frozenset({10, 20})
     assert settings.set_text("MODEL_ROUTING_SMART_THRESHOLD", "1.8") == pytest.approx(1.8)
     assert settings.set_text("MEMORY_ROUTING_SMART_THRESHOLD", "2.3") == pytest.approx(2.3)
     assert settings.set_text("GEMINI_THINKING_LEVEL", "HIGH") == "high"
@@ -221,6 +225,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         assert reloaded.channel_context_chars == 8000
         assert reloaded.chat_web_search is False
         assert reloaded.call_prefixes == ("히나야", "히나")
+        assert reloaded.always_reply_channel_ids == frozenset({10, 20})
         assert reloaded.model_routing_smart_threshold == pytest.approx(1.8)
         assert reloaded.memory_routing_smart_threshold == pytest.approx(2.3)
         assert reloaded.gemini_thinking_level == "high"
@@ -229,6 +234,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         assert reloaded.source("GEMINI_THINKING_LEVEL") == "db"
         assert reloaded.source("GEMINI_FAST_THINKING_LEVEL") == "db"
         assert reloaded.source("GEMINI_SMART_THINKING_LEVEL") == "db"
+        assert reloaded.source("ALWAYS_REPLY_CHANNEL_IDS") == "db"
         assert reloaded.source("CHANNEL_CONTEXT_CHARS") == "db"
         assert reloaded.source("MODEL_ROUTING_SMART_THRESHOLD") == "db"
         assert reloaded.source("MEMORY_ROUTING_SMART_THRESHOLD") == "db"
@@ -296,6 +302,8 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
         ("LORE_MAX_ITEMS", "21"),
         ("LORE_MAX_CHARS", "12001"),
         ("DM_ALWAYS_REPLY", "maybe"),
+        ("ALWAYS_REPLY_CHANNEL_IDS", "abc"),
+        ("ALWAYS_REPLY_CHANNEL_IDS", "0"),
         ("CALL_PREFIXES", ""),
         ("GEMINI_THINKING_LEVEL", "extreme"),
         ("GEMINI_FAST_THINKING_LEVEL", "off"),
