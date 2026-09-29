@@ -2346,19 +2346,74 @@ pre {
   align-items: flex-start !important;
 }
 
+.conversation {
+  padding: 16px 18px;
+}
+
+.conversation-head {
+  align-items: center;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .conversation-time {
   flex: 0 0 auto;
-  padding-top: 2px;
+  color: var(--muted);
+  font-size: 14px;
   white-space: nowrap;
 }
 
 .conversation-head-actions {
   flex: 0 0 auto;
+  gap: 10px !important;
   justify-content: flex-end;
 }
 
+.conversation-head-actions code {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
 .metadata.compact.conversation-metadata {
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns:
+    minmax(185px, 1fr)
+    minmax(185px, 1fr)
+    minmax(240px, 1.25fr)
+    minmax(72px, .35fr);
+  gap: 8px 16px;
+  margin: 8px 0 12px;
+}
+
+.conversation-metadata dt {
+  font-size: 10px;
+  letter-spacing: .035em;
+}
+
+.conversation-metadata dd {
+  margin-top: 3px;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.conversation-metadata code {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.conversation h3 {
+  margin: 14px 0 6px;
+  font-size: 12px;
+}
+
+.conversation .message {
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.conversation > details {
+  margin-top: 12px;
+  font-size: 13px;
 }
 
 @media (max-width: 1000px) {
@@ -2368,12 +2423,20 @@ pre {
 }
 
 @media (max-width: 720px) {
+  .conversation {
+    padding: 14px;
+  }
+
   .conversation-head-primary {
     align-items: flex-start;
   }
 
   .conversation-head-actions {
     justify-content: flex-start;
+  }
+
+  .conversation .message {
+    font-size: 13.5px;
   }
 }
 
