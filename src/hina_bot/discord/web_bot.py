@@ -412,9 +412,9 @@ class HinaClient(BaseHinaClient):
             return
 
         # Passive messages from other bots remain channel context only in chatlog `all` mode.
-        # Explicit call prefixes and mention/reply pings are real invocations and continue through
-        # the normal request pipeline. DM auto-reply and guild always-reply channels remain
-        # human-only implicit triggers.
+        # Mention/reply pings remain explicit invocations everywhere; configured always-reply
+        # channels additionally accept call prefixes from bots. The implicit always-reply behavior
+        # itself remains human-only, and bot-authored DMs stay disabled.
         if message.author.bot and text is None:
             if (
                 scope.guild_id is not None
