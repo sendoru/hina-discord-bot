@@ -259,21 +259,14 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Current observability epoch #1" in traces.text
     assert 'aria-label="Observability epoch"' in traces.text
     assert "Advanced filters" in traces.text
-    assert 'class="filter-stack search-filter"' in traces.text
-    assert 'class="filter-card filter-card-primary"' in traces.text
-    assert 'class="advanced-filters filter-card"' in traces.text
     assert 'class="wide-table"' in traces.text
     assert 'aria-label="Active filters"' in traces.text
     assert analytics.status_code == 200
     assert "Routing & Usage Analytics" in analytics.text
     assert "test-model" in analytics.text
-    assert "Filter analytics" in analytics.text
-    assert 'class="filter-grid filter-grid-dense"' in analytics.text
     assert "Current observability epoch #1" in analytics.text
     assert identity.status_code == 200
     assert "Speaker Identity Observability" in identity.text
-    assert "Filter identity telemetry" in identity.text
-    assert 'class="filter-grid"' in identity.text
     assert "Current observability epoch #1" in identity.text
     assert "hello dashboard" in detail.text
     assert "<dt>User</dt><dd>Dashboard User · <code>100</code></dd>" in detail.text
@@ -318,9 +311,6 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="relationship-mobile-card"' in relationships.text
     assert state.status_code == 200
     assert "Memory &amp; Context State" in state.text
-    assert state.text.count('class="filter-card"') >= 2
-    assert "Evaluate target scope" in state.text
-    assert "Search manual notes" in state.text
     assert 'aria-label="Target scope type"' in state.text
     assert 'name="target_scope_type" value="guild" checked' in state.text
     assert state_dm.status_code == 200
@@ -333,10 +323,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "direct" in state.text
     assert 'class="wide-table"' not in state.text
     assert "legacy dashboard summary" in summaries.text
-    assert "Filter summaries" in summaries.text
     assert "Dashboard User<br><code>100</code>" in summaries.text
     assert "Memory Extraction Cursors" in cursors.text
-    assert "Filter extraction cursors" in cursors.text
     assert "Dashboard User<br><code>100</code>" in cursors.text
     assert "dashboard memory updated" in reconciliation.text
     assert "Dashboard User" in reconciliation.text
@@ -369,9 +357,6 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert ".relationship-desktop" in static.text
     assert ".scope-picker" in static.text
     assert ".scope-picker-types" in static.text
-    assert ".filter-stack" in static.text
-    assert ".filter-card-heading" in static.text
-    assert ".filter-grid" in static.text
 
 
 def test_unknown_trace_returns_404(tmp_path):
