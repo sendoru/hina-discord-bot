@@ -4,6 +4,8 @@ import json
 import re
 from datetime import UTC, datetime
 
+import httpx
+
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
@@ -18,6 +20,7 @@ from .llm import LLM as BaseLLM
 from .llm import POLICY
 from .managed_tools import CODE_EXECUTION_POLICY, managed_tool_config, search_tool_choice
 from .model_routing import ModelPlan, fixed_model_plan
+from .providers import ProviderAPIError
 from .rp_output_policy import hide_web_citations, provenance_instruction
 from .runtime_context import build_runtime_context, runtime_instruction
 from .structured_memory_context import (
@@ -27,6 +30,16 @@ from .structured_memory_context import (
 from .vision import CURRENT_VISUAL_INPUTS
 from .web_search_runtime import tool_config
 from .web_search_text import response_text
+
+
+def _transient_answer_failure(exc: BaseException) -> bool:
+    return (
+        isinstance(exc, httpx.TimeoutException)
+        or (
+            isinstance(exc, ProviderAPIError)
+            and exc.status_code == 503
+        )
+    )
 
 
 def _serialized_chars(value) -> int:
@@ -708,12 +721,42 @@ class RequestAssembler(BaseLLM):
         route_metadata = model_plan.telemetry()
         if self.settings.provider != "gemini":
             route_metadata.pop("requested_thinking_level", None)
-        response = await self.usage.request(
-            self.client,
-            "answer",
-            route_metadata=route_metadata,
-            **request,
-        )
+        try:
+            response = await self.usage.request(
+                self.client,
+                "answer",
+                route_metadata=route_metadata,
+                **request,
+            )
+        except (ProviderAPIError, httpx.TimeoutException) as exc:
+            if not _transient_answer_failure(exc):
+                raise
+
+            retry_request = dict(request)
+            retry_metadata = dict(route_metadata)
+            fallback_to_fast = (
+                self.settings.model_routing_mode == "adaptive"
+                and retry_request["model"] != self.settings.fast_model
+            )
+            retry_reason = "transient_fast_fallback" if fallback_to_fast else "transient_retry"
+            if fallback_to_fast:
+                retry_request["model"] = self.settings.fast_model
+                retry_metadata["model_tier"] = "fast"
+                if self.settings.provider == "gemini":
+                    retry_request["thinking_level"] = self.settings.gemini_fast_thinking_level
+                    retry_metadata["requested_thinking_level"] = (
+                        self.settings.gemini_fast_thinking_level
+                    )
+            retry_metadata["model_route_reasons"] = list(
+                retry_metadata.get("model_route_reasons") or ()
+            ) + [retry_reason]
+            response = await self.usage.request(
+                self.client,
+                "answer",
+                route_metadata=retry_metadata,
+                **retry_request,
+            )
+
         text = response_text(response, hide_citations=hide_web_citations(provenance))
         if response.status != "completed" or not text:
             raise ValueError("No completed model response")
