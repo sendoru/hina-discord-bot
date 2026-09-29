@@ -1,0 +1,14 @@
+{% macro status_badge(value) -%}
+{% set label = value or "unknown" %}
+{% set normalized = label | lower %}
+{% if normalized in ["completed", "active", "resolved", "available", "ok", "success"] %}
+  {% set tone = "success" %}
+{% elif "fail" in normalized or "error" in normalized or normalized == "blocked" %}
+  {% set tone = "danger" %}
+{% elif normalized in ["pending", "incomplete", "partial", "ambiguous", "superseded", "requested", "no_candidates"] %}
+  {% set tone = "warning" %}
+{% else %}
+  {% set tone = "neutral" %}
+{% endif %}
+<span class="status-badge status-{{ tone }}">{{ label }}</span>
+{%- endmacro %}

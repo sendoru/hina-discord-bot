@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..repository import AdminRepository
+from ..scopepicker import normalize_scope_filter
 from ..telemetry import TelemetryReader
 from ..timeutils import db_utc_timestamp
 from .base import Page, _decode_json
@@ -47,6 +48,8 @@ class ReconciliationService(MemoryService):
         page: int = 1,
         page_size: int = 50,
         user_id: str = "",
+        origin_scope_type: str = "",
+        origin_guild_id: str = "",
         origin_realm: str = "",
         origin_channel_id: str = "",
         relation: str = "",
@@ -67,10 +70,17 @@ class ReconciliationService(MemoryService):
             except ValueError:
                 return None
 
+        origin_scope = normalize_scope_filter(
+            scope_type=origin_scope_type,
+            guild_id=origin_guild_id,
+            channel_id=origin_channel_id,
+            legacy_realm=origin_realm,
+        )
         filters = {
             "user_id": user_id.strip(),
-            "origin_realm": origin_realm.strip(),
-            "origin_channel_id": origin_channel_id.strip(),
+            "origin_realm": origin_scope.realm,
+            "origin_realm_prefix": origin_scope.realm_prefix,
+            "origin_channel_id": origin_scope.channel_id,
             "relation": relation.strip(),
             "kind": kind.strip(),
             "retry": retry.strip().lower(),
@@ -107,8 +117,10 @@ class ReconciliationService(MemoryService):
             "stats": self.repository.reconciliation_stats(**filters),
             "filters": {
                 "user_id": user_id.strip(),
-                "origin_realm": origin_realm.strip(),
-                "origin_channel_id": origin_channel_id.strip(),
+                "origin_scope_type": origin_scope.scope_type,
+                "origin_guild_id": origin_scope.guild_id,
+                "origin_realm": origin_scope.realm,
+                "origin_channel_id": origin_scope.channel_id,
                 "relation": relation.strip(),
                 "kind": kind.strip(),
                 "retry": retry.strip().lower(),

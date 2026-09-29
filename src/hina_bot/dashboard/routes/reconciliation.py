@@ -13,6 +13,8 @@ def build_router(service: ReconciliationService, templates: Jinja2Templates) -> 
         request: Request,
         page: int = 1,
         user_id: str = "",
+        origin_scope_type: str = "",
+        origin_guild_id: str = "",
         origin_realm: str = "",
         origin_channel_id: str = "",
         relation: str = "",
@@ -27,6 +29,8 @@ def build_router(service: ReconciliationService, templates: Jinja2Templates) -> 
         data = service.reconciliation_proposals(
             page=page,
             user_id=user_id,
+            origin_scope_type=origin_scope_type,
+            origin_guild_id=origin_guild_id,
             origin_realm=origin_realm,
             origin_channel_id=origin_channel_id,
             relation=relation,
