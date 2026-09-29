@@ -64,7 +64,7 @@ def normalize_scope_filter(
             return ScopeFilter(
                 scope_type="dm",
                 guild_id="",
-                channel_id=channel_id or legacy_id,
+                channel_id=channel_id,
                 realm=legacy_realm,
                 realm_prefix="",
             )
@@ -90,8 +90,8 @@ def normalize_scope_filter(
             scope_type="dm",
             guild_id="",
             channel_id=channel_id,
-            realm=f"dm:{channel_id}" if channel_id else "",
-            realm_prefix="" if channel_id else "dm:",
+            realm="",
+            realm_prefix="dm:",
         )
 
     return ScopeFilter(
