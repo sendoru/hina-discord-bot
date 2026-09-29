@@ -14,40 +14,25 @@
   </div>
 </section>
 
-<form class="filter-stack" method="get">
-  <section class="filter-card">
-    <div class="filter-card-heading">
-      <div>
-        <strong>Filter identity telemetry</strong>
-        <span>Focus resolver outcomes, blocked reasons, epoch, and time range.</span>
-      </div>
-      <a class="filter-reset" href="/identity">Reset</a>
-    </div>
-    <div class="filter-grid">
-      <label class="filter-field">
-        <span>Outcome</span>
-        <select name="outcome">
-          <option value="">any outcome</option>
-          {% for value in ["resolved","ambiguous","none","blocked"] %}
-          <option value="{{ value }}" {% if data.filters.outcome == value %}selected{% endif %}>{{ value }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="filter-field"><span>Blocked reason</span><input name="blocked_reason" value="{{ data.filters.blocked_reason }}" placeholder="blocked reason"></label>
-      <label class="filter-field"><span>Epoch</span>{{ epoch_selector(data) }}</label>
-      <label class="filter-field"><span>After</span><input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
-      <label class="filter-field"><span>Before</span><input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
-    </div>
-    <div class="filter-footer">
-      <div class="quick-ranges" aria-label="Quick time ranges">
-        <span>Time:</span>
-        {% for preset in data.time_ranges %}
-        <a href="{{ request.url.include_query_params(after=preset.after, before='') }}">{{ preset.label }}</a>
-        {% endfor %}
-      </div>
-      <div class="filter-actions"><button type="submit">Apply filters</button></div>
-    </div>
-  </section>
+<form class="filters" method="get">
+  <select name="outcome">
+    <option value="">outcome: any</option>
+    {% for value in ["resolved","ambiguous","none","blocked"] %}
+    <option value="{{ value }}" {% if data.filters.outcome == value %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <input name="blocked_reason" value="{{ data.filters.blocked_reason }}" placeholder="blocked reason">
+  {{ epoch_selector(data) }}
+  <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
+  <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/identity">Reset</a>
+  <div class="quick-ranges" aria-label="Quick time ranges">
+    <span>Time:</span>
+    {% for preset in data.time_ranges %}
+    <a href="{{ request.url.include_query_params(after=preset.after, before='') }}">{{ preset.label }}</a>
+    {% endfor %}
+  </div>
 </form>
 
 {{ epoch_notice(data) }}
