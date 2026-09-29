@@ -14,33 +14,21 @@
   </div>
 </section>
 
-<form class="filter-stack" method="get">
-  <section class="filter-card">
-    <div class="filter-card-heading">
-      <div>
-        <strong>Filter analytics</strong>
-        <span>Narrow usage rows by operation, model, provider, epoch, or time.</span>
-      </div>
-      <a class="filter-reset" href="/analytics">Reset</a>
-    </div>
-    <div class="filter-grid filter-grid-dense">
-      <label class="filter-field"><span>Operation</span><input name="operation" value="{{ data.filters.operation }}" placeholder="operation"></label>
-      <label class="filter-field"><span>Model</span><input name="model" value="{{ data.filters.model }}" placeholder="model"></label>
-      <label class="filter-field"><span>Provider</span><input name="provider" value="{{ data.filters.provider }}" placeholder="provider"></label>
-      <label class="filter-field"><span>Epoch</span>{{ epoch_selector(data) }}</label>
-      <label class="filter-field"><span>After</span><input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
-      <label class="filter-field"><span>Before</span><input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
-    </div>
-    <div class="filter-footer">
-      <div class="quick-ranges" aria-label="Quick time ranges">
-        <span>Time:</span>
-        {% for preset in data.time_ranges %}
-        <a href="{{ request.url.include_query_params(after=preset.after, before='') }}">{{ preset.label }}</a>
-        {% endfor %}
-      </div>
-      <div class="filter-actions"><button type="submit">Apply filters</button></div>
-    </div>
-  </section>
+<form class="filters" method="get">
+  <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
+  <input name="model" value="{{ data.filters.model }}" placeholder="model">
+  <input name="provider" value="{{ data.filters.provider }}" placeholder="provider">
+  {{ epoch_selector(data) }}
+  <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
+  <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/analytics">Reset</a>
+  <div class="quick-ranges" aria-label="Quick time ranges">
+    <span>Time:</span>
+    {% for preset in data.time_ranges %}
+    <a href="{{ request.url.include_query_params(after=preset.after, before='') }}">{{ preset.label }}</a>
+    {% endfor %}
+  </div>
 </form>
 
 {{ epoch_notice(data) }}
