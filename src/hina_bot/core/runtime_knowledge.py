@@ -5,6 +5,7 @@ import re
 from datetime import UTC, datetime
 
 from .admin_db import AdminDatabase
+from .knowledge_retrieval import KnowledgeCandidate, lexical_search
 
 KNOWLEDGE_LEVELS = {
     "self", "direct_experience", "reported", "public_knowledge", "inference",
@@ -14,10 +15,6 @@ MAX_ITEMS = 100
 MAX_CONTENT_CHARS = 1800
 MAX_VALUES = 20
 MAX_VALUE_CHARS = 60
-_TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
-_LEXEME = re.compile(r"[0-9A-Za-z가-힣]+")
-_STOPWORDS = {"뭐야", "알려줘", "어떻게"}
-
 
 def _split_values(value: str) -> list[str]:
     rows = list(dict.fromkeys(part.strip() for part in value.split(",") if part.strip()))
@@ -26,16 +23,6 @@ def _split_values(value: str) -> list[str]:
     if any(len(row) > MAX_VALUE_CHARS for row in rows):
         raise ValueError(f"각 키워드/대상은 {MAX_VALUE_CHARS}자 이하여야 합니다.")
     return rows
-
-
-def _terms(text: str) -> set[str]:
-    return {token.casefold() for token in _TOKEN.findall(text)
-            if token.casefold() not in _STOPWORDS}
-
-
-def _lexemes(text: str) -> set[str]:
-    return {token.casefold() for token in _LEXEME.findall(text)
-            if token.casefold() not in _STOPWORDS}
 
 
 class RuntimeKnowledgeRegistry:
@@ -287,48 +274,37 @@ class RuntimeKnowledgeRegistry:
             )
         return "replaced" if existing is not None else "added"
 
-    def search(self, query: str, *, limit: int = 2, chars: int = 1800) -> list[dict]:
-        if limit <= 0 or chars <= 0:
-            return []
-        folded = query.casefold()
-        terms = _terms(query)
-        lexemes = _lexemes(query)
-        ranked = []
-        for order, row in enumerate(self.list()):
+    def candidates(self) -> list[KnowledgeCandidate]:
+        prefix = "runtime_context" if self.kind == "interpretation" else "runtime_lore"
+        candidates = []
+        for row in self.list():
             if not row["enabled"]:
                 continue
-            score = 0
-            for value in row["subjects"]:
-                folded_value = value.casefold()
-                if folded_value not in _STOPWORDS and folded_value in folded:
-                    score += 8 + min(len(folded_value), 8)
-            for value in row["keywords"]:
-                folded_value = value.casefold()
-                if folded_value in folded:
-                    score += 5 + min(len(folded_value), 8)
-                else:
-                    score += 3 * len(lexemes & _lexemes(value))
-            score += 2 * len(terms & _terms(row["content"]))
-            if score:
-                ranked.append((score, -order, row))
+            metadata = (
+                (("certainty", "plausible_interpretation_not_established_fact"),)
+                if self.kind == "interpretation"
+                else ()
+            )
+            reference = f"{prefix}.{row['id']}"
+            candidates.append(KnowledgeCandidate(
+                candidate_id=reference,
+                source="runtime_knowledge",
+                reference=reference,
+                kind=self.kind,
+                content=row["content"],
+                search_text=row["content"],
+                subjects=tuple(row["subjects"]),
+                keywords=tuple(row["keywords"]),
+                awareness=row["awareness"],
+                time=row["timeline"],
+                metadata=metadata,
+            ))
+        return candidates
 
-        result, used = [], 0
-        prefix = "runtime_context" if self.kind == "interpretation" else "runtime_lore"
-        for _, _, row in sorted(ranked, reverse=True):
-            item = {
-                "reference": f"{prefix}.{row['id']}",
-                "kind": self.kind,
-                "content": row["content"],
-                "awareness": row["awareness"],
-                "time": row["timeline"],
-            }
-            if self.kind == "interpretation":
-                item["certainty"] = "plausible_interpretation_not_established_fact"
-            size = len(json.dumps(item, ensure_ascii=False))
-            if used + size > chars:
-                continue
-            result.append(item)
-            used += size
-            if len(result) >= limit:
-                break
-        return result
+    def search(self, query: str, *, limit: int = 2, chars: int = 1800) -> list[dict]:
+        return lexical_search(
+            query,
+            self.candidates(),
+            limit=limit,
+            chars=chars,
+        )
