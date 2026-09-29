@@ -23,29 +23,43 @@
   </div>
   <details class="advanced-filters" {% if data.filters.scope or data.filters.status or data.filters.tier or data.filters.model or data.filters.operation or data.filters.error or data.filters.web_search or data.filters.after or data.filters.before %}open{% endif %}>
     <summary>Advanced filters</summary>
-    <div class="filter-row">
-      <select name="scope">
-        <option value="">all scopes</option>
-        <option value="guild" {% if data.filters.scope == "guild" %}selected{% endif %}>guild</option>
-        <option value="dm" {% if data.filters.scope == "dm" %}selected{% endif %}>dm</option>
-      </select>
-      <input name="status" value="{{ data.filters.status }}" placeholder="status">
-      <input name="tier" value="{{ data.filters.tier }}" placeholder="tier">
-      <input name="model" value="{{ data.filters.model }}" placeholder="model">
-      <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
-      <select name="error">
-        <option value="">error: any</option>
-        <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>error: yes</option>
-        <option value="no" {% if data.filters.error == "no" %}selected{% endif %}>error: no</option>
-      </select>
-      <select name="web_search">
-        <option value="">search: any</option>
-        <option value="yes" {% if data.filters.web_search == "yes" %}selected{% endif %}>search: used</option>
-        <option value="no" {% if data.filters.web_search == "no" %}selected{% endif %}>search: not used</option>
-      </select>
-      <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
-      <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
-      <button type="submit">Apply filters</button>
+    <div class="filter-row grouped-filter-row">
+      <fieldset class="filter-cluster filter-cluster-3">
+        <legend>Status</legend>
+        <select name="scope">
+          <option value="">all scopes</option>
+          <option value="guild" {% if data.filters.scope == "guild" %}selected{% endif %}>guild</option>
+          <option value="dm" {% if data.filters.scope == "dm" %}selected{% endif %}>dm</option>
+        </select>
+        <input name="status" value="{{ data.filters.status }}" placeholder="status">
+        <input name="tier" value="{{ data.filters.tier }}" placeholder="tier">
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-2">
+        <legend>Routing</legend>
+        <input name="model" value="{{ data.filters.model }}" placeholder="model">
+        <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-2">
+        <legend>Signals</legend>
+        <select name="error">
+          <option value="">error: any</option>
+          <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>error: yes</option>
+          <option value="no" {% if data.filters.error == "no" %}selected{% endif %}>error: no</option>
+        </select>
+        <select name="web_search">
+          <option value="">search: any</option>
+          <option value="yes" {% if data.filters.web_search == "yes" %}selected{% endif %}>search: used</option>
+          <option value="no" {% if data.filters.web_search == "no" %}selected{% endif %}>search: not used</option>
+        </select>
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-2">
+        <legend>Time window</legend>
+        <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
+        <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
+      </fieldset>
+      <div class="filter-actions filter-row-actions">
+        <button type="submit">Apply filters</button>
+      </div>
     </div>
   </details>
   <div class="quick-ranges" aria-label="Observability epoch">

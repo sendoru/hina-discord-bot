@@ -246,7 +246,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
-    assert 'dashboard.css?v=20260930-2' in overview.text
+    assert 'dashboard.css?v=20260930-3' in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -281,6 +281,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert identity.status_code == 200
     assert "Speaker Identity Observability" in identity.text
     assert "Current observability epoch #1" in identity.text
+    assert 'class="filters filter-layout"' in identity.text
+    assert "<legend>Time window</legend>" in identity.text
+    assert 'class="filter-actions"' in identity.text
     assert "hello dashboard" in detail.text
     assert "<dt>User</dt><dd>Dashboard User · <code>100</code></dd>" in detail.text
     assert "Context &amp; provenance" in detail.text
@@ -288,6 +291,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "hello dashboard" in conversations.text
     assert "Content search" in conversations.text
     assert "Advanced filters" in conversations.text
+    assert 'class="filter-row grouped-filter-row"' in conversations.text
+    assert "<legend>Context</legend>" in conversations.text
     assert 'class="conversation-head-primary"' in conversations.text
     assert 'class="scope-key"' in conversations.text
     assert 'aria-label="Active filters"' in conversations.text

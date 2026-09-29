@@ -9,17 +9,24 @@
   </div>
 </section>
 
-<form class="filters" method="get">
-  <input name="q" value="{{ data.filters.q }}" placeholder="scope / user name">
-  <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
-  <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
-  <select name="pending">
-    <option value="">pending: any</option>
-    <option value="yes" {% if data.filters.pending == "yes" %}selected{% endif %}>pending only</option>
-    <option value="no" {% if data.filters.pending == "no" %}selected{% endif %}>caught up</option>
-  </select>
-  <button type="submit">Filter</button>
-  <a class="button secondary" href="/memory/cursors">Reset</a>
+<form class="filters filter-layout filter-layout-compact" method="get">
+  <fieldset class="filter-cluster filter-cluster-4">
+    <legend>Match</legend>
+    <input name="q" value="{{ data.filters.q }}" placeholder="scope / user name">
+    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
+    <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
+    <select name="pending">
+      <option value="">pending: any</option>
+      <option value="yes" {% if data.filters.pending == "yes" %}selected{% endif %}>pending only</option>
+      <option value="no" {% if data.filters.pending == "no" %}selected{% endif %}>caught up</option>
+    </select>
+  </fieldset>
+  <div class="filter-footer">
+    <div class="filter-actions">
+      <button type="submit">Filter</button>
+      <a class="button secondary" href="/memory/cursors">Reset</a>
+    </div>
+  </div>
 </form>
 
 <section class="notice info">
