@@ -10,6 +10,7 @@ from hina_bot.core.scope_overrides import (
     resolve_scope_chain,
 )
 
+from ..scopepicker import infer_target_scope_type
 from .base import ReadService
 
 _GUILD_NOTE = re.compile(r"^guild:(\d+)$")
