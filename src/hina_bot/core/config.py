@@ -24,6 +24,20 @@ def parse_call_prefixes(value: str) -> tuple[str, ...]:
     return prefixes
 
 
+def parse_discord_id_set(value: str, variable: str) -> frozenset[int]:
+    """Parse a comma-separated set of positive Discord snowflake IDs."""
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if len(parts) > 100:
+        raise ValueError(f"{variable}는 최대 100개의 Discord ID를 지정할 수 있습니다.")
+    try:
+        values = frozenset(int(part) for part in parts)
+    except ValueError as exc:
+        raise ValueError(f"{variable}는 쉼표로 구분한 Discord ID 목록이어야 합니다.") from exc
+    if any(value <= 0 for value in values):
+        raise ValueError(f"{variable}의 Discord ID는 양수여야 합니다.")
+    return values
+
+
 def _provider(value: str, variable: str) -> str:
     provider = value.strip().lower()
     if provider not in SUPPORTED_MODEL_PROVIDERS:
@@ -83,6 +97,7 @@ class Settings:
     special_dm_empty_call_reply: str = ""
     empty_response_reply: str = "..."
     dm_always_reply: bool = False
+    always_reply_channel_ids: frozenset[int] = frozenset()
     public_memory_in_dm: bool = True
     external_context_policy: str = "bot_interactions_only"
     allowed_guild_ids: frozenset[int] = frozenset()
@@ -329,6 +344,10 @@ class Settings:
             special_dm_empty_call_reply=special_dm_empty_call_reply,
             empty_response_reply=empty_response_reply,
             dm_always_reply=dm == "true",
+            always_reply_channel_ids=parse_discord_id_set(
+                os.getenv("ALWAYS_REPLY_CHANNEL_IDS", ""),
+                "ALWAYS_REPLY_CHANNEL_IDS",
+            ),
             public_memory_in_dm=public_memory == "true",
             external_context_policy=external_context_policy,
             allowed_guild_ids=frozenset(int(x.strip()) for x in
