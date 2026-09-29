@@ -30,6 +30,7 @@ def routing_message(
     mentions=(),
     webhook_id=None,
     dm=False,
+    channel_id=10,
 ):
     return NS(
         content=text,
@@ -37,12 +38,24 @@ def routing_message(
         mentions=[NS(id=value) for value in mentions],
         webhook_id=webhook_id,
         guild=None if dm else NS(id=1),
+        channel=NS(id=channel_id),
         reference=None,
     )
 
 
-def test_other_bots_require_an_explicit_guild_mention():
+def test_other_bots_keep_existing_ping_rule_outside_always_reply_channels():
+    assert trigger_text(routing_message("그냥 봇 대화"), 99) is None
     assert trigger_text(routing_message("히나야 안녕"), 99) is None
+    assert trigger_text(
+        routing_message("히나야 안녕"),
+        99,
+        always_reply_channel_ids=frozenset({10}),
+    ) == "히나야 안녕"
+    assert trigger_text(
+        routing_message("히나야"),
+        99,
+        always_reply_channel_ids=frozenset({10}),
+    ) == ""
     assert trigger_text(routing_message("히나야 안녕", dm=True), 99, True) is None
     assert trigger_text(
         routing_message("<@99> 안녕", mentions=(99,), dm=True), 99, True
@@ -169,6 +182,61 @@ def make_message(channel, guild, *, message_id, author, text, mentions=()):
 
 
 @pytest.mark.asyncio
+async def test_always_reply_channel_triggers_plain_human_messages_but_not_bot_chatter(tmp_path):
+    store = Store(":memory:")
+    llm = NS(
+        answer=AsyncMock(return_value="응"),
+        summarize=AsyncMock(),
+        extract_structured_memory=AsyncMock(),
+        summarize_shared=AsyncMock(),
+        close=AsyncMock(),
+    )
+    client = BaseHinaClient(
+        Settings(
+            "test",
+            "test",
+            cooldown=0,
+            always_reply_channel_ids=frozenset({10}),
+            event_log_path=str(tmp_path / "events.jsonl"),
+        ),
+        store=store,
+        llm=llm,
+    )
+    client._connection.user = NS(id=99)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 10
+    channel.send = AsyncMock(return_value=NS(id=1000))
+    channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
+    channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
+    channel.permissions_for.return_value = NS(view_channel=True, read_message_history=True)
+    guild = NS(id=1, default_role=NS(), unavailable=False, me=NS(), emojis=[])
+
+    human = NS(
+        id=100,
+        bot=False,
+        display_name="사용자",
+        guild_permissions=NS(manage_guild=False),
+    )
+    bot_author = NS(
+        id=300,
+        bot=True,
+        display_name="다른 봇",
+        guild_permissions=NS(manage_guild=False),
+    )
+
+    try:
+        await client.on_message(
+            make_message(channel, guild, message_id=1, author=human, text="그냥 대화")
+        )
+        await client.on_message(
+            make_message(channel, guild, message_id=2, author=bot_author, text="그냥 봇 대화")
+        )
+        assert llm.answer.await_count == 1
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_bot_trigger_uses_recent_context_but_not_persistent_memory(base_client):
     client, store, llm, channel, guild, _, = base_client
     author = NS(
@@ -258,7 +326,13 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
     llm = NS(close=AsyncMock())
     event_path = tmp_path / "events.jsonl"
     client = ProductionHinaClient(
-        Settings("test", "test", cooldown=0, event_log_path=str(event_path)),
+        Settings(
+            "test",
+            "test",
+            cooldown=0,
+            always_reply_channel_ids=frozenset({10}),
+            event_log_path=str(event_path),
+        ),
         store=store,
         llm=llm,
     )
@@ -280,12 +354,19 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
         guild,
         message_id=21,
         author=bot_author,
+        text="그냥 봇 대화",
+    )
+    prefix_direct = make_message(
+        channel,
+        guild,
+        message_id=22,
+        author=bot_author,
         text="히나야 안녕",
     )
     dm_direct = make_message(
         channel,
         None,
-        message_id=22,
+        message_id=23,
         author=bot_author,
         text="<@99> DM에서 안녕",
         mentions=(99,),
@@ -316,13 +397,15 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
         }]
         await client.on_message(passive)
         assert forwarded.await_count == 1
+        await client.on_message(prefix_direct)
+        assert forwarded.await_count == 2
         await client.on_message(dm_direct)
-        assert forwarded.await_count == 1
+        assert forwarded.await_count == 2
 
     rows = [json.loads(line) for line in event_path.read_text().splitlines()]
     preflight = [row for row in rows if row["event"] == "turn.preflight"]
-    assert len(preflight) == 1
-    assert preflight[0]["turn_id"] == forwarded_turn_ids[0]
+    assert len(preflight) == 2
+    assert [row["turn_id"] for row in preflight] == forwarded_turn_ids
     assert set(preflight[0]) >= {
         "preflight_ms",
         "identity_ms",

@@ -6,6 +6,7 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Added
 
+- Configurable guild channels that treat every human message as a direct bot turn, while keeping bot-authored messages behind explicit triggers.
 - Formal release-version and compatibility lifecycle policy.
 - CI validation for package version format and release-tag consistency.
 
