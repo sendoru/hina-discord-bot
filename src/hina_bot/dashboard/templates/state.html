@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_scope_picker.html" import scope_picker %}
 {% block title %}State · Hina Dashboard{% endblock %}
 {% block content %}
 {% macro chain_rows(chain, include_server=true) -%}
@@ -16,10 +17,12 @@
 </section>
 
 <form class="filters search-filter" method="get">
-  <div class="filter-row">
-    <input name="target_guild_id" inputmode="numeric" value="{{ data.filters.target_guild_id }}" placeholder="guild id (empty = DM)">
-    <input name="target_channel_id" inputmode="numeric" value="{{ data.filters.target_channel_id }}" placeholder="channel id">
-    <input name="target_user_id" inputmode="numeric" value="{{ data.filters.target_user_id }}" placeholder="user id">
+  <div class="filter-row scope-target-row">
+    {{ scope_picker("target", data.filters.target_scope_type, data.filters.target_guild_id, data.filters.target_channel_id, label="Target scope", allow_any=false) }}
+    <label class="scope-target-user">
+      <span>User ID</span>
+      <input name="target_user_id" inputmode="numeric" value="{{ data.filters.target_user_id }}" placeholder="user id">
+    </label>
     <button type="submit">Evaluate scope</button>
     <a class="button secondary" href="/state">Reset</a>
   </div>
@@ -36,7 +39,7 @@
 <section class="notice danger">{{ data.target_error }}</section>
 {% elif not data.effective %}
 <section class="notice info">
-  Enter channel and user IDs to evaluate a scope. Leave guild ID empty to inspect a DM scope.
+  Choose Guild or DM, then enter the IDs needed for that scope.
 </section>
 {% else %}
 <section class="panel">
