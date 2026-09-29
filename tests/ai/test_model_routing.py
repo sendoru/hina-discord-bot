@@ -70,7 +70,7 @@ def visuals(count: int, *, source="attachment", reference_strength="current_mess
     )
 
 
-def test_routine_chat_uses_fast_tier_and_four_physical_loads():
+def test_routine_chat_uses_fast_tier_and_split_context_loads():
     plan = build_model_plan(settings(), information("오늘 뭐 먹지?"))
 
     assert plan.tier == ModelTier.FAST
@@ -83,6 +83,7 @@ def test_routine_chat_uses_fast_tier_and_four_physical_loads():
     assert dict(plan.components) == {
         "request_load": 0.0,
         "context_load": 0.0,
+        "ambient_context_load": 0.0,
         "evidence_load": 0.0,
         "visual_load": 0.0,
         "semantic_score": 0.0,
@@ -214,7 +215,7 @@ def test_negated_prior_task_does_not_escalate_followup():
     assert dict(plan.components)["semantic_score"] == 0.0
 
 
-def test_context_load_depends_on_admitted_text_volume_not_context_kind():
+def test_strong_context_load_keeps_existing_curve():
     small = build_model_plan(settings(), information("읽어봐"), context_chars=1000)
     medium = build_model_plan(settings(), information("읽어봐"), context_chars=4500)
     large = build_model_plan(settings(), information("읽어봐"), context_chars=8000)
@@ -223,6 +224,26 @@ def test_context_load_depends_on_admitted_text_volume_not_context_kind():
     assert 0.0 < dict(medium.components)["context_load"] < 2.0
     assert dict(large.components)["context_load"] == pytest.approx(2.0)
     assert large.tier == ModelTier.SMART
+
+
+def test_ambient_context_is_visible_but_cannot_force_smart_by_itself():
+    ambient = build_model_plan(
+        settings(),
+        information("읽어봐"),
+        ambient_context_chars=8000,
+    )
+    combined = build_model_plan(
+        settings(),
+        information("읽어봐"),
+        context_chars=4500,
+        ambient_context_chars=8000,
+    )
+
+    assert dict(ambient.components)["context_load"] == 0.0
+    assert dict(ambient.components)["ambient_context_load"] == pytest.approx(0.5)
+    assert ambient.tier == ModelTier.FAST
+    assert combined.score > ambient.score
+    assert combined.score > 1.0
 
 
 def test_evidence_load_uses_actual_reference_text_and_final_web_requirement():
@@ -290,9 +311,14 @@ def test_routing_telemetry_contains_no_prompt_or_visual_metadata():
     assert secret not in str(telemetry)
     assert visual.name not in str(telemetry)
     assert visual.message_id not in str(telemetry)
-    assert telemetry["model_route_policy"] == "chat-v4"
+    assert telemetry["model_route_policy"] == "chat-v5"
     assert set(telemetry["model_route_components"]) == {
-        "request_load", "context_load", "evidence_load", "visual_load", "semantic_score"
+        "request_load",
+        "context_load",
+        "ambient_context_load",
+        "evidence_load",
+        "visual_load",
+        "semantic_score",
     }
     assert sum(telemetry["model_route_components"].values()) == pytest.approx(
         telemetry["model_route_score"]
