@@ -14,7 +14,11 @@ from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.observability import current_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.store import Store
-from hina_bot.discord.bot import BOT_TRIGGER_CHAIN_LIMIT, _timed_turn_locks
+from hina_bot.discord.bot import (
+    BOT_TRIGGER_CHAIN_LIMIT,
+    _timed_channel_lock,
+    _timed_memory_lock,
+)
 from hina_bot.discord.bot import HinaClient as BaseHinaClient
 from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.target_context import TARGET_CONTEXT
@@ -572,7 +576,7 @@ async def test_setup_hook_starts_llm_background_tasks(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_timed_turn_locks_preserves_order_and_records_split_waits():
+async def test_timed_locks_record_channel_and_memory_waits_separately():
     events = []
 
     class Lock:
@@ -585,26 +589,181 @@ async def test_timed_turn_locks_preserves_order_and_records_split_waits():
         def release(self):
             events.append(f"release:{self.name}")
 
-    times = iter((10.0, 10.004, 10.004, 10.010))
     timings = {}
-    async with _timed_turn_locks(
+    channel_times = iter((10.0, 10.004))
+    async with _timed_channel_lock(
         Lock("channel"),
-        Lock("memory"),
         timings,
         10.0,
-        clock=lambda: next(times),
+        clock=lambda: next(channel_times),
     ):
-        events.append("body")
+        events.append("channel-body")
+
+    memory_times = iter((10.004, 10.010))
+    async with _timed_memory_lock(
+        Lock("memory"),
+        timings,
+        clock=lambda: next(memory_times),
+    ):
+        events.append("memory-body")
 
     assert events == [
         "acquire:channel",
-        "acquire:memory",
-        "body",
-        "release:memory",
+        "channel-body",
         "release:channel",
+        "acquire:memory",
+        "memory-body",
+        "release:memory",
     ]
     assert timings == {
         "channel_lock_wait_ms": 4,
+        "lock_wait_ms": 4,
         "memory_lock_wait_ms": 6,
-        "lock_wait_ms": 10,
     }
+
+
+@pytest.mark.asyncio
+async def test_cooldown_uses_turn_arrival_time_after_channel_lock_backlog(tmp_path):
+    store = Store(":memory:")
+    llm = NS(
+        answer=AsyncMock(return_value="응"),
+        summarize=AsyncMock(),
+        extract_structured_memory=AsyncMock(),
+        summarize_shared=AsyncMock(),
+        close=AsyncMock(),
+    )
+    client = BaseHinaClient(
+        Settings(
+            "test",
+            "test",
+            cooldown=0.05,
+            event_log_path=str(tmp_path / "events.jsonl"),
+        ),
+        store=store,
+        llm=llm,
+    )
+    client._connection.user = NS(id=99)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 10
+    channel.send = AsyncMock(return_value=NS(id=1000))
+    channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
+    channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
+    channel.permissions_for.return_value = NS(view_channel=True, read_message_history=True)
+    guild = NS(id=1, default_role=NS(), unavailable=False, me=NS(), emojis=[])
+    author = NS(
+        id=100,
+        bot=False,
+        display_name="사용자",
+        guild_permissions=NS(manage_guild=False),
+    )
+    scope = Scope(1, 10, 100)
+    channel_lock = client.channel_lock(scope)
+    await channel_lock.acquire()
+    try:
+        first = asyncio.create_task(
+            client.on_message(
+                make_message(
+                    channel,
+                    guild,
+                    message_id=100,
+                    author=author,
+                    text="<@99> 첫 질문",
+                    mentions=(99,),
+                )
+            )
+        )
+        await asyncio.sleep(0.06)
+        channel_lock.release()
+        await first
+
+        await client.on_message(
+            make_message(
+                channel,
+                guild,
+                message_id=101,
+                author=author,
+                text="<@99> 두 번째 질문",
+                mentions=(99,),
+            )
+        )
+
+        assert llm.answer.await_count == 2
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "events.jsonl").read_text().splitlines()
+        ]
+        assert not any(
+            row.get("event") == "turn.dropped" and row.get("reason") == "cooldown"
+            for row in rows
+        )
+    finally:
+        if channel_lock.locked():
+            channel_lock.release()
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_same_channel_next_turn_can_generate_while_prior_memory_update_runs(base_client):
+    client, _, llm, channel, guild, _ = base_client
+    author = NS(
+        id=100,
+        bot=False,
+        display_name="사용자",
+        guild_permissions=NS(manage_guild=False),
+    )
+    memory_started = asyncio.Event()
+    release_memory = asyncio.Event()
+    second_answer_started = asyncio.Event()
+    answer_calls = 0
+    extraction_calls = 0
+
+    async def answer(*args, **kwargs):
+        nonlocal answer_calls
+        answer_calls += 1
+        if answer_calls == 2:
+            second_answer_started.set()
+        return "응"
+
+    async def extract(*args, **kwargs):
+        nonlocal extraction_calls
+        extraction_calls += 1
+        if extraction_calls == 1:
+            memory_started.set()
+            await release_memory.wait()
+
+    llm.answer.side_effect = answer
+    llm.extract_structured_memory.side_effect = extract
+
+    first = asyncio.create_task(
+        client.on_message(
+            make_message(
+                channel,
+                guild,
+                message_id=200,
+                author=author,
+                text="<@99> 첫 질문",
+                mentions=(99,),
+            )
+        )
+    )
+    await asyncio.wait_for(memory_started.wait(), timeout=1.0)
+
+    second = asyncio.create_task(
+        client.on_message(
+            make_message(
+                channel,
+                guild,
+                message_id=201,
+                author=author,
+                text="<@99> 두 번째 질문",
+                mentions=(99,),
+            )
+        )
+    )
+    await asyncio.wait_for(second_answer_started.wait(), timeout=1.0)
+
+    assert not first.done()
+    assert llm.answer.await_count == 2
+
+    release_memory.set()
+    await asyncio.gather(first, second)
