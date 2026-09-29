@@ -227,8 +227,42 @@ async def test_active_runtime_uses_classifier_result_for_answer_model(tmp_path):
         answer_row = next(row for row in rows if row["operation"] == "answer")
         assert answer_row["semantic_route_status"] == "completed"
         assert answer_row["semantic_route_level"] == "high"
-        assert answer_row["model_route_policy"] == "chat-hybrid-v4"
+        assert answer_row["model_route_policy"] == "chat-hybrid-v5"
         assert secret_request not in log_path.read_text()
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_active_runtime_ambient_only_context_keeps_low_request_on_fast():
+    primary = client(response("응."))
+    classifier_client = client(response(classification(level="low")))
+    llm = LLM(
+        settings(external_context_policy="full"),
+        client=primary,
+        classifier_client=classifier_client,
+    )
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        result = await llm.answer(
+            store,
+            Scope(1, 10, 100),
+            "사용자",
+            "이제 다른 얘기하자",
+            channel_context=[{
+                "message_id": "900",
+                "user_id": "200",
+                "author_user_id": "200",
+                "role": "user",
+                "content": "x" * 8000,
+                "context_kind": "channel_ambient",
+            }],
+        )
+        assert result == "응."
+        assert classifier_client.responses.create.await_count == 1
+        assert primary.responses.create.await_args.kwargs["model"] == "fast"
     finally:
         await llm.close()
         store.close()
