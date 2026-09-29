@@ -2388,3 +2388,9 @@ pre {
     grid-column: auto;
   }
 }
+
+
+.filter-meta-row .quick-ranges,
+.filter-footer .quick-ranges {
+  margin-top: 0;
+}
