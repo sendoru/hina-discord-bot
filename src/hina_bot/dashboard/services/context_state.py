@@ -28,6 +28,7 @@ class ContextStateService(ReadService):
 
     @staticmethod
     def _parse_target(
+        scope_type: str,
         guild_id: str,
         channel_id: str,
         user_id: str,
@@ -38,11 +39,13 @@ class ContextStateService(ReadService):
         if not (guild_id or channel_id or user_id):
             return None, ""
         if not channel_id or not user_id:
-            return None, "Channel ID and user ID are required. Leave guild ID empty for a DM."
+            return None, "Channel ID and user ID are required."
+        if scope_type == "guild" and not guild_id:
+            return None, "Guild ID is required for a guild scope."
         try:
             parsed_channel = int(channel_id)
             parsed_user = int(user_id)
-            parsed_guild = int(guild_id) if guild_id else None
+            parsed_guild = int(guild_id) if scope_type == "guild" else None
             if parsed_channel <= 0 or parsed_user <= 0:
                 raise ValueError
             if parsed_guild is not None and parsed_guild <= 0:
@@ -95,6 +98,7 @@ class ContextStateService(ReadService):
     def context_state(
         self,
         *,
+        target_scope_type: str = "",
         target_guild_id: str = "",
         target_channel_id: str = "",
         target_user_id: str = "",
@@ -103,6 +107,12 @@ class ContextStateService(ReadService):
         target_guild_id = target_guild_id.strip()
         target_channel_id = target_channel_id.strip()
         target_user_id = target_user_id.strip()
+        target_scope_type = infer_target_scope_type(
+            scope_type=target_scope_type,
+            guild_id=target_guild_id,
+            channel_id=target_channel_id,
+            user_id=target_user_id,
+        )
         query = query.strip()
         query_folded = query.lower()
 
@@ -146,6 +156,7 @@ class ContextStateService(ReadService):
             manual_notes.append(note)
 
         scope, target_error = self._parse_target(
+            target_scope_type,
             target_guild_id,
             target_channel_id,
             target_user_id,
@@ -220,7 +231,10 @@ class ContextStateService(ReadService):
             "effective": effective,
             "target_error": target_error,
             "filters": {
-                "target_guild_id": target_guild_id,
+                "target_scope_type": target_scope_type,
+                "target_guild_id": (
+                    target_guild_id if target_scope_type == "guild" else ""
+                ),
                 "target_channel_id": target_channel_id,
                 "target_user_id": target_user_id,
                 "q": query,
