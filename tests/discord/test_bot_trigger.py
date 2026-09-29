@@ -43,10 +43,19 @@ def routing_message(
     )
 
 
-def test_other_bots_require_an_explicit_guild_call():
+def test_other_bots_keep_existing_ping_rule_outside_always_reply_channels():
     assert trigger_text(routing_message("그냥 봇 대화"), 99) is None
-    assert trigger_text(routing_message("히나야 안녕"), 99) == "히나야 안녕"
-    assert trigger_text(routing_message("히나야"), 99) == ""
+    assert trigger_text(routing_message("히나야 안녕"), 99) is None
+    assert trigger_text(
+        routing_message("히나야 안녕"),
+        99,
+        always_reply_channel_ids=frozenset({10}),
+    ) == "히나야 안녕"
+    assert trigger_text(
+        routing_message("히나야"),
+        99,
+        always_reply_channel_ids=frozenset({10}),
+    ) == ""
     assert trigger_text(routing_message("히나야 안녕", dm=True), 99, True) is None
     assert trigger_text(
         routing_message("<@99> 안녕", mentions=(99,), dm=True), 99, True
@@ -140,7 +149,13 @@ async def base_client():
     tempdir = tempfile.TemporaryDirectory()
     event_path = Path(tempdir.name) / "events.jsonl"
     client = BaseHinaClient(
-        Settings("test", "test", cooldown=0, event_log_path=str(event_path)),
+        Settings(
+            "test",
+            "test",
+            cooldown=0,
+            always_reply_channel_ids=frozenset({10}),
+            event_log_path=str(event_path),
+        ),
         store=store,
         llm=llm,
     )
