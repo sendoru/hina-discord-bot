@@ -109,6 +109,13 @@ class RoutingTests(unittest.TestCase):
             ),
             "히나야 봐줘",
         )
+        self.assertIsNone(
+            trigger_text(
+                message("히나야 봐줘", bot=True, channel_id=11),
+                99,
+                always_reply_channel_ids=always_reply,
+            )
+        )
 
     def test_dm_always_reply_preserves_call_syntax(self):
         self.assertEqual(trigger_text(message("히나야", dm=True), 99, True), "히나야")
