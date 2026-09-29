@@ -3,7 +3,7 @@ import logging
 import sys
 import time
 import weakref
-from contextlib import asynccontextmanager, nullcontext
+from contextlib import ExitStack, asynccontextmanager, nullcontext
 from datetime import timedelta
 
 import discord
@@ -40,34 +40,39 @@ BOT_TRIGGER_CHAIN_WINDOW_SECONDS = 15.0
 
 
 @asynccontextmanager
-async def _timed_turn_locks(
+async def _timed_channel_lock(
     channel_lock,
-    memory_lock,
     timings: dict,
     turn_started: float,
     *,
     clock=time.perf_counter,
 ):
-    channel_wait_started = clock()
+    wait_started = clock()
     await channel_lock.acquire()
-    channel_acquired = clock()
-    timings["channel_lock_wait_ms"] = round(
-        (channel_acquired - channel_wait_started) * 1000
-    )
+    acquired = clock()
+    timings["channel_lock_wait_ms"] = round((acquired - wait_started) * 1000)
+    timings["lock_wait_ms"] = round((acquired - turn_started) * 1000)
     try:
-        memory_wait_started = clock()
-        await memory_lock.acquire()
-        memory_acquired = clock()
-        timings["memory_lock_wait_ms"] = round(
-            (memory_acquired - memory_wait_started) * 1000
-        )
-        timings["lock_wait_ms"] = round((memory_acquired - turn_started) * 1000)
-        try:
-            yield
-        finally:
-            memory_lock.release()
+        yield
     finally:
         channel_lock.release()
+
+
+@asynccontextmanager
+async def _timed_memory_lock(
+    memory_lock,
+    timings: dict,
+    *,
+    clock=time.perf_counter,
+):
+    wait_started = clock()
+    await memory_lock.acquire()
+    acquired = clock()
+    timings["memory_lock_wait_ms"] = round((acquired - wait_started) * 1000)
+    try:
+        yield
+    finally:
+        memory_lock.release()
 
 
 def _bare_call_reply(
@@ -419,6 +424,7 @@ class HinaClient(discord.Client):
             return
         turn_token = CURRENT_TURN_ID.set(current_turn_id() or new_turn_id())
         turn_started = time.perf_counter()
+        cooldown_received_at = time.monotonic()
         scope_kind = "guild" if guild_id is not None else "dm"
         self.events.emit(
             "turn.received",
@@ -449,9 +455,10 @@ class HinaClient(discord.Client):
             CURRENT_TURN_ID.reset(turn_token)
             return
         channel_lock = self.channel_lock(scope)
-        # One lock per realm+user serializes persistent-memory updates across channels.
+        # Persistent-memory extraction remains serialized per realm+user, but it no longer
+        # holds the channel lock after the visible reply has been delivered.
         key = scope.user_note
-        lock = self.memory_lock(scope)
+        memory_lock = self.memory_lock(scope)
         self.pending_count += 1
         task = asyncio.current_task()
         self.active_tasks.add(task)
@@ -460,97 +467,112 @@ class HinaClient(discord.Client):
         terminal_emitted = False
         timings = {}
         try:
-            async with _timed_turn_locks(
-                channel_lock,
-                lock,
-                timings,
-                turn_started,
-            ):
-                mode = (
-                    MemoryMode.off if bot_author else MemoryMode(self.store.memory_mode(scope))
-                )
-                use_memory = received_mode.reads and mode.reads
-                save_memory = received_mode.writes and mode.writes
-                use_chat_log = received_chat_log and self.store.chat_log_enabled(scope)
-                if self.store.seen(message.id):
-                    self.events.emit(
-                        "turn.dropped",
-                        scope=scope_kind,
-                        reason="duplicate",
-                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+            with ExitStack() as exchange_stack:
+                async with _timed_channel_lock(
+                    channel_lock,
+                    timings,
+                    turn_started,
+                ):
+                    mode = (
+                        MemoryMode.off if bot_author else MemoryMode(self.store.memory_mode(scope))
                     )
-                    terminal_emitted = True
-                    return
-                if len(text) > 4000:
-                    stage = "delivery"
-                    await self.send_text(message.channel, "한 번에 4000자 이내로 이야기해 주세요.")
-                    reply_delivered = True
-                    self.events.emit(
-                        "turn.dropped",
-                        scope=scope_kind,
-                        reason="input_too_long",
-                        reply_delivered=True,
-                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                    use_memory = received_mode.reads and mode.reads
+                    save_memory = received_mode.writes and mode.writes
+                    use_chat_log = received_chat_log and self.store.chat_log_enabled(scope)
+                    if self.store.seen(message.id):
+                        self.events.emit(
+                            "turn.dropped",
+                            scope=scope_kind,
+                            reason="duplicate",
+                            elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                        )
+                        terminal_emitted = True
+                        return
+                    if len(text) > 4000:
+                        stage = "delivery"
+                        await self.send_text(
+                            message.channel,
+                            "한 번에 4000자 이내로 이야기해 주세요.",
+                        )
+                        reply_delivered = True
+                        self.events.emit(
+                            "turn.dropped",
+                            scope=scope_kind,
+                            reason="input_too_long",
+                            reply_delivered=True,
+                            elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                        )
+                        terminal_emitted = True
+                        return
+
+                    # Cooldown is based on when Discord delivered the turn to this process,
+                    # not on when an earlier channel-lock backlog finally cleared.
+                    self.cooldowns = {
+                        cooldown_key: accepted_at
+                        for cooldown_key, accepted_at in self.cooldowns.items()
+                        if cooldown_received_at - accepted_at < self.settings.cooldown
+                    }
+                    if key in self.cooldowns:
+                        self.events.emit(
+                            "turn.dropped",
+                            scope=scope_kind,
+                            reason="cooldown",
+                            elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                        )
+                        terminal_emitted = True
+                        return
+                    self.cooldowns[key] = cooldown_received_at
+
+                    if not text:
+                        stage = "delivery"
+                        delivery_started = time.perf_counter()
+                        await self.send_text(
+                            message.channel,
+                            _bare_call_reply(
+                                scope,
+                                self.settings.special_dm_user_id,
+                                self.settings.empty_call_reply,
+                                self.settings.special_dm_empty_call_reply,
+                            ),
+                        )
+                        reply_delivered = True
+                        timings["delivery_ms"] = round(
+                            (time.perf_counter() - delivery_started) * 1000
+                        )
+                        self.events.emit(
+                            "turn.reply_delivered",
+                            scope=scope_kind,
+                            elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                            delivery_ms=timings["delivery_ms"],
+                            delivery_chunks=1,
+                        )
+                        self.events.emit(
+                            "turn.completed",
+                            scope=scope_kind,
+                            status="completed",
+                            reply_delivered=True,
+                            elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                            **timings,
+                        )
+                        terminal_emitted = True
+                        return
+
+                    if guild_id is not None and use_chat_log:
+                        stage = "recent_history"
+                        recent_history_started = time.perf_counter()
+                        await self.hydrate_recent_history(message, scope)
+                        timings["recent_history_ms"] = round(
+                            (time.perf_counter() - recent_history_started) * 1000
+                        )
+
+                    usage = getattr(self.llm, "usage", None)
+                    exchange = (
+                        usage.exchange("guild" if guild_id is not None else "dm")
+                        if usage is not None and hasattr(usage, "exchange")
+                        else nullcontext()
                     )
-                    terminal_emitted = True
-                    return
-                now = time.monotonic()
-                self.cooldowns = {k: v for k, v in self.cooldowns.items()
-                                  if now - v < self.settings.cooldown}
-                if key in self.cooldowns:
-                    self.events.emit(
-                        "turn.dropped",
-                        scope=scope_kind,
-                        reason="cooldown",
-                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
-                    )
-                    terminal_emitted = True
-                    return
-                self.cooldowns[key] = now
-                if not text:
-                    stage = "delivery"
-                    delivery_started = time.perf_counter()
-                    await self.send_text(
-                        message.channel,
-                        _bare_call_reply(
-                            scope,
-                            self.settings.special_dm_user_id,
-                            self.settings.empty_call_reply,
-                            self.settings.special_dm_empty_call_reply,
-                        ),
-                    )
-                    reply_delivered = True
-                    timings["delivery_ms"] = round(
-                        (time.perf_counter() - delivery_started) * 1000
-                    )
-                    self.events.emit(
-                        "turn.reply_delivered",
-                        scope=scope_kind,
-                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
-                        delivery_ms=timings["delivery_ms"],
-                        delivery_chunks=1,
-                    )
-                    self.events.emit(
-                        "turn.completed",
-                        scope=scope_kind,
-                        status="completed",
-                        reply_delivered=True,
-                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
-                        **timings,
-                    )
-                    terminal_emitted = True
-                    return
-                if guild_id is not None and use_chat_log:
-                    stage = "recent_history"
-                    recent_history_started = time.perf_counter()
-                    await self.hydrate_recent_history(message, scope)
-                    timings["recent_history_ms"] = round(
-                        (time.perf_counter() - recent_history_started) * 1000
-                    )
-                usage = getattr(self.llm, "usage", None)
-                exchange = (usage.exchange("guild" if guild_id is not None else "dm")
-                            if usage is not None and hasattr(usage, "exchange") else nullcontext())
-                with exchange:
+                    exchange_stack.enter_context(exchange)
+
                     slot_started = time.perf_counter()
                     async with self.slots:
                         timings["slot_wait_ms"] = round(
@@ -559,16 +581,24 @@ class HinaClient(discord.Client):
                         async with message.channel.typing():
                             stage = "context"
                             context_started = time.perf_counter()
-                            sources = await self.public_sources(scope.user_id, guild_id) if use_memory else []
+                            sources = (
+                                await self.public_sources(scope.user_id, guild_id)
+                                if use_memory
+                                else []
+                            )
                             context = self.store.public_context(sources) if use_memory else []
                             emoji_catalog = await self.emoji_registry.catalog(message.channel)
                             timings["context_ms"] = round(
                                 (time.perf_counter() - context_started) * 1000
                             )
+
                             stage = "generation"
                             generation_started = time.perf_counter()
                             answer = await self.llm.answer(
-                                self.store, scope, message.author.display_name, text,
+                                self.store,
+                                scope,
+                                message.author.display_name,
+                                text,
                                 public_context=context,
                                 channel_context=(
                                     (
@@ -580,23 +610,35 @@ class HinaClient(discord.Client):
                                     else []
                                 ),
                                 use_memory=use_memory,
-                                emoji_catalog=emoji_catalog)
+                                emoji_catalog=emoji_catalog,
+                            )
                             timings["generation_ms"] = round(
                                 (time.perf_counter() - generation_started) * 1000
                             )
-                            current = {e["id"] for e in await self.emoji_registry.catalog(message.channel)}
-                            answer = render_emojis(answer, [e for e in emoji_catalog if e["id"] in current])
+                            current = {
+                                e["id"]
+                                for e in await self.emoji_registry.catalog(message.channel)
+                            }
+                            answer = render_emojis(
+                                answer,
+                                [e for e in emoji_catalog if e["id"] in current],
+                            )
                             answer = neutralize_mentions(answer)
                             if not answer:
                                 answer = self.settings.empty_response_reply
                             parts = list(chunks(answer))
+
                             stage = "delivery"
                             delivery_started = time.perf_counter()
                             sent = await message.channel.send(
-                                parts[0], allowed_mentions=USER_ONLY_ALLOWED_MENTIONS)
+                                parts[0],
+                                allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
+                            )
                             for part in parts[1:]:
                                 await message.channel.send(
-                                    part, allowed_mentions=USER_ONLY_ALLOWED_MENTIONS)
+                                    part,
+                                    allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
+                                )
                             reply_delivered = True
                             timings["delivery_ms"] = round(
                                 (time.perf_counter() - delivery_started) * 1000
@@ -611,7 +653,11 @@ class HinaClient(discord.Client):
                                 delivery_chunks=len(parts),
                             )
                             if guild_id is not None and use_chat_log:
-                                assistant_name = getattr(self.user, "display_name", "assistant")[:100]
+                                assistant_name = getattr(
+                                    self.user,
+                                    "display_name",
+                                    "assistant",
+                                )[:100]
                                 sent_at = getattr(sent, "created_at", None)
                                 self.recent.add(
                                     scope,
@@ -619,68 +665,88 @@ class HinaClient(discord.Client):
                                     assistant_name,
                                     answer,
                                     role="assistant",
-                                    unix_time=sent_at.timestamp() if sent_at is not None else None,
+                                    unix_time=(
+                                        sent_at.timestamp()
+                                        if sent_at is not None
+                                        else None
+                                    ),
                                     author_user_id=self.user.id,
                                     reply_target_user_id=scope.user_id,
                                     direct_trigger=None,
                                     capture_turn_provenance=True,
                                 )
-                        # Commit only after Discord delivery. Never memorize a failed model request.
-                        memory_failures = 0
-                        if save_memory:
-                            stage = "memory"
-                            memory_started = time.perf_counter()
-                            self.store.add(
-                                scope,
-                                message.id,
-                                text,
-                                answer,
-                                name=message.author.display_name,
-                            )
-                            self.store.add_shared_call(scope, message.id, message.author.display_name, text)
-                            for memory_kind, update, failure_event in (
-                                (
-                                    "structured",
-                                    self.llm.extract_structured_memory,
-                                    "memory.extraction_failed",
-                                ),
-                                ("personal", self.llm.summarize, "memory.summary_failed"),
-                                ("shared", self.llm.summarize_shared, "memory.summary_failed"),
-                            ):
-                                try:
-                                    await update(self.store, scope)
-                                except Exception as exc:  # noqa: BLE001 - isolate memory failures; redact logs
-                                    memory_failures += 1
-                                    error = safe_exception_fields(exc, f"memory_{memory_kind}")
-                                    self.events.emit(
-                                        failure_event,
-                                        level="warning",
-                                        scope=scope_kind,
-                                        memory_kind=memory_kind,
-                                        **error,
-                                    )
-                                    log.warning(
-                                        "Memory update deferred (%s, kind=%s, turn_id=%s, fingerprint=%s)",
-                                        type(exc).__name__,
-                                        memory_kind,
-                                        current_turn_id(),
-                                        error["error_fingerprint"],
-                                    )
-                            timings["memory_ms"] = round(
-                                (time.perf_counter() - memory_started) * 1000
-                            )
-                        self.events.emit(
-                            "turn.completed",
-                            scope=scope_kind,
-                            status="partial_success" if memory_failures else "completed",
-                            reply_delivered=reply_delivered,
-                            memory_failures=memory_failures,
-                            answer_chars=len(answer),
-                            delivery_chunks=len(parts),
-                            elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
-                            **timings,
+
+                    # Persist the delivered turn before releasing the channel lock so duplicate
+                    # suppression and the next same-channel turn see a consistent transcript.
+                    # Expensive extraction/summarization runs after the channel lock is released.
+                    if save_memory:
+                        stage = "memory_persist"
+                        self.store.add(
+                            scope,
+                            message.id,
+                            text,
+                            answer,
+                            name=message.author.display_name,
                         )
-                        terminal_emitted = True
+                        self.store.add_shared_call(
+                            scope,
+                            message.id,
+                            message.author.display_name,
+                            text,
+                        )
+
+                memory_failures = 0
+                if save_memory:
+                    stage = "memory"
+                    memory_started = time.perf_counter()
+                    async with _timed_memory_lock(memory_lock, timings):
+                        for memory_kind, update, failure_event in (
+                            (
+                                "structured",
+                                self.llm.extract_structured_memory,
+                                "memory.extraction_failed",
+                            ),
+                            ("personal", self.llm.summarize, "memory.summary_failed"),
+                            ("shared", self.llm.summarize_shared, "memory.summary_failed"),
+                        ):
+                            try:
+                                await update(self.store, scope)
+                            except Exception as exc:  # noqa: BLE001 - isolate memory failures; redact logs
+                                memory_failures += 1
+                                error = safe_exception_fields(
+                                    exc,
+                                    f"memory_{memory_kind}",
+                                )
+                                self.events.emit(
+                                    failure_event,
+                                    level="warning",
+                                    scope=scope_kind,
+                                    memory_kind=memory_kind,
+                                    **error,
+                                )
+                                log.warning(
+                                    "Memory update deferred (%s, kind=%s, turn_id=%s, fingerprint=%s)",
+                                    type(exc).__name__,
+                                    memory_kind,
+                                    current_turn_id(),
+                                    error["error_fingerprint"],
+                                )
+                    timings["memory_ms"] = round(
+                        (time.perf_counter() - memory_started) * 1000
+                    )
+
+                self.events.emit(
+                    "turn.completed",
+                    scope=scope_kind,
+                    status="partial_success" if memory_failures else "completed",
+                    reply_delivered=reply_delivered,
+                    memory_failures=memory_failures,
+                    answer_chars=len(answer),
+                    delivery_chunks=len(parts),
+                    elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                    **timings,
+                )
+                terminal_emitted = True
         except asyncio.CancelledError as exc:
             error = safe_exception_fields(exc, stage)
             self.events.emit(
