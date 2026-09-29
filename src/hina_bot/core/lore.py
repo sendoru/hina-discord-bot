@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 
+from .knowledge_retrieval import KnowledgeCandidate, lexical_search
+
 LANES = {"canon", "community_meme"}
 KNOWLEDGE_LEVELS = {
     "self", "direct_experience", "reported", "public_knowledge", "inference",
@@ -24,11 +26,6 @@ FACT_TYPE_TO_KIND = {
     "fandom": "interpretation",
 }
 REFERENCE_ONLY_FACT_TYPES = {"adaptation", "fandom"}
-_TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
-_LEXEME = re.compile(r"[0-9A-Za-z가-힣]+")
-_STOPWORDS = {"뭐야", "알려줘", "어떻게"}
-_WORD_CHAR = r"0-9A-Za-z가-힣"
-
 
 class LoreValidationError(ValueError):
     pass
@@ -109,20 +106,6 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
                             for row in rows), encoding="utf-8")
 
 
-def _contains_subject(text: str, subject: str) -> bool:
-    """Match a subject as a complete name/phrase, not as part of a longer Korean token."""
-    return bool(re.search(
-        rf"(?<![{_WORD_CHAR}]){re.escape(subject)}(?![{_WORD_CHAR}])",
-        text,
-        re.IGNORECASE,
-    ))
-
-
-def _lexemes(text: str) -> set[str]:
-    return {token.casefold() for token in _LEXEME.findall(text)
-            if token.casefold() not in _STOPWORDS}
-
-
 @dataclass
 class LoreIndex:
     records: list[dict]
@@ -136,62 +119,75 @@ class LoreIndex:
             raise LoreValidationError("runtime lore contains duplicate ids")
         return cls(records)
 
-    @staticmethod
-    def _terms(text: str) -> set[str]:
-        return {token.casefold() for token in _TOKEN.findall(text) if token.casefold() not in _STOPWORDS}
-
-    def search(self, query: str, *, limit: int = 6, chars: int = 3200,
-               include_community: bool = True, include_reference_only: bool = False) -> list[dict]:
-        if limit <= 0 or chars <= 0:
-            return []
-        folded = query.casefold()
-        terms = self._terms(query)
-        lexemes = _lexemes(query)
-        ranked = []
-        for order, record in enumerate(self.records):
+    def candidates(
+        self,
+        *,
+        include_community: bool = True,
+        include_reference_only: bool = False,
+    ) -> list[KnowledgeCandidate]:
+        candidates = []
+        for record in self.records:
             if record["lane"] == "community_meme" and not include_community:
                 continue
             evidence_type = fact_type(record)
-            if record["lane"] == "canon" and evidence_type in REFERENCE_ONLY_FACT_TYPES \
-                    and not include_reference_only:
+            if (
+                record["lane"] == "canon"
+                and evidence_type in REFERENCE_ONLY_FACT_TYPES
+                and not include_reference_only
+            ):
                 continue
-            score = 0
-            for value in record["subjects"]:
-                value = value.casefold()
-                if value not in _STOPWORDS and _contains_subject(folded, value):
-                    score += 8 + min(len(value), 8)
-            for value in record["keywords"]:
-                folded_value = value.casefold()
-                if folded_value in folded:
-                    score += 5 + min(len(folded_value), 8)
-                else:
-                    score += 3 * len(lexemes & _lexemes(value))
-            score += 2 * len(terms & self._terms(record["summary"]))
-            if score:
-                ranked.append((score, -order, record))
-        result, used = [], 0
-        for _, _, record in sorted(ranked, reverse=True):
+
             if record["lane"] == "community_meme":
                 # The model needs the reaction, not editorial provenance that it may say aloud.
-                item = {"kind": "optional_reaction", "content": record["reaction"]}
-            else:
-                evidence_type = fact_type(record)
-                item = {
-                    "reference": record["id"], "kind": FACT_TYPE_TO_KIND[evidence_type],
-                    "content": record["summary"], "awareness": record["knowledge"],
-                    "time": record["timeline"],
-                }
-                if evidence_type == "unknown":
-                    # Existing prompt policy already treats interpretations as non-facts; this flag makes
-                    # the negative/unknown claim explicit without inventing a new model-facing kind.
-                    item["guard"] = "do_not_assert_positive_fact"
-                elif evidence_type in REFERENCE_ONLY_FACT_TYPES:
-                    item["source_scope"] = evidence_type
-            size = len(json.dumps(item, ensure_ascii=False))
-            if used + size > chars:
+                candidates.append(KnowledgeCandidate(
+                    candidate_id=record["id"],
+                    source="static_lore",
+                    kind="optional_reaction",
+                    content=record["reaction"],
+                    search_text=record["summary"],
+                    subjects=tuple(record["subjects"]),
+                    keywords=tuple(record["keywords"]),
+                    subject_boundary=True,
+                ))
                 continue
-            result.append(item)
-            used += size
-            if len(result) >= limit:
-                break
-        return result
+
+            metadata = ()
+            if evidence_type == "unknown":
+                metadata = (("guard", "do_not_assert_positive_fact"),)
+            elif evidence_type in REFERENCE_ONLY_FACT_TYPES:
+                metadata = (("source_scope", evidence_type),)
+
+            candidates.append(KnowledgeCandidate(
+                candidate_id=record["id"],
+                source="static_lore",
+                reference=record["id"],
+                kind=FACT_TYPE_TO_KIND[evidence_type],
+                content=record["summary"],
+                search_text=record["summary"],
+                subjects=tuple(record["subjects"]),
+                keywords=tuple(record["keywords"]),
+                awareness=record["knowledge"],
+                time=record["timeline"],
+                metadata=metadata,
+                subject_boundary=True,
+            ))
+        return candidates
+
+    def search(
+        self,
+        query: str,
+        *,
+        limit: int = 6,
+        chars: int = 3200,
+        include_community: bool = True,
+        include_reference_only: bool = False,
+    ) -> list[dict]:
+        return lexical_search(
+            query,
+            self.candidates(
+                include_community=include_community,
+                include_reference_only=include_reference_only,
+            ),
+            limit=limit,
+            chars=chars,
+        )
