@@ -93,13 +93,23 @@ def normalize_scope_filter(
     )
 
 
-def infer_target_scope_type(*, scope_type: str = "", guild_id: str = "") -> str:
+def infer_target_scope_type(
+    *,
+    scope_type: str = "",
+    guild_id: str = "",
+    channel_id: str = "",
+    user_id: str = "",
+) -> str:
     """Return picker mode while preserving legacy empty-guild DM URLs."""
 
     explicit = _clean_scope_type(scope_type)
     if explicit:
         return explicit
-    return "guild" if guild_id.strip() else "dm"
+    if guild_id.strip():
+        return "guild"
+    if channel_id.strip() or user_id.strip():
+        return "dm"
+    return "guild"
 
 
 __all__ = [
