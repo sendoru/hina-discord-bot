@@ -65,9 +65,9 @@ class ConfigCommands(app_commands.Group):
     def _apply_side_effects(self, key: str) -> None:
         if key == "channel_context_chars":
             self.client.recent.budget = self.client.settings.channel_context_chars
-        elif key == "external_context_policy":
-            # Do not let context collected under a broader policy survive a hot privacy change.
-            # The final egress filter is still authoritative even if a future caller forgets this.
+        elif key in {"external_context_policy", "always_reply_channel_ids"}:
+            # Direct-trigger provenance changes when either the privacy policy or implicit guild
+            # trigger set changes. Do not let rows classified under the old policy survive.
             self.client.recent.clear_all()
 
     @app_commands.command(name="status", description="현재 런타임 설정과 DB override 확인")
@@ -121,7 +121,7 @@ class ConfigCommands(app_commands.Group):
     @app_commands.command(name="set", description="런타임 설정을 DB에 저장하고 즉시 적용")
     @app_commands.describe(
         key="변경할 설정",
-        value="새 값. bool=on/off, 추론=minimal/low/medium/high, 접두어=쉼표 구분, 위치=none",
+        value="새 값. bool=on/off, 접두어/채널 ID=쉼표 구분, 추론=minimal/low/medium/high, 위치=none",
     )
     @app_commands.choices(key=_KEY_CHOICES)
     async def set_config(self, interaction: discord.Interaction, key: str, value: str):

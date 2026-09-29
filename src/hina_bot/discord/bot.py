@@ -316,6 +316,7 @@ class HinaClient(discord.Client):
                         self.user.id,
                         self.settings.dm_always_reply,
                         self.settings.call_prefixes,
+                        self.settings.always_reply_channel_ids,
                     )
                 )
                 self.recent.add(
@@ -378,8 +379,13 @@ class HinaClient(discord.Client):
         if (guild_id is not None and self.settings.allowed_guild_ids
                 and guild_id not in self.settings.allowed_guild_ids):
             return
-        text = trigger_text(message, self.user.id, self.settings.dm_always_reply,
-                            self.settings.call_prefixes)
+        text = trigger_text(
+            message,
+            self.user.id,
+            self.settings.dm_always_reply,
+            self.settings.call_prefixes,
+            self.settings.always_reply_channel_ids,
+        )
         public_at_capture = False
         if guild_id is not None and isinstance(message.channel, discord.TextChannel):
             permissions = message.channel.permissions_for(message.guild.default_role)

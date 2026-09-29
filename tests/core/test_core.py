@@ -8,9 +8,25 @@ from hina_bot.core.routing import Scope, chunks, trigger_text
 from hina_bot.core.store import Store
 
 
-def message(text="", *, mentions=(), bot=False, webhook=None, dm=False, reference=None):
-    return NS(content=text, author=NS(bot=bot), mentions=[NS(id=x) for x in mentions],
-              webhook_id=webhook, guild=None if dm else NS(id=1), reference=reference)
+def message(
+    text="",
+    *,
+    mentions=(),
+    bot=False,
+    webhook=None,
+    dm=False,
+    reference=None,
+    channel_id=10,
+):
+    return NS(
+        content=text,
+        author=NS(bot=bot),
+        mentions=[NS(id=x) for x in mentions],
+        webhook_id=webhook,
+        guild=None if dm else NS(id=1),
+        channel=NS(id=channel_id),
+        reference=reference,
+    )
 
 
 class RoutingTests(unittest.TestCase):
@@ -60,6 +76,46 @@ class RoutingTests(unittest.TestCase):
         self.assertIsNone(trigger_text(message("안녕", dm=True), 99))
         self.assertEqual(trigger_text(message("안녕", dm=True), 99, True), "안녕")
         self.assertEqual(trigger_text(message("히나야 안녕", dm=True), 99), "히나야 안녕")
+
+    def test_always_reply_guild_channel_only_applies_to_humans(self):
+        always_reply = frozenset({10})
+        self.assertEqual(
+            trigger_text(
+                message("그냥 대화", channel_id=10),
+                99,
+                always_reply_channel_ids=always_reply,
+            ),
+            "그냥 대화",
+        )
+        self.assertIsNone(
+            trigger_text(
+                message("그냥 대화", channel_id=11),
+                99,
+                always_reply_channel_ids=always_reply,
+            )
+        )
+        self.assertIsNone(
+            trigger_text(
+                message("그냥 봇 대화", bot=True, channel_id=10),
+                99,
+                always_reply_channel_ids=always_reply,
+            )
+        )
+        self.assertEqual(
+            trigger_text(
+                message("히나야 봐줘", bot=True, channel_id=10),
+                99,
+                always_reply_channel_ids=always_reply,
+            ),
+            "히나야 봐줘",
+        )
+        self.assertIsNone(
+            trigger_text(
+                message("히나야 봐줘", bot=True, channel_id=11),
+                99,
+                always_reply_channel_ids=always_reply,
+            )
+        )
 
     def test_dm_always_reply_preserves_call_syntax(self):
         self.assertEqual(trigger_text(message("히나야", dm=True), 99, True), "히나야")

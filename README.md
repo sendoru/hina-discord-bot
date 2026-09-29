@@ -105,9 +105,14 @@ Discord Developer Portal에서 Bot을 만들고 **Message Content Intent**를 �
 | 히나 메시지에 답장 + 답장 핑 | 응답 |
 | 히나 메시지에 답장, 답장 핑 없음 | 다른 호출 조건이 없으면 응답하지 않음 |
 | DM 일반 메시지 | 기본적으로 호출어/멘션 필요. `DM_ALWAYS_REPLY=true`로 변경 가능 |
-| 봇·웹훅 메시지 | 응답하지 않음 |
+| `ALWAYS_REPLY_CHANNEL_IDS`에 지정된 서버 채널의 사람 메시지 | 호출어 없이도 응답 |
+| 다른 봇의 서버 메시지 | 기본은 멘션/답장 핑 필요. always-reply 채널에서는 호출어도 허용. DM에서는 응답하지 않음 |
+| 웹훅 메시지 | 응답하지 않음 |
 
 기본 호출어는 `히나야`이며 `CALL_PREFIXES`에 쉼표로 구분해 여러 개를 지정할 수 있습니다.
+특정 서버 채널을 DM처럼 항상 응답하게 하려면 `ALWAYS_REPLY_CHANNEL_IDS`에 채널 ID를 쉼표로
+구분해 넣거나, 운영 중 `/config set key:ALWAYS_REPLY_CHANNEL_IDS value:<ID,...>`로 변경할 수 있습니다.
+이 implicit trigger는 사람 메시지에만 적용되며 다른 봇은 명시적 호출이 계속 필요합니다.
 
 ## 이미지 입력
 
