@@ -319,24 +319,32 @@ class RequestAssembler(BaseLLM):
             for row in channel_context
             if row.get("message_id") is not None
         }
-        selected = []
+
+        # Bound the stored tail before deduplicating against live channel context. Otherwise each
+        # live duplicate makes us walk farther into history and resurrect older, potentially stale
+        # topics just to refill the personal-recent quota.
+        candidates = []
         used = 0
         for turn in reversed(store.history(scope)):
-            if str(turn["message_id"]) in seen_ids:
-                continue
             size = len(turn["content"]) + len(turn["reply"])
             if used + size > _SERVER_RECENT_CHARS:
                 break
+            candidates.append(turn)
+            used += size
+            if len(candidates) >= _SERVER_RECENT_TURNS:
+                break
+
+        selected = []
+        for turn in reversed(candidates):
+            if str(turn["message_id"]) in seen_ids:
+                continue
             selected.append({
                 "message_id": str(turn["message_id"]),
                 "at": _context_timestamp(turn["created_at"]),
                 "user": turn["content"],
                 "hina": turn["reply"],
             })
-            used += size
-            if len(selected) >= _SERVER_RECENT_TURNS:
-                break
-        return list(reversed(selected))
+        return selected
 
     async def answer(
         self,
