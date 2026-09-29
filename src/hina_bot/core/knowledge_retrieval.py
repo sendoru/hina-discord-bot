@@ -2,8 +2,8 @@
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 _TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
 _LEXEME = re.compile(r"[0-9A-Za-z가-힣]+")
