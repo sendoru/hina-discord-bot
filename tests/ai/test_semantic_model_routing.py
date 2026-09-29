@@ -227,7 +227,7 @@ async def test_active_runtime_uses_classifier_result_for_answer_model(tmp_path):
         answer_row = next(row for row in rows if row["operation"] == "answer")
         assert answer_row["semantic_route_status"] == "completed"
         assert answer_row["semantic_route_level"] == "high"
-        assert answer_row["model_route_policy"] == "chat-hybrid-v5"
+        assert answer_row["model_route_policy"] == "chat-hybrid-v6"
         assert secret_request not in log_path.read_text()
     finally:
         await llm.close()
