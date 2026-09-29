@@ -81,6 +81,17 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.event_log_path == "data/logs/events.jsonl"
 
 
+def test_settings_loads_always_reply_channel_ids(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("ALWAYS_REPLY_CHANNEL_IDS", "10, 20, 10")
+
+    settings = Settings.load()
+
+    assert settings.always_reply_channel_ids == frozenset({10, 20})
+
+
 def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DISCORD_TOKEN", "token")
