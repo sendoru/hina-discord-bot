@@ -213,6 +213,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     conversations_by_name = client.get("/conversations?user_id=Dashboard%20User")
     conversation_context = client.get("/conversations/1/context")
     memory = client.get("/memory?q=dashboard")
+    memory_dm = client.get("/memory?origin_scope_type=dm")
+    memory_legacy_dm = client.get("/memory?origin_realm=dm:10")
     memory_by_name = client.get("/memory?user_id=Dashboard%20User")
     memory_detail = client.get("/memory/1")
     relationships = client.get(
@@ -221,11 +223,16 @@ def test_dashboard_read_only_pages_render(tmp_path):
     state = client.get(
         "/state?target_guild_id=1&target_channel_id=20&target_user_id=100&q=dashboard"
     )
+    state_dm = client.get(
+        "/state?target_scope_type=dm&target_guild_id=999&target_channel_id=10&target_user_id=100"
+    )
     summaries = client.get("/summaries?q=dashboard")
     cursors = client.get("/memory/cursors?user_id=100")
     reconciliation = client.get("/reconciliation?relation=corrects")
+    reconciliation_dm = client.get("/reconciliation?origin_scope_type=dm")
     reconciliation_detail = client.get("/reconciliation/1")
     static = client.get("/static/dashboard.css")
+    scope_script = client.get("/static/scope-picker.js")
     icon = client.get("/static/hina-dashboard-icon.webp")
 
     assert overview.status_code == 200
@@ -277,6 +284,14 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Content search" in memory.text
     assert "Advanced filters" in memory.text
     assert 'aria-label="Active filters"' in memory.text
+    assert 'aria-label="Origin scope type"' in memory.text
+    assert 'name="origin_scope_type" value="any" checked' in memory.text
+    assert memory_dm.status_code == 200
+    assert "dashboard memory" in memory_dm.text
+    assert 'name="origin_scope_type" value="dm" checked' in memory_dm.text
+    assert memory_legacy_dm.status_code == 200
+    assert 'name="origin_scope_type" value="dm" checked' in memory_legacy_dm.text
+    assert 'name="origin_channel_id" inputmode="numeric" value="10"' in memory_legacy_dm.text
     assert "<mark>dashboard</mark>" in memory.text
     assert memory_by_name.status_code == 200
     assert "dashboard memory" in memory_by_name.text
@@ -294,6 +309,11 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="relationship-mobile-card"' in relationships.text
     assert state.status_code == 200
     assert "Memory &amp; Context State" in state.text
+    assert 'aria-label="Target scope type"' in state.text
+    assert 'name="target_scope_type" value="guild" checked' in state.text
+    assert state_dm.status_code == 200
+    assert 'name="target_scope_type" value="dm" checked' in state_dm.text
+    assert "<code>dm:10</code>" in state_dm.text
     assert "dashboard server note" in state.text
     assert "Dashboard User · <code>user:100</code>" in state.text
     assert "dashboard user note" in state.text
@@ -306,10 +326,16 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Dashboard User<br><code>100</code>" in cursors.text
     assert "dashboard memory updated" in reconciliation.text
     assert "Dashboard User" in reconciliation.text
+    assert 'aria-label="Origin scope type"' in reconciliation.text
+    assert reconciliation_dm.status_code == 200
+    assert "dashboard memory updated" in reconciliation_dm.text
+    assert 'name="origin_scope_type" value="dm" checked' in reconciliation_dm.text
     assert "Target / old" in reconciliation_detail.text
     assert "Dashboard User · <code>100</code>" in reconciliation_detail.text
     assert "dashboard memory updated" in reconciliation_detail.text
     assert static.status_code == 200
+    assert scope_script.status_code == 200
+    assert "syncScopePicker" in scope_script.text
     assert icon.status_code == 200
     assert icon.headers["content-type"] == "image/webp"
     assert icon.content
@@ -327,6 +353,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert ".wide-table" in static.text
     assert ".relationship-mobile-card" in static.text
     assert ".relationship-desktop" in static.text
+    assert ".scope-picker" in static.text
+    assert ".scope-picker-types" in static.text
 
 
 def test_unknown_trace_returns_404(tmp_path):
