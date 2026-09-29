@@ -1874,3 +1874,148 @@ pre {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* -------------------------------------------------------------------------
+   Structured Guild / DM scope picker
+   ------------------------------------------------------------------------- */
+.scope-picker {
+  display: grid;
+  gap: 8px;
+  min-width: min(100%, 360px);
+  margin: 0;
+  padding: 9px 10px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(13, 16, 22, .24);
+}
+
+.scope-picker legend {
+  padding: 0 5px;
+  color: var(--muted-2);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .02em;
+}
+
+.scope-picker-types {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(13, 16, 22, .38);
+}
+
+.scope-picker-option {
+  position: relative;
+  min-width: 0;
+  margin: 0;
+}
+
+.scope-picker-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scope-picker-option span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.scope-picker-option:hover span {
+  color: var(--text);
+  background: rgba(255, 255, 255, .025);
+}
+
+.scope-picker-option:has(input:focus-visible) span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.scope-picker-option:has(input:checked) span {
+  border-color: rgba(145, 175, 255, .28);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.scope-picker-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.scope-picker-field {
+  display: none;
+  flex: 1 1 145px;
+  min-width: 0;
+  gap: 4px;
+}
+
+.scope-picker-field > span,
+.scope-target-user > span {
+  color: var(--muted-2);
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.scope-picker-field input,
+.scope-target-user input {
+  width: 100%;
+  min-width: 0;
+}
+
+.scope-picker:has(input[value="guild"]:checked) .scope-picker-guild-field,
+.scope-picker:has(input[value="guild"]:checked) .scope-picker-channel-field,
+.scope-picker:has(input[value="dm"]:checked) .scope-picker-channel-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.scope-target-row {
+  align-items: end;
+}
+
+.scope-target-user {
+  display: flex;
+  flex: 1 1 170px;
+  min-width: 150px;
+  flex-direction: column;
+  gap: 4px;
+}
+
+@media (max-width: 720px) {
+  .scope-picker {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .scope-picker-fields {
+    flex-direction: column;
+  }
+
+  .scope-picker-field,
+  .scope-target-user {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .scope-target-row > button,
+  .scope-target-row > .button {
+    width: 100%;
+  }
+}
