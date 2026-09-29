@@ -43,8 +43,8 @@ _NEGATED_LONG_ANSWER = re.compile(
     r"(?:말하지\s*말|설명하지\s*말|하지\s*말|말고|빼고)",
     re.IGNORECASE,
 )
-_CHAT_POLICY = "chat-v4"
-_HYBRID_POLICY = "chat-hybrid-v4"
+_CHAT_POLICY = "chat-v5"
+_HYBRID_POLICY = "chat-hybrid-v5"
 _SEMANTIC_VALUES = {"": 0.0, "low": 0.0, "medium": 1.0, "high": 2.0}
 
 
