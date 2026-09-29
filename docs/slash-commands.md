@@ -71,8 +71,8 @@ memory/chatlog 설정 자체는 유지합니다.
 | `/config set key:<설정> value:<값>` | 일반 runtime DB override 저장 후 즉시 적용 |
 | `/config reset key:<설정>` | 일반 runtime DB override 삭제 후 시작 시 값으로 복귀 |
 
-`/config set/reset` 대상은 `CALL_PREFIXES`, `DM_ALWAYS_REPLY`, `PUBLIC_SERVER_MEMORY_IN_DM`,
-`CHAT_WEB_SEARCH`, `COMMUNITY_LORE`, `MAX_OUTPUT_TOKENS`, `CHANNEL_CONTEXT_CHARS`,
+`/config set/reset` 대상은 `CALL_PREFIXES`, `DM_ALWAYS_REPLY`, `ALWAYS_REPLY_CHANNEL_IDS`,
+`PUBLIC_SERVER_MEMORY_IN_DM`, `CHAT_WEB_SEARCH`, `COMMUNITY_LORE`, `MAX_OUTPUT_TOKENS`, `CHANNEL_CONTEXT_CHARS`,
 `HISTORY_MAX_CHARS`, `LORE_MAX_ITEMS`, `LORE_MAX_CHARS`, `RUNTIME_DEFAULT_LOCATION`입니다.
 `EXTERNAL_CONTEXT_POLICY`는 프라이버시 경계라는 의미가 드러나도록 `/config privacy`에서 별도로
 관리합니다.
@@ -80,7 +80,10 @@ memory/chatlog 설정 자체는 유지합니다.
 우선순위는 **SQLite override → 시작 시 `.env.local`/`.env` 값 → 코드 기본값**입니다. 따라서 env의
 값은 여전히 배포 기본값으로 사용할 수 있고, `/config reset`은 해당 DB override만 지웁니다.
 `RUNTIME_DEFAULT_LOCATION`을 명시적으로 비우려면 `/config set`의 value에 `none`을 사용합니다.
-`CALL_PREFIXES`는 쉼표 구분 문자열, 불리언 값은 `on/off` 또는 `true/false`를 받습니다.
+`CALL_PREFIXES`는 쉼표 구분 문자열, `ALWAYS_REPLY_CHANNEL_IDS`는 쉼표 구분 Discord 채널 ID 목록,
+불리언 값은 `on/off` 또는 `true/false`를 받습니다. 지정 채널에서는 사람의 일반 메시지도
+직접 대화 턴으로 취급하지만, 다른 봇은 호출어 또는 멘션/답장 핑이 있을 때만 응답합니다. 이 목록을
+바꾸면 direct-trigger 판정이 바뀌므로 기존 recent buffer도 즉시 비웁니다.
 
 ### 외부 모델 전송 경계
 
