@@ -357,6 +357,7 @@ class SemanticModelRouter:
         baseline: ModelPlan,
         *,
         context_chars: int,
+        ambient_context_chars: int = 0,
         visual_inputs=(),
     ) -> None:
         outcome = await self.classify(
@@ -370,6 +371,7 @@ class SemanticModelRouter:
             self.settings,
             proposed_information,
             context_chars=context_chars,
+            ambient_context_chars=ambient_context_chars,
             visual_inputs=visual_inputs,
             semantic_level=level,
             semantic_codes=codes,
