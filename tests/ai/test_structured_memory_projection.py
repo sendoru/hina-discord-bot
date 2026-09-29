@@ -152,6 +152,64 @@ def test_repeated_moderate_evidence_accumulates_without_overwriting_global_state
     store.close()
 
 
+def test_unrelated_relationship_axes_do_not_age_existing_evidence():
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    server = Scope(1, 20, 100, True)
+    store.add_memory_item(
+        dm,
+        "comfort evidence",
+        kind=MemoryKind.RELATIONSHIP,
+        disclosure=MemoryDisclosure.IMPLICIT,
+        confidence=0.9,
+        relationship_evidence={"comfort": 2},
+    )
+    for source in ("201", "301"):
+        store.add_memory_item(
+            dm,
+            f"newer familiarity evidence {source}",
+            kind=MemoryKind.RELATIONSHIP,
+            disclosure=MemoryDisclosure.IMPLICIT,
+            confidence=0.9,
+            source_message_ids=(source,),
+            relationship_evidence={"familiarity": 4},
+        )
+
+    projection = aggregate_relationship_evidence(store.memory_items(100), server)
+
+    assert projection["comfort"] == 2
+    store.close()
+
+
+def test_each_relationship_axis_has_its_own_bounded_observation_window():
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    server = Scope(1, 20, 100, True)
+    store.add_memory_item(
+        dm,
+        "older comfort evidence",
+        kind=MemoryKind.RELATIONSHIP,
+        disclosure=MemoryDisclosure.IMPLICIT,
+        confidence=0.9,
+        relationship_evidence={"comfort": 2},
+    )
+    for index in range(8):
+        store.add_memory_item(
+            dm,
+            f"newer familiarity evidence {index}",
+            kind=MemoryKind.RELATIONSHIP,
+            disclosure=MemoryDisclosure.IMPLICIT,
+            confidence=0.9,
+            relationship_evidence={"familiarity": 1},
+        )
+
+    projection = aggregate_relationship_evidence(store.memory_items(100), server)
+
+    assert projection["comfort"] == 2
+    assert "familiarity" in projection
+    store.close()
+
+
 def test_missing_axis_is_not_interpreted_as_negative_evidence():
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
