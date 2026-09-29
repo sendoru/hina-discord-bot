@@ -62,12 +62,15 @@ def trigger_text(
     keyword = matched is not None
 
     if bot_author:
-        # Never react to our own Gateway message. DMs are human-only; in guilds, other bots may
-        # call Hina only through an explicit call prefix or Discord mention/reply ping so
-        # arbitrary bot chatter cannot spend model quota.
+        # Never react to our own Gateway message. DMs are human-only. In ordinary guild channels,
+        # keep the existing mention/reply-ping requirement; configured always-reply channels also
+        # accept an explicit natural-language call prefix from another bot.
         if getattr(message.author, "id", None) == bot_id:
             return None
-        if getattr(message, "guild", None) is None or not (ping or keyword):
+        if getattr(message, "guild", None) is None:
+            return None
+        channel_id = getattr(getattr(message, "channel", None), "id", None)
+        if not (ping or (keyword and channel_id in always_reply_channel_ids)):
             return None
         text = _strip_boundary_bot_mentions(raw, bot_id)
         matched = _matched_prefix(text, prefixes)
