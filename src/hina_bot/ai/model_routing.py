@@ -43,8 +43,8 @@ _NEGATED_LONG_ANSWER = re.compile(
     r"(?:말하지\s*말|설명하지\s*말|하지\s*말|말고|빼고)",
     re.IGNORECASE,
 )
-_CHAT_POLICY = "chat-v4"
-_HYBRID_POLICY = "chat-hybrid-v4"
+_CHAT_POLICY = "chat-v5"
+_HYBRID_POLICY = "chat-hybrid-v5"
 _SEMANTIC_VALUES = {"": 0.0, "low": 0.0, "medium": 1.0, "high": 2.0}
 
 
@@ -113,15 +113,22 @@ def chat_objective_components(
     information: InformationPlan,
     *,
     context_chars: int = 0,
+    ambient_context_chars: int = 0,
     visual_inputs: Sequence[object] = (),
 ) -> tuple[tuple[str, float], ...]:
-    """Measure four physical loads without interpreting the request's semantic difficulty."""
+    """Measure physical loads while keeping unrelated ambient chatter weak."""
     request_load = _soft_length_score(len(information.routing.visible_content.strip()))
     context_load = _linear_ramp(
         max(0, context_chars),
         start=1000,
         full=8000,
         maximum=2.0,
+    )
+    ambient_context_load = _linear_ramp(
+        max(0, ambient_context_chars),
+        start=1000,
+        full=8000,
+        maximum=0.5,
     )
     evidence_load = _linear_ramp(
         _reference_chars(information.references),
@@ -138,6 +145,7 @@ def chat_objective_components(
         for name, value in (
             ("request_load", request_load),
             ("context_load", context_load),
+            ("ambient_context_load", ambient_context_load),
             ("evidence_load", evidence_load),
             ("visual_load", visual_load),
         )
@@ -149,12 +157,14 @@ def baseline_route_state(
     information: InformationPlan,
     *,
     context_chars: int = 0,
+    ambient_context_chars: int = 0,
     visual_inputs: Sequence[object] = (),
 ) -> tuple[float, str, str]:
     """Return deterministic score/tier plus the local semantic hint without making a ModelPlan."""
     objective = chat_objective_components(
         information,
         context_chars=context_chars,
+        ambient_context_chars=ambient_context_chars,
         visual_inputs=visual_inputs,
     )
     local_level = local_semantic_level(information)
@@ -232,6 +242,7 @@ def build_model_plan(
     information: InformationPlan,
     *,
     context_chars: int = 0,
+    ambient_context_chars: int = 0,
     visual_inputs: Sequence[object] = (),
     semantic_level: str = "",
     semantic_codes: Sequence[str] = (),
@@ -247,6 +258,7 @@ def build_model_plan(
     objective = chat_objective_components(
         information,
         context_chars=context_chars,
+        ambient_context_chars=ambient_context_chars,
         visual_inputs=visual_inputs,
     )
     local_level = local_semantic_level(information)
