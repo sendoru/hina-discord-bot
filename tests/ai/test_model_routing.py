@@ -215,15 +215,42 @@ def test_negated_prior_task_does_not_escalate_followup():
     assert dict(plan.components)["semantic_score"] == 0.0
 
 
-def test_strong_context_load_keeps_existing_curve():
-    small = build_model_plan(settings(), information("읽어봐"), context_chars=1000)
-    medium = build_model_plan(settings(), information("읽어봐"), context_chars=4500)
-    large = build_model_plan(settings(), information("읽어봐"), context_chars=8000)
+def test_text_volume_loads_use_diminishing_return_curves():
+    context_plans = [
+        build_model_plan(settings(), information("읽어봐"), context_chars=value)
+        for value in (1000, 3000, 5000, 7000, 9000)
+    ]
+    context_scores = [dict(plan.components)["context_load"] for plan in context_plans]
+    context_gains = [
+        right - left for left, right in pairwise(context_scores)
+    ]
+    midpoint = build_model_plan(
+        settings(), information("읽어봐"), context_chars=4500
+    )
+    old_full = build_model_plan(
+        settings(), information("읽어봐"), context_chars=8000
+    )
+    new_full = build_model_plan(
+        settings(), information("읽어봐"), context_chars=15000
+    )
+    evidence_midpoint = build_model_plan(
+        settings(),
+        information("설정 알려줘", references=({"content": "x" * 2750},)),
+    )
+    evidence_full = build_model_plan(
+        settings(),
+        information("설정 알려줘", references=({"content": "x" * 9500},)),
+    )
 
-    assert dict(small.components)["context_load"] == 0.0
-    assert 0.0 < dict(medium.components)["context_load"] < 2.0
-    assert dict(large.components)["context_load"] == pytest.approx(2.0)
-    assert large.tier == ModelTier.SMART
+    assert context_scores == sorted(context_scores)
+    assert context_gains == sorted(context_gains, reverse=True)
+    assert dict(midpoint.components)["context_load"] == pytest.approx(1.0)
+    assert dict(old_full.components)["context_load"] == pytest.approx(2 ** 0.5)
+    assert old_full.tier == ModelTier.FAST
+    assert dict(new_full.components)["context_load"] == pytest.approx(2.0)
+    assert new_full.tier == ModelTier.SMART
+    assert dict(evidence_midpoint.components)["evidence_load"] == pytest.approx(0.5)
+    assert dict(evidence_full.components)["evidence_load"] == pytest.approx(1.0)
 
 
 def test_ambient_context_is_visible_but_cannot_force_smart_by_itself():
@@ -240,7 +267,7 @@ def test_ambient_context_is_visible_but_cannot_force_smart_by_itself():
     )
 
     assert dict(ambient.components)["context_load"] == 0.0
-    assert dict(ambient.components)["ambient_context_load"] == pytest.approx(0.5)
+    assert dict(ambient.components)["ambient_context_load"] == pytest.approx(0.354)
     assert ambient.tier == ModelTier.FAST
     assert combined.score > ambient.score
     assert combined.score > 1.0
@@ -311,7 +338,7 @@ def test_routing_telemetry_contains_no_prompt_or_visual_metadata():
     assert secret not in str(telemetry)
     assert visual.name not in str(telemetry)
     assert visual.message_id not in str(telemetry)
-    assert telemetry["model_route_policy"] == "chat-v5"
+    assert telemetry["model_route_policy"] == "chat-v6"
     assert set(telemetry["model_route_components"]) == {
         "request_load",
         "context_load",
