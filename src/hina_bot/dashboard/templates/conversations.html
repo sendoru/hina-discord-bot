@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_filter_ui.html" import active_filter_chips %}
+{% from "_scope_ui.html" import scope_key %}
 {% block title %}Conversations · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -45,11 +46,11 @@
   {% for row in data.rows %}
   <article class="panel conversation">
     <div class="conversation-head">
-      <div>
-        <strong>{{ row.scope }}</strong>
-        <span>{{ row.created_at | localtime }}</span>
+      <div class="conversation-head-primary">
+        {{ scope_key(row.scope) }}
+        <time class="conversation-time">{{ row.created_at | localtime }}</time>
       </div>
-      <div>
+      <div class="conversation-head-actions">
         <a href="/conversations/{{ row.id }}/context">context</a>
         {% if row.turn_id %}<a href="/traces/{{ row.turn_id }}">trace</a>{% else %}<span class="muted">no trace id</span>{% endif %}
         <code>msg {{ row.message_id }}</code>

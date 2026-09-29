@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_scope_ui.html" import scope_key %}
 {% block title %}Summaries · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -25,7 +26,7 @@
       <tbody>
       {% for row in data.personal %}
       <tr>
-        <td><code>{{ row.scope }}</code><br><span class="muted">{{ row.realm }}</span></td>
+        <td>{{ scope_key(row.scope) }}<br><span class="muted">{{ row.realm }}</span></td>
         <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
         <td class="numeric">{{ row.through_id }}</td>
         <td class="numeric">{{ row.latest_turn_id or "—" }}</td>
@@ -55,7 +56,7 @@
       <tbody>
       {% for row in data.shared %}
       <tr>
-        <td><code>{{ row.scope }}</code><br><span class="muted">{{ row.realm }}</span></td>
+        <td>{{ scope_key(row.scope) }}<br><span class="muted">{{ row.realm }}</span></td>
         <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
         <td class="numeric">{{ row.through_id }}</td>
         <td class="numeric">{{ row.latest_call_id or "—" }}</td>

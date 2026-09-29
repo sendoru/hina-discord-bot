@@ -1,0 +1,16 @@
+{% macro scope_key(value) -%}
+{% set raw = value or "—" %}
+{% set parts = raw.split(":") %}
+<code class="scope-key" title="{{ raw }}">
+  {%- if parts | length > 1 -%}
+    {%- for index in range(0, parts | length, 2) -%}
+      <span class="scope-segment">
+        <span class="scope-segment-label">{{ parts[index] }}</span>
+        {%- if index + 1 < parts | length %}:{{ parts[index + 1] }}{% endif -%}
+      </span>
+    {%- endfor -%}
+  {%- else -%}
+    <span class="scope-segment">{{ raw }}</span>
+  {%- endif -%}
+</code>
+{%- endmacro %}
