@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -43,17 +44,18 @@ _NEGATED_LONG_ANSWER = re.compile(
     r"(?:말하지\s*말|설명하지\s*말|하지\s*말|말고|빼고)",
     re.IGNORECASE,
 )
-_CHAT_POLICY = "chat-v5"
-_HYBRID_POLICY = "chat-hybrid-v5"
+_CHAT_POLICY = "chat-v6"
+_HYBRID_POLICY = "chat-hybrid-v6"
 _SEMANTIC_VALUES = {"": 0.0, "low": 0.0, "medium": 1.0, "high": 2.0}
 
 
-def _linear_ramp(value: int, *, start: int, full: int, maximum: float) -> float:
+def _sqrt_ramp(value: int, *, start: int, full: int, maximum: float) -> float:
+    """Map text volume with diminishing marginal weight after a dead zone."""
     if value <= start:
         return 0.0
     if value >= full:
         return maximum
-    return maximum * (value - start) / (full - start)
+    return maximum * math.sqrt((value - start) / (full - start))
 
 
 def _soft_length_score(
@@ -118,22 +120,25 @@ def chat_objective_components(
 ) -> tuple[tuple[str, float], ...]:
     """Measure physical loads while keeping unrelated ambient chatter weak."""
     request_load = _soft_length_score(len(information.routing.visible_content.strip()))
-    context_load = _linear_ramp(
+    # The old linear ramps reached half score at 4500 context chars / 2750 evidence
+    # chars. Doubling each span before applying sqrt preserves those midpoint scores
+    # while making additional text progressively less influential.
+    context_load = _sqrt_ramp(
         max(0, context_chars),
         start=1000,
-        full=8000,
+        full=15000,
         maximum=2.0,
     )
-    ambient_context_load = _linear_ramp(
+    ambient_context_load = _sqrt_ramp(
         max(0, ambient_context_chars),
         start=1000,
-        full=8000,
+        full=15000,
         maximum=0.5,
     )
-    evidence_load = _linear_ramp(
+    evidence_load = _sqrt_ramp(
         _reference_chars(information.references),
         start=500,
-        full=5000,
+        full=9500,
         maximum=1.0,
     )
     if information.search_mode == "required":
