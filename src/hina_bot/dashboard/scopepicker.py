@@ -35,10 +35,20 @@ def normalize_scope_filter(
 ) -> ScopeFilter:
     """Normalize user-facing Any/Guild/DM filters into repository predicates."""
 
+    requested_scope_type = scope_type.strip().lower()
     scope_type = _clean_scope_type(scope_type)
     guild_id = guild_id.strip()
     channel_id = channel_id.strip()
     legacy_realm = legacy_realm.strip()
+
+    if requested_scope_type == "any":
+        return ScopeFilter(
+            scope_type="",
+            guild_id="",
+            channel_id="",
+            realm="",
+            realm_prefix="",
+        )
 
     if not scope_type and legacy_realm:
         legacy_type, legacy_id = _realm_parts(legacy_realm)
@@ -87,7 +97,7 @@ def normalize_scope_filter(
     return ScopeFilter(
         scope_type="",
         guild_id="",
-        channel_id="",
+        channel_id=channel_id,
         realm="",
         realm_prefix="",
     )
