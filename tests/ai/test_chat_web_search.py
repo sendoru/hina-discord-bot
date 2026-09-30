@@ -67,7 +67,7 @@ async def chat_llm():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings("test", "test", model="test-model", summary_every=2,
+    llm = LLM(Settings(discord_token="test", openai_api_key="test", model="test-model", summary_every=2,
                        usage_log_path="", chat_web_search=True), client=client)
     llm.lore = LoreIndex([])
     yield llm, calls

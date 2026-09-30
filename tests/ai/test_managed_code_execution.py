@@ -13,9 +13,11 @@ from hina_bot.core.store import Store
 def settings(tmp_path, *, provider="gemini"):
     model = "gemini-test" if provider == "gemini" else "gpt-4.1-mini"
     return Settings(
-        "test",
-        "test",
+        discord_token="test",
         provider=provider,
+        openai_api_key="test" if provider == "openai" else "",
+        gemini_api_key="test" if provider == "gemini" else "",
+        openrouter_api_key="test" if provider == "openrouter" else "",
         model=model,
         fast_model=model,
         smart_model=model,

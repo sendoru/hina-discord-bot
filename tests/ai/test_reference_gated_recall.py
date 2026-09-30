@@ -318,9 +318,7 @@ def test_same_space_reference_gated_memory_is_not_cross_space_recall_candidate()
 async def test_explicit_owner_reference_injects_only_related_authorized_memory():
     calls = []
     llm = LLM(
-        Settings(
-            "test",
-            "test",
+        Settings(discord_token="test", openai_api_key="test",
             model="test-model",
             usage_log_path="",
             chat_web_search=False,
@@ -381,9 +379,7 @@ async def test_explicit_owner_reference_injects_only_related_authorized_memory()
 async def test_topic_without_explicit_reference_does_not_inject_cross_space_fact():
     calls = []
     llm = LLM(
-        Settings(
-            "test",
-            "test",
+        Settings(discord_token="test", openai_api_key="test",
             model="test-model",
             usage_log_path="",
             chat_web_search=False,
@@ -420,9 +416,7 @@ async def test_topic_without_explicit_reference_does_not_inject_cross_space_fact
 async def test_current_channel_only_request_suppresses_reference_gated_recall():
     calls = []
     llm = LLM(
-        Settings(
-            "test",
-            "test",
+        Settings(discord_token="test", openai_api_key="test",
             model="test-model",
             usage_log_path="",
             chat_web_search=False,

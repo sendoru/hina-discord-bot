@@ -206,7 +206,7 @@ class HydrationTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.store = Store(":memory:")
         self.llm = NS(close=AsyncMock())
-        self.bot = HinaClient(Settings("test", "test", cooldown=0), store=self.store, llm=self.llm)
+        self.bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=self.store, llm=self.llm)
         self.bot._connection.user = NS(id=99)
 
     async def asyncTearDown(self):

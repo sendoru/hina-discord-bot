@@ -228,7 +228,7 @@ def eval_settings(args) -> Settings:
     provider = (args.provider or os.getenv("LLM_PROVIDER", "openai")).strip().lower()
     if provider not in SUPPORTED_MODEL_PROVIDERS:
         raise ValueError("--provider는 openai, gemini, openrouter 중 하나여야 합니다.")
-    api_key = _provider_key(provider)
+    _provider_key(provider)
 
     fast_model = (
         _arg(args, "fast_model", "")
@@ -305,7 +305,6 @@ def eval_settings(args) -> Settings:
     chat_web_search = _env_bool("CHAT_WEB_SEARCH", True)
 
     base = Settings(
-        api_key=api_key,
         discord_token="eval-only",
         provider=provider,
         openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),

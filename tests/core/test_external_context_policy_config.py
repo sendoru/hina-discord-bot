@@ -8,7 +8,7 @@ from hina_bot.core.store import Store
 
 
 def _base(**overrides):
-    values = {"api_key": "key", "discord_token": "token"}
+    values = {"openai_api_key": "key", "discord_token": "token"}
     values.update(overrides)
     return Settings(**values)
 

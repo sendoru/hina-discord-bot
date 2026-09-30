@@ -153,7 +153,7 @@ async def base_client():
     tempdir = tempfile.TemporaryDirectory()
     event_path = Path(tempdir.name) / "events.jsonl"
     client = BaseHinaClient(
-        Settings("test", "test", cooldown=0, event_log_path=str(event_path)),
+        Settings(discord_token="test", openai_api_key="test", cooldown=0, event_log_path=str(event_path)),
         store=store,
         llm=llm,
     )
@@ -196,9 +196,7 @@ async def test_always_reply_channel_triggers_plain_human_messages_but_not_bot_ch
         close=AsyncMock(),
     )
     client = BaseHinaClient(
-        Settings(
-            "test",
-            "test",
+        Settings(discord_token="test", openai_api_key="test",
             cooldown=0,
             always_reply_channel_ids=frozenset({10}),
             event_log_path=str(tmp_path / "events.jsonl"),
@@ -330,9 +328,7 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
     llm = NS(close=AsyncMock())
     event_path = tmp_path / "events.jsonl"
     client = ProductionHinaClient(
-        Settings(
-            "test",
-            "test",
+        Settings(discord_token="test", openai_api_key="test",
             cooldown=0,
             always_reply_channel_ids=frozenset({10}),
             event_log_path=str(event_path),
@@ -434,7 +430,7 @@ async def test_production_wrapper_collects_target_and_reply_context_concurrently
     store = Store(":memory:")
     llm = NS(close=AsyncMock())
     client = ProductionHinaClient(
-        Settings("test", "test", cooldown=0, event_log_path=str(tmp_path / "events.jsonl")),
+        Settings(discord_token="test", openai_api_key="test", cooldown=0, event_log_path=str(tmp_path / "events.jsonl")),
         store=store,
         llm=llm,
     )
@@ -491,7 +487,7 @@ async def test_production_wrapper_preserves_target_and_reply_results_after_paral
     store = Store(":memory:")
     llm = NS(close=AsyncMock())
     client = ProductionHinaClient(
-        Settings("test", "test", cooldown=0, event_log_path=str(tmp_path / "events.jsonl")),
+        Settings(discord_token="test", openai_api_key="test", cooldown=0, event_log_path=str(tmp_path / "events.jsonl")),
         store=store,
         llm=llm,
     )
@@ -553,9 +549,7 @@ async def test_setup_hook_starts_llm_background_tasks(tmp_path):
         start_background_tasks=AsyncMock(),
     )
     client = BaseHinaClient(
-        Settings(
-            "test",
-            "test",
+        Settings(discord_token="test", openai_api_key="test",
             structured_memory_sweep_interval_seconds=0,
             event_log_path=str(tmp_path / "events.jsonl"),
         ),
@@ -633,9 +627,7 @@ async def test_cooldown_uses_turn_arrival_time_after_channel_lock_backlog(tmp_pa
         close=AsyncMock(),
     )
     client = BaseHinaClient(
-        Settings(
-            "test",
-            "test",
+        Settings(discord_token="test", openai_api_key="test",
             cooldown=0.05,
             event_log_path=str(tmp_path / "events.jsonl"),
         ),

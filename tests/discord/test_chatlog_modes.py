@@ -28,7 +28,7 @@ class ChatLogAdapterTests(unittest.IsolatedAsyncioTestCase):
             summarize_shared=AsyncMock(),
             close=AsyncMock(),
         )
-        self.bot = HinaClient(Settings("test", "test", cooldown=0), store=self.store, llm=self.llm)
+        self.bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=self.store, llm=self.llm)
         self.bot._connection.user = NS(id=99)
         self.channel = MagicMock(spec=discord.TextChannel)
         self.channel.id = 10
