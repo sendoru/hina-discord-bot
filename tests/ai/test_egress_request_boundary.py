@@ -36,9 +36,7 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings(
-        "test",
-        "test",
+    llm = LLM(Settings(discord_token="test", openai_api_key="test",
         model="test-model",
         usage_log_path="",
         chat_web_search=False,

@@ -173,7 +173,7 @@ async def test_reply_to_other_bot_is_marked_as_bot_context():
 async def client():
     store = Store(":memory:")
     llm = NS(close=AsyncMock())
-    bot = HinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
+    bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=store, llm=llm)
     bot._connection.user = NS(id=99)
     try:
         yield bot, store

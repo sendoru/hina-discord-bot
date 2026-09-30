@@ -43,7 +43,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         client = AsyncOpenAI(api_key="test-not-a-real-key",
                              http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
         self.llm = LLM(
-            Settings("test", "test", summary_every=2, external_context_policy="full"),
+            Settings(discord_token="test", openai_api_key="test", summary_every=2, external_context_policy="full"),
             client=client,
         )
         self.store = Store(":memory:")
@@ -215,7 +215,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.event_path = Path(self.tempdir.name) / "events.jsonl"
         self.bot = HinaClient(
-            Settings("test", "test", cooldown=0, event_log_path=str(self.event_path)),
+            Settings(discord_token="test", openai_api_key="test", cooldown=0, event_log_path=str(self.event_path)),
             store=self.store,
             llm=self.llm,
         )

@@ -262,9 +262,7 @@ async def test_source_quotas_are_independent_and_skip_extra_downloads():
 
 
 def test_vision_limits_follow_runtime_settings():
-    limits = VisionLimits.from_settings(Settings(
-        "test",
-        "test",
+    limits = VisionLimits.from_settings(Settings(discord_token="test", openai_api_key="test",
         vision_max_attachments=2,
         vision_max_emojis=15,
         vision_max_stickers=5,
@@ -556,7 +554,7 @@ async def test_selected_speaker_context_drives_text_and_visual_from_one_snapshot
     store = Store(":memory:")
     store.set_memory_mode_override("global", "off")
     store.set_chat_log_mode_override("global", "on")
-    bot = HinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
+    bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=store, llm=llm)
     bot._connection.user = NS(id=99, display_name="히나")
     bot.emoji_registry.catalog = AsyncMock(return_value=[])
 
@@ -661,7 +659,7 @@ async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
         close=AsyncMock(),
     )
     store = Store(":memory:")
-    bot = HinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
+    bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=store, llm=llm)
     bot._connection.user = NS(id=99)
     channel = MagicMock()
     channel.id = 10
@@ -716,7 +714,7 @@ async def test_passive_recent_visual_alone_does_not_turn_bare_call_into_image_re
         close=AsyncMock(),
     )
     store = Store(":memory:")
-    bot = HinaClient(Settings("test", "test", cooldown=0), store=store, llm=llm)
+    bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=store, llm=llm)
     bot._connection.user = NS(id=99)
     attachment = NS(
         size=len(PNG),

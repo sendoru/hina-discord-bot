@@ -310,9 +310,7 @@ def test_same_disclosure_space_gets_raw_relationship_memory_not_cross_space_prof
 async def test_dm_response_receives_all_owner_structured_memory_even_when_legacy_flag_is_off():
     calls = []
     client = _client(calls)
-    settings = Settings(
-        "test",
-        "test",
+    settings = Settings(discord_token="test", openai_api_key="test",
         external_context_policy="full",
         public_memory_in_dm=False,
     )
@@ -379,7 +377,7 @@ async def test_dm_response_receives_all_owner_structured_memory_even_when_legacy
 async def test_server_receives_numeric_implicit_profile_without_cross_space_raw_content():
     calls = []
     client = _client(calls)
-    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
@@ -435,7 +433,7 @@ async def test_server_receives_numeric_implicit_profile_without_cross_space_raw_
 async def test_same_space_response_receives_raw_relationship_and_evidence():
     calls = []
     client = _client(calls)
-    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     source = Scope(1, 20, 100, True)
     same_guild = Scope(1, 30, 100, True)
@@ -468,7 +466,7 @@ async def test_same_space_response_receives_raw_relationship_and_evidence():
 async def test_current_channel_scope_suppresses_only_cross_space_profile():
     calls = []
     client = _client(calls)
-    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
@@ -505,7 +503,7 @@ async def test_current_channel_scope_suppresses_only_cross_space_profile():
 async def test_other_users_relationship_evidence_never_projects():
     calls = []
     client = _client(calls)
-    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     other_dm = Scope(None, 11, 200)
     server = Scope(1, 20, 100, True)

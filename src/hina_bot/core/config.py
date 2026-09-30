@@ -62,11 +62,8 @@ def _env_key(provider: str) -> str:
     }[provider]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Settings:
-    # api_key is retained for backwards-compatible direct construction in tests/scripts.
-    # Runtime-loaded settings also keep provider-specific keys below.
-    api_key: str
     discord_token: str
     model: str = "gpt-4.1-mini"
     model_routing_mode: str = "fixed"
@@ -130,18 +127,11 @@ class Settings:
 
     def api_key_for(self, provider: str) -> str:
         provider = _provider(provider, "provider")
-        explicit = {
+        return {
             "openai": self.openai_api_key,
             "gemini": self.gemini_api_key,
             "openrouter": self.openrouter_api_key,
         }[provider].strip()
-        if explicit:
-            return explicit
-        # Legacy Settings("key", "token") means an OpenAI configuration. For manually
-        # constructed non-OpenAI settings, api_key is the selected primary provider key.
-        if provider == self.provider or (provider == "openai" and self.provider == "openai"):
-            return self.api_key.strip()
-        return ""
 
     def routing_classifier_key(self) -> str:
         """Use a dedicated classifier credential when configured, otherwise the provider key."""
@@ -318,7 +308,7 @@ class Settings:
         vision_max_stickers = int(os.getenv("VISION_MAX_STICKERS", "8"))
 
         s = cls(
-            api_key=keys[provider], discord_token=token,
+            discord_token=token,
             provider=provider,
             model_routing_mode=model_routing_mode,
             model_routing_smart_threshold=model_routing_smart_threshold,

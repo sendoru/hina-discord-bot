@@ -97,7 +97,6 @@ def _settings(args) -> Settings:
         raise ValueError("--model 또는 ROUTING_CLASSIFIER_MODEL이 필요합니다.")
     credential = _key(provider)
     return Settings(
-        api_key=credential,
         discord_token="routing-eval-only",
         provider=primary_provider,
         model_routing_mode="adaptive",

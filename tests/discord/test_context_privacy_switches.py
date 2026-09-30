@@ -17,7 +17,7 @@ from hina_bot.discord.web_bot import HinaClient
 def bot():
     store = Store(":memory:")
     client = HinaClient(
-        Settings("test", "test", cooldown=0, bot_admin_ids=frozenset({100})),
+        Settings(discord_token="test", openai_api_key="test", cooldown=0, bot_admin_ids=frozenset({100})),
         store=store,
         llm=NS(close=AsyncMock()),
     )
@@ -77,7 +77,7 @@ async def test_text_identity_resolution_only_sends_live_visible_candidates():
     resolver = AsyncMock(return_value=NS(resolved=True, user_id="200"))
     llm = NS(close=AsyncMock(), resolve_speaker_identity=resolver)
     client = HinaClient(
-        Settings("test", "test", cooldown=0, external_context_policy="full"),
+        Settings(discord_token="test", openai_api_key="test", cooldown=0, external_context_policy="full"),
         store=store,
         llm=llm,
     )
@@ -139,9 +139,7 @@ async def test_strict_egress_skips_textual_cross_user_identity_resolution():
     resolver = AsyncMock()
     llm = NS(close=AsyncMock(), resolve_speaker_identity=resolver)
     client = HinaClient(
-        Settings(
-            "test",
-            "test",
+        Settings(discord_token="test", openai_api_key="test",
             cooldown=0,
             external_context_policy="bot_interactions_only",
         ),
@@ -180,9 +178,7 @@ async def test_identity_observability_never_logs_raw_reference_or_candidate_name
     llm = NS(close=AsyncMock(), resolve_speaker_identity=resolver)
     event_path = tmp_path / "events.jsonl"
     client = HinaClient(
-        Settings(
-            "test",
-            "deployment-secret-token",
+        Settings(discord_token="deployment-secret-token", openai_api_key="test",
             cooldown=0,
             external_context_policy="full",
             event_log_path=str(event_path),
