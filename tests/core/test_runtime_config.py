@@ -44,6 +44,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "GEMINI_THINKING_LEVEL",
         "GEMINI_FAST_THINKING_LEVEL",
         "GEMINI_SMART_THINKING_LEVEL",
+        "GEMINI_STORE_INTERACTIONS",
         "CHANNEL_CONTEXT_CHARS",
         "HISTORY_MAX_CHARS",
         "LORE_MAX_ITEMS",
@@ -68,6 +69,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.smart_model == settings.model
     assert settings.fast_output_tokens == 4096
     assert settings.smart_output_tokens == 8192
+    assert settings.gemini_store_interactions is False
     assert settings.routing_classifier_mode == "off"
     assert settings.routing_classifier_provider == "openai"
     assert settings.routing_classifier_model == settings.fast_model
@@ -107,6 +109,7 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("SMART_MAX_OUTPUT_TOKENS", "10000")
     monkeypatch.setenv("GEMINI_FAST_THINKING_LEVEL", "minimal")
     monkeypatch.setenv("GEMINI_SMART_THINKING_LEVEL", "high")
+    monkeypatch.setenv("GEMINI_STORE_INTERACTIONS", "true")
 
     value = Settings.load()
     assert value.model_routing_mode == "adaptive"
@@ -118,6 +121,7 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     assert value.smart_output_tokens == 10000
     assert value.gemini_fast_thinking_level == "minimal"
     assert value.gemini_smart_thinking_level == "high"
+    assert value.gemini_store_interactions is True
     assert not hasattr(value, "gemini_fast_total_output_tokens")
     assert not hasattr(value, "gemini_smart_total_output_tokens")
 
@@ -184,6 +188,9 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
     store = Store(":memory:")
     try:
         settings = RuntimeSettings(_base(), store)
+        assert settings.model == "gpt-4.1-mini"
+        assert settings.fast_model == "gpt-4.1-mini"
+        assert settings.smart_model == "gpt-4.1-mini"
         assert settings.call_prefixes == ("히나야",)
         assert settings.dm_always_reply is False
         assert settings.always_reply_channel_ids == frozenset()
@@ -194,6 +201,7 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
         assert settings.gemini_thinking_level == "low"
         assert settings.gemini_fast_thinking_level == "minimal"
         assert settings.gemini_smart_thinking_level == "medium"
+        assert settings.gemini_store_interactions is False
         assert settings.model_routing_smart_threshold == pytest.approx(2.0)
         assert settings.memory_routing_smart_threshold == pytest.approx(2.0)
         assert settings.channel_context_chars == 6000
@@ -208,6 +216,9 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
 def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
     db = tmp_path / "runtime.sqlite3"
     base = _base(
+        model="fixed-startup",
+        fast_model="fast-startup",
+        smart_model="smart-startup",
         channel_context_chars=5000,
         chat_web_search=True,
         model_routing_smart_threshold=2.0,
@@ -215,10 +226,14 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         gemini_thinking_level="low",
         gemini_fast_thinking_level="minimal",
         gemini_smart_thinking_level="medium",
+        gemini_store_interactions=False,
     )
 
     store = Store(str(db))
     settings = RuntimeSettings(base, store)
+    assert settings.set_text("LLM_MODEL", "fixed-runtime") == "fixed-runtime"
+    assert settings.set_text("LLM_FAST_MODEL", "fast-runtime") == "fast-runtime"
+    assert settings.set_text("LLM_SMART_MODEL", "smart-runtime") == "smart-runtime"
     assert settings.set_text("CHANNEL_CONTEXT_CHARS", "8000") == 8000
     assert settings.set_text("chat_web_search", "off") is False
     assert settings.set_text("CALL_PREFIXES", "히나야, 히나") == ("히나야", "히나")
@@ -228,11 +243,15 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
     assert settings.set_text("GEMINI_THINKING_LEVEL", "HIGH") == "high"
     assert settings.set_text("GEMINI_FAST_THINKING_LEVEL", "low") == "low"
     assert settings.set_text("GEMINI_SMART_THINKING_LEVEL", "high") == "high"
+    assert settings.set_text("GEMINI_STORE_INTERACTIONS", "on") is True
     store.close()
 
     store = Store(str(db))
     try:
         reloaded = RuntimeSettings(base, store)
+        assert reloaded.model == "fixed-runtime"
+        assert reloaded.fast_model == "fast-runtime"
+        assert reloaded.smart_model == "smart-runtime"
         assert reloaded.channel_context_chars == 8000
         assert reloaded.chat_web_search is False
         assert reloaded.call_prefixes == ("히나야", "히나")
@@ -242,9 +261,14 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         assert reloaded.gemini_thinking_level == "high"
         assert reloaded.gemini_fast_thinking_level == "low"
         assert reloaded.gemini_smart_thinking_level == "high"
+        assert reloaded.gemini_store_interactions is True
+        assert reloaded.source("LLM_MODEL") == "db"
+        assert reloaded.source("LLM_FAST_MODEL") == "db"
+        assert reloaded.source("LLM_SMART_MODEL") == "db"
         assert reloaded.source("GEMINI_THINKING_LEVEL") == "db"
         assert reloaded.source("GEMINI_FAST_THINKING_LEVEL") == "db"
         assert reloaded.source("GEMINI_SMART_THINKING_LEVEL") == "db"
+        assert reloaded.source("GEMINI_STORE_INTERACTIONS") == "db"
         assert reloaded.source("ALWAYS_REPLY_CHANNEL_IDS") == "db"
         assert reloaded.source("CHANNEL_CONTEXT_CHARS") == "db"
         assert reloaded.source("MODEL_ROUTING_SMART_THRESHOLD") == "db"
@@ -258,18 +282,30 @@ def test_reset_removes_db_override_and_restores_startup_value():
     try:
         settings = RuntimeSettings(
             _base(
+                model="fixed-startup",
+                fast_model="fast-startup",
+                smart_model="smart-startup",
                 lore_max_items=9,
                 model_routing_smart_threshold=2.3,
                 memory_routing_smart_threshold=2.4,
             ),
             store,
         )
+        settings.set_text("LLM_MODEL", "fixed-runtime")
+        settings.set_text("LLM_FAST_MODEL", "fast-runtime")
+        settings.set_text("LLM_SMART_MODEL", "smart-runtime")
         settings.set_text("LORE_MAX_ITEMS", "3")
         settings.set_text("MODEL_ROUTING_SMART_THRESHOLD", "1.6")
         settings.set_text("MEMORY_ROUTING_SMART_THRESHOLD", "1.7")
+        assert settings.model == "fixed-runtime"
+        assert settings.fast_model == "fast-runtime"
+        assert settings.smart_model == "smart-runtime"
         assert settings.lore_max_items == 3
         assert settings.model_routing_smart_threshold == pytest.approx(1.6)
         assert settings.memory_routing_smart_threshold == pytest.approx(1.7)
+        assert settings.reset("LLM_MODEL") == "fixed-startup"
+        assert settings.reset("LLM_FAST_MODEL") == "fast-startup"
+        assert settings.reset("LLM_SMART_MODEL") == "smart-startup"
         assert settings.reset("LORE_MAX_ITEMS") == 9
         assert settings.reset("MODEL_ROUTING_SMART_THRESHOLD") == pytest.approx(2.3)
         assert settings.reset("MEMORY_ROUTING_SMART_THRESHOLD") == pytest.approx(2.4)
@@ -298,6 +334,10 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
 @pytest.mark.parametrize(
     ("key", "value"),
     [
+        ("LLM_MODEL", ""),
+        ("LLM_FAST_MODEL", ""),
+        ("LLM_SMART_MODEL", ""),
+        ("LLM_MODEL", "x" * 201),
         ("MAX_OUTPUT_TOKENS", "127"),
         ("MAX_OUTPUT_TOKENS", "65537"),
         ("MODEL_ROUTING_SMART_THRESHOLD", "0"),
@@ -319,6 +359,7 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
         ("GEMINI_THINKING_LEVEL", "extreme"),
         ("GEMINI_FAST_THINKING_LEVEL", "off"),
         ("GEMINI_SMART_THINKING_LEVEL", "max"),
+        ("GEMINI_STORE_INTERACTIONS", "maybe"),
     ],
 )
 def test_runtime_setting_validation_rejects_invalid_values(key: str, value: str):

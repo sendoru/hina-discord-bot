@@ -11,12 +11,14 @@ def build_router(service: ContextStateService, templates: Jinja2Templates) -> AP
     @router.get("/state", response_class=HTMLResponse)
     def context_state(
         request: Request,
+        target_scope_type: str = "",
         target_guild_id: str = "",
         target_channel_id: str = "",
         target_user_id: str = "",
         q: str = "",
     ):
         data = service.context_state(
+            target_scope_type=target_scope_type,
             target_guild_id=target_guild_id,
             target_channel_id=target_channel_id,
             target_user_id=target_user_id,

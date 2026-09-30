@@ -18,7 +18,7 @@ classifier 실패, smart 누락·과잉 선택 수를 집계합니다. 운영에
 자체의 회귀를 보기 위해 각 사례를 한 번 분류합니다. 이 평가는 유료 API 호출이므로 일반 테스트에는
 포함되지 않습니다.
 
-현재 `chat-hybrid-v4` classifier는 같은 응답에서 웹 검색 필요성도 분류하지만,
+현재 `chat-hybrid-v6` classifier는 같은 응답에서 웹 검색 필요성도 분류하지만,
 `hina-routing-eval`은 reasoning level과 model tier만 점수화합니다. 웹 검색 판정은 결정적 unit test와
 `tests/ai/test_semantic_web_routing.py`에서 별도로 검증하며, 이 러너의 성공을 web routing 전체의
 정확도 평가로 해석하지 않습니다.

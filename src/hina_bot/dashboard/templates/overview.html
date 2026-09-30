@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
+{% from "_status_ui.html" import status_badge %}
+{% from "_telemetry_ui.html" import telemetry_window %}
 {% block title %}Overview · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -7,22 +9,18 @@
     <h1>Overview</h1>
     <p>현재 보존된 telemetry와 SQLite read model의 요약입니다.</p>
   </div>
-  <div class="window">
-    <strong>Available telemetry</strong>
-    <span>{{ data.available.oldest_at | localtime if data.available.oldest_at else "none" }}</span>
-    <span>→ {{ data.available.newest_at | localtime if data.available.newest_at else "none" }}</span>
-  </div>
+  {{ telemetry_window(data.available) }}
 </section>
 
 {{ epoch_notice(data) }}
 
 <section class="cards">
-  <article class="card"><span>Traces</span><strong>{{ data.trace_count }}</strong></article>
-  <article class="card"><span>Stored turns</span><strong>{{ data.stored_turn_count }}</strong></article>
-  <article class="card"><span>API calls</span><strong>{{ data.api_calls }}</strong></article>
-  <article class="card"><span>Total tokens</span><strong>{{ "{:,}".format(data.tokens.total_tokens) }}</strong></article>
-  <article class="card"><span>Web searches</span><strong>{{ data.web_search_calls }}</strong></article>
-  <article class="card"><span>Memory failures</span><strong>{{ data.memory_failures }}</strong></article>
+  <a class="card metric-card" href="/traces" aria-label="View all traces"><span>Traces</span><strong>{{ data.trace_count }}</strong></a>
+  <a class="card metric-card" href="/conversations" aria-label="View stored conversations"><span>Stored turns</span><strong>{{ data.stored_turn_count }}</strong></a>
+  <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View API call breakdown"><span>API calls</span><strong>{{ data.api_calls }}</strong></a>
+  <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View token usage breakdown"><span>Total tokens</span><strong>{{ "{:,}".format(data.tokens.total_tokens) }}</strong></a>
+  <a class="card metric-card" href="/analytics#web-search-routing" aria-label="View web-search analytics"><span>Web searches</span><strong>{{ data.web_search_calls }}</strong></a>
+  <a class="card metric-card {% if data.memory_failures %}metric-card-danger{% endif %}" href="/traces?q=memory" aria-label="Find traces related to memory failures"><span>Memory failures</span><strong>{{ data.memory_failures }}</strong></a>
 </section>
 
 <div class="grid-2">
@@ -61,7 +59,7 @@
     <table>
       <tbody>
       {% for key, value in data.status_counts.items() %}
-        <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
+        <tr><td>{{ status_badge(key) }}</td><td class="numeric">{{ value }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -100,7 +98,7 @@
         <tr>
           <td><a href="/traces/{{ row.turn_id }}">{{ row.at | localtime }}</a></td>
           <td>{{ row.scope or "—" }}</td>
-          <td><span class="status">{{ row.status }}</span></td>
+          <td>{{ status_badge(row.status) }}</td>
           <td>{{ row.model_tier or "—" }}</td>
           <td>{{ row.models | join(", ") or "—" }}</td>
           <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "?" }}</td>

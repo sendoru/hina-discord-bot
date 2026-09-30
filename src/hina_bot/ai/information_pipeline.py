@@ -111,6 +111,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         baseline,
         *,
         context_chars,
+        ambient_context_chars,
         visual_inputs,
     ) -> None:
         task = asyncio.create_task(
@@ -118,6 +119,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 information,
                 baseline,
                 context_chars=context_chars,
+                ambient_context_chars=ambient_context_chars,
                 visual_inputs=visual_inputs,
             )
         )
@@ -238,8 +240,8 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         channel_context,
         use_memory: bool,
         factual_recall_plan=None,
-    ) -> int:
-        """Measure the dynamic text admitted by the same memory/context policies as assembly."""
+    ) -> tuple[int, int]:
+        """Measure strong and ambient dynamic text admitted by the answer egress policy."""
         summary, _ = store.summary(scope) if use_memory else ("", 0)
         channel_rows = self._bind_current_speaker(channel_context or [], scope.user_id)
         current_channel_only = self._current_channel_scope_only(scope, routing_content)
@@ -293,7 +295,16 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             scope.user_id,
             self.settings.external_context_policy,
         )
-        return _text_size(context)
+        channel_rows = list(context.get("channel_recent_messages", ()) or ())
+        ambient_rows = [
+            row for row in channel_rows
+            if row.get("context_kind") == "channel_ambient"
+        ]
+        context["channel_recent_messages"] = [
+            row for row in channel_rows
+            if row.get("context_kind") != "channel_ambient"
+        ]
+        return _text_size(context), _text_size(ambient_rows)
 
     async def answer(
         self,
@@ -333,7 +344,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             allow_cross_space=use_memory and not current_channel_only,
         )
         visual_inputs = CURRENT_VISUAL_INPUTS.get()
-        context_chars = self._routing_context_chars(
+        context_chars, ambient_context_chars = self._routing_context_chars(
             assembly_store,
             scope,
             routing.routing_query,
@@ -346,6 +357,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             self.settings,
             information,
             context_chars=context_chars,
+            ambient_context_chars=ambient_context_chars,
             visual_inputs=visual_inputs,
         )
 
@@ -374,6 +386,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                     self.settings,
                     information,
                     context_chars=context_chars,
+                    ambient_context_chars=ambient_context_chars,
                     visual_inputs=visual_inputs,
                     semantic_level=level,
                     semantic_codes=codes,
@@ -387,12 +400,14 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                     self.settings,
                     information,
                     context_chars=context_chars,
+                    ambient_context_chars=ambient_context_chars,
                     visual_inputs=visual_inputs,
                 )
                 self._start_shadow_classification(
                     information,
                     model_plan,
                     context_chars=context_chars,
+                    ambient_context_chars=ambient_context_chars,
                     visual_inputs=visual_inputs,
                 )
 
@@ -401,6 +416,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 self.settings,
                 information,
                 context_chars=context_chars,
+                ambient_context_chars=ambient_context_chars,
                 visual_inputs=visual_inputs,
             )
 

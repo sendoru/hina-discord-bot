@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
 {% from "_filter_ui.html" import active_filter_chips %}
+{% from "_status_ui.html" import status_badge %}
+{% from "_telemetry_ui.html" import telemetry_window %}
 {% block title %}Traces · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -8,11 +10,7 @@
     <h1>Traces</h1>
     <p>{{ data.page.total }} traces in the current filter.</p>
   </div>
-  <div class="window">
-    <strong>Available telemetry</strong>
-    <span>{{ data.available.oldest_at | localtime if data.available.oldest_at else "none" }}</span>
-    <span>→ {{ data.available.newest_at | localtime if data.available.newest_at else "none" }}</span>
-  </div>
+  {{ telemetry_window(data.available) }}
 </section>
 
 <form class="filters search-filter" method="get">
@@ -25,29 +23,43 @@
   </div>
   <details class="advanced-filters" {% if data.filters.scope or data.filters.status or data.filters.tier or data.filters.model or data.filters.operation or data.filters.error or data.filters.web_search or data.filters.after or data.filters.before %}open{% endif %}>
     <summary>Advanced filters</summary>
-    <div class="filter-row">
-      <select name="scope">
-        <option value="">all scopes</option>
-        <option value="guild" {% if data.filters.scope == "guild" %}selected{% endif %}>guild</option>
-        <option value="dm" {% if data.filters.scope == "dm" %}selected{% endif %}>dm</option>
-      </select>
-      <input name="status" value="{{ data.filters.status }}" placeholder="status">
-      <input name="tier" value="{{ data.filters.tier }}" placeholder="tier">
-      <input name="model" value="{{ data.filters.model }}" placeholder="model">
-      <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
-      <select name="error">
-        <option value="">error: any</option>
-        <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>error: yes</option>
-        <option value="no" {% if data.filters.error == "no" %}selected{% endif %}>error: no</option>
-      </select>
-      <select name="web_search">
-        <option value="">search: any</option>
-        <option value="yes" {% if data.filters.web_search == "yes" %}selected{% endif %}>search: used</option>
-        <option value="no" {% if data.filters.web_search == "no" %}selected{% endif %}>search: not used</option>
-      </select>
-      <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
-      <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
-      <button type="submit">Apply filters</button>
+    <div class="filter-row grouped-filter-row">
+      <fieldset class="filter-cluster filter-cluster-3">
+        <legend>Status</legend>
+        <select name="scope">
+          <option value="">all scopes</option>
+          <option value="guild" {% if data.filters.scope == "guild" %}selected{% endif %}>guild</option>
+          <option value="dm" {% if data.filters.scope == "dm" %}selected{% endif %}>dm</option>
+        </select>
+        <input name="status" value="{{ data.filters.status }}" placeholder="status">
+        <input name="tier" value="{{ data.filters.tier }}" placeholder="tier">
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-2">
+        <legend>Routing</legend>
+        <input name="model" value="{{ data.filters.model }}" placeholder="model">
+        <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-2">
+        <legend>Signals</legend>
+        <select name="error">
+          <option value="">error: any</option>
+          <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>error: yes</option>
+          <option value="no" {% if data.filters.error == "no" %}selected{% endif %}>error: no</option>
+        </select>
+        <select name="web_search">
+          <option value="">search: any</option>
+          <option value="yes" {% if data.filters.web_search == "yes" %}selected{% endif %}>search: used</option>
+          <option value="no" {% if data.filters.web_search == "no" %}selected{% endif %}>search: not used</option>
+        </select>
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-2">
+        <legend>Time window</legend>
+        <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
+        <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
+      </fieldset>
+      <div class="filter-actions filter-row-actions">
+        <button type="submit">Apply filters</button>
+      </div>
     </div>
   </details>
   <div class="quick-ranges" aria-label="Observability epoch">
@@ -77,7 +89,7 @@
         <tr>
           <td><a href="/traces/{{ row.turn_id }}">{{ row.at | localtime }}</a></td>
           <td>{{ row.scope or "—" }}</td>
-          <td><span class="status">{{ row.status }}</span></td>
+          <td>{{ status_badge(row.status) }}</td>
           <td>{{ row.model_tier or "—" }}</td>
           <td>{{ row.models | join(", ") or "—" }}</td>
           <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "?" }}</td>

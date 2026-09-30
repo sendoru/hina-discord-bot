@@ -16,7 +16,7 @@ from .services import (
     TraceService,
 )
 from .telemetry import TelemetryReader
-from .timeutils import format_local_time
+from .timeutils import format_local_time, telemetry_freshness
 
 
 def create_app(settings: DashboardSettings | None = None) -> FastAPI:
@@ -38,6 +38,7 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
         lambda value: format_local_time(value, settings.timezone)
     )
     templates.env.globals["dashboard_timezone"] = settings.timezone
+    templates.env.globals["telemetry_freshness"] = telemetry_freshness
 
     app = FastAPI(title="Hina Dashboard", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")

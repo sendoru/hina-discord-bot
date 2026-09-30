@@ -40,6 +40,9 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     ),
     "chat_web_search": RuntimeSettingSpec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
     "community_lore": RuntimeSettingSpec("community_lore", "COMMUNITY_LORE", "bool"),
+    "model": RuntimeSettingSpec("model", "LLM_MODEL", "string", maximum=200),
+    "fast_model": RuntimeSettingSpec("fast_model", "LLM_FAST_MODEL", "string", maximum=200),
+    "smart_model": RuntimeSettingSpec("smart_model", "LLM_SMART_MODEL", "string", maximum=200),
     "output_tokens": RuntimeSettingSpec(
         "output_tokens", "MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
     ),
@@ -55,6 +58,9 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "gemini_smart_thinking_level",
         "GEMINI_SMART_THINKING_LEVEL",
         "gemini_thinking_level",
+    ),
+    "gemini_store_interactions": RuntimeSettingSpec(
+        "gemini_store_interactions", "GEMINI_STORE_INTERACTIONS", "bool"
     ),
     "model_routing_smart_threshold": RuntimeSettingSpec(
         "model_routing_smart_threshold",
