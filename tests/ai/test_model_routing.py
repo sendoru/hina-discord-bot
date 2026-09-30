@@ -22,7 +22,7 @@ from hina_bot.core.store import Store
 
 def settings(**overrides):
     values = {
-        "api_key": "key",
+        "gemini_api_key": "key",
         "discord_token": "token",
         "provider": "gemini",
         "model": "legacy",

@@ -12,7 +12,7 @@ from hina_bot.discord.config_commands import ConfigCommands
 @pytest.mark.asyncio
 async def test_privacy_command_sets_and_resets_external_context_policy():
     store = Store(":memory:")
-    settings = RuntimeSettings(Settings("test", "test"), store)
+    settings = RuntimeSettings(Settings(discord_token="test", openai_api_key="test"), store)
     recent = NS(clear_all=Mock())
     group = ConfigCommands(NS(settings=settings, recent=recent, emoji_admin_ids={100}))
     interaction = NS(response=NS(send_message=AsyncMock()))

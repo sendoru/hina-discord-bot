@@ -40,7 +40,7 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     scope = Scope(1, 10, 222, True)
     channel_context = [{
@@ -130,7 +130,7 @@ async def test_active_reply_chain_is_structured_separately_from_ambient_context(
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     scope = Scope(1, 10, 100, True)
     chain = [{
@@ -184,7 +184,7 @@ async def test_other_users_taunt_cannot_become_current_speakers_personal_continu
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     scope = Scope(1, 10, 222, True)
     channel_context = [{
@@ -240,7 +240,7 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     scope = Scope(1, 10, 100, True)
     interaction = {
@@ -310,7 +310,7 @@ async def test_plain_explicit_reply_is_always_split_into_active_reply_chain():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings("test", "test", external_context_policy="full"), client=client)
+    llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     scope = Scope(1, 10, 100, True)
     channel_context = [{

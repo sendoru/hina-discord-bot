@@ -57,9 +57,7 @@ async def test_instruction_size_telemetry_matches_assembled_request(tmp_path):
     )
     usage_path = tmp_path / "usage.jsonl"
     llm = LLM(
-        Settings(
-            "test",
-            "test",
+        Settings(discord_token="test", openai_api_key="test",
             usage_log_path=str(usage_path),
             chat_web_search=False,
         ),

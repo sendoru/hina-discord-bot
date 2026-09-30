@@ -35,9 +35,7 @@ async def test_weather_followup_uses_prior_location_but_keeps_visible_message():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings(
-        "test",
-        "test",
+    llm = LLM(Settings(discord_token="test", openai_api_key="test",
         model="test-model",
         usage_log_path="",
         chat_web_search=True,

@@ -40,7 +40,7 @@ async def test_final_output_check_is_last_even_after_dynamic_instruction():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings("test", "test"), client=client)
+    llm = LLM(Settings(discord_token="test", openai_api_key="test"), client=client)
     llm.instructions.active_text = lambda: "[관리자 동적 캐릭터 조정]\n- [test] 동적 지침"
     store = Store(":memory:")
     scope = Scope(1, 10, 100, True)
