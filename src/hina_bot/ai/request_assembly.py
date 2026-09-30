@@ -4,6 +4,8 @@ import json
 import re
 from datetime import UTC, datetime
 
+import httpx
+
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
@@ -18,6 +20,7 @@ from .llm import LLM as BaseLLM
 from .llm import POLICY
 from .managed_tools import CODE_EXECUTION_POLICY, managed_tool_config, search_tool_choice
 from .model_routing import ModelPlan, fixed_model_plan
+from .providers import ProviderAPIError
 from .rp_output_policy import hide_web_citations, provenance_instruction
 from .runtime_context import build_runtime_context, runtime_instruction
 from .structured_memory_context import (
@@ -27,6 +30,16 @@ from .structured_memory_context import (
 from .vision import CURRENT_VISUAL_INPUTS
 from .web_search_runtime import tool_config
 from .web_search_text import response_text
+
+
+def _transient_answer_failure(exc: BaseException) -> bool:
+    return (
+        isinstance(exc, httpx.TimeoutException)
+        or (
+            isinstance(exc, ProviderAPIError)
+            and exc.status_code == 503
+        )
+    )
 
 
 def _serialized_chars(value) -> int:
@@ -109,9 +122,17 @@ assistant 메시지에 reply_target_is_current_speaker가 있으면 그 답변�
 
 CURRENT_INTERACTION_POLICY = """[현재 메시지의 상호작용 구조]
 current_interaction은 Discord가 현재 메시지에서 직접 확인한 구조 정보입니다. speaker는 작성자이고,
-mentions는 현재 메시지에 실제로 포함된 Discord mention 목록이며 is_self=true는 히나 자신입니다.
-reply_target은 현재 메시지가 명시적으로 답장한 메시지의 작성자이며, 허용된 reply context가 없으면
-null일 수 있습니다.
+self는 히나 자신의 Discord identity입니다. self.user_id가 현재 Discord에서 히나를 가리키는
+권위 있는 ID입니다. mentions는 현재 메시지에 실제로 포함된 Discord mention 목록이며,
+각 항목의 is_self는 그 mention이 self와 같은 사용자인지 앱이 계산한 값입니다. is_self=false인
+mention은 name이 비어 있어도 히나가 아닌 제3자입니다. reply_target은 현재 메시지가 명시적으로
+답장한 메시지의 작성자이며, 허용된 reply context가 없으면 null일 수 있습니다.
+
+사용자 메시지의 원문 <@숫자> / <@!숫자>를 해석할 때는 숫자를 추측하지 말고 self.user_id와
+mentions[].user_id에 대응시키세요. opaque한 mention ID를 임의로 히나의 ID라고 추정하지 마세요.
+특히 mentions 항목이 is_self=false이면 그 raw mention을 히나 자신으로 재해석하면 안 됩니다.
+privacy 정책 때문에 mention의 name이 빈 문자열일 수 있으며, 이 경우에도 그 사용자가 없거나
+히나 자신이라는 뜻은 아닙니다.
 
 mention되었다는 사실만으로 그 사용자가 현재 발화의 호격 대상, 명령 수행자, 행동 대상이라고
 단정하지 마세요. 히나가 mention되어 이 응답이 시작됐더라도 요청이 반드시 히나에게 향한 것은
@@ -298,24 +319,32 @@ class RequestAssembler(BaseLLM):
             for row in channel_context
             if row.get("message_id") is not None
         }
-        selected = []
+
+        # Bound the stored tail before deduplicating against live channel context. Otherwise each
+        # live duplicate makes us walk farther into history and resurrect older, potentially stale
+        # topics just to refill the personal-recent quota.
+        candidates = []
         used = 0
         for turn in reversed(store.history(scope)):
-            if str(turn["message_id"]) in seen_ids:
-                continue
             size = len(turn["content"]) + len(turn["reply"])
             if used + size > _SERVER_RECENT_CHARS:
                 break
+            candidates.append(turn)
+            used += size
+            if len(candidates) >= _SERVER_RECENT_TURNS:
+                break
+
+        selected = []
+        for turn in reversed(candidates):
+            if str(turn["message_id"]) in seen_ids:
+                continue
             selected.append({
                 "message_id": str(turn["message_id"]),
                 "at": _context_timestamp(turn["created_at"]),
                 "user": turn["content"],
                 "hina": turn["reply"],
             })
-            used += size
-            if len(selected) >= _SERVER_RECENT_TURNS:
-                break
-        return list(reversed(selected))
+        return selected
 
     async def answer(
         self,
@@ -383,6 +412,7 @@ class RequestAssembler(BaseLLM):
                 "is_bot": False,
                 "is_self": False,
             },
+            "self": None,
             "mentions": [],
             "reply_target": None,
         }
@@ -679,7 +709,10 @@ class RequestAssembler(BaseLLM):
             "instructions": instructions,
             "input": messages,
             "max_output_tokens": model_plan.max_output_tokens,
-            "store": False,
+            "store": (
+                self.settings.provider == "gemini"
+                and self.settings.gemini_store_interactions
+            ),
         }
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
@@ -699,12 +732,42 @@ class RequestAssembler(BaseLLM):
         route_metadata = model_plan.telemetry()
         if self.settings.provider != "gemini":
             route_metadata.pop("requested_thinking_level", None)
-        response = await self.usage.request(
-            self.client,
-            "answer",
-            route_metadata=route_metadata,
-            **request,
-        )
+        try:
+            response = await self.usage.request(
+                self.client,
+                "answer",
+                route_metadata=route_metadata,
+                **request,
+            )
+        except (ProviderAPIError, httpx.TimeoutException) as exc:
+            if not _transient_answer_failure(exc):
+                raise
+
+            retry_request = dict(request)
+            retry_metadata = dict(route_metadata)
+            fallback_to_fast = (
+                self.settings.model_routing_mode == "adaptive"
+                and retry_request["model"] != self.settings.fast_model
+            )
+            retry_reason = "transient_fast_fallback" if fallback_to_fast else "transient_retry"
+            if fallback_to_fast:
+                retry_request["model"] = self.settings.fast_model
+                retry_metadata["model_tier"] = "fast"
+                if self.settings.provider == "gemini":
+                    retry_request["thinking_level"] = self.settings.gemini_fast_thinking_level
+                    retry_metadata["requested_thinking_level"] = (
+                        self.settings.gemini_fast_thinking_level
+                    )
+            retry_metadata["model_route_reasons"] = list(
+                retry_metadata.get("model_route_reasons") or ()
+            ) + [retry_reason]
+            response = await self.usage.request(
+                self.client,
+                "answer",
+                route_metadata=retry_metadata,
+                **retry_request,
+            )
+
         text = response_text(response, hide_citations=hide_web_citations(provenance))
         if response.status != "completed" or not text:
             raise ValueError("No completed model response")

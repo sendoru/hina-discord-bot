@@ -2,12 +2,14 @@ from itertools import pairwise
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from hina_bot.ai.freshness import FreshnessMode
 from hina_bot.ai.information_plan import InformationPlan
 from hina_bot.ai.information_routing import InformationRoute
 from hina_bot.ai.model_routing import ModelTier, build_model_plan
+from hina_bot.ai.providers import ProviderAPIError
 from hina_bot.ai.routing_plan import RoutingPlan
 from hina_bot.ai.rp_output_policy import ProvenanceMode
 from hina_bot.ai.runtime_llm import LLM
@@ -68,7 +70,7 @@ def visuals(count: int, *, source="attachment", reference_strength="current_mess
     )
 
 
-def test_routine_chat_uses_fast_tier_and_four_physical_loads():
+def test_routine_chat_uses_fast_tier_and_split_context_loads():
     plan = build_model_plan(settings(), information("오늘 뭐 먹지?"))
 
     assert plan.tier == ModelTier.FAST
@@ -81,6 +83,7 @@ def test_routine_chat_uses_fast_tier_and_four_physical_loads():
     assert dict(plan.components) == {
         "request_load": 0.0,
         "context_load": 0.0,
+        "ambient_context_load": 0.0,
         "evidence_load": 0.0,
         "visual_load": 0.0,
         "semantic_score": 0.0,
@@ -212,15 +215,62 @@ def test_negated_prior_task_does_not_escalate_followup():
     assert dict(plan.components)["semantic_score"] == 0.0
 
 
-def test_context_load_depends_on_admitted_text_volume_not_context_kind():
-    small = build_model_plan(settings(), information("읽어봐"), context_chars=1000)
-    medium = build_model_plan(settings(), information("읽어봐"), context_chars=4500)
-    large = build_model_plan(settings(), information("읽어봐"), context_chars=8000)
+def test_text_volume_loads_use_diminishing_return_curves():
+    context_plans = [
+        build_model_plan(settings(), information("읽어봐"), context_chars=value)
+        for value in (1000, 3000, 5000, 7000, 9000)
+    ]
+    context_scores = [dict(plan.components)["context_load"] for plan in context_plans]
+    context_gains = [
+        right - left for left, right in pairwise(context_scores)
+    ]
+    midpoint = build_model_plan(
+        settings(), information("읽어봐"), context_chars=4500
+    )
+    old_full = build_model_plan(
+        settings(), information("읽어봐"), context_chars=8000
+    )
+    new_full = build_model_plan(
+        settings(), information("읽어봐"), context_chars=15000
+    )
+    evidence_midpoint = build_model_plan(
+        settings(),
+        information("설정 알려줘", references=({"content": "x" * 2750},)),
+    )
+    evidence_full = build_model_plan(
+        settings(),
+        information("설정 알려줘", references=({"content": "x" * 9500},)),
+    )
 
-    assert dict(small.components)["context_load"] == 0.0
-    assert 0.0 < dict(medium.components)["context_load"] < 2.0
-    assert dict(large.components)["context_load"] == pytest.approx(2.0)
-    assert large.tier == ModelTier.SMART
+    assert context_scores == sorted(context_scores)
+    assert context_gains == sorted(context_gains, reverse=True)
+    assert dict(midpoint.components)["context_load"] == pytest.approx(1.0)
+    assert dict(old_full.components)["context_load"] == pytest.approx(round(2 ** 0.5, 3))
+    assert old_full.tier == ModelTier.FAST
+    assert dict(new_full.components)["context_load"] == pytest.approx(2.0)
+    assert new_full.tier == ModelTier.SMART
+    assert dict(evidence_midpoint.components)["evidence_load"] == pytest.approx(0.5)
+    assert dict(evidence_full.components)["evidence_load"] == pytest.approx(1.0)
+
+
+def test_ambient_context_is_visible_but_cannot_force_smart_by_itself():
+    ambient = build_model_plan(
+        settings(),
+        information("읽어봐"),
+        ambient_context_chars=8000,
+    )
+    combined = build_model_plan(
+        settings(),
+        information("읽어봐"),
+        context_chars=4500,
+        ambient_context_chars=8000,
+    )
+
+    assert dict(ambient.components)["context_load"] == 0.0
+    assert dict(ambient.components)["ambient_context_load"] == pytest.approx(0.354)
+    assert ambient.tier == ModelTier.FAST
+    assert combined.score > ambient.score
+    assert combined.score > 1.0
 
 
 def test_evidence_load_uses_actual_reference_text_and_final_web_requirement():
@@ -288,9 +338,14 @@ def test_routing_telemetry_contains_no_prompt_or_visual_metadata():
     assert secret not in str(telemetry)
     assert visual.name not in str(telemetry)
     assert visual.message_id not in str(telemetry)
-    assert telemetry["model_route_policy"] == "chat-v4"
+    assert telemetry["model_route_policy"] == "chat-v6"
     assert set(telemetry["model_route_components"]) == {
-        "request_load", "context_load", "evidence_load", "visual_load", "semantic_score"
+        "request_load",
+        "context_load",
+        "ambient_context_load",
+        "evidence_load",
+        "visual_load",
+        "semantic_score",
     }
     assert sum(telemetry["model_route_components"].values()) == pytest.approx(
         telemetry["model_route_score"]
@@ -340,6 +395,112 @@ async def test_runtime_forwards_each_tiers_gemini_budget():
         assert smart["model"] == "gemini-smart"
         assert smart["max_output_tokens"] == 8192
         assert smart["thinking_level"] == "medium"
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_smart_503_falls_back_to_fast_once():
+    response = NS(status="completed", output_text="복구됨.", output=[], usage=None)
+    raw = NS(
+        provider_name="gemini",
+        responses=NS(
+            create=AsyncMock(
+                side_effect=[
+                    ProviderAPIError(
+                        "gemini",
+                        503,
+                        code="UNAVAILABLE",
+                        message="high demand",
+                    ),
+                    response,
+                ]
+            )
+        ),
+        close=AsyncMock(),
+    )
+    llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        result = await llm.answer(
+            store,
+            Scope(None, 10, 100),
+            "사용자",
+            "이 알고리즘의 병목을 분석해 줘",
+        )
+        calls = [call.kwargs for call in raw.responses.create.await_args_list]
+        assert result == "복구됨."
+        assert [call["model"] for call in calls] == ["gemini-smart", "gemini-fast"]
+        assert [call["thinking_level"] for call in calls] == ["medium", "minimal"]
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_fast_timeout_retries_same_fast_model_once():
+    response = NS(status="completed", output_text="복구됨.", output=[], usage=None)
+    raw = NS(
+        provider_name="gemini",
+        responses=NS(
+            create=AsyncMock(
+                side_effect=[
+                    httpx.ReadTimeout("timed out"),
+                    response,
+                ]
+            )
+        ),
+        close=AsyncMock(),
+    )
+    llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        result = await llm.answer(
+            store,
+            Scope(None, 10, 100),
+            "사용자",
+            "안녕",
+        )
+        calls = [call.kwargs for call in raw.responses.create.await_args_list]
+        assert result == "복구됨."
+        assert [call["model"] for call in calls] == ["gemini-fast", "gemini-fast"]
+        assert len(calls) == 2
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_nontransient_400_is_not_retried():
+    raw = NS(
+        provider_name="gemini",
+        responses=NS(
+            create=AsyncMock(
+                side_effect=ProviderAPIError(
+                    "gemini",
+                    400,
+                    code="INVALID_ARGUMENT",
+                    message="bad request",
+                )
+            )
+        ),
+        close=AsyncMock(),
+    )
+    llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        with pytest.raises(ProviderAPIError):
+            await llm.answer(
+                store,
+                Scope(None, 10, 100),
+                "사용자",
+                "안녕",
+            )
+        assert raw.responses.create.await_count == 1
     finally:
         await llm.close()
         store.close()

@@ -46,21 +46,29 @@ GEMINI_SMART_THINKING_LEVEL=medium
 ROUTING_CLASSIFIER_MODE=off
 ```
 
-### 채팅 `chat-v4`
+### 채팅 `chat-v6`
 
-채팅 baseline은 의미가 비슷한 작은 규칙을 여러 개 더하지 않고 다음 네 가지 **물리적 load**만 계산합니다.
+채팅 baseline은 의미가 비슷한 작은 규칙을 여러 개 더하지 않고 다음 **물리적 load**를 계산합니다.
 
 - `request_load`: 현재 사용자 입력 길이. 기존 soft curve를 유지해 짧은 입력에는 작은 점수만 주고,
   약 4000자에서 최대 `2.0`에 도달합니다.
-- `context_load`: 실제 외부 모델 요청에 허용되는 memory/history/channel/reply-chain 등 동적 대화 문맥의
-  문자량. 1000자까지는 0, 8000자에서 최대 `2.0`입니다. `replied_message`, `target_user_history`,
-  `reply_origin_request` 같은 provenance 종류별 점수는 두지 않습니다.
-- `evidence_load`: 실제 lore/reference 본문량을 최대 `1.0`으로 계산하고, 최종 검색 모드가
-  `required`이면 `0.5`를 더합니다. route 이름 자체에는 점수를 주지 않습니다.
+- `context_load`: 실제 외부 모델 요청에 허용되는 memory/history, 개인 recent, same-speaker thread,
+  reply/reference chain, 명시적 target history 등 직접 문맥의 문자량입니다. 1000자까지는 0이고,
+  이후 제곱근 곡선으로 증가해 4500자에서 `1.0`, 15000자에서 최대 `2.0`에 도달합니다.
+- `ambient_context_load`: `context_kind=channel_ambient`인 주변 채널 잡담의 문자량입니다.
+  같은 1000~15000자 제곱근 곡선을 쓰되 최대 `0.5`로 제한합니다. 따라서 기본 threshold `2.0`에서는
+  unrelated ambient chatter만으로 smart tier를 선택할 수 없습니다.
+- `evidence_load`: 실제 lore/reference 본문량을 500자까지 0으로 두고, 이후 제곱근 곡선으로
+  증가시켜 2750자에서 `0.5`, 9500자에서 최대 `1.0`에 도달하게 합니다. 최종 검색 모드가
+  `required`이면 별도로 `0.5`를 더합니다. route 이름 자체에는 점수를 주지 않습니다.
 - `visual_load`: 실제 모델에 전달되는 시각 입력 개수를 4개까지 선형으로 계산해 최대 `1.0`으로
   제한합니다. attachment/sticker/emoji 또는 recent/reply provenance별 별도 가중치는 없습니다.
 
-이 네 값을 합한 objective score에 semantic score를 더해 `MODEL_ROUTING_SMART_THRESHOLD`와 비교합니다.
+문자량 기반 load는 추가 문맥의 한계효용이 줄어든다는 가정으로 제곱근 곡선을 사용합니다. 기존
+선형 ramp의 중간점 점수는 유지하되 포화 구간을 뒤로 밀어, 작은 문맥은 의미 있게 반영하면서 이미
+큰 문맥에 몇 천 자가 더 붙는 효과는 줄입니다.
+
+이 physical load들을 합한 objective score에 semantic score를 더해 `MODEL_ROUTING_SMART_THRESHOLD`와 비교합니다.
 기본 threshold는 `2.0`, 허용 범위는 `0.1`~`10.0`입니다.
 
 분석·설계·구현·디버깅·증명처럼 오탐 가능성이 낮은 명시적 복잡 작업과, 같은 사용자의 그런 요청에
@@ -71,15 +79,15 @@ ROUTING_CLASSIFIER_MODE=off
 단순하지만 긴 출력이 필요한 요청은 fast tier를 유지할 수 있고, 이 경우 생성 예산만
 `SMART_MAX_OUTPUT_TOKENS`까지 확장합니다. 별도 `LONG_MAX_OUTPUT_TOKENS` 설정은 두지 않습니다.
 
-### semantic classifier를 결합한 `chat-hybrid-v4`
+### semantic classifier를 결합한 `chat-hybrid-v6`
 
 `ROUTING_CLASSIFIER_MODE`로 작은 classifier를 선택적으로 결합할 수 있습니다. classifier는 한 번의
 요청에서 **추론 난이도**와 **웹 검색 필요성**을 독립적으로 반환합니다.
 
-- `off`: classifier를 호출하지 않고 `chat-v4` + deterministic web 정책을 사용합니다.
+- `off`: classifier를 호출하지 않고 `chat-v6` + deterministic web 정책을 사용합니다.
 - `shadow`: 실제 답변은 baseline을 유지하고 classifier가 제안한 model/web 결과만 백그라운드 telemetry에
   기록합니다. 비용은 발생하지만 답변 경로는 기다리지 않습니다.
-- `active`: classifier 결과를 실제 model/web 선택에 사용합니다. 정책명은 `chat-hybrid-v4`입니다.
+- `active`: classifier 결과를 실제 model/web 선택에 사용합니다. 정책명은 `chat-hybrid-v6`입니다.
 
 추론 난이도는 별도 axis/band 조합표 없이 직접 점수로 변환합니다.
 
@@ -87,7 +95,7 @@ ROUTING_CLASSIFIER_MODE=off
 - `medium`: `1.0`
 - `high`: `2.0`
 
-최종 점수는 `request_load + context_load + evidence_load + visual_load + semantic_score`입니다.
+최종 점수는 `request_load + context_load + ambient_context_load + evidence_load + visual_load + semantic_score`입니다.
 물리적 load와 local high-confidence hint만으로 이미 smart threshold에 도달했다면 reasoning 판정은
 생략할 수 있습니다. 다만 web decision이 잠기지 않았다면 같은 combined classifier 호출은 웹 판정을
 위해 계속 실행할 수 있습니다.
@@ -174,8 +182,8 @@ score의 의미가 다르므로 threshold는 계속 분리합니다.
 선택 결과는 `usage.jsonl`의 `model_tier`, `model_route_score`, `model_route_threshold`,
 `model_route_margin`, `model_route_policy`, `model_route_components`, `model_route_reasons`,
 `requested_max_output_tokens`에 남습니다. 채팅 component는 `request_load`, `context_load`,
-`evidence_load`, `visual_load`, `semantic_score`이고 기억은 `capacity_load`, `pending_load`만 사용합니다.
-정책 버전은 채팅 `chat-v4`, hybrid 채팅 `chat-hybrid-v4`, 기억 `memory-v2`입니다.
+`ambient_context_load`, `evidence_load`, `visual_load`, `semantic_score`이고 기억은 `capacity_load`,
+`pending_load`만 사용합니다. 정책 버전은 채팅 `chat-v6`, hybrid 채팅 `chat-hybrid-v6`, 기억 `memory-v2`입니다.
 
 hybrid에서는 `semantic_route_status`, `semantic_route_level`, `semantic_route_codes`,
 `model_route_decision_source`, `model_route_baseline_tier`와 검색 결정 metadata도 기록합니다. 이전

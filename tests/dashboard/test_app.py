@@ -213,6 +213,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     conversations_by_name = client.get("/conversations?user_id=Dashboard%20User")
     conversation_context = client.get("/conversations/1/context")
     memory = client.get("/memory?q=dashboard")
+    memory_dm = client.get("/memory?origin_scope_type=dm")
+    memory_legacy_dm = client.get(
+        "/memory?origin_realm=dm:100&origin_channel_id=10"
+    )
     memory_by_name = client.get("/memory?user_id=Dashboard%20User")
     memory_detail = client.get("/memory/1")
     relationships = client.get(
@@ -221,11 +225,16 @@ def test_dashboard_read_only_pages_render(tmp_path):
     state = client.get(
         "/state?target_guild_id=1&target_channel_id=20&target_user_id=100&q=dashboard"
     )
+    state_dm = client.get(
+        "/state?target_scope_type=dm&target_guild_id=999&target_channel_id=10&target_user_id=100"
+    )
     summaries = client.get("/summaries?q=dashboard")
     cursors = client.get("/memory/cursors?user_id=100")
     reconciliation = client.get("/reconciliation?relation=corrects")
+    reconciliation_dm = client.get("/reconciliation?origin_scope_type=dm")
     reconciliation_detail = client.get("/reconciliation/1")
     static = client.get("/static/dashboard.css")
+    scope_script = client.get("/static/scope-picker.js")
     icon = client.get("/static/hina-dashboard-icon.webp")
 
     assert overview.status_code == 200
@@ -237,6 +246,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
+    assert 'dashboard.css?v=20260930-5' in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -245,6 +255,13 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "viewport-fit=cover" in overview.text
     assert "Asia/Seoul" in overview.text
     assert "2026-09-21 09:00:00 KST" in overview.text
+    assert 'class="freshness-badge freshness-danger"' in overview.text
+    assert "Last event" in overview.text
+    assert 'class="status-badge status-success">completed</span>' in overview.text
+    assert 'href="/traces" aria-label="View all traces"' in overview.text
+    assert 'href="/conversations" aria-label="View stored conversations"' in overview.text
+    assert 'href="/analytics#usage-breakdown" aria-label="View API call breakdown"' in overview.text
+    assert 'href="/analytics#web-search-routing" aria-label="View web-search analytics"' in overview.text
     assert "Current observability epoch #1" in overview.text
     assert "trace-ui" in traces.text
     assert "Current observability epoch #1" in traces.text
@@ -256,9 +273,17 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Routing & Usage Analytics" in analytics.text
     assert "test-model" in analytics.text
     assert "Current observability epoch #1" in analytics.text
+    assert 'aria-label="Analytics sections"' in analytics.text
+    assert 'href="#runtime-performance"' in analytics.text
+    assert 'id="model-routing"' in analytics.text
+    assert 'id="web-search-routing"' in analytics.text
+    assert 'id="usage-breakdown"' in analytics.text
     assert identity.status_code == 200
     assert "Speaker Identity Observability" in identity.text
     assert "Current observability epoch #1" in identity.text
+    assert 'class="filters filter-layout"' in identity.text
+    assert "<legend>Time window</legend>" in identity.text
+    assert 'class="filter-actions"' in identity.text
     assert "hello dashboard" in detail.text
     assert "<dt>User</dt><dd>Dashboard User · <code>100</code></dd>" in detail.text
     assert "Context &amp; provenance" in detail.text
@@ -266,6 +291,13 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "hello dashboard" in conversations.text
     assert "Content search" in conversations.text
     assert "Advanced filters" in conversations.text
+    assert 'class="filter-row grouped-filter-row"' in conversations.text
+    assert "<legend>Context</legend>" in conversations.text
+    assert 'class="conversation-head-primary"' in conversations.text
+    assert 'class="metadata compact conversation-metadata"' in conversations.text
+    assert "<dt>Server</dt>" in conversations.text
+    assert "<dt>Channel</dt>" in conversations.text
+    assert 'class="scope-key"' not in conversations.text
     assert 'aria-label="Active filters"' in conversations.text
     assert 'type="datetime-local"' in conversations.text
     assert "<mark>dashboard</mark>" in conversations.text
@@ -273,10 +305,21 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "hello dashboard" in conversations_by_name.text
     assert conversation_context.status_code == 200
     assert "Conversation Context" in conversation_context.text
+    assert "<dt>Server</dt>" in conversation_context.text
+    assert "<dt>Channel</dt>" in conversation_context.text
+    assert 'class="scope-key"' not in conversation_context.text
     assert "dashboard memory" in memory.text
     assert "Content search" in memory.text
     assert "Advanced filters" in memory.text
     assert 'aria-label="Active filters"' in memory.text
+    assert 'aria-label="Origin scope type"' in memory.text
+    assert 'name="origin_scope_type" value="any" checked' in memory.text
+    assert memory_dm.status_code == 200
+    assert "dashboard memory" in memory_dm.text
+    assert 'name="origin_scope_type" value="dm" checked' in memory_dm.text
+    assert memory_legacy_dm.status_code == 200
+    assert 'name="origin_scope_type" value="dm" checked' in memory_legacy_dm.text
+    assert 'name="origin_channel_id" inputmode="numeric" value="10"' in memory_legacy_dm.text
     assert "<mark>dashboard</mark>" in memory.text
     assert memory_by_name.status_code == 200
     assert "dashboard memory" in memory_by_name.text
@@ -294,6 +337,20 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="relationship-mobile-card"' in relationships.text
     assert state.status_code == 200
     assert "Memory &amp; Context State" in state.text
+    assert 'class="state-query-panel"' in state.text
+    assert 'aria-labelledby="state-scope-title"' in state.text
+    assert 'aria-labelledby="state-note-title"' in state.text
+    assert 'type="search" name="q"' in state.text
+    assert '<input type="hidden" name="q" value="dashboard">' in state.text
+    assert '<input type="hidden" name="target_guild_id" value="1">' in state.text
+    assert '<input type="hidden" name="target_channel_id" value="20">' in state.text
+    assert '<input type="hidden" name="target_user_id" value="100">' in state.text
+    assert ">Clear</a>" in state.text
+    assert 'aria-label="Target scope type"' in state.text
+    assert 'name="target_scope_type" value="guild" checked' in state.text
+    assert state_dm.status_code == 200
+    assert 'name="target_scope_type" value="dm" checked' in state_dm.text
+    assert "<code>dm:100</code>" in state_dm.text
     assert "dashboard server note" in state.text
     assert "Dashboard User · <code>user:100</code>" in state.text
     assert "dashboard user note" in state.text
@@ -302,14 +359,24 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="wide-table"' not in state.text
     assert "legacy dashboard summary" in summaries.text
     assert "Dashboard User<br><code>100</code>" in summaries.text
+    assert 'class="scope-key"' in summaries.text
+    assert 'class="scope-segment-label">dm</span>:10' in summaries.text
     assert "Memory Extraction Cursors" in cursors.text
     assert "Dashboard User<br><code>100</code>" in cursors.text
+    assert 'class="scope-key"' in cursors.text
+    assert 'class="scope-segment-label">dm</span>:10' in cursors.text
     assert "dashboard memory updated" in reconciliation.text
     assert "Dashboard User" in reconciliation.text
+    assert 'aria-label="Origin scope type"' in reconciliation.text
+    assert reconciliation_dm.status_code == 200
+    assert "dashboard memory updated" in reconciliation_dm.text
+    assert 'name="origin_scope_type" value="dm" checked' in reconciliation_dm.text
     assert "Target / old" in reconciliation_detail.text
     assert "Dashboard User · <code>100</code>" in reconciliation_detail.text
     assert "dashboard memory updated" in reconciliation_detail.text
     assert static.status_code == 200
+    assert scope_script.status_code == 200
+    assert "syncScopePicker" in scope_script.text
     assert icon.status_code == 200
     assert icon.headers["content-type"] == "image/webp"
     assert icon.content
@@ -327,6 +394,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert ".wide-table" in static.text
     assert ".relationship-mobile-card" in static.text
     assert ".relationship-desktop" in static.text
+    assert ".scope-picker" in static.text
+    assert ".scope-picker-types" in static.text
 
 
 def test_unknown_trace_returns_404(tmp_path):

@@ -19,6 +19,7 @@ from hina_bot.core.relationship_profile import (
 )
 from hina_bot.core.routing import Scope
 
+from ..scopepicker import normalize_scope_filter
 from ..searchutils import search_matches
 from ..timeutils import db_utc_timestamp
 from .base import Page, ReadService, _decode_json
@@ -203,6 +204,8 @@ class MemoryService(ReadService):
         page: int = 1,
         page_size: int = 50,
         user_id: str = "",
+        origin_scope_type: str = "",
+        origin_guild_id: str = "",
         origin_realm: str = "",
         origin_channel_id: str = "",
         kind: str = "",
@@ -226,10 +229,17 @@ class MemoryService(ReadService):
             except ValueError:
                 return None
 
+        origin_scope = normalize_scope_filter(
+            scope_type=origin_scope_type,
+            guild_id=origin_guild_id,
+            channel_id=origin_channel_id,
+            legacy_realm=origin_realm,
+        )
         filters = {
             "user_id": user_id.strip(),
-            "origin_realm": origin_realm.strip(),
-            "origin_channel_id": origin_channel_id.strip(),
+            "origin_realm": origin_scope.realm,
+            "origin_realm_prefix": origin_scope.realm_prefix,
+            "origin_channel_id": origin_scope.channel_id,
             "kind": kind.strip(),
             "disclosure": disclosure.strip(),
             "status": status.strip(),
@@ -267,8 +277,10 @@ class MemoryService(ReadService):
             "page": pagination,
             "filters": {
                 "user_id": user_id.strip(),
-                "origin_realm": origin_realm.strip(),
-                "origin_channel_id": origin_channel_id.strip(),
+                "origin_scope_type": origin_scope.scope_type,
+                "origin_guild_id": origin_scope.guild_id,
+                "origin_realm": origin_scope.realm,
+                "origin_channel_id": origin_scope.channel_id,
                 "kind": kind.strip(),
                 "disclosure": disclosure.strip(),
                 "status": status.strip(),

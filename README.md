@@ -304,8 +304,10 @@ Discord 호출의 접수, 처리 제외 사유, 응답 생성·전송, 기억 �
 설치된 `hina_bot` 패키지 소스 fingerprint로 fallback합니다. `EVENT_LOG_PATH`를 비우면 이벤트 파일
 로깅을 끌 수 있습니다. 이벤트 로그에도 메시지·응답 원문, 사용자/서버/채널 ID, URL을 기록하지 않습니다.
 
-`store=False`를 사용하더라도 provider의 모든 데이터 보관 정책에서 제외된다는 의미는 아닙니다.
-운영자는 사용하는 provider의 데이터 정책을 별도로 확인해야 합니다.
+일반 provider 호출은 기본적으로 `store=False`를 사용합니다. 다만 Gemini 일반 채팅 answer는
+`GEMINI_STORE_INTERACTIONS`를 명시적으로 켜면 디버깅을 위해 interaction 저장을 opt-in할 수 있습니다.
+이 경우를 포함해 provider의 모든 데이터 보관 정책에서 제외된다는 의미는 아니므로, 운영자는 사용하는
+provider의 데이터 정책을 별도로 확인해야 합니다.
 
 새 dashboard foundation은 production `Store`를 공유하지 않고 SQLite를 read-only로 열며,
 rotated usage/event JSONL을 별도로 읽습니다. 현재는 `/healthz`만 제공하고 inspection UI는 후속 단계입니다.

@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% from "_filter_ui.html" import active_filter_chips %}
+{% from "_scope_picker.html" import scope_picker %}
+{% from "_status_ui.html" import status_badge %}
 {% block title %}Memory · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -21,47 +23,63 @@
       <button type="submit">Search</button>
     </div>
   </div>
-  <details class="advanced-filters" {% if data.filters.user_id or data.filters.origin_realm or data.filters.origin_channel_id or data.filters.kind or data.filters.disclosure or data.filters.status or data.filters.relationship or data.filters.confidence_min or data.filters.confidence_max or data.filters.created_after or data.filters.created_before or data.filters.updated_after or data.filters.updated_before %}open{% endif %}>
+  <details class="advanced-filters" {% if data.filters.user_id or data.filters.origin_scope_type or data.filters.origin_realm or data.filters.origin_channel_id or data.filters.kind or data.filters.disclosure or data.filters.status or data.filters.relationship or data.filters.confidence_min or data.filters.confidence_max or data.filters.created_after or data.filters.created_before or data.filters.updated_after or data.filters.updated_before %}open{% endif %}>
     <summary>Advanced filters</summary>
-    <div class="filter-row">
-    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
-    <input name="origin_realm" value="{{ data.filters.origin_realm }}" placeholder="origin realm">
-    <input name="origin_channel_id" value="{{ data.filters.origin_channel_id }}" placeholder="channel id">
-    <select name="kind">
-      <option value="">all kinds</option>
-      {% for value in ["fact","event","preference","relationship","boundary","task"] %}
-      <option value="{{ value }}" {% if data.filters.kind == value %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-    <select name="disclosure">
-      <option value="">all disclosure</option>
-      {% for value in ["local","implicit","reference_gated","global"] %}
-      <option value="{{ value }}" {% if data.filters.disclosure == value %}selected{% endif %}>{{ value }}</option>
-      {% endfor %}
-    </select>
-    {% if data.schema.has_lifecycle %}
-    <input name="status" value="{{ data.filters.status }}" placeholder="lifecycle status">
-    {% endif %}
-    <select name="relationship">
-      <option value="">relationship: any</option>
-      <option value="yes" {% if data.filters.relationship == "yes" %}selected{% endif %}>relationship only</option>
-      <option value="no" {% if data.filters.relationship == "no" %}selected{% endif %}>non-relationship</option>
-    </select>
-    <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥">
-    <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤">
-    <label class="time-field">Created after
-      <input type="datetime-local" name="created_after" value="{{ data.filters.created_after }}">
-    </label>
-    <label class="time-field">Created before
-      <input type="datetime-local" name="created_before" value="{{ data.filters.created_before }}">
-    </label>
-    <label class="time-field">Updated after
-      <input type="datetime-local" name="updated_after" value="{{ data.filters.updated_after }}">
-    </label>
-    <label class="time-field">Updated before
-      <input type="datetime-local" name="updated_before" value="{{ data.filters.updated_before }}">
-    </label>
-      <button type="submit">Apply filters</button>
+    <div class="filter-row grouped-filter-row">
+      <fieldset class="filter-cluster filter-cluster-1">
+        <legend>Owner &amp; origin</legend>
+        <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
+        {{ scope_picker("origin", data.filters.origin_scope_type, data.filters.origin_guild_id, data.filters.origin_channel_id, label="Origin scope") }}
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-2">
+        <legend>Confidence</legend>
+        <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥">
+        <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤">
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-4 filter-cluster-wide">
+        <legend>Memory attributes</legend>
+        <select name="kind">
+          <option value="">all kinds</option>
+          {% for value in ["fact","event","preference","relationship","boundary","task"] %}
+          <option value="{{ value }}" {% if data.filters.kind == value %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+        <select name="disclosure">
+          <option value="">all disclosure</option>
+          {% for value in ["local","implicit","reference_gated","global"] %}
+          <option value="{{ value }}" {% if data.filters.disclosure == value %}selected{% endif %}>{{ value }}</option>
+          {% endfor %}
+        </select>
+        {% if data.schema.has_lifecycle %}
+        <input name="status" value="{{ data.filters.status }}" placeholder="lifecycle status">
+        {% endif %}
+        <select name="relationship">
+          <option value="">relationship: any</option>
+          <option value="yes" {% if data.filters.relationship == "yes" %}selected{% endif %}>relationship only</option>
+          <option value="no" {% if data.filters.relationship == "no" %}selected{% endif %}>non-relationship</option>
+        </select>
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-2">
+        <legend>Created</legend>
+        <label class="time-field">After
+          <input type="datetime-local" name="created_after" value="{{ data.filters.created_after }}">
+        </label>
+        <label class="time-field">Before
+          <input type="datetime-local" name="created_before" value="{{ data.filters.created_before }}">
+        </label>
+      </fieldset>
+      <fieldset class="filter-cluster filter-cluster-2">
+        <legend>Updated</legend>
+        <label class="time-field">After
+          <input type="datetime-local" name="updated_after" value="{{ data.filters.updated_after }}">
+        </label>
+        <label class="time-field">Before
+          <input type="datetime-local" name="updated_before" value="{{ data.filters.updated_before }}">
+        </label>
+      </fieldset>
+      <div class="filter-actions filter-row-actions">
+        <button type="submit">Apply filters</button>
+      </div>
     </div>
   </details>
   <div class="quick-ranges" aria-label="Quick created-time ranges">
@@ -96,7 +114,7 @@
           <td class="numeric">{{ "%.2f"|format(row.confidence) }}</td>
           <td class="numeric">{{ row.source_message_ids_decoded|length }}</td>
           <td>{{ "yes" if row.has_relationship_evidence else "—" }}</td>
-          {% if data.schema.has_lifecycle %}<td>{{ row.status or "—" }}</td>{% endif %}
+          {% if data.schema.has_lifecycle %}<td>{{ status_badge(row.status) }}</td>{% endif %}
           <td>{{ row.updated_at | localtime }}</td>
         </tr>
         <tr class="content-row">

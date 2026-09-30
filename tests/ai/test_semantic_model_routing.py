@@ -179,6 +179,37 @@ async def test_classifier_input_contains_semantic_context_but_no_objective_load(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "enabled", "expected"),
+    [
+        ("gemini", False, False),
+        ("gemini", True, True),
+        ("openai", True, False),
+    ],
+)
+async def test_answer_store_is_opt_in_and_gemini_only(provider, enabled, expected):
+    primary = client(response("응."))
+    llm = LLM(
+        settings(
+            provider=provider,
+            model_routing_mode="fixed",
+            routing_classifier_mode="off",
+            gemini_store_interactions=enabled,
+        ),
+        client=primary,
+    )
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        result = await llm.answer(store, Scope(None, 10, 100), "사용자", "안녕")
+        assert result == "응."
+        assert primary.responses.create.await_args.kwargs["store"] is expected
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
 async def test_active_runtime_skips_classifier_when_physical_or_local_score_is_already_smart():
     primary = client(response("응."))
     classifier_client = client(response(classification(level="low")))
@@ -227,8 +258,42 @@ async def test_active_runtime_uses_classifier_result_for_answer_model(tmp_path):
         answer_row = next(row for row in rows if row["operation"] == "answer")
         assert answer_row["semantic_route_status"] == "completed"
         assert answer_row["semantic_route_level"] == "high"
-        assert answer_row["model_route_policy"] == "chat-hybrid-v4"
+        assert answer_row["model_route_policy"] == "chat-hybrid-v6"
         assert secret_request not in log_path.read_text()
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_active_runtime_ambient_only_context_keeps_low_request_on_fast():
+    primary = client(response("응."))
+    classifier_client = client(response(classification(level="low")))
+    llm = LLM(
+        settings(external_context_policy="full"),
+        client=primary,
+        classifier_client=classifier_client,
+    )
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        result = await llm.answer(
+            store,
+            Scope(1, 10, 100),
+            "사용자",
+            "이제 다른 얘기하자",
+            channel_context=[{
+                "message_id": "900",
+                "user_id": "200",
+                "author_user_id": "200",
+                "role": "user",
+                "content": "x" * 8000,
+                "context_kind": "channel_ambient",
+            }],
+        )
+        assert result == "응."
+        assert classifier_client.responses.create.await_count == 1
+        assert primary.responses.create.await_args.kwargs["model"] == "fast"
     finally:
         await llm.close()
         store.close()

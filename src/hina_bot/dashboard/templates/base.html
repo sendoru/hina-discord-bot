@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>{% block title %}Hina Dashboard{% endblock %}</title>
   <link rel="icon" type="image/webp" href="{{ url_for('static', path='hina-dashboard-icon.webp') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=20260930-5">
+  <script defer src="{{ url_for('static', path='scope-picker.js') }}"></script>
 </head>
 <body>
   <div class="app-shell">
