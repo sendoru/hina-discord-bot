@@ -21,10 +21,12 @@ def test_citations_are_only_visible_for_explicit_source_requests():
     assert not hide_web_citations(ProvenanceMode.EXPLICIT_SOURCE)
 
 
-def test_natural_lookup_instruction_is_in_character():
+def test_natural_lookup_instruction_avoids_stock_leadins():
     text = provenance_instruction(ProvenanceMode.NATURAL_LOOKUP)
-    assert "잠깐 확인해봤는데" in text
-    assert "원래 알기 어려운" in text
+    assert "자연스러울 때 조회 사실을 짧게 언급해도 됩니다" in text
+    assert "특정 표현을 습관적으로 반복" in text
+    assert "잠깐 확인해봤는데" not in text
+    assert "자료를 좀 확인해보니까" not in text
 
 
 def test_source_request_forces_web_search_when_enabled():
