@@ -40,7 +40,7 @@ def test_location_dependency_is_detected_separately():
 
 
 def test_runtime_context_converts_clock_to_configured_timezone():
-    settings = Settings("test", "test", runtime_timezone="Asia/Seoul",
+    settings = Settings(discord_token="test", openai_api_key="test", runtime_timezone="Asia/Seoul",
                         runtime_locale="ko-KR", runtime_default_location="서울")
     context = build_runtime_context(
         settings,
@@ -60,7 +60,7 @@ def test_runtime_context_converts_clock_to_configured_timezone():
 
 
 def test_runtime_instruction_supports_ambient_morning_conversation():
-    settings = Settings("test", "test", runtime_timezone="Asia/Seoul", runtime_locale="ko-KR")
+    settings = Settings(discord_token="test", openai_api_key="test", runtime_timezone="Asia/Seoul", runtime_locale="ko-KR")
     context = build_runtime_context(
         settings,
         now=datetime(2026, 9, 13, 22, 57, tzinfo=UTC),
@@ -79,7 +79,7 @@ def test_runtime_instruction_supports_ambient_morning_conversation():
 
 
 def test_runtime_instruction_rejects_conflicting_untrusted_clock_claims():
-    settings = Settings("test", "test", runtime_timezone="Asia/Seoul", runtime_locale="ko-KR")
+    settings = Settings(discord_token="test", openai_api_key="test", runtime_timezone="Asia/Seoul", runtime_locale="ko-KR")
     context = build_runtime_context(
         settings,
         now=datetime(2026, 9, 13, 16, 31, tzinfo=UTC),

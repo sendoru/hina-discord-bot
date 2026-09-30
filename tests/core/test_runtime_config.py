@@ -9,11 +9,30 @@ from hina_bot.core.store import Store
 
 def _base(**overrides):
     values = {
-        "api_key": "key",
+        "openai_api_key": "key",
         "discord_token": "token",
     }
     values.update(overrides)
     return Settings(**values)
+
+
+def test_settings_requires_keyword_only_construction():
+    with pytest.raises(TypeError):
+        Settings("key", "token")
+
+
+def test_settings_api_keys_are_provider_specific():
+    settings = Settings(
+        discord_token="token",
+        openai_api_key="openai-key",
+        gemini_api_key="gemini-key",
+        openrouter_api_key="openrouter-key",
+    )
+
+    assert not hasattr(settings, "api_key")
+    assert settings.api_key_for("openai") == "openai-key"
+    assert settings.api_key_for("gemini") == "gemini-key"
+    assert settings.api_key_for("openrouter") == "openrouter-key"
 
 
 def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch, tmp_path: Path):

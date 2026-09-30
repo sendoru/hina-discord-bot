@@ -15,7 +15,7 @@ def slash_bot():
     store = Store(":memory:")
     llm = NS(close=AsyncMock())
     bot = HinaClient(
-        Settings("test", "test", cooldown=0, bot_admin_ids=frozenset({100})),
+        Settings(discord_token="test", openai_api_key="test", cooldown=0, bot_admin_ids=frozenset({100})),
         store=store,
         llm=llm,
     )

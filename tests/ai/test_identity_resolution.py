@@ -55,8 +55,8 @@ async def test_semantic_resolver_handles_transliteration_without_app_rules():
     client = NS(provider_name="gemini", responses=NS(create=AsyncMock()))
     usage = NS(request=AsyncMock(return_value=response))
     settings = Settings(
-        "token",
-        "key",
+        discord_token="key",
+        gemini_api_key="token",
         provider="gemini",
         model="gemini-model",
         fast_model="gemini-fast",
@@ -136,8 +136,8 @@ async def test_semantic_resolver_preserves_validated_reference_span():
     client = NS(provider_name="gemini", responses=NS(create=AsyncMock()))
     usage = NS(request=AsyncMock(return_value=response))
     settings = Settings(
-        "token",
-        "key",
+        discord_token="key",
+        gemini_api_key="token",
         provider="gemini",
         model="gemini-model",
         fast_model="gemini-fast",

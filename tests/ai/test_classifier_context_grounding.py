@@ -19,7 +19,7 @@ from hina_bot.core.store import Store
 
 def settings():
     return Settings(
-        api_key="primary-key",
+        gemini_api_key="primary-key",
         discord_token="token",
         provider="gemini",
         model="fixed",
