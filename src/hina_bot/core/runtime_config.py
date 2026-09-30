@@ -59,6 +59,9 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "GEMINI_SMART_THINKING_LEVEL",
         "gemini_thinking_level",
     ),
+    "gemini_store_interactions": RuntimeSettingSpec(
+        "gemini_store_interactions", "GEMINI_STORE_INTERACTIONS", "bool"
+    ),
     "model_routing_smart_threshold": RuntimeSettingSpec(
         "model_routing_smart_threshold",
         "MODEL_ROUTING_SMART_THRESHOLD",
