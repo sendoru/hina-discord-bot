@@ -90,6 +90,7 @@ class Settings:
     gemini_thinking_level: str = "low"
     gemini_fast_thinking_level: str = "minimal"
     gemini_smart_thinking_level: str = "medium"
+    gemini_store_interactions: bool = False
     db_path: str = "data/hina.sqlite3"
     prompt_path: str = ""
     call_prefixes: tuple[str, ...] = ("히나야",)
@@ -265,6 +266,11 @@ class Settings:
             if level not in GEMINI_THINKING_LEVELS:
                 allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
                 raise ValueError(f"{variable}은 {allowed} 중 하나여야 합니다.")
+        gemini_store_interactions = os.getenv(
+            "GEMINI_STORE_INTERACTIONS", "false"
+        ).strip().lower()
+        if gemini_store_interactions not in {"true", "false"}:
+            raise ValueError("GEMINI_STORE_INTERACTIONS는 true 또는 false여야 합니다.")
 
         dm = os.getenv("DM_ALWAYS_REPLY", "false").lower()
         if dm not in {"true", "false"}:
@@ -331,6 +337,7 @@ class Settings:
             gemini_thinking_level=gemini_thinking_level,
             gemini_fast_thinking_level=gemini_fast_thinking_level,
             gemini_smart_thinking_level=gemini_smart_thinking_level,
+            gemini_store_interactions=gemini_store_interactions == "true",
             special_dm_user_id=int(os.environ["SPECIAL_DM_USER_ID"])
             if os.getenv("SPECIAL_DM_USER_ID", "").strip() else None,
             bot_admin_ids=frozenset(int(x.strip()) for x in
