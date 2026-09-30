@@ -179,6 +179,37 @@ async def test_classifier_input_contains_semantic_context_but_no_objective_load(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("provider", "enabled", "expected"),
+    [
+        ("gemini", False, False),
+        ("gemini", True, True),
+        ("openai", True, False),
+    ],
+)
+async def test_answer_store_is_opt_in_and_gemini_only(provider, enabled, expected):
+    primary = client(response("응."))
+    llm = LLM(
+        settings(
+            provider=provider,
+            model_routing_mode="fixed",
+            routing_classifier_mode="off",
+            gemini_store_interactions=enabled,
+        ),
+        client=primary,
+    )
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        result = await llm.answer(store, Scope(None, 10, 100), "사용자", "안녕")
+        assert result == "응."
+        assert primary.responses.create.await_args.kwargs["store"] is expected
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
 async def test_active_runtime_skips_classifier_when_physical_or_local_score_is_already_smart():
     primary = client(response("응."))
     classifier_client = client(response(classification(level="low")))
