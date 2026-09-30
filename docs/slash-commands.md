@@ -73,7 +73,7 @@ memory/chatlog 설정 자체는 유지합니다.
 
 `/config set/reset` 대상은 `LLM_MODEL`, `LLM_FAST_MODEL`, `LLM_SMART_MODEL`,
 `GEMINI_THINKING_LEVEL`, `GEMINI_FAST_THINKING_LEVEL`, `GEMINI_SMART_THINKING_LEVEL`,
-`CALL_PREFIXES`, `DM_ALWAYS_REPLY`, `ALWAYS_REPLY_CHANNEL_IDS`, `PUBLIC_SERVER_MEMORY_IN_DM`,
+`GEMINI_STORE_INTERACTIONS`, `CALL_PREFIXES`, `DM_ALWAYS_REPLY`, `ALWAYS_REPLY_CHANNEL_IDS`, `PUBLIC_SERVER_MEMORY_IN_DM`,
 `CHAT_WEB_SEARCH`, `COMMUNITY_LORE`, `MAX_OUTPUT_TOKENS`, `CHANNEL_CONTEXT_CHARS`,
 `HISTORY_MAX_CHARS`, `LORE_MAX_ITEMS`, `LORE_MAX_CHARS`, `RUNTIME_DEFAULT_LOCATION`입니다.
 `EXTERNAL_CONTEXT_POLICY`는 프라이버시 경계라는 의미가 드러나도록 `/config privacy`에서 별도로
@@ -83,7 +83,9 @@ memory/chatlog 설정 자체는 유지합니다.
 값은 여전히 배포 기본값으로 사용할 수 있고, `/config reset`은 해당 DB override만 지웁니다.
 `RUNTIME_DEFAULT_LOCATION`을 명시적으로 비우려면 `/config set`의 value에 `none`을 사용합니다.
 `CALL_PREFIXES`는 쉼표 구분 문자열, `ALWAYS_REPLY_CHANNEL_IDS`는 쉼표 구분 Discord 채널 ID 목록,
-불리언 값은 `on/off` 또는 `true/false`를 받습니다. 지정 채널에서는 사람의 일반 메시지도
+불리언 값은 `on/off` 또는 `true/false`를 받습니다. `GEMINI_STORE_INTERACTIONS`는 기본적으로
+꺼져 있으며, 켜면 일반 채팅 answer의 Gemini interaction이 provider 측에 저장될 수 있어 AI Studio
+Logs에서 디버깅할 수 있습니다. memory summary/classifier 등 내부 보조 호출은 계속 저장하지 않습니다. 지정 채널에서는 사람의 일반 메시지도
 직접 대화 턴으로 취급하지만, 다른 봇은 호출어 또는 멘션/답장 핑이 있을 때만 응답합니다. 이 목록을
 바꾸면 direct-trigger 판정이 바뀌므로 기존 recent buffer도 즉시 비웁니다.
 
