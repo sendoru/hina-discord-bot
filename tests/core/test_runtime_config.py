@@ -44,6 +44,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "GEMINI_THINKING_LEVEL",
         "GEMINI_FAST_THINKING_LEVEL",
         "GEMINI_SMART_THINKING_LEVEL",
+        "GEMINI_STORE_INTERACTIONS",
         "CHANNEL_CONTEXT_CHARS",
         "HISTORY_MAX_CHARS",
         "LORE_MAX_ITEMS",
@@ -68,6 +69,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.smart_model == settings.model
     assert settings.fast_output_tokens == 4096
     assert settings.smart_output_tokens == 8192
+    assert settings.gemini_store_interactions is False
     assert settings.routing_classifier_mode == "off"
     assert settings.routing_classifier_provider == "openai"
     assert settings.routing_classifier_model == settings.fast_model
@@ -107,6 +109,7 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("SMART_MAX_OUTPUT_TOKENS", "10000")
     monkeypatch.setenv("GEMINI_FAST_THINKING_LEVEL", "minimal")
     monkeypatch.setenv("GEMINI_SMART_THINKING_LEVEL", "high")
+    monkeypatch.setenv("GEMINI_STORE_INTERACTIONS", "true")
 
     value = Settings.load()
     assert value.model_routing_mode == "adaptive"
@@ -118,6 +121,7 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     assert value.smart_output_tokens == 10000
     assert value.gemini_fast_thinking_level == "minimal"
     assert value.gemini_smart_thinking_level == "high"
+    assert value.gemini_store_interactions is True
     assert not hasattr(value, "gemini_fast_total_output_tokens")
     assert not hasattr(value, "gemini_smart_total_output_tokens")
 
@@ -197,6 +201,7 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
         assert settings.gemini_thinking_level == "low"
         assert settings.gemini_fast_thinking_level == "minimal"
         assert settings.gemini_smart_thinking_level == "medium"
+        assert settings.gemini_store_interactions is False
         assert settings.model_routing_smart_threshold == pytest.approx(2.0)
         assert settings.memory_routing_smart_threshold == pytest.approx(2.0)
         assert settings.channel_context_chars == 6000
@@ -221,6 +226,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         gemini_thinking_level="low",
         gemini_fast_thinking_level="minimal",
         gemini_smart_thinking_level="medium",
+        gemini_store_interactions=False,
     )
 
     store = Store(str(db))
@@ -237,6 +243,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
     assert settings.set_text("GEMINI_THINKING_LEVEL", "HIGH") == "high"
     assert settings.set_text("GEMINI_FAST_THINKING_LEVEL", "low") == "low"
     assert settings.set_text("GEMINI_SMART_THINKING_LEVEL", "high") == "high"
+    assert settings.set_text("GEMINI_STORE_INTERACTIONS", "on") is True
     store.close()
 
     store = Store(str(db))
@@ -254,12 +261,14 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         assert reloaded.gemini_thinking_level == "high"
         assert reloaded.gemini_fast_thinking_level == "low"
         assert reloaded.gemini_smart_thinking_level == "high"
+        assert reloaded.gemini_store_interactions is True
         assert reloaded.source("LLM_MODEL") == "db"
         assert reloaded.source("LLM_FAST_MODEL") == "db"
         assert reloaded.source("LLM_SMART_MODEL") == "db"
         assert reloaded.source("GEMINI_THINKING_LEVEL") == "db"
         assert reloaded.source("GEMINI_FAST_THINKING_LEVEL") == "db"
         assert reloaded.source("GEMINI_SMART_THINKING_LEVEL") == "db"
+        assert reloaded.source("GEMINI_STORE_INTERACTIONS") == "db"
         assert reloaded.source("ALWAYS_REPLY_CHANNEL_IDS") == "db"
         assert reloaded.source("CHANNEL_CONTEXT_CHARS") == "db"
         assert reloaded.source("MODEL_ROUTING_SMART_THRESHOLD") == "db"
@@ -350,6 +359,7 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
         ("GEMINI_THINKING_LEVEL", "extreme"),
         ("GEMINI_FAST_THINKING_LEVEL", "off"),
         ("GEMINI_SMART_THINKING_LEVEL", "max"),
+        ("GEMINI_STORE_INTERACTIONS", "maybe"),
     ],
 )
 def test_runtime_setting_validation_rejects_invalid_values(key: str, value: str):
