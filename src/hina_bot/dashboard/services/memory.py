@@ -14,7 +14,8 @@ from hina_bot.core.relationship_profile import (
     RELATIONSHIP_RECENCY_DECAY,
     aggregate_relationship_evidence,
     full_relationship_observations,
-    implicit_relationship_observations,
+    implicit_relationship_axis_observations,
+    implicit_relationship_profile_contributors,
 )
 from hina_bot.core.routing import Scope
 
@@ -136,11 +137,34 @@ class MemoryService(ReadService):
                     self._relationship_item_view(item)
                     for item in full_relationship_observations(typed_items, scope)
                 ]
-                selected = implicit_relationship_observations(typed_items, scope)
+                selected = implicit_relationship_profile_contributors(
+                    typed_items,
+                    scope,
+                )
                 profile = aggregate_relationship_evidence(typed_items, scope)
-                for age, item in enumerate(reversed(selected)):
+                axis_ages: dict[str, dict[int, int]] = {}
+                for axis in RELATIONSHIP_EVIDENCE_AXES:
+                    axis_items = implicit_relationship_axis_observations(
+                        typed_items,
+                        scope,
+                        axis,
+                    )
+                    axis_ages[axis] = {
+                        item.id: age
+                        for age, item in enumerate(reversed(axis_items))
+                    }
+                for item in reversed(selected):
                     contributor = self._relationship_item_view(item)
-                    contributor["age"] = age
+                    contributor["projected_evidence"] = {
+                        axis: contributor["evidence"][axis]
+                        for axis in RELATIONSHIP_EVIDENCE_AXES
+                        if item.id in axis_ages[axis]
+                    }
+                    contributor["axis_ages"] = {
+                        axis: axis_ages[axis][item.id]
+                        for axis in RELATIONSHIP_EVIDENCE_AXES
+                        if item.id in axis_ages[axis]
+                    }
                     contributors.append(contributor)
 
             rows.append({

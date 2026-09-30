@@ -15,7 +15,7 @@ from hina_bot.core.relationship_profile import (
     RELATIONSHIP_RECENCY_DECAY,
     aggregate_relationship_evidence,
     full_relationship_observations,
-    implicit_relationship_observations,
+    implicit_relationship_profile_contributors,
 )
 from hina_bot.core.routing import Scope
 
@@ -113,7 +113,7 @@ def structured_memory_provenance(
     if not allow_cross_space:
         return {"items": selected, "relationship_axes": []}
 
-    implicit_items = implicit_relationship_observations(items, scope)
+    implicit_items = implicit_relationship_profile_contributors(items, scope)
     for item in implicit_items:
         selected.append({
             "item_id": item.id,

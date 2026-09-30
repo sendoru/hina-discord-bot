@@ -733,6 +733,14 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     assert row["used_observations"] == 2
     assert [item["id"] for item in row["contributors"]] == [second_id, first_id]
     assert all(item["evidence"] == {"familiarity": 2} for item in row["contributors"])
+    assert [item["projected_evidence"] for item in row["contributors"]] == [
+        {"familiarity": 2},
+        {"familiarity": 2},
+    ]
+    assert [item["axis_ages"] for item in row["contributors"]] == [
+        {"familiarity": 0},
+        {"familiarity": 1},
+    ]
 
     no_target = service.relationship_profiles(query="Profile")
     assert no_target["target"] is None
