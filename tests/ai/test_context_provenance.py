@@ -95,6 +95,49 @@ def test_context_provenance_distinguishes_reference_and_direct_sources_without_c
         assert secret not in serialized
 
 
+def test_structured_memory_provenance_tracks_axis_local_profile_contributors():
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    guild = Scope(1, 20, 100, True)
+    try:
+        comfort_id = store.add_memory_item(
+            dm,
+            "older comfort evidence",
+            kind=MemoryKind.RELATIONSHIP,
+            disclosure=MemoryDisclosure.IMPLICIT,
+            confidence=0.9,
+            relationship_evidence={"comfort": 2},
+        )
+        familiarity_ids = [
+            store.add_memory_item(
+                dm,
+                f"newer familiarity evidence {index}",
+                kind=MemoryKind.RELATIONSHIP,
+                disclosure=MemoryDisclosure.IMPLICIT,
+                confidence=0.9,
+                relationship_evidence={"familiarity": 1},
+            )
+            for index in range(8)
+        ]
+
+        result = structured_memory_provenance(
+            store,
+            guild,
+            use_memory=True,
+            allow_cross_space=True,
+        )
+
+        projected_ids = {
+            row["item_id"]
+            for row in result["items"]
+            if row["projection"] == "relationship_evidence"
+        }
+        assert projected_ids == {comfort_id, *familiarity_ids}
+        assert result["relationship_axes"] == ["comfort", "familiarity"]
+    finally:
+        store.close()
+
+
 def test_structured_memory_provenance_matches_owner_and_relationship_projection():
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
