@@ -304,6 +304,8 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
 
     assert data is not None
     assert data["stored"]["content"] == "question"
+    assert data["stored"]["guild_name"] == "Test Guild"
+    assert data["stored"]["channel_name"] == "general"
     assert data["summary"]["status"] == "completed"
     assert data["context_provenance"]["egress_policy"] == "bot_interactions_only"
     assert data["context_provenance"]["egress"]["adapter"]["channel_blocked"] == 1
@@ -314,6 +316,8 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
     assert source["causal_context"]["content"] == "quoted source"
     memory = data["context_provenance"]["structured_memory"][0]
     assert memory["current_status"] == "active"
+    assert memory["guild_name"] == "Test Guild"
+    assert memory["channel_name"] == "general"
     assert [item["source"] for item in data["timeline"]] == [
         "event",
         "usage",
@@ -462,6 +466,8 @@ def test_memory_service_filters_and_source_drilldown(tmp_path):
     assert detail["item"]["guild_name"] == "Memory Guild"
     assert detail["item"]["channel_name"] == "memory"
     assert detail["sources"][0]["turn"]["turn_id"] == "memory-trace"
+    assert detail["sources"][0]["turn"]["channel_id"] == "10"
+    assert detail["sources"][0]["turn"]["channel_name"] == "memory"
 
 
 def test_memory_scope_picker_filters_guild_and_dm_without_raw_realms(tmp_path):
