@@ -102,11 +102,13 @@ class ContextStateService(ReadService):
         target_scope_type: str = "",
         target_guild_id: str = "",
         target_channel_id: str = "",
+        target_dm_channel_id: str = "",
         target_user_id: str = "",
         query: str = "",
     ) -> dict[str, object]:
         target_guild_id = target_guild_id.strip()
         target_channel_id = target_channel_id.strip()
+        target_dm_channel_id = target_dm_channel_id.strip()
         target_user_id = target_user_id.strip()
         target_scope_type = infer_target_scope_type(
             scope_type=target_scope_type,
@@ -116,6 +118,35 @@ class ContextStateService(ReadService):
         )
         query = query.strip()
         query_folded = query.lower()
+
+        dm_user_valid = (
+            target_user_id.isdigit() and int(target_user_id) > 0
+            if target_user_id
+            else False
+        )
+        dm_channel_candidates = (
+            self.repository.dm_channel_candidates(target_user_id)
+            if target_scope_type == "dm" and dm_user_valid
+            else []
+        )
+        dm_channel_auto_selected = False
+        dm_channel_selection_required = False
+        dm_channel_unavailable = False
+        if target_scope_type == "dm":
+            target_guild_id = ""
+            requested_dm_channel = target_dm_channel_id or target_channel_id
+            target_channel_id = ""
+            if requested_dm_channel:
+                target_dm_channel_id = requested_dm_channel
+            elif len(dm_channel_candidates) == 1:
+                target_dm_channel_id = dm_channel_candidates[0]
+                dm_channel_auto_selected = True
+            elif len(dm_channel_candidates) > 1:
+                dm_channel_selection_required = dm_user_valid
+            elif dm_user_valid:
+                dm_channel_unavailable = True
+        else:
+            target_dm_channel_id = ""
 
         memory_override_rows = self.repository.scope_mode_overrides("memory_modes")
         chat_override_rows = self.repository.scope_mode_overrides("chat_log_modes")
@@ -156,12 +187,24 @@ class ContextStateService(ReadService):
                     continue
             manual_notes.append(note)
 
-        scope, target_error = self._parse_target(
-            target_scope_type,
-            target_guild_id,
-            target_channel_id,
-            target_user_id,
+        parse_channel_id = (
+            target_dm_channel_id
+            if target_scope_type == "dm"
+            else target_channel_id
         )
+        if target_scope_type == "dm" and target_user_id and not dm_user_valid:
+            scope, target_error = None, "User ID must be a positive integer."
+        elif target_scope_type == "dm" and (
+            dm_channel_selection_required or dm_channel_unavailable
+        ) and not parse_channel_id:
+            scope, target_error = None, ""
+        else:
+            scope, target_error = self._parse_target(
+                target_scope_type,
+                target_guild_id,
+                parse_channel_id,
+                target_user_id,
+            )
         effective = None
         if scope is not None:
             memory_chain = resolve_scope_chain(
@@ -236,9 +279,23 @@ class ContextStateService(ReadService):
                 "target_guild_id": (
                     target_guild_id if target_scope_type == "guild" else ""
                 ),
-                "target_channel_id": target_channel_id,
+                "target_channel_id": (
+                    target_channel_id if target_scope_type == "guild" else ""
+                ),
+                "target_dm_channel_id": (
+                    target_dm_channel_id if target_scope_type == "dm" else ""
+                ),
                 "target_user_id": target_user_id,
                 "q": query,
+            },
+            "dm_channel_selection": {
+                "candidates": dm_channel_candidates,
+                "selected": (
+                    target_dm_channel_id if target_scope_type == "dm" else ""
+                ),
+                "auto_selected": dm_channel_auto_selected,
+                "selection_required": dm_channel_selection_required,
+                "unavailable": dm_channel_unavailable,
             },
             "memory_overrides": memory_override_rows,
             "chat_overrides": chat_override_inventory,

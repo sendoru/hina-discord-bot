@@ -229,7 +229,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
         "/state?target_guild_id=1&target_channel_id=20&target_user_id=100&q=dashboard"
     )
     state_dm = client.get(
-        "/state?target_scope_type=dm&target_guild_id=999&target_channel_id=10&target_user_id=100"
+        "/state?target_scope_type=dm&target_user_id=100"
     )
     summaries = client.get("/summaries?q=dashboard")
     cursors = client.get("/memory/cursors?user_id=100")
@@ -249,7 +249,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
-    assert 'dashboard.css?v=20260930-5' in overview.text
+    assert 'dashboard.css?v=20261001-2' in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -365,7 +365,12 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'name="target_scope_type" value="guild" checked' in state.text
     assert state_dm.status_code == 200
     assert 'name="target_scope_type" value="dm" checked' in state_dm.text
+    assert 'data-dm-channel="false"' in state_dm.text
+    assert 'name="target_dm_channel_id"' in state_dm.text
+    assert '<option value="10" selected>10</option>' in state_dm.text
+    assert "Auto-selected the only known DM channel." in state_dm.text
     assert "<code>dm:100</code>" in state_dm.text
+    assert "<code>channel:10</code>" in state_dm.text
     assert "dashboard server note" in state.text
     assert "Dashboard User · <code>user:100</code>" in state.text
     assert "dashboard user note" in state.text
