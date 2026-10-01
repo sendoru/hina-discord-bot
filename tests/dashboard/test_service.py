@@ -768,7 +768,11 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         query="Profile",
     )
 
-    assert data["target"] == {"guild_id": 1, "channel_id": 99}
+    assert data["target"] == {
+        "scope_type": "guild",
+        "guild_id": 1,
+        "channel_id": 99,
+    }
     assert data["axes"] == (
         "familiarity",
         "comfort",
@@ -802,6 +806,34 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         {"familiarity": 0},
         {"familiarity": 1},
     ]
+
+    dm_target = service.relationship_profiles(
+        target_scope_type="dm",
+        target_guild_id="999",
+        target_channel_id="10",
+        query="Profile",
+    )
+    assert dm_target["target"] == {
+        "scope_type": "dm",
+        "guild_id": None,
+        "channel_id": 10,
+    }
+    assert dm_target["filters"]["target_guild_id"] == ""
+    dm_row = dm_target["rows"][0]
+    assert dm_row["profile"] == {}
+    assert dm_row["used_observations"] == 0
+    assert dm_row["full_relationship_count"] == 5
+    assert {item["id"] for item in dm_row["full_relationships"]} == {
+        first_id,
+        second_id,
+        same_space_id,
+        global_full_id,
+        next(
+            item["id"]
+            for item in dm_row["full_relationships"]
+            if item["content"] == "low confidence relationship"
+        ),
+    }
 
     no_target = service.relationship_profiles(query="Profile")
     assert no_target["target"] is None
