@@ -892,7 +892,6 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     dm = Scope(None, 20, 100)
 
     store.add(guild, 1, "state source", "reply", name="State User")
-    store.add(dm, 2, "dm state source", "reply", name="State User")
     store.set_memory_mode_override("global", "off")
     store.set_memory_mode_override(guild.realm, "read_only")
     store.set_memory_mode_override(dm.channel, "read_only")
