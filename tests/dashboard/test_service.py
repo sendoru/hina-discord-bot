@@ -816,9 +816,10 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     assert dm_target["target"] == {
         "scope_type": "dm",
         "guild_id": None,
-        "channel_id": 10,
+        "channel_id": None,
     }
     assert dm_target["filters"]["target_guild_id"] == ""
+    assert dm_target["filters"]["target_channel_id"] == ""
     dm_row = dm_target["rows"][0]
     assert dm_row["profile"] == {}
     assert dm_row["used_observations"] == 0
@@ -830,6 +831,17 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         low_conf_id,
         global_full_id,
     }
+
+    dm_without_channel = service.relationship_profiles(
+        target_scope_type="dm",
+        query="Profile",
+    )
+    assert dm_without_channel["target"] == {
+        "scope_type": "dm",
+        "guild_id": None,
+        "channel_id": None,
+    }
+    assert dm_without_channel["target_error"] == ""
 
     no_target = service.relationship_profiles(query="Profile")
     assert no_target["target"] is None
