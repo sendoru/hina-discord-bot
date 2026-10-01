@@ -59,8 +59,8 @@
 <section class="panel">
   <h2>Source / provenance</h2>
   <p class="muted">
-    Proposal sources: {{ data.proposal.source_message_ids_decoded | join(", ") or "none" }}.
-    Shared IDs between old and new: {{ data.proposal.source_overlap_ids | join(", ") or "none" }}.
+    제안 출처: {{ data.proposal.source_message_ids_decoded | join(", ") or "none" }}.
+    기존·새 메모리의 공통 ID: {{ data.proposal.source_overlap_ids | join(", ") or "none" }}.
   </p>
   {% if data.sources %}
     {% for source in data.sources %}
@@ -94,11 +94,11 @@
   <h2>Extraction / retry context</h2>
   {% if data.proposal.same_source_set %}
   <div class="notice inline-notice">
-    New and target memory have the same non-empty source-message set. Review this as a possible retry/extraction duplicate.
+    새 메모리와 대상 메모리의 출처 메시지 집합이 동일하고 비어 있지 않습니다. 재시도·추출 중복 가능성을 점검하세요.
   </div>
   {% elif data.proposal.source_overlap_ids %}
   <div class="notice inline-notice">
-    New and target memory partially overlap in source messages, but their source sets are not identical.
+    새 메모리와 대상 메모리의 출처 메시지가 일부 겹치지만 집합 전체가 같지는 않습니다.
   </div>
   {% else %}
   <p class="muted">새 메모리와 대상 메모리에 공통으로 보존된 출처 메시지 ID가 없습니다.</p>

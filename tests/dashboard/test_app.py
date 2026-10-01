@@ -259,7 +259,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Asia/Seoul" in overview.text
     assert "2026-09-21 09:00:00 KST" in overview.text
     assert 'class="freshness-badge freshness-danger"' in overview.text
-    assert "Last event" in overview.text
+    assert "마지막 기록" in overview.text
     assert 'class="status-badge status-success">completed</span>' in overview.text
     assert 'href="/traces" aria-label="View all traces"' in overview.text
     assert 'href="/conversations" aria-label="View stored conversations"' in overview.text

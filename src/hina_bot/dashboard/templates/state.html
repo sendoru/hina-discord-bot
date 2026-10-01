@@ -100,16 +100,15 @@
 <section class="notice danger">{{ data.target_error }}</section>
 {% elif data.filters.target_scope_type == "dm" and data.dm_channel_selection.selection_required %}
 <section class="notice info">
-  Multiple known DM channels exist for this user. Choose one from the DM channel list above.
+  이 사용자에게 알려진 DM 채널이 여러 개 있습니다. 위 목록에서 선택하세요.
 </section>
 {% elif data.filters.target_scope_type == "dm" and data.dm_channel_selection.unavailable %}
 <section class="notice info">
-  No known DM channel is retained for this user. Enter a channel ID manually above to inspect
-  channel-level overrides.
+  이 사용자에게 보존된 DM 채널이 없습니다. 위에서 채널 ID를 직접 입력해 채널별 재정의를 확인하세요.
 </section>
 {% elif not data.effective %}
 <section class="notice info">
-  Choose Guild or DM, then enter the IDs needed for that scope.
+  Guild 또는 DM을 선택하고 범위에 필요한 ID를 입력하세요.
 </section>
 {% else %}
 <section class="panel">
@@ -185,9 +184,7 @@
 <section class="panel">
   <h2>Manual notes for this scope</h2>
   <p class="muted">
-    Notes are eligible only when automatic-memory reads are enabled. Per-request context routing can
-    still suppress cross-channel memory, so this is configuration eligibility rather than proof that
-    a particular answer received the note.
+    자동 메모리 읽기가 활성화되었을 때만 메모를 사용할 수 있습니다. 요청별 문맥 라우팅이 교차 채널 메모리를 제외할 수 있으므로, 이 설정만으로 특정 응답에 메모가 전달되었다고 판단할 수는 없습니다.
   </p>
   {% if data.effective.scope.guild_id is not none %}
   <h3>Server note</h3>
@@ -227,8 +224,7 @@
 <section class="panel">
   <h2>Stored recent-context overrides</h2>
   <p class="muted">
-    Runtime stores enablement (<code>on/off</code>) and capture scope (<code>all/direct</code>)
-    separately. The effective target state above combines both.
+    활성화 여부(<code>on/off</code>)와 캡처 범위(<code>all/direct</code>)를 따로 저장합니다. 위의 실제 대상 상태는 두 설정을 함께 반영합니다.
   </p>
   {% if data.chat_overrides %}
   <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
@@ -256,9 +252,7 @@
     <div>
       <h2>Manual notes</h2>
       <p class="muted">
-        Internal <code>config:*</code> rows are excluded here. {{ data.internal_note_count }} internal/config
-        row{{ "" if data.internal_note_count == 1 else "s" }} currently exist; chat-log capture rows are
-        represented in the override table above.
+        내부 <code>config:*</code> 데이터 {{ data.internal_note_count }}개는 제외합니다. 대화 캡처 설정은 위 재정의 표에서 확인할 수 있습니다.
       </p>
     </div>
   </div>

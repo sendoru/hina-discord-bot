@@ -21,8 +21,8 @@
   첫 분석 기준선 초기화 이전 데이터입니다. 현재 화면에서 사용하는 필드가 없을 수 있습니다.
   {% elif data.epoch.is_current %}
   <strong>Current observability epoch #{{ data.epoch.current }}.</strong>
-  {% if data.epoch.reset_at %}Baseline started {{ data.epoch.reset_at | localtime }}.{% endif %}
-  {% if data.epoch.excluded_rows %} {{ data.epoch.excluded_rows }} retained telemetry rows from other epochs are excluded.{% endif %}
+  {% if data.epoch.reset_at %}기준선 시작: {{ data.epoch.reset_at | localtime }}.{% endif %}
+  {% if data.epoch.excluded_rows %} 다른 epoch의 보존 관측 데이터 {{ data.epoch.excluded_rows }}개는 제외합니다.{% endif %}
   {% else %}
   <strong>Historical observability epoch #{{ data.epoch.selected }}.</strong>
   이 epoch 안에서 관측 범위를 해석하세요. 현재 epoch와 사용 가능한 스키마가 다를 수 있습니다.
