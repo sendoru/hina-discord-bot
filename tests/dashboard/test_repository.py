@@ -50,21 +50,12 @@ def test_repository_reads_discord_scope_metadata_without_requiring_it(tmp_path):
     store.close()
 
     repository = AdminRepository(path)
-    assert repository.discord_scope_metadata() == {
-        "guilds": {
-            "1": {
-                "name": "Readable Guild",
-                "updated_at": repository.discord_scope_metadata()["guilds"]["1"]["updated_at"],
-            },
-        },
-        "channels": {
-            "10": {
-                "guild_id": "1",
-                "name": "general",
-                "updated_at": repository.discord_scope_metadata()["channels"]["10"]["updated_at"],
-            },
-        },
-    }
+    metadata = repository.discord_scope_metadata()
+    assert metadata["guilds"]["1"]["name"] == "Readable Guild"
+    assert metadata["guilds"]["1"]["updated_at"]
+    assert metadata["channels"]["10"]["guild_id"] == "1"
+    assert metadata["channels"]["10"]["name"] == "general"
+    assert metadata["channels"]["10"]["updated_at"]
 
     legacy = tmp_path / "legacy.sqlite3"
     db = sqlite3.connect(legacy)
