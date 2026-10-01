@@ -605,13 +605,6 @@ class _GeminiResponses:
         self.http = http
         self.thinking_level = thinking_level
 
-    @staticmethod
-    def _thinking_level(kwargs) -> str:
-        thinking_level = kwargs.get("thinking_level", "low")
-        if thinking_level not in {"minimal", "low", "medium", "high"}:
-            raise ValueError("Gemini thinking_level 값이 잘못되었습니다.")
-        return thinking_level
-
     async def _generate_content(
         self,
         *,
@@ -723,8 +716,6 @@ class _GeminiResponses:
             payload_tools.append({"type": "code_execution"})
         if payload_tools:
             payload["tools"] = payload_tools
-            if kwargs.get("tool_choice") in {"auto", "required"}:
-                generation_config["tool_choice"] = kwargs["tool_choice"]
 
         payload["generation_config"] = generation_config
         response = await self.http.post(GEMINI_INTERACTIONS_URL, json=payload)
