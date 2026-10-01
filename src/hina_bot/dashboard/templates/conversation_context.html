@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_scope_ui.html" import discord_ref %}
 {% block title %}Conversation Context · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -25,12 +26,12 @@
       <div>
         <dt>Server</dt>
         <dd>
-          {% if row.guild_id %}<code>{{ row.guild_id }}</code>
+          {% if row.guild_id %}{{ discord_ref(row.guild_name, row.guild_id) }}
           {% elif row.scope_type == "dm" %}<span class="muted">Direct message</span>
           {% else %}—{% endif %}
         </dd>
       </div>
-      <div><dt>Channel</dt><dd>{% if row.channel_id %}<code>{{ row.channel_id }}</code>{% else %}—{% endif %}</dd></div>
+      <div><dt>Channel</dt><dd>{% if row.channel_id %}{{ discord_ref(row.channel_name, row.channel_id, channel=true) }}{% else %}—{% endif %}</dd></div>
       <div><dt>User</dt><dd>{% if row.name %}{{ row.name }} · {% endif %}<code>{{ row.user_id }}</code></dd></div>
       <div><dt>Selected</dt><dd>{{ "yes" if row.selected else "no" }}</dd></div>
     </dl>
