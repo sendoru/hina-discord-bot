@@ -12,10 +12,13 @@ from hina_bot.core.relationship_profile import (
     RELATIONSHIP_MAX_OBSERVATIONS,
     RELATIONSHIP_MIN_ITEM_CONFIDENCE,
     RELATIONSHIP_RECENCY_DECAY,
+    aggregate_owner_relationship_evidence,
     aggregate_relationship_evidence,
     full_relationship_observations,
     implicit_relationship_axis_observations,
     implicit_relationship_profile_contributors,
+    owner_relationship_axis_observations,
+    owner_relationship_profile_contributors,
 )
 from hina_bot.core.routing import Scope
 
@@ -149,12 +152,20 @@ class MemoryService(ReadService):
             full_relationships = []
             if target is not None and user_id.isdigit():
                 if target_scope_type == "dm":
-                    # relationship_profile_items() is already active, relationship-only,
-                    # and owner-filtered, matching the relationship subset of owner DM memory.
+                    # DM is the owner's aggregate private space. The concrete relationship
+                    # memories remain FULL, while the same shared aggregation formula also
+                    # produces a stable owner relationship profile for response tone.
+                    scope = Scope(None, 0, int(user_id))
                     full_relationships = [
                         self._relationship_item_view(item)
                         for item in typed_items
                     ]
+                    selected = owner_relationship_profile_contributors(
+                        typed_items,
+                        scope,
+                    )
+                    profile = aggregate_owner_relationship_evidence(typed_items, scope)
+                    axis_observations = owner_relationship_axis_observations
                 else:
                     assert target[0] is not None and target[1] is not None
                     scope = Scope(target[0], target[1], int(user_id))
@@ -167,30 +178,32 @@ class MemoryService(ReadService):
                         scope,
                     )
                     profile = aggregate_relationship_evidence(typed_items, scope)
-                    axis_ages: dict[str, dict[int, int]] = {}
-                    for axis in RELATIONSHIP_EVIDENCE_AXES:
-                        axis_items = implicit_relationship_axis_observations(
-                            typed_items,
-                            scope,
-                            axis,
-                        )
-                        axis_ages[axis] = {
-                            item.id: age
-                            for age, item in enumerate(reversed(axis_items))
-                        }
-                    for item in reversed(selected):
-                        contributor = self._relationship_item_view(item)
-                        contributor["projected_evidence"] = {
-                            axis: contributor["evidence"][axis]
-                            for axis in RELATIONSHIP_EVIDENCE_AXES
-                            if item.id in axis_ages[axis]
-                        }
-                        contributor["axis_ages"] = {
-                            axis: axis_ages[axis][item.id]
-                            for axis in RELATIONSHIP_EVIDENCE_AXES
-                            if item.id in axis_ages[axis]
-                        }
-                        contributors.append(contributor)
+                    axis_observations = implicit_relationship_axis_observations
+
+                axis_ages: dict[str, dict[int, int]] = {}
+                for axis in RELATIONSHIP_EVIDENCE_AXES:
+                    axis_items = axis_observations(
+                        typed_items,
+                        scope,
+                        axis,
+                    )
+                    axis_ages[axis] = {
+                        item.id: age
+                        for age, item in enumerate(reversed(axis_items))
+                    }
+                for item in reversed(selected):
+                    contributor = self._relationship_item_view(item)
+                    contributor["projected_evidence"] = {
+                        axis: contributor["evidence"][axis]
+                        for axis in RELATIONSHIP_EVIDENCE_AXES
+                        if item.id in axis_ages[axis]
+                    }
+                    contributor["axis_ages"] = {
+                        axis: axis_ages[axis][item.id]
+                        for axis in RELATIONSHIP_EVIDENCE_AXES
+                        if item.id in axis_ages[axis]
+                    }
+                    contributors.append(contributor)
 
             rows.append({
                 **dict(owner),
