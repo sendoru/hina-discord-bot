@@ -62,31 +62,35 @@ def test_gemini_input_translates_function_call_and_result_steps():
 
 
 @pytest.mark.asyncio
-async def test_gemini_translates_search_and_normalizes_response():
+async def test_gemini_routes_search_through_generate_content_and_normalizes_response():
     seen = {}
 
     async def handler(request: httpx.Request):
+        seen["url"] = str(request.url)
         seen["json"] = __import__("json").loads(request.content)
         return httpx.Response(200, json={
-            "status": "completed",
-            "steps": [
-                {"type": "google_search_call", "arguments": {"queries": ["test"]}},
-                {"type": "model_output", "content": [{
-                    "type": "text",
-                    "text": "검색 결과야.",
-                    "annotations": [{
-                        "type": "url_citation",
-                        "url": "https://example.com/source",
-                        "title": "Example",
+            "candidates": [{
+                "finishReason": "STOP",
+                "content": {
+                    "role": "model",
+                    "parts": [{"text": "검색 결과야."}],
+                },
+                "groundingMetadata": {
+                    "webSearchQueries": ["test"],
+                    "groundingChunks": [{
+                        "web": {
+                            "uri": "https://example.com/source",
+                            "title": "Example",
+                        }
                     }],
-                }]},
-            ],
-            "usage": {
-                "total_input_tokens": 10,
-                "total_output_tokens": 5,
-                "total_thought_tokens": 2,
-                "total_cached_tokens": 1,
-                "total_tokens": 17,
+                },
+            }],
+            "usageMetadata": {
+                "promptTokenCount": 10,
+                "candidatesTokenCount": 5,
+                "thoughtsTokenCount": 2,
+                "cachedContentTokenCount": 1,
+                "totalTokenCount": 17,
             },
         })
 
@@ -105,12 +109,17 @@ async def test_gemini_translates_search_and_normalizes_response():
         await http.aclose()
 
     payload = seen["json"]
-    assert payload["system_instruction"].startswith("system")
-    assert "외부 확인이 필수" in payload["system_instruction"]
-    assert payload["tools"] == [{"type": "google_search", "search_types": ["web_search"]}]
-    assert payload["generation_config"]["tool_choice"] == "auto"
-    assert payload["generation_config"]["thinking_level"] == "low"
-    assert payload["generation_config"]["max_output_tokens"] == 200
+    assert seen["url"].endswith("/v1beta/models/gemini-test:generateContent")
+    instruction = payload["system_instruction"]["parts"][0]["text"]
+    assert instruction.startswith("system")
+    assert "외부 확인이 필수" in instruction
+    assert payload["contents"] == [{
+        "role": "user",
+        "parts": [{"text": "질문"}],
+    }]
+    assert payload["tools"] == [{"google_search": {}}]
+    assert payload["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "low"
+    assert payload["generationConfig"]["maxOutputTokens"] == 200
     assert response.status == "completed"
     assert "example.com/source" in response.output_text
     assert response.usage.total_tokens == 17
@@ -215,23 +224,46 @@ async def test_gemini_managed_code_execution_stays_inside_one_interaction():
 
 
 @pytest.mark.asyncio
-async def test_gemini_can_offer_search_and_code_execution_together():
+async def test_gemini_generate_content_preserves_search_and_code_execution_together():
     seen = {}
 
     async def handler(request: httpx.Request):
+        seen["url"] = str(request.url)
         seen["json"] = __import__("json").loads(request.content)
         return httpx.Response(200, json={
-            "status": "completed",
-            "steps": [{
-                "type": "model_output",
-                "content": [{"type": "text", "text": "done"}],
+            "candidates": [{
+                "finishReason": "STOP",
+                "content": {
+                    "role": "model",
+                    "parts": [
+                        {"text": "계산해볼게."},
+                        {
+                            "executableCode": {
+                                "id": "code_1",
+                                "language": "PYTHON",
+                                "code": "print(42)",
+                            }
+                        },
+                        {
+                            "codeExecutionResult": {
+                                "id": "code_1",
+                                "outcome": "OUTCOME_OK",
+                                "output": "42\\n",
+                            }
+                        },
+                        {"text": "답은 42야."},
+                    ],
+                },
+                "groundingMetadata": {
+                    "webSearchQueries": ["answer 42"],
+                },
             }],
-            "usage": {},
+            "usageMetadata": {},
         })
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
-        await _GeminiResponses(http).create(
+        response = await _GeminiResponses(http).create(
             model="gemini-test",
             input="질문",
             tools=[
@@ -243,9 +275,18 @@ async def test_gemini_can_offer_search_and_code_execution_together():
     finally:
         await http.aclose()
 
+    assert seen["url"].endswith("/v1beta/models/gemini-test:generateContent")
     assert seen["json"]["tools"] == [
-        {"type": "google_search", "search_types": ["web_search"]},
-        {"type": "code_execution"},
+        {"google_search": {}},
+        {"code_execution": {}},
+    ]
+    assert response.output_text == "답은 42야."
+    assert [item.type for item in response.output] == [
+        "web_search_call",
+        "message",
+        "code_execution_call",
+        "code_execution_result",
+        "message",
     ]
 
 
@@ -331,26 +372,17 @@ async def test_gemini_translates_local_function_tool_and_call_output():
 
 
 @pytest.mark.asyncio
-async def test_gemini_retries_tool_call_overflow_once():
-    payloads = []
+async def test_gemini_non_search_requests_stay_on_interactions():
+    seen = {}
 
     async def handler(request: httpx.Request):
-        payloads.append(__import__("json").loads(request.content))
-        if len(payloads) == 1:
-            return httpx.Response(400, json={
-                "error": {
-                    "code": "Model generated function call(s).",
-                    "message": (
-                        "Model generated too many tool calls. Please retry the request. "
-                        "If the issue persists, include this error message in the retry prompt."
-                    ),
-                }
-            })
+        seen["url"] = str(request.url)
+        seen["json"] = __import__("json").loads(request.content)
         return httpx.Response(200, json={
             "status": "completed",
             "steps": [{
                 "type": "model_output",
-                "content": [{"type": "text", "text": "재시도 성공"}],
+                "content": [{"type": "text", "text": "응."}],
             }],
             "usage": {},
         })
@@ -359,20 +391,17 @@ async def test_gemini_retries_tool_call_overflow_once():
     try:
         response = await _GeminiResponses(http).create(
             model="gemini-test",
-            instructions="system",
-            input="질문",
-            tools=[{"type": "web_search", "search_context_size": "low"}],
-            tool_choice="required",
+            input="안녕",
+            tools=[{"type": "code_execution"}],
+            tool_choice="auto",
         )
     finally:
         await http.aclose()
 
-    assert len(payloads) == 2
-    assert payloads[0]["generation_config"]["tool_choice"] == "auto"
-    assert payloads[1]["generation_config"]["tool_choice"] == "auto"
-    assert "too many tool calls" in payloads[1]["system_instruction"]
-    assert "최대 1회" in payloads[1]["system_instruction"]
-    assert response.output_text == "재시도 성공"
+    assert seen["url"].endswith("/v1beta/interactions")
+    assert seen["json"]["tools"] == [{"type": "code_execution"}]
+    assert "tool_choice" not in seen["json"]["generation_config"]
+    assert response.output_text == "응."
 
 
 @pytest.mark.asyncio
