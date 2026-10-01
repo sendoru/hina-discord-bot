@@ -465,11 +465,28 @@ class HinaClient(discord.Client):
         reply_delivered = False
         terminal_emitted = False
         save_memory = False
+        raw_turn_persistence = "pending"
+        raw_turn_persistence_reason = ""
         answer = ""
         timings = {}
 
+        def raw_turn_persistence_fields() -> dict[str, str]:
+            if raw_turn_persistence == "pending":
+                return {}
+            fields = {"raw_turn_persistence": raw_turn_persistence}
+            if raw_turn_persistence_reason:
+                fields["raw_turn_persistence_reason"] = raw_turn_persistence_reason
+            return fields
+
         def persist_failed_turn(status: str, failed_stage: str, error_fields: dict, reply: str):
-            if not save_memory or self.store.seen(message.id):
+            nonlocal raw_turn_persistence, raw_turn_persistence_reason
+            if not save_memory:
+                raw_turn_persistence = "skipped"
+                raw_turn_persistence_reason = "memory_writes_disabled"
+                return
+            if self.store.seen(message.id):
+                raw_turn_persistence = "skipped"
+                raw_turn_persistence_reason = "duplicate"
                 return
             try:
                 self.store.add_failed_turn(
@@ -484,7 +501,11 @@ class HinaClient(discord.Client):
                     error_type=str(error_fields.get("error_type") or ""),
                     error_fingerprint=str(error_fields.get("error_fingerprint") or ""),
                 )
+                raw_turn_persistence = "stored"
+                raw_turn_persistence_reason = ""
             except Exception as persist_exc:  # noqa: BLE001 - preserve the original failure
+                raw_turn_persistence = "failed"
+                raw_turn_persistence_reason = "persistence_error"
                 persist_error = safe_exception_fields(persist_exc, "failed_turn_persist")
                 self.events.emit(
                     "turn.persistence_failed",
@@ -512,6 +533,9 @@ class HinaClient(discord.Client):
                     )
                     use_memory = received_mode.reads and mode.reads
                     save_memory = received_mode.writes and mode.writes
+                    if not save_memory:
+                        raw_turn_persistence = "skipped"
+                        raw_turn_persistence_reason = "memory_writes_disabled"
                     use_chat_log = received_chat_log and self.store.chat_log_enabled(scope)
                     if self.store.seen(message.id):
                         self.events.emit(
@@ -558,6 +582,8 @@ class HinaClient(discord.Client):
                     self.cooldowns[key] = cooldown_received_at
 
                     if not text:
+                        raw_turn_persistence = "skipped"
+                        raw_turn_persistence_reason = "fixed_reply_no_raw_turn"
                         stage = "delivery"
                         delivery_started = time.perf_counter()
                         await self.send_text(
@@ -587,6 +613,7 @@ class HinaClient(discord.Client):
                             reply_delivered=True,
                             elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
                             **timings,
+                            **raw_turn_persistence_fields(),
                         )
                         terminal_emitted = True
                         return
@@ -722,6 +749,8 @@ class HinaClient(discord.Client):
                             answer,
                             name=message.author.display_name,
                         )
+                        raw_turn_persistence = "stored"
+                        raw_turn_persistence_reason = ""
                         self.store.add_shared_call(
                             scope,
                             message.id,
@@ -779,6 +808,7 @@ class HinaClient(discord.Client):
                     delivery_chunks=len(parts),
                     elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
                     **timings,
+                    **raw_turn_persistence_fields(),
                 )
                 terminal_emitted = True
         except asyncio.CancelledError as exc:
@@ -791,6 +821,7 @@ class HinaClient(discord.Client):
                 stage=stage,
                 reply_delivered=reply_delivered,
                 elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                **raw_turn_persistence_fields(),
                 **error,
             )
             terminal_emitted = True
@@ -808,6 +839,7 @@ class HinaClient(discord.Client):
                 stage=failed_stage,
                 reply_delivered=reply_delivered,
                 elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                **raw_turn_persistence_fields(),
                 **error,
             )
             terminal_emitted = True
@@ -873,6 +905,7 @@ class HinaClient(discord.Client):
                 reply_delivered=reply_delivered,
                 elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
                 **timings,
+                **raw_turn_persistence_fields(),
                 **error,
             )
             terminal_emitted = True
@@ -886,6 +919,7 @@ class HinaClient(discord.Client):
                     stage=stage,
                     reply_delivered=reply_delivered,
                     elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                    **raw_turn_persistence_fields(),
                 )
             self.active_tasks.discard(task)
             self.pending_count -= 1
