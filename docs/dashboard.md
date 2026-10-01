@@ -327,10 +327,12 @@ A relationship item cannot be both FULL and an implicit contributor for the same
 Same-space or `global` items resolve to FULL; eligible cross-space implicit items contribute only
 their evidence vector to the projection.
 
-For a **DM** target, owner memory is the private aggregate space. Active relationship memories owned
-by each user resolve to FULL and are shown as the relationship subset of `structured_owner_memory`.
-Cross-space IMPLICIT aggregation is not used in DM, so profile axes and contributor counts are not
-presented as effective DM state.
+For a **DM** target, owner memory is the private aggregate space. No DM channel ID is required:
+the page evaluates each listed user's owner-DM memory independently, which also avoids pretending that
+one shared DM channel could apply to every user row. Active relationship memories owned by each user
+resolve to FULL and are shown as the relationship subset of `structured_owner_memory`. Cross-space
+IMPLICIT aggregation is not used in DM, so profile axes and contributor counts are not presented as
+effective DM state.
 
 Each user row therefore exposes the stored active relationship count and the target-appropriate
 FULL/raw view. Guild targets additionally expose the bounded IMPLICIT contributor drill-down and the
