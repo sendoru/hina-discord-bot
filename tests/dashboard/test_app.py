@@ -527,3 +527,20 @@ def test_keyboard_and_filter_accessibility_markup(tmp_path):
         assert all(depth or control_id in parser.labels for depth, control_id in parser.controls), path
         assert 'aria-current="page"' in response.text
         assert 'href="#main-content"' in response.text
+
+
+def test_identity_group_disclosure_preserves_full_hashes_only(tmp_path):
+    client = dashboard_client(tmp_path)
+    reference = "abcd" * 16
+    user = "9876" * 16
+    write_rows(tmp_path / "events.jsonl", [
+        {"at": "2026-09-21T00:00:01+00:00", "event": "identity.resolution",
+         "outcome": "resolved", "reference_group": reference, "resolved_user_group": user,
+         "resolver_invoked": True, "raw_reference": "PRIVATE NAME"},
+    ])
+    response = client.get("/identity")
+    assert '<details class="identifier-disclosure">' in response.text
+    assert f"ref:{reference[:10]}" in response.text
+    assert f"user:{user[:10]}" in response.text
+    assert reference in response.text and user in response.text
+    assert "PRIVATE NAME" not in response.text

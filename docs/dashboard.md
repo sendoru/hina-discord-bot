@@ -491,3 +491,6 @@ HTML 상세의 404와 잘못된 페이지·식별자의 422는 공통 오류 화
 현재 메뉴는 `aria-current="page"`로 표시합니다. 첫 Tab은 본문 바로가기이며 데이터 표의
 가로 스크롤 영역도 키보드 포커스를 받을 수 있습니다. 입력 오류는 `aria-invalid`와
 `aria-describedby`로 연결합니다.
+
+Identity의 reference/user group은 짧은 해시 표시와 전체 값 disclosure를 함께 제공합니다.
+원문 이름이나 참조 문자열은 추가로 표시하지 않습니다.

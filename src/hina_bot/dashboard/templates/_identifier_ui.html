@@ -1,0 +1,8 @@
+{% macro group_identifier(value, prefix) -%}
+{% if value %}
+<details class="identifier-disclosure">
+  <summary><code>{{ prefix }}:{{ value[:10] }}</code><span class="muted"> 전체 값</span></summary>
+  <code class="scope-raw-key">{{ value }}</code>
+</details>
+{% else %}—{% endif %}
+{%- endmacro %}

@@ -2,6 +2,7 @@
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
 {% from "_telemetry_ui.html" import telemetry_window %}
 {% from "_filter_ui.html" import active_filter_chips %}
+{% from "_identifier_ui.html" import group_identifier %}
 {% block title %}Identity · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -118,7 +119,7 @@
       <tbody>
       {% for row in data.repeat_groups %}
       <tr>
-        <td><code>ref:{{ row.reference_group[:10] }}</code></td>
+        <td>{{ group_identifier(row.reference_group, "ref") }}</td>
         <td class="numeric">{{ row.events }}</td>
         <td class="numeric">{{ row.resolved }}</td>
         <td class="numeric">{{ row.ambiguous }}</td>
@@ -157,8 +158,8 @@
         <td class="numeric">{{ row.candidate_count }}</td>
         <td class="numeric">{{ row.raw_candidate_count }}</td>
         <td><code>{{ row.blocked_reason or "—" }}</code></td>
-        <td>{% if row.reference_group %}<code>ref:{{ row.reference_group[:10] }}</code>{% else %}—{% endif %}</td>
-        <td>{% if row.resolved_user_group %}<code>user:{{ row.resolved_user_group[:10] }}</code>{% else %}—{% endif %}</td>
+        <td>{% if row.reference_group %}{{ group_identifier(row.reference_group, "ref") }}{% else %}—{% endif %}</td>
+        <td>{% if row.resolved_user_group %}{{ group_identifier(row.resolved_user_group, "user") }}{% else %}—{% endif %}</td>
         <td>{% if row.turn_id %}<a href="/traces/{{ row.turn_id }}">open</a>{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
