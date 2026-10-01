@@ -108,7 +108,7 @@ async def test_gemini_translates_search_and_normalizes_response():
     assert payload["system_instruction"].startswith("system")
     assert "외부 확인이 필수" in payload["system_instruction"]
     assert payload["tools"] == [{"type": "google_search", "search_types": ["web_search"]}]
-    assert payload["generation_config"]["tool_choice"] == "auto"
+    assert "tool_choice" not in payload["generation_config"]
     assert payload["generation_config"]["thinking_level"] == "low"
     assert payload["generation_config"]["max_output_tokens"] == 200
     assert response.status == "completed"
@@ -368,8 +368,8 @@ async def test_gemini_retries_tool_call_overflow_once():
         await http.aclose()
 
     assert len(payloads) == 2
-    assert payloads[0]["generation_config"]["tool_choice"] == "auto"
-    assert payloads[1]["generation_config"]["tool_choice"] == "auto"
+    assert "tool_choice" not in payloads[0]["generation_config"]
+    assert "tool_choice" not in payloads[1]["generation_config"]
     assert "too many tool calls" in payloads[1]["system_instruction"]
     assert "최대 1회" in payloads[1]["system_instruction"]
     assert response.output_text == "재시도 성공"
