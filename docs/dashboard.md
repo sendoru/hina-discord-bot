@@ -466,3 +466,6 @@ Overview의 API calls, tokens, web searches는 현재 epoch의 exchange 로그 �
 미관측이면 부분 합계, 실제 관측된 0이면 `0`입니다. usage만 남은 trace는 exchange
 누락에 포함하며 usage 값으로 합계를 대체하지 않습니다. Stored turns는 epoch와 무관한
 SQLite 보존 데이터 수입니다.
+
+Memory failures는 `turn.completed`의 실패 횟수 합계와 실패가 있는 trace 수를 구분합니다.
+카드는 `/traces?memory_failure=yes`로 연결되며 실제 `memory_failures > 0` 조건을 사용합니다.

@@ -21,7 +21,7 @@
       <button type="submit">Search</button>
     </div>
   </div>
-  <details class="advanced-filters" {% if data.filters.scope or data.filters.status or data.filters.tier or data.filters.model or data.filters.operation or data.filters.error or data.filters.web_search or data.filters.after or data.filters.before %}open{% endif %}>
+  <details class="advanced-filters" {% if data.filters.memory_failure or data.filters.scope or data.filters.status or data.filters.tier or data.filters.model or data.filters.operation or data.filters.error or data.filters.web_search or data.filters.after or data.filters.before %}open{% endif %}>
     <summary>Advanced filters</summary>
     <div class="filter-row grouped-filter-row">
       <fieldset class="filter-cluster filter-cluster-3">
@@ -41,6 +41,11 @@
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Signals</legend>
+        <label>Memory failure<select name="memory_failure">
+          <option value="">any</option>
+          <option value="yes" {% if data.filters.memory_failure == "yes" %}selected{% endif %}>yes</option>
+          <option value="no" {% if data.filters.memory_failure == "no" %}selected{% endif %}>no</option>
+        </select></label>
         <select name="error">
           <option value="">error: any</option>
           <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>error: yes</option>

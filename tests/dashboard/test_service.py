@@ -1198,3 +1198,13 @@ def test_overview_distinguishes_missing_partial_and_observed_zero(tmp_path):
     data = service.overview()
     assert data["api_calls"] is None
     assert data["missing_exchanges"] > 0
+
+
+def test_memory_failure_filter_uses_count_not_search_text(tmp_path):
+    service = build_service(tmp_path)
+    overview = service.overview()
+    data = service.traces(memory_failure="yes")
+    assert data["page"].total == overview["memory_failure_traces"] == 1
+    assert data["rows"][0]["memory_failures"] == overview["memory_failures"]
+    assert service.traces(query="memory")["page"].total == 0
+    assert service.traces(memory_failure="no")["page"].total == 1

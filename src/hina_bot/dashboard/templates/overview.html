@@ -21,7 +21,7 @@
   <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View API call breakdown"><span>API calls</span>{{ exchange_metric(data.metrics.calls) }}</a>
   <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View token usage breakdown"><span>Total tokens</span>{{ exchange_metric(data.metrics.total_tokens) }}</a>
   <a class="card metric-card" href="/analytics#web-search-routing" aria-label="View web-search analytics"><span>Web searches</span>{{ exchange_metric(data.metrics.web_search_calls) }}</a>
-  <a class="card metric-card {% if data.memory_failures %}metric-card-danger{% endif %}" href="/traces?q=memory" aria-label="Find traces related to memory failures"><span>Memory failures</span><strong>{{ data.memory_failures }}</strong></a>
+  <a class="card metric-card {% if data.memory_failures %}metric-card-danger{% endif %}" href="/traces?memory_failure=yes" aria-label="View traces with memory failures"><span>Memory failures</span><strong>{{ data.memory_failures }}</strong><small>실패 횟수 · 해당 trace {{ data.memory_failure_traces }}개</small></a>
 </section>
 
 <p class="muted">usage 로그의 exchange 미관측 trace: {{ data.missing_exchanges }}건. 미관측 값은 —, 관측된 0은 0으로 표시합니다.</p>

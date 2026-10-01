@@ -255,6 +255,7 @@ class TraceService(ReadService):
             "tokens": tokens,
             "web_search_calls": web_search_calls,
             "memory_failures": memory_failures,
+            "memory_failure_traces": sum(row["memory_failures"] > 0 for row in traces),
             "error_fingerprints": errors.most_common(8),
             "recent_traces": traces[:12],
         }
@@ -271,6 +272,7 @@ class TraceService(ReadService):
         operation: str = "",
         error: str = "",
         web_search: str = "",
+        memory_failure: str = "",
         after: str = "",
         before: str = "",
         query: str = "",
@@ -290,6 +292,9 @@ class TraceService(ReadService):
         model = model.strip().lower()
         operation = operation.strip().lower()
         error = error.strip().lower()
+        memory_failure = memory_failure.strip().lower()
+        if memory_failure not in {"yes", "no"}:
+            memory_failure = ""
         web_search = web_search.strip().lower()
         after = after.strip()
         before = before.strip()
@@ -313,6 +318,10 @@ class TraceService(ReadService):
             if error == "yes" and not row.get("error"):
                 return False
             if error == "no" and row.get("error"):
+                return False
+            if memory_failure == "yes" and not row["memory_failures"]:
+                return False
+            if memory_failure == "no" and row["memory_failures"]:
                 return False
             if web_search == "yes" and not row.get("web_search"):
                 return False
@@ -360,6 +369,7 @@ class TraceService(ReadService):
                 "operation": operation,
                 "error": error,
                 "web_search": web_search,
+                "memory_failure": memory_failure,
                 "after": after,
                 "before": before,
                 "q": query,
@@ -753,7 +763,8 @@ class TraceService(ReadService):
                         str(error_row.get("error_fingerprint", "")) if error_row else ""
                     ),
                     "memory_failures": (
-                        _as_int(terminal.get("memory_failures")) if terminal else 0
+                        sum(_as_int(event.get("memory_failures")) for event in events
+                            if event.get("event") == "turn.completed")
                     ),
                     "stored": trace_id in stored_by_trace,
                 }
