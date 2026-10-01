@@ -5,7 +5,7 @@
 <section class="page-heading">
   <div>
     <h1>Conversations</h1>
-    <p>현재 bounded retention 안에 남아 있는 {{ data.page.total }} raw turns입니다.</p>
+    <p>현재 bounded retention 안에 남아 있는 {{ data.page.total }} raw conversation records입니다.</p>
   </div>
 </section>
 
@@ -55,9 +55,16 @@
     <div class="conversation-head">
       <div class="conversation-head-primary">
         <time class="conversation-time">{{ row.created_at | localtime }}</time>
+        {% if row.record_type == "failed" %}
+        <span class="status">FAILED · {{ row.stage }}</span>
+        {% endif %}
       </div>
       <div class="conversation-head-actions">
+        {% if row.record_type == "turn" %}
         <a href="/conversations/{{ row.id }}/context">context</a>
+        {% else %}
+        <span class="muted">no stored context</span>
+        {% endif %}
         {% if row.turn_id %}<a href="/traces/{{ row.turn_id }}">trace</a>{% else %}<span class="muted">no trace id</span>{% endif %}
         <code>msg {{ row.message_id }}</code>
       </div>
@@ -73,7 +80,13 @@
       </div>
       <div><dt>Channel</dt><dd>{% if row.channel_id %}<code>{{ row.channel_id }}</code>{% else %}—{% endif %}</dd></div>
       <div><dt>User</dt><dd>{% if row.name %}{{ row.name }} · {% endif %}<code>{{ row.user_id }}</code></dd></div>
+      {% if row.record_type == "failed" %}
+      <div><dt>Status</dt><dd>{{ row.status }} · {{ row.stage }}</dd></div>
+      <div><dt>Fallback delivered</dt><dd>{{ "yes" if row.reply_delivered else "no" }}</dd></div>
+      {% if row.error_type %}<div><dt>Error</dt><dd>{{ row.error_type }} · <code>{{ row.error_fingerprint }}</code></dd></div>{% endif %}
+      {% else %}
       <div><dt>Exportable</dt><dd>{{ row.exportable }}</dd></div>
+      {% endif %}
     </dl>
     {% if row.search_matches %}
     <div class="search-matches">
@@ -84,8 +97,14 @@
     {% endif %}
     <h3>Input</h3>
     <div class="message">{{ row.content }}</div>
-    <h3>Reply</h3>
+    <h3>{% if row.record_type == "failed" %}Fallback reply{% else %}Reply{% endif %}</h3>
+    {% if row.reply %}
     <div class="message assistant">{{ row.reply }}</div>
+    {% elif row.record_type == "failed" %}
+    <div class="message assistant muted">No reply was delivered.</div>
+    {% else %}
+    <div class="message assistant"></div>
+    {% endif %}
     {% if row.memory_context %}
     <details><summary>memory_context</summary><pre>{{ row.memory_context }}</pre></details>
     {% endif %}
