@@ -19,7 +19,7 @@ from hina_bot.core.relationship_profile import (
 )
 from hina_bot.core.routing import Scope
 
-from ..scopepicker import normalize_scope_filter
+from ..scopepicker import infer_target_scope_type, normalize_scope_filter
 from ..searchutils import search_matches
 from ..timeutils import db_utc_timestamp
 from .base import Page, ReadService, _decode_json
@@ -96,25 +96,42 @@ class MemoryService(ReadService):
     def relationship_profiles(
         self,
         *,
+        target_scope_type: str = "",
         target_guild_id: str = "",
         target_channel_id: str = "",
         query: str = "",
     ) -> dict[str, object]:
         target_guild_id = target_guild_id.strip()
         target_channel_id = target_channel_id.strip()
+        target_scope_type = infer_target_scope_type(
+            scope_type=target_scope_type,
+            guild_id=target_guild_id,
+            channel_id=target_channel_id,
+        )
+        if target_scope_type == "dm":
+            target_guild_id = ""
         query = query.strip()
 
-        target = None
+        target: tuple[int | None, int] | None = None
         target_error = ""
         if target_guild_id or target_channel_id:
-            try:
-                guild_id = int(target_guild_id)
-                channel_id = int(target_channel_id)
-                if guild_id <= 0 or channel_id <= 0:
-                    raise ValueError
-                target = (guild_id, channel_id)
-            except ValueError:
-                target_error = "Target guild ID and channel ID must both be positive integers."
+            if not target_channel_id:
+                target_error = "Target channel ID is required."
+            elif target_scope_type == "guild" and not target_guild_id:
+                target_error = "Target guild ID is required for a guild scope."
+            else:
+                try:
+                    guild_id = (
+                        int(target_guild_id)
+                        if target_scope_type == "guild"
+                        else None
+                    )
+                    channel_id = int(target_channel_id)
+                    if channel_id <= 0 or (guild_id is not None and guild_id <= 0):
+                        raise ValueError
+                    target = (guild_id, channel_id)
+                except ValueError:
+                    target_error = "Target guild/channel IDs must be positive integers."
 
         rows = []
         for owner in self.repository.relationship_profile_users(query=query):
@@ -180,12 +197,17 @@ class MemoryService(ReadService):
         return {
             "rows": rows,
             "filters": {
+                "target_scope_type": target_scope_type,
                 "target_guild_id": target_guild_id,
                 "target_channel_id": target_channel_id,
                 "q": query,
             },
             "target": (
-                {"guild_id": target[0], "channel_id": target[1]}
+                {
+                    "scope_type": target_scope_type,
+                    "guild_id": target[0],
+                    "channel_id": target[1],
+                }
                 if target is not None
                 else None
             ),
