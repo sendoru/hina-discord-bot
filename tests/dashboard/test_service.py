@@ -28,6 +28,7 @@ def build_service(tmp_path):
     database = tmp_path / "hina.sqlite3"
     store = Store(str(database))
     scope = Scope(1, 10, 100, True)
+    store.observe_guild_channel(1, "Test Guild", 10, "general")
     memory_id = store.add_memory_item(
         scope,
         "trace relationship memory",
@@ -369,6 +370,8 @@ def test_conversations_use_bounded_repository_filters(tmp_path):
     assert data["rows"][0]["scope_type"] == "guild"
     assert data["rows"][0]["guild_id"] == "1"
     assert data["rows"][0]["channel_id"] == "10"
+    assert data["rows"][0]["guild_name"] == "Test Guild"
+    assert data["rows"][0]["channel_name"] == "general"
     assert service.conversations(query="not-found")["page"].total == 0
 
 
@@ -412,6 +415,7 @@ def build_memory_service(tmp_path):
     database = tmp_path / "memory.sqlite3"
     store = Store(str(database))
     scope = Scope(1, 10, 100, True)
+    store.observe_guild_channel(1, "Memory Guild", 10, "memory")
     token = CURRENT_TURN_ID.set("memory-trace")
     try:
         store.add(scope, 700, "source for memory", "reply", name="Memory User")
@@ -449,10 +453,14 @@ def test_memory_service_filters_and_source_drilldown(tmp_path):
     )
     assert listing["page"].total == 1
     assert listing["rows"][0]["source_message_ids_decoded"] == ("700",)
+    assert listing["rows"][0]["guild_name"] == "Memory Guild"
+    assert listing["rows"][0]["channel_name"] == "memory"
 
     detail = service.memory_item(item_id)
     assert detail is not None
     assert detail["item"]["content"] == "remembered fact"
+    assert detail["item"]["guild_name"] == "Memory Guild"
+    assert detail["item"]["channel_name"] == "memory"
     assert detail["sources"][0]["turn"]["turn_id"] == "memory-trace"
 
 
@@ -712,6 +720,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     store = Store(str(database))
     dm = Scope(None, 10, 100)
     same_target_guild = Scope(1, 20, 100, True)
+    store.observe_guild_channel(1, "Profile Guild", 20, "profile")
+    store.observe_guild_channel(1, "Profile Guild", 99, "target")
 
     first_id = store.add_memory_item(
         dm,
@@ -772,6 +782,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         "scope_type": "guild",
         "guild_id": 1,
         "channel_id": 99,
+        "guild_name": "Profile Guild",
+        "channel_name": "target",
     }
     assert data["axes"] == (
         "familiarity",
@@ -794,6 +806,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     assert row["full_relationships"][0]["content"] == (
         "same disclosure space relationship"
     )
+    assert row["full_relationships"][0]["guild_name"] == "Profile Guild"
+    assert row["full_relationships"][0]["channel_name"] == "profile"
     assert row["full_relationships"][1]["disclosure"] == "global"
     assert row["used_observations"] == 2
     assert [item["id"] for item in row["contributors"]] == [second_id, first_id]
@@ -817,6 +831,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         "scope_type": "dm",
         "guild_id": None,
         "channel_id": None,
+        "guild_name": "",
+        "channel_name": "",
     }
     assert dm_target["filters"]["target_guild_id"] == ""
     assert dm_target["filters"]["target_channel_id"] == ""
@@ -845,6 +861,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         "scope_type": "dm",
         "guild_id": None,
         "channel_id": None,
+        "guild_name": "",
+        "channel_name": "",
     }
     assert dm_without_channel["target_error"] == ""
 
@@ -895,6 +913,7 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     store = Store(str(database))
     guild = Scope(1, 10, 100)
     dm = Scope(None, 20, 100)
+    store.observe_guild_channel(1, "State Guild", 10, "state")
 
     store.add(guild, 1, "state source", "reply", name="State User")
     store.set_memory_mode_override("global", "off")
@@ -919,6 +938,8 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     effective = data["effective"]
     assert effective is not None
     assert effective["user_name"] == "State User"
+    assert effective["guild_name"] == "State Guild"
+    assert effective["channel_name"] == "state"
     assert effective["memory"]["chain"]["effective"] == "read_only"
     assert effective["memory"]["chain"]["source"] == "server"
     assert effective["memory"]["reads"] is True
