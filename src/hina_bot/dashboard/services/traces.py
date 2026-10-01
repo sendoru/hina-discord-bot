@@ -200,18 +200,31 @@ class TraceService(ReadService):
         tier_counts = Counter(str(row["model_tier"]) for row in traces if row["model_tier"])
 
         exchange_rows = snapshot.exchanges
-        calls = sum(_as_int(row.get("calls")) for row in exchange_rows)
-        tokens = {
-            field: sum(_as_int(row.get(field)) for row in exchange_rows)
-            for field in (
-                "input_tokens",
-                "output_tokens",
-                "total_tokens",
-                "cached_tokens",
-                "reasoning_tokens",
-            )
+        exchange_ids = {_turn_id(row) for row in exchange_rows if _turn_id(row)}
+        usage_ids = {
+            _turn_id(row) for row in snapshot.usage
+            if _turn_id(row) and row.get("operation") != "context.provenance"
         }
-        web_search_calls = sum(_as_int(row.get("web_search_calls")) for row in exchange_rows)
+        missing_exchanges = len(usage_ids - exchange_ids)
+        metrics = {}
+        for field in (
+            "calls", "input_tokens", "output_tokens", "total_tokens",
+            "cached_tokens", "reasoning_tokens", "web_search_calls",
+        ):
+            known = [
+                row[field] for row in exchange_rows
+                if type(row.get(field)) is int and row[field] >= 0
+            ]
+            missing = len(exchange_rows) - len(known) + missing_exchanges
+            metrics[field] = {
+                "value": sum(known) if known else None,
+                "known": len(known),
+                "missing": missing,
+                "partial": bool(known) and missing > 0,
+            }
+        calls = metrics["calls"]["value"]
+        tokens = {field: metrics[field]["value"] for field in metrics if "tokens" in field}
+        web_search_calls = metrics["web_search_calls"]["value"]
 
         errors = Counter(
             str(row["error_fingerprint"])
@@ -236,6 +249,8 @@ class TraceService(ReadService):
             "status_counts": dict(status_counts),
             "scope_counts": dict(scope_counts),
             "tier_counts": dict(tier_counts),
+            "metrics": metrics,
+            "missing_exchanges": missing_exchanges,
             "api_calls": calls,
             "tokens": tokens,
             "web_search_calls": web_search_calls,

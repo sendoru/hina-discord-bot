@@ -2,6 +2,7 @@
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
 {% from "_status_ui.html" import status_badge %}
 {% from "_telemetry_ui.html" import telemetry_window %}
+{% from "_metric_ui.html" import exchange_metric %}
 {% block title %}Overview · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -16,12 +17,14 @@
 
 <section class="cards">
   <a class="card metric-card" href="/traces" aria-label="View all traces"><span>Traces</span><strong>{{ data.trace_count }}</strong></a>
-  <a class="card metric-card" href="/conversations" aria-label="View stored conversations"><span>Stored turns</span><strong>{{ data.stored_turn_count }}</strong></a>
-  <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View API call breakdown"><span>API calls</span><strong>{{ data.api_calls }}</strong></a>
-  <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View token usage breakdown"><span>Total tokens</span><strong>{{ "{:,}".format(data.tokens.total_tokens) }}</strong></a>
-  <a class="card metric-card" href="/analytics#web-search-routing" aria-label="View web-search analytics"><span>Web searches</span><strong>{{ data.web_search_calls }}</strong></a>
+  <a class="card metric-card" href="/conversations" aria-label="View stored conversations"><span>Stored turns</span><strong>{{ data.stored_turn_count }}</strong><small>SQLite 보존 데이터 기준 · epoch와 무관</small></a>
+  <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View API call breakdown"><span>API calls</span>{{ exchange_metric(data.metrics.calls) }}</a>
+  <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View token usage breakdown"><span>Total tokens</span>{{ exchange_metric(data.metrics.total_tokens) }}</a>
+  <a class="card metric-card" href="/analytics#web-search-routing" aria-label="View web-search analytics"><span>Web searches</span>{{ exchange_metric(data.metrics.web_search_calls) }}</a>
   <a class="card metric-card {% if data.memory_failures %}metric-card-danger{% endif %}" href="/traces?q=memory" aria-label="Find traces related to memory failures"><span>Memory failures</span><strong>{{ data.memory_failures }}</strong></a>
 </section>
+
+<p class="muted">usage 로그의 exchange 미관측 trace: {{ data.missing_exchanges }}건. 미관측 값은 —, 관측된 0은 0으로 표시합니다.</p>
 
 <div class="grid-2">
   <section class="panel">

@@ -458,3 +458,11 @@ imports, dashboard use of the runtime `Store`, and reverse `core -> dashboard/Fa
 This layout is the extension point for #99-#101: authentication dependencies can be composed at router/app
 boundaries, while future audited write services can remain separate from the existing read repository.
 
+
+### 개요 지표의 관측 범위
+
+Overview의 API calls, tokens, web searches는 현재 epoch의 exchange 로그 합계입니다.
+각 지표는 관측 건수와 누락 건수를 함께 표시합니다. 전부 미관측이면 `—`, 일부
+미관측이면 부분 합계, 실제 관측된 0이면 `0`입니다. usage만 남은 trace는 exchange
+누락에 포함하며 usage 값으로 합계를 대체하지 않습니다. Stored turns는 epoch와 무관한
+SQLite 보존 데이터 수입니다.

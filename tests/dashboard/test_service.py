@@ -1180,3 +1180,21 @@ def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
     overview = trace_service.overview()
     assert overview["epoch"]["selected"] == "1"
     assert overview["trace_count"] == 1
+
+
+def test_overview_distinguishes_missing_partial_and_observed_zero(tmp_path):
+    service = build_service(tmp_path)
+    path = tmp_path / "logs" / "discord-usage.jsonl"
+    write_rows(path, [
+        {"turn_id": "trace-1", "at": "2026-09-21T00:00:01+00:00", "calls": 0,
+         "total_tokens": 0},
+        {"turn_id": "trace-2", "at": "2026-09-21T00:01:01+00:00"},
+    ])
+    data = service.overview()
+    assert data["metrics"]["total_tokens"]["value"] == 0
+    assert data["metrics"]["total_tokens"]["partial"] is True
+    assert data["metrics"]["input_tokens"]["value"] is None
+    path.unlink()
+    data = service.overview()
+    assert data["api_calls"] is None
+    assert data["missing_exchanges"] > 0
