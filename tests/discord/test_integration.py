@@ -257,6 +257,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(completed["status"], "completed")
         self.assertTrue(completed["reply_delivered"])
+        self.assertEqual(completed["raw_turn_persistence"], "stored")
         self.assertNotEqual(completed["turn_id"], duplicate["turn_id"])
 
     async def test_generation_failure_event_excludes_exception_and_message_content(self):
@@ -276,6 +277,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(failed["stage"], "generation")
         self.assertEqual(failed["error_type"], "ValueError")
         self.assertTrue(failed["reply_delivered"])
+        self.assertEqual(failed["raw_turn_persistence"], "stored")
         self.assertIn("error_fingerprint", failed)
 
         stored = self.store.db.execute(
@@ -482,6 +484,13 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.pending_shared(scope), [])
         recent = self.bot.recent.context(scope, 9999)
         self.assertTrue(any(row["content"] == "ordinary" for row in recent))
+        rows = [json.loads(line) for line in self.event_path.read_text().splitlines()]
+        completed = next(row for row in rows if row["event"] == "turn.completed")
+        self.assertEqual(completed["raw_turn_persistence"], "skipped")
+        self.assertEqual(
+            completed["raw_turn_persistence_reason"],
+            "memory_writes_disabled",
+        )
         self.llm.extract_structured_memory.assert_not_awaited()
         self.llm.summarize.assert_not_awaited()
         self.llm.summarize_shared.assert_not_awaited()
