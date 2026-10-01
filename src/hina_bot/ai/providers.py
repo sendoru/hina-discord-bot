@@ -10,6 +10,9 @@ import httpx
 from openai import AsyncOpenAI
 
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+GEMINI_GENERATE_CONTENT_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+)
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 SUPPORTED_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
 log = logging.getLogger("hina")
@@ -167,6 +170,326 @@ def _gemini_input(value):
     return steps
 
 
+
+def _gemini_generate_content_parts(value):
+    parts = []
+    for block in _gemini_content(value):
+        block_type = block.get("type")
+        if block_type == "text":
+            parts.append({"text": block["text"]})
+            continue
+        if block_type != "image":
+            continue
+        mime_type = block.get("mime_type") or "image/png"
+        if block.get("data"):
+            parts.append({
+                "inline_data": {
+                    "mime_type": mime_type,
+                    "data": block["data"],
+                }
+            })
+        elif block.get("uri"):
+            parts.append({
+                "file_data": {
+                    "mime_type": mime_type,
+                    "file_uri": block["uri"],
+                }
+            })
+    return parts
+
+
+def _gemini_generate_content_contents(value):
+    if isinstance(value, str):
+        return [{"role": "user", "parts": [{"text": value}]}]
+    if not isinstance(value, list):
+        text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        return [{"role": "user", "parts": [{"text": text}]}]
+
+    contents = []
+
+    def append(role: str, parts: list[dict]):
+        if not parts:
+            return
+        if contents and contents[-1]["role"] == role:
+            contents[-1]["parts"].extend(parts)
+        else:
+            contents.append({"role": role, "parts": parts})
+
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type == "function_call":
+            raw_arguments = item.get("arguments", {})
+            if isinstance(raw_arguments, str):
+                try:
+                    raw_arguments = json.loads(raw_arguments)
+                except ValueError:
+                    raw_arguments = {}
+            if not isinstance(raw_arguments, dict):
+                raw_arguments = {}
+            call_id = str(item.get("call_id") or item.get("id") or "")
+            name = str(item.get("name") or "")
+            if call_id and name:
+                append("model", [{
+                    "functionCall": {
+                        "id": call_id,
+                        "name": name,
+                        "args": raw_arguments,
+                    }
+                }])
+            continue
+        if item_type == "function_call_output":
+            call_id = str(item.get("call_id") or "")
+            name = str(item.get("name") or "")
+            if not call_id or not name:
+                continue
+            output = item.get("output", "")
+            if isinstance(output, str):
+                try:
+                    response = json.loads(output)
+                except ValueError:
+                    response = {"output": output}
+            elif isinstance(output, dict):
+                response = output
+            else:
+                response = {"output": output}
+            if not isinstance(response, dict):
+                response = {"output": response}
+            append("user", [{
+                "functionResponse": {
+                    "id": call_id,
+                    "name": name,
+                    "response": response,
+                }
+            }])
+            continue
+
+        role = "model" if item.get("role") == "assistant" else "user"
+        append(role, _gemini_generate_content_parts(item.get("content", "")))
+
+    return contents
+
+
+def _gemini_dict_field(value: dict, *names: str, default=None):
+    for name in names:
+        if name in value:
+            return value[name]
+    return default
+
+
+def _gemini_grounding_citations(metadata: dict) -> list[tuple[str, str]]:
+    citations = []
+    seen_urls = set()
+    chunks = _gemini_dict_field(
+        metadata,
+        "groundingChunks",
+        "grounding_chunks",
+        default=[],
+    ) or []
+    for chunk in chunks:
+        if not isinstance(chunk, dict):
+            continue
+        web = chunk.get("web")
+        if not isinstance(web, dict):
+            continue
+        url = web.get("uri") or web.get("url")
+        if not isinstance(url, str) or not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        title = web.get("title") if isinstance(web.get("title"), str) else ""
+        citations.append((url, title))
+    return citations
+
+
+def _gemini_generate_content_output(data: dict):
+    candidates = data.get("candidates") or []
+    candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
+    content = candidate.get("content") if isinstance(candidate.get("content"), dict) else {}
+    parts = content.get("parts") or []
+    metadata = _gemini_dict_field(
+        candidate,
+        "groundingMetadata",
+        "grounding_metadata",
+        default={},
+    )
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    output = []
+    final_text_pieces = []
+    last_text_part = None
+    web_search_calls = 0
+    last_code_id = ""
+
+    for index, part in enumerate(parts):
+        if not isinstance(part, dict) or part.get("thought") is True:
+            continue
+
+        tool_call = _gemini_dict_field(part, "toolCall", "tool_call")
+        if isinstance(tool_call, dict):
+            tool_type = str(
+                _gemini_dict_field(tool_call, "toolType", "tool_type", default="")
+            )
+            if tool_type.startswith("GOOGLE_SEARCH"):
+                output.append(NS(type="web_search_call"))
+                web_search_calls += 1
+            final_text_pieces = []
+            last_text_part = None
+            continue
+
+        tool_response = _gemini_dict_field(part, "toolResponse", "tool_response")
+        if isinstance(tool_response, dict):
+            final_text_pieces = []
+            last_text_part = None
+            continue
+
+        executable = _gemini_dict_field(part, "executableCode", "executable_code")
+        if isinstance(executable, dict):
+            code_id = str(executable.get("id") or f"code_{index}")
+            last_code_id = code_id
+            output.append(NS(
+                type="code_execution_call",
+                id=code_id,
+                arguments={
+                    "code": executable.get("code") or "",
+                    "language": executable.get("language") or "",
+                },
+            ))
+            final_text_pieces = []
+            last_text_part = None
+            continue
+
+        code_result = _gemini_dict_field(
+            part,
+            "codeExecutionResult",
+            "code_execution_result",
+        )
+        if isinstance(code_result, dict):
+            outcome = str(code_result.get("outcome") or "")
+            call_id = str(code_result.get("id") or last_code_id)
+            output.append(NS(
+                type="code_execution_result",
+                call_id=call_id,
+                result=code_result.get("output") or "",
+                is_error=bool(outcome and outcome != "OUTCOME_OK"),
+            ))
+            final_text_pieces = []
+            last_text_part = None
+            continue
+
+        function_call = _gemini_dict_field(part, "functionCall", "function_call")
+        if isinstance(function_call, dict):
+            call_id = str(function_call.get("id") or "")
+            name = str(function_call.get("name") or "")
+            if call_id and name:
+                output.append(NS(
+                    type="function_call",
+                    id=call_id,
+                    call_id=call_id,
+                    name=name,
+                    arguments=json.dumps(
+                        function_call.get("args") or {},
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                ))
+            final_text_pieces = []
+            last_text_part = None
+            continue
+
+        text = part.get("text")
+        if not isinstance(text, str) or not text:
+            continue
+        normalized_part = NS(type="output_text", text=text, annotations=[])
+        output.append(NS(type="message", content=[normalized_part]))
+        final_text_pieces.append(text)
+        last_text_part = normalized_part
+
+    queries = _gemini_dict_field(
+        metadata,
+        "webSearchQueries",
+        "web_search_queries",
+        default=[],
+    ) or []
+    citations = _gemini_grounding_citations(metadata)
+    if web_search_calls == 0 and (queries or citations):
+        output.insert(0, NS(type="web_search_call"))
+        web_search_calls = 1
+
+    if last_text_part is not None and citations:
+        for url, title in citations:
+            suffix = f" ({_citation_label(url)})"
+            start = len(last_text_part.text)
+            last_text_part.text += suffix
+            last_text_part.annotations.append(NS(
+                type="url_citation",
+                start_index=start,
+                end_index=len(last_text_part.text),
+                url=url,
+                title=title,
+            ))
+        if final_text_pieces:
+            final_text_pieces[-1] = last_text_part.text
+
+    usage_data = _gemini_dict_field(
+        data,
+        "usageMetadata",
+        "usage_metadata",
+        default={},
+    )
+    if not isinstance(usage_data, dict):
+        usage_data = {}
+    usage = NS(
+        input_tokens=_gemini_dict_field(
+            usage_data,
+            "promptTokenCount",
+            "prompt_token_count",
+        ),
+        output_tokens=_gemini_dict_field(
+            usage_data,
+            "candidatesTokenCount",
+            "candidates_token_count",
+        ),
+        total_tokens=_gemini_dict_field(
+            usage_data,
+            "totalTokenCount",
+            "total_token_count",
+        ),
+        input_tokens_details=NS(cached_tokens=_gemini_dict_field(
+            usage_data,
+            "cachedContentTokenCount",
+            "cached_content_token_count",
+        )),
+        output_tokens_details=NS(reasoning_tokens=_gemini_dict_field(
+            usage_data,
+            "thoughtsTokenCount",
+            "thoughts_token_count",
+        )),
+    )
+
+    finish_reason = str(
+        _gemini_dict_field(candidate, "finishReason", "finish_reason", default="")
+    )
+    completed = bool(candidate) and finish_reason in {
+        "",
+        "STOP",
+        "FINISH_REASON_UNSPECIFIED",
+    }
+    response = NS(
+        status="completed" if completed else "incomplete",
+        output_text="".join(final_text_pieces),
+        output=output,
+        usage=usage,
+    )
+    response._hina_web_search_calls = web_search_calls
+    response._hina_error_codes = (
+        [] if completed or not finish_reason else [finish_reason]
+    )
+    return response
+
+
+
 def _citation_label(url: str) -> str:
     parsed = urlsplit(url)
     host = parsed.netloc.removeprefix("www.")
@@ -282,7 +605,85 @@ class _GeminiResponses:
         self.http = http
         self.thinking_level = thinking_level
 
-    async def create(self, **kwargs):
+    async def _generate_content(
+        self,
+        *,
+        web_tools: list[dict],
+        function_tools: list[dict],
+        code_execution_tools: list[dict],
+        **kwargs,
+    ):
+        model = str(kwargs["model"]).removeprefix("models/")
+        thinking_level = kwargs.get("thinking_level", self.thinking_level)
+        if thinking_level not in {"minimal", "low", "medium", "high"}:
+            raise ValueError("Gemini thinking_level 값이 잘못되었습니다.")
+
+        instructions = kwargs.get("instructions") or ""
+        if web_tools and kwargs.get("tool_choice") == "required":
+            guidance = (
+                "이 요청은 외부 확인이 필수입니다. Google Search를 사용해 필요한 사실을 "
+                "확인한 뒤, 충분한 근거를 얻으면 검색을 반복하지 말고 최종 답변을 작성하세요."
+            )
+            instructions = (instructions + "\n\n" + guidance).strip()
+
+        payload = {
+            "contents": _gemini_generate_content_contents(kwargs.get("input", "")),
+            "store": bool(kwargs.get("store", False)),
+            "generationConfig": {
+                "thinkingConfig": {"thinkingLevel": thinking_level},
+            },
+        }
+        if instructions:
+            payload["system_instruction"] = {
+                "parts": [{"text": instructions}],
+            }
+
+        max_output_tokens = kwargs.get("max_output_tokens")
+        if isinstance(max_output_tokens, int):
+            payload["generationConfig"]["maxOutputTokens"] = max_output_tokens
+
+        payload_tools = []
+        if web_tools:
+            payload_tools.append({"google_search": {}})
+        if function_tools:
+            payload_tools.append({
+                "function_declarations": [{
+                    "name": tool["name"],
+                    "description": tool.get("description", ""),
+                    "parameters": (
+                        tool.get("parameters")
+                        or {"type": "object", "properties": {}}
+                    ),
+                } for tool in function_tools]
+            })
+        if code_execution_tools:
+            payload_tools.append({"code_execution": {}})
+        if payload_tools:
+            payload["tools"] = payload_tools
+
+        if web_tools and function_tools:
+            payload["toolConfig"] = {
+                "includeServerSideToolInvocations": True,
+                "functionCallingConfig": {"mode": "VALIDATED"},
+            }
+
+        url = GEMINI_GENERATE_CONTENT_URL.format(model=model)
+        response = await self.http.post(url, json=payload)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            error = _gemini_http_error(response)
+            log.warning("Provider request failed (%s)", error.safe_diagnostic)
+            raise error from exc
+        return _gemini_generate_content_output(response.json())
+
+    async def _interaction(
+        self,
+        *,
+        function_tools: list[dict],
+        code_execution_tools: list[dict],
+        **kwargs,
+    ):
         payload = {
             "model": kwargs["model"],
             "input": _gemini_input(kwargs.get("input", "")),
@@ -300,7 +701,34 @@ class _GeminiResponses:
         if isinstance(max_output_tokens, int):
             generation_config["max_output_tokens"] = max_output_tokens
 
-        tools = kwargs.get("tools") or []
+        payload_tools = []
+        for tool in function_tools:
+            payload_tools.append({
+                "type": "function",
+                "name": tool["name"],
+                "description": tool.get("description", ""),
+                "parameters": (
+                    tool.get("parameters")
+                    or {"type": "object", "properties": {}}
+                ),
+            })
+        if code_execution_tools:
+            payload_tools.append({"type": "code_execution"})
+        if payload_tools:
+            payload["tools"] = payload_tools
+
+        payload["generation_config"] = generation_config
+        response = await self.http.post(GEMINI_INTERACTIONS_URL, json=payload)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            error = _gemini_http_error(response)
+            log.warning("Provider request failed (%s)", error.safe_diagnostic)
+            raise error from exc
+        return _gemini_output(response.json())
+
+    async def create(self, **kwargs):
+        tools = list(kwargs.get("tools") or [])
         unknown_tools = [
             tool for tool in tools
             if tool.get("type") not in {"web_search", "function", "code_execution"}
@@ -313,73 +741,18 @@ class _GeminiResponses:
         code_execution_tools = [
             tool for tool in tools if tool.get("type") == "code_execution"
         ]
-        required_search = bool(web_tools and kwargs.get("tool_choice") == "required")
-        if tools:
-            payload_tools = []
-            if web_tools:
-                payload_tools.append({"type": "google_search", "search_types": ["web_search"]})
-            for tool in function_tools:
-                item = {
-                    "type": "function",
-                    "name": tool["name"],
-                    "description": tool.get("description", ""),
-                    "parameters": tool.get("parameters") or {"type": "object", "properties": {}},
-                }
-                payload_tools.append(item)
-            if code_execution_tools:
-                payload_tools.append({"type": "code_execution"})
-            payload["tools"] = payload_tools
-            if required_search:
-                # OpenAI `required` means that a tool must be used before the final answer.
-                # Gemini `any` is stronger: every model step must be a tool call. With a
-                # server-side built-in search this can loop until Gemini rejects the request as
-                # "Model generated too many tool calls". Keep Gemini in auto mode and express
-                # the one-search requirement in the system instruction instead.
-                generation_config["tool_choice"] = "auto"
-                guidance = (
-                    "이 요청은 외부 확인이 필수입니다. Google Search를 사용해 필요한 사실을 "
-                    "확인한 뒤, 충분한 근거를 얻으면 검색을 반복하지 말고 최종 답변을 작성하세요."
-                )
-                payload["system_instruction"] = (
-                    (payload.get("system_instruction") or "") + "\n\n" + guidance
-                ).strip()
-
-        payload["generation_config"] = generation_config
-
-        response = await self.http.post(GEMINI_INTERACTIONS_URL, json=payload)
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            error = _gemini_http_error(response)
-            too_many_calls = (
-                bool(web_tools)
-                and error.status_code == 400
-                and "too many tool calls" in error.error_message.lower()
+        if web_tools:
+            return await self._generate_content(
+                web_tools=web_tools,
+                function_tools=function_tools,
+                code_execution_tools=code_execution_tools,
+                **kwargs,
             )
-            if too_many_calls:
-                # Gemini recommends retrying this specific failure with the error included in
-                # the prompt. Retry once with a strict single-search bound.
-                retry_payload = dict(payload)
-                retry_payload["generation_config"] = dict(generation_config)
-                retry_note = (
-                    "이전 시도에서 'Model generated too many tool calls.' 오류가 발생했습니다. "
-                    "Google Search 호출은 최대 1회만 사용하세요. 확인할 검색어가 여러 개면 한 "
-                    "호출에 묶고, 검색 결과를 확인한 뒤 반드시 최종 답변을 작성하세요."
-                )
-                retry_payload["system_instruction"] = (
-                    (payload.get("system_instruction") or "") + "\n\n" + retry_note
-                ).strip()
-                retry = await self.http.post(GEMINI_INTERACTIONS_URL, json=retry_payload)
-                try:
-                    retry.raise_for_status()
-                except httpx.HTTPStatusError as retry_exc:
-                    retry_error = _gemini_http_error(retry)
-                    log.warning("Provider request failed (%s)", retry_error.safe_diagnostic)
-                    raise retry_error from retry_exc
-                return _gemini_output(retry.json())
-            log.warning("Provider request failed (%s)", error.safe_diagnostic)
-            raise error from exc
-        return _gemini_output(response.json())
+        return await self._interaction(
+            function_tools=function_tools,
+            code_execution_tools=code_execution_tools,
+            **kwargs,
+        )
 
 
 class GeminiClient:
