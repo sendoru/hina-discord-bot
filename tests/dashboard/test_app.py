@@ -222,6 +222,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     relationships = client.get(
         "/relationships?target_guild_id=1&target_channel_id=10&q=Dashboard"
     )
+    relationships_dm = client.get(
+        "/relationships?target_scope_type=dm&q=Dashboard"
+    )
     state = client.get(
         "/state?target_guild_id=1&target_channel_id=20&target_user_id=100&q=dashboard"
     )
@@ -335,6 +338,18 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="table-wrap relationship-desktop"' in relationships.text
     assert 'class="relationship-mobile"' in relationships.text
     assert 'class="relationship-mobile-card"' in relationships.text
+    assert 'aria-label="Target scope type"' in relationships.text
+    assert 'name="target_scope_type" value="guild" checked' in relationships.text
+    assert relationships_dm.status_code == 200
+    assert 'name="target_scope_type" value="dm" checked' in relationships_dm.text
+    assert 'data-dm-channel="false"' in relationships_dm.text
+    assert 'name="target_guild_id" inputmode="numeric" value=""' in relationships_dm.text
+    assert 'name="target_channel_id" inputmode="numeric" value=""' in relationships_dm.text
+    assert "Target:" in relationships_dm.text
+    assert "<code>dm</code>" in relationships_dm.text
+    assert "Owner-DM relationship memory" in relationships_dm.text
+    assert "structured_owner_memory" in relationships_dm.text
+    assert "comfortable recurring interaction" in relationships_dm.text
     assert state.status_code == 200
     assert "Memory &amp; Context State" in state.text
     assert 'class="state-query-panel"' in state.text

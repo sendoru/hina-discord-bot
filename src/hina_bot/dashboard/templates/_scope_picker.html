@@ -1,5 +1,5 @@
-{% macro scope_picker(prefix, scope_type, guild_id, channel_id, label="Scope", allow_any=true) -%}
-<div class="scope-picker">
+{% macro scope_picker(prefix, scope_type, guild_id, channel_id, label="Scope", allow_any=true, dm_channel=true) -%}
+<div class="scope-picker" data-dm-channel="{{ "true" if dm_channel else "false" }}">
   <div class="scope-picker-head">
     <span class="scope-picker-label">{{ label }}</span>
     <div class="scope-picker-types" role="group" aria-label="{{ label }} type">

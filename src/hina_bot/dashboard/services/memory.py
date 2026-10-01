@@ -19,7 +19,7 @@ from hina_bot.core.relationship_profile import (
 )
 from hina_bot.core.routing import Scope
 
-from ..scopepicker import normalize_scope_filter
+from ..scopepicker import infer_target_scope_type, normalize_scope_filter
 from ..searchutils import search_matches
 from ..timeutils import db_utc_timestamp
 from .base import Page, ReadService, _decode_json
@@ -96,25 +96,41 @@ class MemoryService(ReadService):
     def relationship_profiles(
         self,
         *,
+        target_scope_type: str = "",
         target_guild_id: str = "",
         target_channel_id: str = "",
         query: str = "",
     ) -> dict[str, object]:
         target_guild_id = target_guild_id.strip()
         target_channel_id = target_channel_id.strip()
+        target_scope_type = infer_target_scope_type(
+            scope_type=target_scope_type,
+            guild_id=target_guild_id,
+            channel_id=target_channel_id,
+        )
         query = query.strip()
 
-        target = None
+        target: tuple[int | None, int | None] | None = None
         target_error = ""
-        if target_guild_id or target_channel_id:
-            try:
-                guild_id = int(target_guild_id)
-                channel_id = int(target_channel_id)
-                if guild_id <= 0 or channel_id <= 0:
-                    raise ValueError
-                target = (guild_id, channel_id)
-            except ValueError:
-                target_error = "Target guild ID and channel ID must both be positive integers."
+        if target_scope_type == "dm":
+            # Relationship memory in the owner's DM is an aggregate owner space. Runtime
+            # access does not depend on a Discord DM channel id, and each listed user may
+            # have a different channel anyway.
+            target_guild_id = ""
+            target_channel_id = ""
+            target = (None, None)
+        elif target_guild_id or target_channel_id:
+            if not target_guild_id or not target_channel_id:
+                target_error = "Target guild ID and channel ID are required for a guild scope."
+            else:
+                try:
+                    guild_id = int(target_guild_id)
+                    channel_id = int(target_channel_id)
+                    if guild_id <= 0 or channel_id <= 0:
+                        raise ValueError
+                    target = (guild_id, channel_id)
+                except ValueError:
+                    target_error = "Target guild/channel IDs must be positive integers."
 
         rows = []
         for owner in self.repository.relationship_profile_users(query=query):
@@ -132,40 +148,49 @@ class MemoryService(ReadService):
             contributors = []
             full_relationships = []
             if target is not None and user_id.isdigit():
-                scope = Scope(target[0], target[1], int(user_id))
-                full_relationships = [
-                    self._relationship_item_view(item)
-                    for item in full_relationship_observations(typed_items, scope)
-                ]
-                selected = implicit_relationship_profile_contributors(
-                    typed_items,
-                    scope,
-                )
-                profile = aggregate_relationship_evidence(typed_items, scope)
-                axis_ages: dict[str, dict[int, int]] = {}
-                for axis in RELATIONSHIP_EVIDENCE_AXES:
-                    axis_items = implicit_relationship_axis_observations(
+                if target_scope_type == "dm":
+                    # relationship_profile_items() is already active, relationship-only,
+                    # and owner-filtered, matching the relationship subset of owner DM memory.
+                    full_relationships = [
+                        self._relationship_item_view(item)
+                        for item in typed_items
+                    ]
+                else:
+                    assert target[0] is not None and target[1] is not None
+                    scope = Scope(target[0], target[1], int(user_id))
+                    full_relationships = [
+                        self._relationship_item_view(item)
+                        for item in full_relationship_observations(typed_items, scope)
+                    ]
+                    selected = implicit_relationship_profile_contributors(
                         typed_items,
                         scope,
-                        axis,
                     )
-                    axis_ages[axis] = {
-                        item.id: age
-                        for age, item in enumerate(reversed(axis_items))
-                    }
-                for item in reversed(selected):
-                    contributor = self._relationship_item_view(item)
-                    contributor["projected_evidence"] = {
-                        axis: contributor["evidence"][axis]
-                        for axis in RELATIONSHIP_EVIDENCE_AXES
-                        if item.id in axis_ages[axis]
-                    }
-                    contributor["axis_ages"] = {
-                        axis: axis_ages[axis][item.id]
-                        for axis in RELATIONSHIP_EVIDENCE_AXES
-                        if item.id in axis_ages[axis]
-                    }
-                    contributors.append(contributor)
+                    profile = aggregate_relationship_evidence(typed_items, scope)
+                    axis_ages: dict[str, dict[int, int]] = {}
+                    for axis in RELATIONSHIP_EVIDENCE_AXES:
+                        axis_items = implicit_relationship_axis_observations(
+                            typed_items,
+                            scope,
+                            axis,
+                        )
+                        axis_ages[axis] = {
+                            item.id: age
+                            for age, item in enumerate(reversed(axis_items))
+                        }
+                    for item in reversed(selected):
+                        contributor = self._relationship_item_view(item)
+                        contributor["projected_evidence"] = {
+                            axis: contributor["evidence"][axis]
+                            for axis in RELATIONSHIP_EVIDENCE_AXES
+                            if item.id in axis_ages[axis]
+                        }
+                        contributor["axis_ages"] = {
+                            axis: axis_ages[axis][item.id]
+                            for axis in RELATIONSHIP_EVIDENCE_AXES
+                            if item.id in axis_ages[axis]
+                        }
+                        contributors.append(contributor)
 
             rows.append({
                 **dict(owner),
@@ -180,12 +205,17 @@ class MemoryService(ReadService):
         return {
             "rows": rows,
             "filters": {
+                "target_scope_type": target_scope_type,
                 "target_guild_id": target_guild_id,
                 "target_channel_id": target_channel_id,
                 "q": query,
             },
             "target": (
-                {"guild_id": target[0], "channel_id": target[1]}
+                {
+                    "scope_type": target_scope_type,
+                    "guild_id": target[0],
+                    "channel_id": target[1],
+                }
                 if target is not None
                 else None
             ),

@@ -1981,6 +1981,10 @@ pre {
   gap: 4px;
 }
 
+.scope-picker-field[hidden] {
+  display: none !important;
+}
+
 .scope-picker-field > span,
 .scope-target-user > span {
   color: var(--muted-2);

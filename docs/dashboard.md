@@ -310,8 +310,10 @@ remain viewable without dashboard-side schema writes.
 
 ### Effective relationship profiles
 
-`/relationships` evaluates relationship memory for a selected target guild/channel using the same
-access policy as request assembly. It shows both sides of the runtime relationship context:
+`/relationships` uses the shared Guild/DM target-scope picker. The selected scope is evaluated with
+the same structured-memory access policy as request assembly.
+
+For a **Guild** target, the page shows both sides of the shared-space relationship context:
 
 - **FULL/raw relationship memory**: the newest eight active relationship items whose access resolves
   to `full` in that shared target scope. Their content and evidence are the same bounded items used
@@ -321,17 +323,21 @@ access policy as request assembly. It shows both sides of the runtime relationsh
   access. At most the eight newest observations are combined with confidence-weighted noisy-OR and
   `0.85` exponential recency decay.
 
-A relationship item cannot be both FULL and an implicit contributor for the same target. Same-space
-or `global` items resolve to FULL; eligible cross-space implicit items contribute only their evidence
-vector to the projection.
+A relationship item cannot be both FULL and an implicit contributor for the same Guild target.
+Same-space or `global` items resolve to FULL; eligible cross-space implicit items contribute only
+their evidence vector to the projection.
 
-Each user row therefore exposes:
+For a **DM** target, owner memory is the private aggregate space. No DM channel ID is required:
+the page evaluates each listed user's owner-DM memory independently, which also avoids pretending that
+one shared DM channel could apply to every user row. Active relationship memories owned by each user
+resolve to FULL and are shown as the relationship subset of `structured_owner_memory`. Cross-space
+IMPLICIT aggregation is not used in DM, so profile axes and contributor counts are not presented as
+effective DM state.
 
-- stored active relationship count,
-- bounded FULL/raw item count and drill-down,
-- bounded IMPLICIT contributor count and drill-down,
-- the resulting 1..4 values for familiarity, comfort, casualness, teasing tolerance,
-  support openness, and task orientation.
+Each user row therefore exposes the stored active relationship count and the target-appropriate
+FULL/raw view. Guild targets additionally expose the bounded IMPLICIT contributor drill-down and the
+resulting 1..4 values for familiarity, comfort, casualness, teasing tolerance, support openness, and
+task orientation.
 
 The dashboard shows the source text of implicit contributors only for administrative inspection.
 Runtime cross-space model context receives the aggregated axis values, not those raw source texts.
