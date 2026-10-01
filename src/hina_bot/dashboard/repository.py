@@ -244,6 +244,126 @@ class AdminRepository:
             ).fetchall()
         return self._dicts(rows)
 
+    def _conversation_union(self) -> str:
+        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
+        name = "name" if self._has_column("turns", "name") else "'' AS name"
+        selects = [
+            f"""SELECT 'turn' AS record_type,id,scope,realm,user_id,{name},message_id,
+                       content,reply,exportable,{turn_id},memory_context,created_at,
+                       'completed' AS status,'' AS stage,1 AS reply_delivered,
+                       '' AS error_type,'' AS error_fingerprint
+                FROM turns"""
+        ]
+        if self._table_exists("failed_turns"):
+            selects.append(
+                """SELECT 'failed' AS record_type,id,scope,realm,user_id,name,message_id,
+                          content,reply,0 AS exportable,turn_id,'' AS memory_context,created_at,
+                          status,stage,reply_delivered,error_type,error_fingerprint
+                   FROM failed_turns"""
+            )
+        return " UNION ALL ".join(selects)
+
+    def _conversation_filters(
+        self,
+        *,
+        scope: str = "",
+        realm: str = "",
+        user_id: str = "",
+        query: str = "",
+        created_after: str = "",
+        created_before: str = "",
+    ) -> tuple[str, tuple[object, ...]]:
+        clauses: list[str] = []
+        params: list[object] = []
+        if scope:
+            clauses.append("scope=?")
+            params.append(scope)
+        if realm:
+            clauses.append("realm=?")
+            params.append(realm)
+        if user_id:
+            escaped_user = self._like(user_id)
+            clauses.append(
+                "(user_id=? OR name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
+            )
+            params.extend((user_id, f"%{escaped_user}%"))
+        if query:
+            escaped = self._like(query)
+            pattern = f"%{escaped}%"
+            clauses.append(
+                "(content LIKE ? ESCAPE '\\' OR reply LIKE ? ESCAPE '\\' "
+                "OR message_id LIKE ? ESCAPE '\\' OR status LIKE ? ESCAPE '\\' "
+                "OR stage LIKE ? ESCAPE '\\' OR error_type LIKE ? ESCAPE '\\' "
+                "OR error_fingerprint LIKE ? ESCAPE '\\')"
+            )
+            params.extend((pattern,) * 7)
+        if created_after:
+            clauses.append("created_at>=?")
+            params.append(created_after)
+        if created_before:
+            clauses.append("created_at<=?")
+            params.append(created_before)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        return where, tuple(params)
+
+    def count_conversations(
+        self,
+        *,
+        scope: str = "",
+        realm: str = "",
+        user_id: str = "",
+        query: str = "",
+        created_after: str = "",
+        created_before: str = "",
+    ) -> int:
+        union = self._conversation_union()
+        where, params = self._conversation_filters(
+            scope=scope,
+            realm=realm,
+            user_id=user_id,
+            query=query,
+            created_after=created_after,
+            created_before=created_before,
+        )
+        with self._connection() as db:
+            row = db.execute(
+                f"SELECT COUNT(*) AS count FROM ({union}) conversations{where}",
+                params,
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def search_conversations(
+        self,
+        *,
+        scope: str = "",
+        realm: str = "",
+        user_id: str = "",
+        query: str = "",
+        created_after: str = "",
+        created_before: str = "",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, object]]:
+        limit = self._limit(limit)
+        offset = max(0, int(offset))
+        union = self._conversation_union()
+        where, params = self._conversation_filters(
+            scope=scope,
+            realm=realm,
+            user_id=user_id,
+            query=query,
+            created_after=created_after,
+            created_before=created_before,
+        )
+        with self._connection() as db:
+            rows = db.execute(
+                f"""SELECT * FROM ({union}) conversations{where}
+                    ORDER BY created_at DESC,record_type,id DESC
+                    LIMIT ? OFFSET ?""",
+                (*params, limit, offset),
+            ).fetchall()
+        return self._dicts(rows)
+
     def _turn_select(self) -> tuple[str, str]:
         turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
         name = "name" if self._has_column("turns", "name") else "'' AS name"

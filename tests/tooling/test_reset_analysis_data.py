@@ -29,6 +29,19 @@ def _seed_safe_database(path):
         source_message_ids=("1",),
     )
 
+    store.add_failed_turn(
+        dm,
+        3,
+        "failed raw input",
+        name="User",
+        reply="fallback",
+        status="generation_failed",
+        stage="generation",
+        reply_delivered=True,
+        error_type="RuntimeError",
+        error_fingerprint="deadbeef",
+    )
+
     store.add_shared_call(guild, 2, "User", "public call")
     shared_id = int(
         store.db.execute(
@@ -135,6 +148,7 @@ def test_reset_deletes_only_raw_analysis_data_and_records_epoch(tmp_path):
     try:
         assert db.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 0
         assert db.execute("SELECT COUNT(*) FROM shared_calls").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM failed_turns").fetchone()[0] == 0
 
         preserved = {
             "memory_items": 1,
@@ -211,7 +225,7 @@ def test_dry_run_and_repeated_empty_reset_are_safe(tmp_path):
         event_log_path=str(events),
     )
     assert result is None
-    assert plan.raw_rows == {"turns": 1, "shared_calls": 1}
+    assert plan.raw_rows == {"turns": 1, "shared_calls": 1, "failed_turns": 1}
     assert all(path.exists() for path in telemetry)
 
     _, first = reset_analysis_data(
