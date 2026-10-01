@@ -464,7 +464,42 @@ class HinaClient(discord.Client):
         stage = "lock_wait"
         reply_delivered = False
         terminal_emitted = False
+        save_memory = False
+        answer = ""
         timings = {}
+
+        def persist_failed_turn(status: str, failed_stage: str, error_fields: dict, reply: str):
+            if not save_memory or self.store.seen(message.id):
+                return
+            try:
+                self.store.add_failed_turn(
+                    scope,
+                    message.id,
+                    text,
+                    name=message.author.display_name,
+                    reply=reply,
+                    status=status,
+                    stage=failed_stage,
+                    reply_delivered=reply_delivered,
+                    error_type=str(error_fields.get("error_type") or ""),
+                    error_fingerprint=str(error_fields.get("error_fingerprint") or ""),
+                )
+            except Exception as persist_exc:  # noqa: BLE001 - preserve the original failure
+                persist_error = safe_exception_fields(persist_exc, "failed_turn_persist")
+                self.events.emit(
+                    "turn.persistence_failed",
+                    level="warning",
+                    scope=scope_kind,
+                    target="failed_turn",
+                    **persist_error,
+                )
+                log.warning(
+                    "Failed-turn persistence failed (%s, turn_id=%s, fingerprint=%s)",
+                    type(persist_exc).__name__,
+                    current_turn_id(),
+                    persist_error["error_fingerprint"],
+                )
+
         try:
             with ExitStack() as exchange_stack:
                 async with _timed_channel_lock(
@@ -761,13 +796,16 @@ class HinaClient(discord.Client):
             terminal_emitted = True
             raise
         except discord.HTTPException as exc:
-            error = safe_exception_fields(exc, stage)
+            failed_stage = stage
+            error = safe_exception_fields(exc, failed_stage)
+            status = "delivery_failed" if failed_stage == "delivery" else "failed"
+            persist_failed_turn(status, failed_stage, error, answer if reply_delivered else "")
             self.events.emit(
                 "turn.failed",
                 level="error",
                 scope=scope_kind,
-                status="delivery_failed" if stage == "delivery" else "failed",
-                stage=stage,
+                status=status,
+                stage=failed_stage,
                 reply_delivered=reply_delivered,
                 elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
                 **error,
@@ -775,28 +813,69 @@ class HinaClient(discord.Client):
             terminal_emitted = True
             log.warning(
                 "Discord request failed (%s, stage=%s, turn_id=%s, fingerprint=%s)",
-                type(exc).__name__, stage, current_turn_id(), error["error_fingerprint"])
+                type(exc).__name__,
+                failed_stage,
+                current_turn_id(),
+                error["error_fingerprint"],
+            )
         except Exception as exc:  # noqa: BLE001 - isolate event/summary failures; redact logs
-            error = safe_exception_fields(exc, stage)
-            status = "generation_failed" if stage == "generation" else "failed"
+            failed_stage = stage
+            error = safe_exception_fields(exc, failed_stage)
+            status = "generation_failed" if failed_stage == "generation" else "failed"
+            log.warning(
+                "Conversation failed (%s, stage=%s, turn_id=%s, fingerprint=%s)",
+                type(exc).__name__,
+                failed_stage,
+                current_turn_id(),
+                error["error_fingerprint"],
+            )
+
+            fallback_reply = ""
+            if not reply_delivered:
+                fallback_reply = "지금은 답변을 이어가기 어렵네요. 잠시 후 다시 불러 주세요."
+                fallback_started = time.perf_counter()
+                try:
+                    await self.send_text(message.channel, fallback_reply)
+                    reply_delivered = True
+                    timings["fallback_delivery_ms"] = round(
+                        (time.perf_counter() - fallback_started) * 1000
+                    )
+                    self.events.emit(
+                        "turn.reply_delivered",
+                        scope=scope_kind,
+                        fallback=True,
+                        elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                        delivery_ms=timings["fallback_delivery_ms"],
+                        delivery_chunks=1,
+                    )
+                except Exception as fallback_exc:  # noqa: BLE001 - preserve the original failure
+                    fallback_error = safe_exception_fields(fallback_exc, "fallback_delivery")
+                    log.warning(
+                        "Fallback delivery failed (%s, turn_id=%s, fingerprint=%s)",
+                        type(fallback_exc).__name__,
+                        current_turn_id(),
+                        fallback_error["error_fingerprint"],
+                    )
+                    fallback_reply = ""
+
+            persisted_reply = (
+                fallback_reply
+                if fallback_reply
+                else answer if answer and reply_delivered else ""
+            )
+            persist_failed_turn(status, failed_stage, error, persisted_reply)
             self.events.emit(
                 "turn.failed",
                 level="error",
                 scope=scope_kind,
                 status=status,
-                stage=stage,
+                stage=failed_stage,
                 reply_delivered=reply_delivered,
                 elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
+                **timings,
                 **error,
             )
             terminal_emitted = True
-            log.warning(
-                "Conversation failed (%s, stage=%s, turn_id=%s, fingerprint=%s)",
-                type(exc).__name__, stage, current_turn_id(), error["error_fingerprint"])
-            try:
-                await self.send_text(message.channel, "지금은 답변을 이어가기 어렵네요. 잠시 후 다시 불러 주세요.")
-            except discord.HTTPException:
-                pass
         finally:
             if not terminal_emitted:
                 self.events.emit(
