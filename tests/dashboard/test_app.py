@@ -480,3 +480,18 @@ def test_detail_links_preserve_list_filters_and_return_paths(tmp_path):
         assert f'class="back" href="{path}?q=dashboard&amp;page=2"' in response.text
         response = client.get(detail, params={"return_to": "https://evil.example"})
         assert f'class="back" href="{path}"' in response.text
+
+
+def test_html_error_pages_preserve_status_and_json_clients(tmp_path):
+    client = dashboard_client(tmp_path)
+    for url, status in [("/traces/missing", 404), ("/memory/99999", 404),
+                        ("/reconciliation/99999", 404), ("/conversations/999/context", 404),
+                        ("/traces?page=bad", 422), ("/memory?page=0", 422)]:
+        response = client.get(url, headers={"Accept": "text/html"})
+        assert response.status_code == status
+        assert response.headers["content-type"].startswith("text/html")
+        assert "목록으로 돌아가기" in response.text
+        response = client.get(url, headers={"Accept": "application/json"})
+        assert response.status_code == status
+        assert "detail" in response.json()
+    assert client.get("/healthz").json()["status"] == "ok"

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import DashboardSettings
 from .filterutils import applied_filters, remove_filter_url
@@ -50,6 +53,35 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")
     app.state.repository = repository
     app.state.telemetry = telemetry
+
+    def html_page_request(request: Request) -> bool:
+        accept = request.headers.get("accept", "")
+        return (request.url.path != "/healthz"
+                and not request.url.path.startswith("/static/")
+                and ("text/html" in accept or not accept or accept == "*/*"))
+
+    def error_page(request: Request, status: int):
+        path = request.url.path
+        default = next((item for item in (
+            "/memory/cursors", "/traces", "/memory", "/reconciliation", "/conversations",
+            "/analytics", "/identity", "/summaries", "/relationships", "/state",
+        ) if path == item or path.startswith(item + "/")), "/")
+        return templates.TemplateResponse(
+            request=request, name="error.html", status_code=status,
+            context={"status": status, "return_url": back_url(request, default)},
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def html_http_error(request: Request, exc: StarletteHTTPException):
+        if exc.status_code == 404 and html_page_request(request):
+            return error_page(request, 404)
+        return await http_exception_handler(request, exc)
+
+    @app.exception_handler(RequestValidationError)
+    async def html_validation_error(request: Request, exc: RequestValidationError):
+        if html_page_request(request):
+            return error_page(request, 422)
+        return await request_validation_exception_handler(request, exc)
 
     @app.get("/healthz")
     def healthz():

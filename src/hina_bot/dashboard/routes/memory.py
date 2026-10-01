@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -11,7 +11,7 @@ def build_router(service: MemoryService, templates: Jinja2Templates) -> APIRoute
     @router.get("/memory", response_class=HTMLResponse)
     def memory_items(
         request: Request,
-        page: int = 1,
+        page: int = Query(1, ge=1),
         user_id: str = "",
         origin_scope_type: str = "",
         origin_guild_id: str = "",
