@@ -541,10 +541,12 @@ class TraceService(ReadService):
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
         )
+        metadata = self.repository.discord_scope_metadata()
         rows = []
         for raw in raw_rows:
             row = dict(raw)
             row.update(_conversation_scope_fields(row.get("scope")))
+            self._decorate_scope_names(row, metadata)
             row["search_matches"] = search_matches(
                 query,
                 (
@@ -582,10 +584,12 @@ class TraceService(ReadService):
         selected = self.repository.turn_by_id(turn_row_id)
         if selected is None:
             return None
+        metadata = self.repository.discord_scope_metadata()
         rows = []
         for row in self.repository.turn_context(turn_row_id, before=before, after=after):
             value = dict(row)
             value.update(_conversation_scope_fields(value.get("scope")))
+            self._decorate_scope_names(value, metadata)
             value["selected"] = int(value["id"]) == int(turn_row_id)
             rows.append(value)
         return {
