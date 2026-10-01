@@ -77,6 +77,100 @@ class AdminRepository:
             ).fetchall()
         return self._dicts(rows)
 
+    @staticmethod
+    def _channel_id_from_scope(scope: object, realm: str) -> str:
+        text = str(scope or "")
+        prefix = f"{realm}:channel:"
+        if not text.startswith(prefix):
+            return ""
+        channel = text[len(prefix):].split(":", 1)[0]
+        if not channel.isdigit() or int(channel) <= 0:
+            return ""
+        return channel
+
+    def dm_channel_candidates(self, user_id: str) -> list[str]:
+        """Return DM channel IDs observed for one user across retained state."""
+
+        user_id = str(user_id).strip()
+        if not user_id.isdigit() or int(user_id) <= 0:
+            return []
+        realm = f"dm:{user_id}"
+        channels: set[str] = set()
+
+        for table in (
+            "turns",
+            "failed_turns",
+            "summaries",
+            "shared_calls",
+            "shared_summaries",
+            "memory_extraction_cursors",
+        ):
+            columns = self._table_columns(table)
+            if not {"scope", "realm", "user_id"}.issubset(columns):
+                continue
+            with self._connection() as db:
+                rows = db.execute(
+                    f"SELECT scope FROM {table} WHERE realm=? AND user_id=?",
+                    (realm, user_id),
+                ).fetchall()
+            for row in rows:
+                channel = self._channel_id_from_scope(row["scope"], realm)
+                if channel:
+                    channels.add(channel)
+
+        memory_columns = self._table_columns("memory_items")
+        if {"origin_realm", "origin_channel_id", "user_id"}.issubset(memory_columns):
+            with self._connection() as db:
+                rows = db.execute(
+                    """SELECT origin_channel_id FROM memory_items
+                       WHERE origin_realm=? AND user_id=?""",
+                    (realm, user_id),
+                ).fetchall()
+            for row in rows:
+                channel = str(row["origin_channel_id"] or "")
+                if channel.isdigit() and int(channel) > 0:
+                    channels.add(channel)
+
+        proposal_columns = self._table_columns("memory_reconciliation_proposals")
+        if {"origin_realm", "origin_channel_id", "user_id"}.issubset(proposal_columns):
+            with self._connection() as db:
+                rows = db.execute(
+                    """SELECT origin_channel_id FROM memory_reconciliation_proposals
+                       WHERE origin_realm=? AND user_id=?""",
+                    (realm, user_id),
+                ).fetchall()
+            for row in rows:
+                channel = str(row["origin_channel_id"] or "")
+                if channel.isdigit() and int(channel) > 0:
+                    channels.add(channel)
+
+        for table in ("memory_modes", "chat_log_modes"):
+            if not self._table_exists(table):
+                continue
+            with self._connection() as db:
+                rows = db.execute(
+                    f"SELECT scope FROM {table} WHERE scope LIKE ?",
+                    (f"{realm}:channel:%",),
+                ).fetchall()
+            for row in rows:
+                channel = self._channel_id_from_scope(row["scope"], realm)
+                if channel:
+                    channels.add(channel)
+
+        if self._table_exists("notes"):
+            prefix = f"config:chatlog_capture:{realm}:channel:"
+            with self._connection() as db:
+                rows = db.execute(
+                    "SELECT scope FROM notes WHERE scope LIKE ?",
+                    (f"{prefix}%",),
+                ).fetchall()
+            for row in rows:
+                channel = str(row["scope"] or "")[len(prefix):].split(":", 1)[0]
+                if channel.isdigit() and int(channel) > 0:
+                    channels.add(channel)
+
+        return sorted(channels, key=int)
+
     def note_rows(self) -> list[dict[str, object]]:
         if not self._table_exists("notes"):
             return []
