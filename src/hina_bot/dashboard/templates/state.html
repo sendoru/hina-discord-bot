@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_scope_picker.html" import scope_picker %}
+{% from "_scope_ui.html" import discord_ref, scope_key %}
 {% block title %}State · Hina Dashboard{% endblock %}
 {% block content %}
 {% macro chain_rows(chain, include_server=true) -%}
@@ -115,8 +116,12 @@
     <div>
       <h2>Effective target state</h2>
       <p class="muted">
-        <code>{{ data.effective.realm }}</code> ·
-        <code>channel:{{ data.effective.scope.channel_id }}</code> ·
+        {% if data.effective.scope.guild_id is not none %}
+          {{ discord_ref(data.effective.guild_name, data.effective.scope.guild_id) }} ·
+        {% else %}
+          <span class="muted">Direct message</span> ·
+        {% endif %}
+        {{ discord_ref(data.effective.channel_name, data.effective.scope.channel_id, channel=true) }} ·
         {% if data.effective.user_name %}{{ data.effective.user_name }} · {% endif %}<code>user:{{ data.effective.scope.user_id }}</code>
       </p>
     </div>
@@ -189,7 +194,7 @@
     a particular answer received the note.
   </p>
   {% if data.effective.scope.guild_id is not none %}
-  <h3>Server note · <code>{{ data.effective.realm }}</code></h3>
+  <h3>Server note · {{ discord_ref(data.effective.guild_name, data.effective.scope.guild_id) }}</h3>
   <div class="message">{{ data.effective.notes.server or "—" }}</div>
   {% endif %}
   <h3>User note{% if data.effective.user_name %} · {{ data.effective.user_name }}{% endif %} · <code>{{ data.effective.user_note_key }}</code></h3>
@@ -205,7 +210,7 @@
       <thead><tr><th>Scope</th><th>Mode</th></tr></thead>
       <tbody>
       {% for row in data.memory_overrides %}
-        <tr><td><code>{{ row.scope }}</code></td><td>{{ row.mode }}</td></tr>
+        <tr><td>{{ scope_key(row.scope, row.guild_name, row.channel_name) }}</td><td>{{ row.mode }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -228,7 +233,7 @@
       <tbody>
       {% for row in data.chat_overrides %}
         <tr>
-          <td><code>{{ row.scope }}</code></td>
+          <td>{{ scope_key(row.scope, row.guild_name, row.channel_name) }}</td>
           <td>{{ row.enabled or "inherit" }}</td>
           <td>{{ row.capture or "inherit" }}</td>
         </tr>
@@ -261,7 +266,7 @@
         <tr>
           <td>{{ row.kind }}</td>
           <td>
-            <code>{{ row.scope }}</code>
+            {{ scope_key(row.scope, row.guild_name, row.channel_name) }}
             {% if row.user_id %}
               <br>{% if row.user_name %}{{ row.user_name }} · {% endif %}<code>{{ row.user_id }}</code>
             {% endif %}
