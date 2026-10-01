@@ -140,6 +140,19 @@ class Store:
                 scope TEXT PRIMARY KEY,
                 mode TEXT NOT NULL CHECK(mode IN ('on','off'))
             );
+            CREATE TABLE IF NOT EXISTS guild_metadata (
+                guild_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS channel_metadata (
+                channel_id TEXT PRIMARY KEY,
+                guild_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS channel_metadata_guild
+                ON channel_metadata(guild_id, channel_id);
             CREATE TABLE IF NOT EXISTS notes (scope TEXT PRIMARY KEY, text TEXT NOT NULL);
         """)
         columns = {row["name"] for row in self.db.execute("PRAGMA table_info(turns)")}
@@ -234,6 +247,40 @@ class Store:
             if row is not None and str(row[0] or "").strip():
                 return str(row[0])[:100]
         return ""
+
+    def observe_guild_channel(
+        self,
+        guild_id: int,
+        guild_name: str,
+        channel_id: int,
+        channel_name: str,
+    ):
+        """Persist the latest observed human-readable guild and channel names."""
+        guild_name = str(guild_name)[:100]
+        channel_name = str(channel_name)[:100]
+        if not guild_name or not channel_name:
+            return
+        with self.db:
+            self.db.execute(
+                """INSERT INTO guild_metadata(guild_id,name,updated_at)
+                   VALUES (?,?,CURRENT_TIMESTAMP)
+                   ON CONFLICT(guild_id) DO UPDATE SET
+                       name=excluded.name,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE guild_metadata.name<>excluded.name""",
+                (str(guild_id), guild_name),
+            )
+            self.db.execute(
+                """INSERT INTO channel_metadata(channel_id,guild_id,name,updated_at)
+                   VALUES (?,?,?,CURRENT_TIMESTAMP)
+                   ON CONFLICT(channel_id) DO UPDATE SET
+                       guild_id=excluded.guild_id,
+                       name=excluded.name,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE channel_metadata.guild_id<>excluded.guild_id
+                      OR channel_metadata.name<>excluded.name""",
+                (str(channel_id), str(guild_id), channel_name),
+            )
 
     def history(self, scope: Scope):
         return list(reversed(self.db.execute(
