@@ -59,7 +59,7 @@
     </div>
   </div>
   <div class="filter-row grouped-filter-row">
-    {{ scope_picker("target", data.filters.target_scope_type, data.filters.target_guild_id, data.filters.target_channel_id, label="Target scope", allow_any=false) }}
+    {{ scope_picker("target", data.filters.target_scope_type, data.filters.target_guild_id, data.filters.target_channel_id, label="Target scope", allow_any=false, dm_channel=false) }}
     <div class="filter-actions filter-row-actions">
       <button type="submit">Compute profile</button>
       <a class="button secondary" href="/relationships">Reset</a>
@@ -79,10 +79,10 @@
   Target:
   {% if data.target.scope_type == "guild" %}
     <code>guild:{{ data.target.guild_id }}</code> ·
+    <code>channel:{{ data.target.channel_id }}</code>.
   {% else %}
-    <code>dm</code> ·
+    <code>dm</code>.
   {% endif %}
-  <code>channel:{{ data.target.channel_id }}</code>.
   {% if data.target.scope_type == "dm" %}
   Owner-DM relationship memories are shown with raw content below; cross-space IMPLICIT projection is
   not used in DM.
