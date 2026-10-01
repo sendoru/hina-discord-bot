@@ -446,3 +446,24 @@ def test_unknown_reconciliation_proposal_returns_404(tmp_path):
     response = client.get("/reconciliation/9999")
 
     assert response.status_code == 404
+
+
+def test_invalid_filters_preserve_input_and_do_not_query(tmp_path, monkeypatch):
+    client = dashboard_client(tmp_path)
+    def forbidden(**kwargs):
+        raise AssertionError("Invalid filters must not reach the repository")
+    monkeypatch.setattr(client.app.state.repository, "count_memory_items", forbidden)
+    for value in ("2", "bad", "nan", "inf", "-0.1"):
+        response = client.get("/memory", params={"confidence_min": value})
+        assert response.status_code == 200
+        assert f'value="{value}"' in response.text
+        assert 'aria-invalid="true"' in response.text
+        assert "입력 오류로 조회하지 않았습니다" in response.text
+    for path in ("/traces", "/conversations", "/analytics", "/identity", "/reconciliation"):
+        field = "created_after" if path == "/reconciliation" else "after"
+        response = client.get(path, params={field: "bad-date"})
+        assert response.status_code == 200
+        assert 'value="bad-date"' in response.text
+        assert "올바른 날짜" in response.text
+    response = client.get("/memory?confidence_min=0.9&confidence_max=0.1")
+    assert "끝 값은 시작 값 이상" in response.text

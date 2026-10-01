@@ -51,6 +51,7 @@
   </div>
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters search-filter" method="get">
   <div class="search-primary">
     <label for="relationship-user-search">User search</label>

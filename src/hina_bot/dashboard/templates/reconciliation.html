@@ -24,6 +24,7 @@
   <article class="card"><span>Corrects / conflicts</span><strong>{{ data.stats.relations.get("corrects", 0) }} / {{ data.stats.relations.get("conflicts", 0) }}</strong></article>
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters search-filter" method="get">
   <div class="search-primary">
     <label for="reconciliation-search">Proposal search</label>
@@ -62,13 +63,13 @@
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Confidence</legend>
-        <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥">
-        <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤">
+        <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥" {% if data.filter_errors and data.filter_errors.get("confidence_min") %}aria-invalid="true" aria-describedby="error-confidence_min"{% endif %}>{% if data.filter_errors and data.filter_errors.get("confidence_min") %}<span id="error-confidence_min" class="field-error">{{ data.filter_errors["confidence_min"] }}</span>{% endif %}
+        <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤" {% if data.filter_errors and data.filter_errors.get("confidence_max") %}aria-invalid="true" aria-describedby="error-confidence_max"{% endif %}>{% if data.filter_errors and data.filter_errors.get("confidence_max") %}<span id="error-confidence_max" class="field-error">{{ data.filter_errors["confidence_max"] }}</span>{% endif %}
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Created</legend>
-        <label class="time-field">After<input type="datetime-local" name="created_after" value="{{ data.filters.created_after }}"></label>
-        <label class="time-field">Before<input type="datetime-local" name="created_before" value="{{ data.filters.created_before }}"></label>
+        <label class="time-field">After<input type="{{ 'text' if data.filter_errors and data.filter_errors.get('created_after') else 'datetime-local' }}" name="created_after" value="{{ data.filters.created_after }}" {% if data.filter_errors and data.filter_errors.get("created_after") %}aria-invalid="true" aria-describedby="error-created_after"{% endif %}>{% if data.filter_errors and data.filter_errors.get("created_after") %}<span id="error-created_after" class="field-error">{{ data.filter_errors["created_after"] }}</span>{% endif %}</label>
+        <label class="time-field">Before<input type="{{ 'text' if data.filter_errors and data.filter_errors.get('created_before') else 'datetime-local' }}" name="created_before" value="{{ data.filters.created_before }}" {% if data.filter_errors and data.filter_errors.get("created_before") %}aria-invalid="true" aria-describedby="error-created_before"{% endif %}>{% if data.filter_errors and data.filter_errors.get("created_before") %}<span id="error-created_before" class="field-error">{{ data.filter_errors["created_before"] }}</span>{% endif %}</label>
       </fieldset>
       <div class="filter-actions filter-row-actions">
         <button type="submit">Apply filters</button>

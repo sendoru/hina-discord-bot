@@ -469,3 +469,7 @@ SQLite 보존 데이터 수입니다.
 
 Memory failures는 `turn.completed`의 실패 횟수 합계와 실패가 있는 trace 수를 구분합니다.
 카드는 `/traces?memory_failure=yes`로 연결되며 실제 `memory_failures > 0` 조건을 사용합니다.
+
+날짜와 confidence 필터는 공통 검증을 거칩니다. Confidence는 유한한 `0..1` 범위이며,
+시작 값은 끝 값 이하여야 합니다. 오류가 있으면 조회를 수행하지 않고 입력을 유지하며
+필드 옆에 한국어 오류 이유를 표시합니다. 잘못된 날짜는 text 입력으로 보존합니다.

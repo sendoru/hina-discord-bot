@@ -9,6 +9,7 @@
   </div>
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters filter-layout filter-layout-compact" method="get">
   <fieldset class="filter-cluster filter-cluster-3">
     <legend>Match</legend>

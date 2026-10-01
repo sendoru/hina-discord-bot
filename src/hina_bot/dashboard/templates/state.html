@@ -18,7 +18,8 @@
 </section>
 
 <section class="state-query-panel" aria-label="State lookup controls">
-  <form class="state-control-section state-scope-form" method="get" aria-labelledby="state-scope-title">
+  {% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
+<form class="state-control-section state-scope-form" method="get" aria-labelledby="state-scope-title">
     {% if data.filters.q %}<input type="hidden" name="q" value="{{ data.filters.q }}">{% endif %}
     <header class="state-control-heading">
       <div>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ..filterutils import confidence_value, validate_filters
 from ..repository import AdminRepository
 from ..scopepicker import normalize_scope_filter
 from ..scopepresenter import parse_scope_key, present_turn_scope
@@ -63,14 +64,12 @@ class ReconciliationService(MemoryService):
         created_after: str = "",
         created_before: str = "",
     ) -> dict[str, object]:
-        def optional_float(value: str) -> float | None:
-            text = value.strip()
-            if not text:
-                return None
-            try:
-                return min(1.0, max(0.0, float(text)))
-            except ValueError:
-                return None
+        errors = validate_filters({
+            "confidence_min": confidence_min,
+            "confidence_max": confidence_max,
+            "created_after": created_after,
+            "created_before": created_before,
+        }, self.timezone)
 
         origin_scope = normalize_scope_filter(
             scope_type=origin_scope_type,
@@ -87,12 +86,12 @@ class ReconciliationService(MemoryService):
             "kind": kind.strip(),
             "retry": retry.strip().lower(),
             "query": query.strip(),
-            "confidence_min": optional_float(confidence_min),
-            "confidence_max": optional_float(confidence_max),
+            "confidence_min": confidence_value(confidence_min),
+            "confidence_max": confidence_value(confidence_max),
             "created_after": db_utc_timestamp(created_after, self.timezone),
             "created_before": db_utc_timestamp(created_before, self.timezone),
         }
-        total = self.repository.count_reconciliation_proposals(**filters)
+        total = 0 if errors else self.repository.count_reconciliation_proposals(**filters)
         pagination = self._page(page, page_size, total)
         if pagination.number > pagination.pages:
             pagination = Page(pagination.pages, pagination.size, pagination.total)
@@ -100,7 +99,7 @@ class ReconciliationService(MemoryService):
             **filters,
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
-        )
+        ) if not errors else []
         names = self.repository.latest_user_names()
         proposal_rows = []
         for row in rows:
@@ -114,9 +113,13 @@ class ReconciliationService(MemoryService):
             )
             proposal_rows.append(value)
         return {
+            "filter_errors": errors,
             "rows": proposal_rows,
             "page": pagination,
-            "stats": self.repository.reconciliation_stats(**filters),
+            "stats": self.repository.reconciliation_stats(**filters) if not errors else {
+                "total": 0, "average_confidence": None, "retry_suspects": 0,
+                "relationship_proposals": 0, "relations": {},
+            },
             "filters": {
                 "user_id": user_id.strip(),
                 "origin_scope_type": origin_scope.scope_type,

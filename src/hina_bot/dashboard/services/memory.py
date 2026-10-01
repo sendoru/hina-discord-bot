@@ -19,6 +19,7 @@ from hina_bot.core.relationship_profile import (
 )
 from hina_bot.core.routing import Scope
 
+from ..filterutils import confidence_value, validate_filters
 from ..scopepicker import infer_target_scope_type, normalize_scope_filter
 from ..scopepresenter import parse_scope_key, present_turn_scope
 from ..searchutils import search_matches
@@ -253,14 +254,14 @@ class MemoryService(ReadService):
         updated_after: str = "",
         updated_before: str = "",
     ) -> dict[str, object]:
-        def optional_float(value: str) -> float | None:
-            text = value.strip()
-            if not text:
-                return None
-            try:
-                return min(1.0, max(0.0, float(text)))
-            except ValueError:
-                return None
+        errors = validate_filters({
+            "confidence_min": confidence_min,
+            "confidence_max": confidence_max,
+            "created_after": created_after,
+            "created_before": created_before,
+            "updated_after": updated_after,
+            "updated_before": updated_before,
+        }, self.timezone)
 
         origin_scope = normalize_scope_filter(
             scope_type=origin_scope_type,
@@ -278,14 +279,14 @@ class MemoryService(ReadService):
             "status": status.strip(),
             "relationship": relationship.strip(),
             "query": query.strip(),
-            "confidence_min": optional_float(confidence_min),
-            "confidence_max": optional_float(confidence_max),
+            "confidence_min": confidence_value(confidence_min),
+            "confidence_max": confidence_value(confidence_max),
             "created_after": db_utc_timestamp(created_after, self.timezone),
             "created_before": db_utc_timestamp(created_before, self.timezone),
             "updated_after": db_utc_timestamp(updated_after, self.timezone),
             "updated_before": db_utc_timestamp(updated_before, self.timezone),
         }
-        total = self.repository.count_memory_items(**filters)
+        total = 0 if errors else self.repository.count_memory_items(**filters)
         pagination = self._page(page, page_size, total)
         if pagination.number > pagination.pages:
             pagination = Page(pagination.pages, pagination.size, pagination.total)
@@ -293,7 +294,7 @@ class MemoryService(ReadService):
             **filters,
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
-        )
+        ) if not errors else []
         view_rows = []
         for raw in rows:
             row = self._memory_row(raw)
@@ -306,6 +307,7 @@ class MemoryService(ReadService):
             )
             view_rows.append(row)
         return {
+            "filter_errors": errors,
             "rows": view_rows,
             "page": pagination,
             "filters": {

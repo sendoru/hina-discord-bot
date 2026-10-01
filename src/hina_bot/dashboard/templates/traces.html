@@ -13,6 +13,7 @@
   {{ telemetry_window(data.available) }}
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters search-filter" method="get">
   <div class="search-primary">
     <label for="trace-search">Trace search</label>
@@ -59,8 +60,8 @@
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Time window</legend>
-        <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
-        <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
+        <label class="time-field">After<input type="{{ 'text' if data.filter_errors and data.filter_errors.get('after') else 'datetime-local' }}" name="after" value="{{ data.filters.after }}" {% if data.filter_errors and data.filter_errors.get("after") %}aria-invalid="true" aria-describedby="error-after"{% endif %}>{% if data.filter_errors and data.filter_errors.get("after") %}<span id="error-after" class="field-error">{{ data.filter_errors["after"] }}</span>{% endif %}</label>
+        <label class="time-field">Before<input type="{{ 'text' if data.filter_errors and data.filter_errors.get('before') else 'datetime-local' }}" name="before" value="{{ data.filters.before }}" {% if data.filter_errors and data.filter_errors.get("before") %}aria-invalid="true" aria-describedby="error-before"{% endif %}>{% if data.filter_errors and data.filter_errors.get("before") %}<span id="error-before" class="field-error">{{ data.filter_errors["before"] }}</span>{% endif %}</label>
       </fieldset>
       <div class="filter-actions filter-row-actions">
         <button type="submit">Apply filters</button>

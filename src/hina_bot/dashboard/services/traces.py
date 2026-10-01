@@ -4,6 +4,7 @@ import json
 from collections import Counter, defaultdict
 
 from ..epochs import epoch_view, select_observability_epoch
+from ..filterutils import validate_filters
 from ..repository import AdminRepository
 from ..scopepresenter import parse_scope_key, present_turn_scope
 from ..searchutils import search_matches
@@ -278,6 +279,7 @@ class TraceService(ReadService):
         query: str = "",
         epoch: str = "",
     ) -> dict[str, object]:
+        errors = validate_filters({"after": after, "before": before}, self.timezone)
         selection = select_observability_epoch(
             self.telemetry.snapshot(),
             self.repository.observability_epochs(),
@@ -348,13 +350,14 @@ class TraceService(ReadService):
                     return False
             return True
 
-        rows = [row for row in rows if keep(row)]
+        rows = [row for row in rows if keep(row)] if not errors else []
         pagination = self._page(page, page_size, len(rows))
         if pagination.number > pagination.pages:
             pagination = Page(pagination.pages, pagination.size, pagination.total)
         start = (pagination.number - 1) * pagination.size
         end = start + pagination.size
         return {
+            "filter_errors": errors,
             "rows": rows[start:end],
             "page": pagination,
             "available": {
@@ -550,6 +553,7 @@ class TraceService(ReadService):
         after: str = "",
         before: str = "",
     ) -> dict[str, object]:
+        errors = validate_filters({"after": after, "before": before}, self.timezone)
         page_size = min(100, max(10, int(page_size)))
         page = max(1, int(page))
         query = query.strip()
@@ -561,7 +565,7 @@ class TraceService(ReadService):
             "created_after": db_utc_timestamp(after, self.timezone),
             "created_before": db_utc_timestamp(before, self.timezone),
         }
-        total = self.repository.count_conversations(**repository_filters)
+        total = 0 if errors else self.repository.count_conversations(**repository_filters)
         pagination = self._page(page, page_size, total)
         if pagination.number > pagination.pages:
             pagination = Page(pagination.pages, pagination.size, pagination.total)
@@ -569,7 +573,7 @@ class TraceService(ReadService):
             **repository_filters,
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
-        )
+        ) if not errors else []
         rows = []
         for raw in raw_rows:
             row = present_turn_scope(raw)
@@ -588,6 +592,7 @@ class TraceService(ReadService):
             )
             rows.append(row)
         return {
+            "filter_errors": errors,
             "rows": rows,
             "page": pagination,
             "filters": {
