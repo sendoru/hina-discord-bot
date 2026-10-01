@@ -3,6 +3,7 @@
 {% from "_scope_picker.html" import scope_picker %}
 {% from "_status_ui.html" import status_badge %}
 {% from "_scope_ui.html" import scope_origin %}
+{% from "_mobile_list_ui.html" import mobile_list %}
 {% block title %}Memory · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -95,7 +96,8 @@
 
 <section class="panel flush">
   {% if data.rows %}
-  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+  {{ mobile_list(data, request, "memory") }}
+  <div class="table-wrap desktop-result-list" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table memory-table">
       <thead>
         <tr>

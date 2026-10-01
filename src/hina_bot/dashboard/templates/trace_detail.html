@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_scope_ui.html" import turn_scope, scope_origin %}
 {% from "_status_ui.html" import status_badge %}
+{% from "_metric_ui.html" import observed %}
 {% block title %}Trace {{ data.turn_id }} · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -10,8 +11,15 @@
   </div>
 </section>
 
+<nav class="section-nav" aria-label="Trace sections">
+  {% if data.summary %}<a href="#trace-summary">Summary</a>{% endif %}
+  <a href="#stored-turn">Stored turn</a>
+  {% if data.context_provenance or data.context_telemetry %}<a href="#context-provenance">Context</a>{% endif %}
+  <a href="#trace-timeline">Timeline</a>
+</nav>
+
 {% if data.summary %}
-<section class="cards">
+<section class="cards section-anchor" id="trace-summary">
   <article class="card"><span>Status</span><strong>{{ status_badge(data.summary.status) }}</strong></article>
   <article class="card"><span>Scope</span><strong>{{ data.summary.scope or "—" }}</strong></article>
   <article class="card"><span>Tier</span><strong>{{ data.summary.model_tier or "—" }}</strong></article>
@@ -22,7 +30,7 @@
 {% endif %}
 
 {% if data.stored %}
-<section class="panel">
+<section class="panel section-anchor" id="stored-turn">
   <h2>Stored turn</h2>
   <dl class="metadata">
     {{ turn_scope(data.stored) }}
@@ -41,14 +49,14 @@
   {% endif %}
 </section>
 {% else %}
-<section class="notice {{ data.raw_turn_availability.severity }}">
+<section class="notice section-anchor {{ data.raw_turn_availability.severity }}" id="stored-turn">
   <strong>{{ data.raw_turn_availability.title }}</strong><br>
   {{ data.raw_turn_availability.message }}
 </section>
 {% endif %}
 
 {% if data.context_provenance %}
-<section class="panel">
+<section class="panel section-anchor" id="context-provenance">
   <div class="panel-heading">
     <div>
       <h2>Context &amp; provenance</h2>
@@ -219,35 +227,34 @@
 
   {% if data.context_provenance.truncated.get("sources", 0) or data.context_provenance.truncated.get("structured_memory", 0) %}
   <div class="notice inline-notice">
-    Snapshot was bounded: {{ data.context_provenance.truncated.get("sources", 0) }} source rows and
-    {{ data.context_provenance.truncated.get("structured_memory", 0) }} structured-memory rows were omitted.
+    스냅샷 크기 제한으로 출처 {{ data.context_provenance.truncated.get("sources", 0) }}개와 구조화 메모리 {{ data.context_provenance.truncated.get("structured_memory", 0) }}개가 생략되었습니다.
   </div>
   {% endif %}
 </section>
 {% elif data.context_telemetry %}
-<section class="panel">
+<section class="panel section-anchor" id="context-provenance">
   <h2>Context &amp; provenance</h2>
   <p class="muted">이 trace의 본문 없는 요청 관측 데이터가 남아 있습니다.</p>
   <div class="cards">
-    <article class="card"><span>Channel</span><strong>{{ data.context_telemetry.context_channel_items or 0 }}</strong></article>
-    <article class="card"><span>Reply chain</span><strong>{{ data.context_telemetry.context_reply_items or 0 }}</strong></article>
-    <article class="card"><span>Public context</span><strong>{{ data.context_telemetry.context_public_items or 0 }}</strong></article>
-    <article class="card"><span>Structured memory</span><strong>{{ data.context_telemetry.context_structured_items or 0 }}</strong></article>
-    <article class="card"><span>Lore</span><strong>{{ data.context_telemetry.context_lore_items or 0 }}</strong></article>
-    <article class="card"><span>Visuals</span><strong>{{ data.context_telemetry.context_visual_items or 0 }}</strong></article>
+    <article class="card"><span>Channel</span><strong>{{ observed(data.context_telemetry.context_channel_items) }}</strong></article>
+    <article class="card"><span>Reply chain</span><strong>{{ observed(data.context_telemetry.context_reply_items) }}</strong></article>
+    <article class="card"><span>Public context</span><strong>{{ observed(data.context_telemetry.context_public_items) }}</strong></article>
+    <article class="card"><span>Structured memory</span><strong>{{ observed(data.context_telemetry.context_structured_items) }}</strong></article>
+    <article class="card"><span>Lore</span><strong>{{ observed(data.context_telemetry.context_lore_items) }}</strong></article>
+    <article class="card"><span>Visuals</span><strong>{{ observed(data.context_telemetry.context_visual_items) }}</strong></article>
   </div>
   <p class="muted">
-    Adapter blocked {{ data.context_telemetry.context_adapter_blocked or 0 }} rows;
-    provider boundary blocked {{ data.context_telemetry.context_provider_blocked or 0 }} rows.
-    Factual recall: {{ data.context_telemetry.factual_recall_status or "unknown" }}
+    Adapter에서 차단된 데이터 {{ observed(data.context_telemetry.context_adapter_blocked) }}개;
+    공급자 경계에서 차단된 데이터 {{ observed(data.context_telemetry.context_provider_blocked) }}개.
+    과거 사실 회상: {{ data.context_telemetry.factual_recall_status or "Unknown" }}
     (detected={{ "yes" if data.context_telemetry.factual_recall_detected else "no" }},
-    candidates={{ data.context_telemetry.factual_recall_candidates or 0 }},
-    selected={{ data.context_telemetry.factual_recall_selected or 0 }}).
+    candidates={{ observed(data.context_telemetry.factual_recall_candidates) }},
+    selected={{ observed(data.context_telemetry.factual_recall_selected) }}).
   </p>
 </section>
 {% endif %}
 
-<section class="panel">
+<section class="panel section-anchor" id="trace-timeline">
   <h2>Timeline</h2>
   {% if data.timeline %}
     {% for item in data.timeline %}

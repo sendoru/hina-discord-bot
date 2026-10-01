@@ -2876,3 +2876,26 @@ pre {
 
 .value-legend { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 0 0 18px; }
 .card small { display: block; font-size: 12px; line-height: 1.6; color: var(--muted); }
+
+/* Operational list cards preserve metadata in disclosures on narrow screens. */
+.mobile-result-list { display: none; }
+.page-heading h1, .mobile-result-title, .identifier-disclosure, .mobile-result-card {
+  min-width: 0; overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .desktop-result-list { display: none; }
+  .mobile-result-list { display: grid; gap: 12px; padding: 12px; }
+  .mobile-result-card { padding: 14px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--panel); }
+  .mobile-result-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .mobile-result-head time { color: var(--muted); font-size: 12px; }
+  .mobile-result-title { display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    min-height: 44px; font-weight: 650; }
+  .mobile-result-preview { white-space: pre-wrap; line-height: 1.65; display: -webkit-box;
+    -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .mobile-result-card > details { margin-top: 12px; }
+  .mobile-result-card > details > summary, .section-nav a, .pagination a { min-height: 44px; }
+  .mobile-result-card > details > summary { display: list-item; padding: 10px 0; }
+  .section-nav a { display: inline-flex; align-items: center; }
+  .mobile-result-card .metadata { grid-template-columns: 1fr; }
+}

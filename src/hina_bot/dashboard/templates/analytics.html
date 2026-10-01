@@ -92,17 +92,17 @@
   <article class="card">
     <span>Total turn p50 / p95</span>
     <strong>{{ data.performance.turn_latency.p50 if data.performance.turn_latency.p50 is not none else "—" }} / {{ data.performance.turn_latency.p95 if data.performance.turn_latency.p95 is not none else "—" }} ms</strong>
-    <small>preflight + terminal turn</small>
+    <small>사전 처리 + 대화 종료</small>
   </article>
   <article class="card">
     <span>Post-reply avg</span>
     <strong>{{ data.performance.post_reply.average if data.performance.post_reply.average is not none else "—" }} ms</strong>
-    <small>work after Discord delivery</small>
+    <small>Discord 전달 이후 작업</small>
   </article>
   <article class="card">
     <span>Generation residual avg</span>
     <strong>{{ data.performance.generation.residual.average if data.performance.generation.residual.average is not none else "—" }} ms</strong>
-    <small>generation stage minus critical API calls</small>
+    <small>생성 단계에서 핵심 API 호출을 제외한 시간</small>
   </article>
 </section>
 
@@ -146,7 +146,7 @@
   <h2>Request size attribution</h2>
   <p class="muted">직렬화된 문자 수는 본문을 저장하지 않는 기여도 추정치입니다. 입력 토큰은 공급자 보고값이 기준입니다.</p>
   <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
-    <table>
+    <table class="wide-table">
       <thead><tr><th>Section</th><th>Avg chars</th><th>p95</th><th>Coverage</th></tr></thead>
       <tbody>
       {% for name, metric in data.performance.context_chars.items() %}
@@ -165,7 +165,7 @@
 <section class="panel">
   <h2>Token fields</h2>
   <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
-    <table>
+    <table class="wide-table">
       <thead><tr><th>Field</th><th>Sum of known values</th><th>Known rows</th><th>Missing rows</th></tr></thead>
       <tbody>
       {% for field, metric in data.usage.tokens.items() %}
@@ -209,7 +209,7 @@
     </table>
     {% else %}<p class="muted">이 구간에 기본·최종 등급 쌍이 없습니다.</p>{% endif %}
     {% if data.routing.baseline_to_final.missing %}
-    <p class="muted">{{ data.routing.baseline_to_final.missing }} answer rows lack a complete pair.</p>
+    <p class="muted">{{ data.routing.baseline_to_final.missing }} 개의 응답에 완전한 등급 쌍이 없습니다.</p>
     {% endif %}
   </section>
 
@@ -292,7 +292,7 @@
 
 <section class="panel">
   <h2>Shadow classifier proposals</h2>
-  <p class="muted">{{ data.routing.shadow.count }} retained <code>model_route_shadow</code> rows.</p>
+  <p class="muted">{{ data.routing.shadow.count }} 개의 <code>model_route_shadow</code> 데이터가 보존되어 있습니다.</p>
   <div class="grid-2 nested-grid">
     <div>
       <h3>Model baseline → proposal</h3>
@@ -369,7 +369,7 @@
   <h2>{{ title }}</h2>
   {% if rows %}
   <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
-    <table>
+    <table class="wide-table">
       <thead><tr><th>Name</th><th>Calls</th><th>Errors</th><th>Total tokens</th><th>Usage coverage</th><th>Avg latency</th><th>p95</th><th>Search calls</th><th>Empty retries</th></tr></thead>
       <tbody>
       {% for row in rows %}
@@ -408,7 +408,7 @@
   <h2>Daily provider / model breakdown · {{ dashboard_timezone }}</h2>
   {% if data.usage.daily %}
   <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
-    <table>
+    <table class="wide-table">
       <thead><tr><th>Local day</th><th>Provider</th><th>Model</th><th>Calls</th><th>Errors</th><th>Total tokens</th><th>Coverage</th><th>Avg latency</th></tr></thead>
       <tbody>
       {% for row in data.usage.daily %}

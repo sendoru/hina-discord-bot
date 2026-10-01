@@ -2,6 +2,7 @@
 {% from "_filter_ui.html" import active_filter_chips %}
 {% from "_scope_picker.html" import scope_picker %}
 {% from "_scope_ui.html" import scope_origin, scope_user %}
+{% from "_mobile_list_ui.html" import mobile_list %}
 {% block title %}Reconciliation · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -91,7 +92,8 @@
 
 <section class="panel flush">
   {% if data.rows %}
-  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+  {{ mobile_list(data, request, "reconciliation") }}
+  <div class="table-wrap desktop-result-list" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table reconciliation-table">
       <colgroup>
         <col class="proposal-id"><col class="proposal-relation"><col class="proposal-confidence">

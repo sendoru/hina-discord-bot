@@ -499,5 +499,22 @@ Identity의 reference/user group은 짧은 해시 표시와 전체 값 disclosur
 제공합니다. `—`는 미관측·미보존·해당 없음, `Unknown`은 상태 판단 불가입니다. 작은 보조
 텍스트는 최소 12px로 조정하고 낮은 대비의 보조 색을 밝힙니다. 넓은 CSS 재정리는 포함하지 않습니다.
 
+Trace 상세의 Summary·Stored turn·Context·Timeline 이동 링크는 해당 구간이 있을 때
+표시합니다. 600px 이하에서는 Traces·Memory·Reconciliation을 카드로 보여주며 시간·상태·
+상세 링크·본문 요약을 먼저 배치합니다. 메타데이터는 펼치기로 보존하고, 600px 초과 및
+Analytics 등의 분석 표는 기존 가로 스크롤을 유지합니다.
+
 날짜 입력은 표시 시간대로 변환하되 초·소수 초를 유지합니다. 시간대가 포함된 URL도
 빈 날짜 입력으로 바뀌지 않으며 다시 적용할 때 같은 시각으로 조회합니다.
+
+브라우저 검증은 합성 데이터로 재현합니다. Playwright를 별도로 설치한 뒤 다음을 실행합니다.
+
+```bash
+python tests/dashboard/check_browser_ui.py --browser /usr/bin/chromium
+```
+
+기본 Playwright Chromium을 설치했다면 `--browser`를 생략할 수 있습니다. 픽스처·스크린샷·
+결과 JSON은 매번 `/tmp/hina-dashboard-browser-*`에 생성됩니다. 1440·768·390px에서 긴
+한국어 본문·식별자, 빈 결과, 부분 데이터, 오류 입력, 목록 복귀와 키보드 동작을 점검합니다.
+실제 기기·스크린리더 검증은 별도이며, 밀리초보다 정밀한 날짜는 값을 보존하는 텍스트
+입력으로 표시합니다.

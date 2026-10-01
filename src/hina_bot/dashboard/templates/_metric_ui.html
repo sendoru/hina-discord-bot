@@ -3,3 +3,7 @@
 <small>{% if metric.partial %}부분 합계 · {% elif metric.value is none %}미관측 · {% endif %}관측 {{ metric.known }}건 / 누락 {{ metric.missing }}건</small>
 <small>현재 epoch · exchange 로그 기준</small>
 {%- endmacro %}
+
+{% macro observed(value) -%}
+{{ value if value is defined and value is not none else "—" }}
+{%- endmacro %}

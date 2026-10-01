@@ -544,3 +544,16 @@ def test_identity_group_disclosure_preserves_full_hashes_only(tmp_path):
     assert f"user:{user[:10]}" in response.text
     assert reference in response.text and user in response.text
     assert "PRIVATE NAME" not in response.text
+
+
+def test_trace_sections_and_mobile_results_are_available(tmp_path):
+    client = dashboard_client(tmp_path)
+    response = client.get("/traces/trace-ui")
+    for section in ("trace-summary", "stored-turn", "context-provenance", "trace-timeline"):
+        assert f'href="#{section}"' in response.text
+        assert f'id="{section}"' in response.text
+    for path in ("/traces", "/memory", "/reconciliation"):
+        response = client.get(path)
+        assert 'class="mobile-result-list"' in response.text
+        assert 'class="mobile-result-card"' in response.text
+        assert "메타데이터" in response.text
