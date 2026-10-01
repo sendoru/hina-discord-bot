@@ -179,6 +179,7 @@ def test_structured_memory_provenance_matches_owner_and_relationship_projection(
             implicit_relationship_id,
         }
         assert {row["projection"] for row in owner["items"]} == {"owner_dm"}
+        assert owner["relationship_axes"] == ["comfort", "familiarity"]
 
         shared = structured_memory_provenance(
             store,

@@ -821,8 +821,13 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     assert dm_target["filters"]["target_guild_id"] == ""
     assert dm_target["filters"]["target_channel_id"] == ""
     dm_row = dm_target["rows"][0]
-    assert dm_row["profile"] == {}
-    assert dm_row["used_observations"] == 0
+    assert dm_row["profile"] == {"familiarity": 3, "casualness": 4}
+    assert dm_row["used_observations"] == 3
+    assert [item["id"] for item in dm_row["contributors"]] == [
+        same_space_id,
+        second_id,
+        first_id,
+    ]
     assert dm_row["full_relationship_count"] == 5
     assert {item["id"] for item in dm_row["full_relationships"]} == {
         first_id,

@@ -215,7 +215,7 @@
   {% endif %}
 
   {% if data.context_provenance.relationship_axes %}
-  <p><strong>Cross-space relationship axes:</strong> {{ data.context_provenance.relationship_axes | join(", ") }}</p>
+  <p><strong>Effective relationship profile axes:</strong> {{ data.context_provenance.relationship_axes | join(", ") }}</p>
   {% endif %}
 
   {% if data.context_provenance.truncated.get("sources", 0) or data.context_provenance.truncated.get("structured_memory", 0) %}

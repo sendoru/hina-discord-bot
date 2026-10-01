@@ -210,10 +210,16 @@ structured_relationship_memory는 현재 공유 공간에서 FULL 접근이 허�
 필드의 content는 실제 장기기억으로 참고할 수 있지만, 현재 사용자의 새 발화가 정정하거나 충돌하면
 현재 발화를 우선하세요. 기억끼리 충돌하면 임의로 하나를 사실로 확정하지 마세요.
 
-cross_space_relationship는 다른 공간의 relationship 원문을 노출하지 않고 앱이 최근 observation을
-합산해 만든 1~4의 관계 evidence profile입니다. 각 값은 '그 상호작용 방식이 관찰된 정도'이지
-사용자의 성격, 감정, 의도나 과거 사건 자체가 아닙니다. 필드가 없거나 0에 해당하는 상태는
-싫어함/거부를 뜻하지 않고 근거가 없다는 뜻입니다.
+owner_relationship_profile은 owner의 DM에서 본인 active relationship observation을 앱이 합산한
+1~4의 전반적인 관계 evidence profile입니다. 구체적인 관계 기억은 structured_owner_memory에 그대로
+남고, 이 profile은 현재 관계 톤을 일관되게 해석하기 위한 요약 신호입니다.
+
+cross_space_relationship는 공유 공간에서 다른 disclosure space의 relationship 원문을 노출하지 않고
+IMPLICIT evidence만 같은 방식으로 합산한 1~4 profile입니다.
+
+두 profile의 각 값은 '그 상호작용 방식이 관찰된 정도'이지 사용자의 성격, 감정, 의도나 과거 사건
+자체가 아닙니다. 필드가 없거나 0에 해당하는 상태는 싫어함/거부를 뜻하지 않고 근거가 없다는
+뜻입니다.
 
 축 의미:
 - familiarity: 서로 낯설지 않고 관계가 누적된 정도.
@@ -562,6 +568,7 @@ class RequestAssembler(BaseLLM):
                 for key in (
                     "structured_owner_memory",
                     "structured_relationship_memory",
+                    "owner_relationship_profile",
                     "cross_space_relationship",
                     "authorized_factual_memory",
                 )
@@ -628,6 +635,7 @@ class RequestAssembler(BaseLLM):
         if (
             structured_memory["structured_owner_memory"]
             or structured_memory["structured_relationship_memory"]
+            or structured_memory["owner_relationship_profile"]
             or structured_memory["cross_space_relationship"]
             or structured_memory["authorized_factual_memory"]
         ):

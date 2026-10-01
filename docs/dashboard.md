@@ -45,7 +45,7 @@ The dashboard currently exposes the following read-only routes:
 - `/conversations`: bounded raw-turn inspection with server-side filters
 - `/memory`: structured-memory list/filter view
 - `/memory/{id}`: memory provenance/source-turn detail
-- `/relationships`: target-scope FULL/raw relationships + effective IMPLICIT projection
+- `/relationships`: target-scope FULL/raw relationships + effective relationship profile
 - `/state`: effective memory/chat-log inheritance and manual notes
 - `/summaries`: personal/shared legacy summary state
 - `/memory/cursors`: structured extraction cursor/pending state
@@ -330,18 +330,23 @@ their evidence vector to the projection.
 For a **DM** target, owner memory is the private aggregate space. No DM channel ID is required:
 the page evaluates each listed user's owner-DM memory independently, which also avoids pretending that
 one shared DM channel could apply to every user row. Active relationship memories owned by each user
-resolve to FULL and are shown as the relationship subset of `structured_owner_memory`. Cross-space
-IMPLICIT aggregation is not used in DM, so profile axes and contributor counts are not presented as
-effective DM state.
+resolve to FULL and are shown as the relationship subset of `structured_owner_memory`.
 
-Each user row therefore exposes the stored active relationship count and the target-appropriate
-FULL/raw view. Guild targets additionally expose the bounded IMPLICIT contributor drill-down and the
-resulting 1..4 values for familiarity, comfort, casualness, teasing tolerance, support openness, and
-task orientation.
+Eligible owner relationship evidence is also aggregated into `owner_relationship_profile` with the
+same confidence threshold, per-axis newest-eight window, noisy-OR combination, and recency decay used
+by the shared-space relationship projection. Unlike `cross_space_relationship`, this is not a privacy
+projection: the same owner-DM response already has FULL access to the concrete relationship memories.
 
-The dashboard shows the source text of implicit contributors only for administrative inspection.
-Runtime cross-space model context receives the aggregated axis values, not those raw source texts.
-Missing axes mean no stored positive evidence, never negative evidence.
+Each user row therefore exposes the stored active relationship count, the target-appropriate FULL/raw
+view, the effective 1..4 profile axes, and the observations that actually contributed. For Guild
+targets those inputs are cross-space IMPLICIT observations; for DM targets they are eligible owner
+relationship observations.
+
+The dashboard shows contributor source text for administrative inspection. In Guild runtime context,
+cross-space raw text remains hidden and only aggregated axis values are sent. In DM, the contributor
+texts are already present through `structured_owner_memory`, while `owner_relationship_profile`
+provides the stable aggregate signal. Missing axes mean no stored positive evidence, never negative
+evidence.
 
 ### Effective memory / recent-context state
 

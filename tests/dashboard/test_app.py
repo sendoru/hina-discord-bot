@@ -349,6 +349,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "<code>dm</code>" in relationships_dm.text
     assert "Owner-DM relationship memory" in relationships_dm.text
     assert "structured_owner_memory" in relationships_dm.text
+    assert "owner_relationship_profile" in relationships_dm.text
+    assert "Owner profile inputs" in relationships_dm.text
     assert "comfortable recurring interaction" in relationships_dm.text
     assert state.status_code == 200
     assert "Memory &amp; Context State" in state.text

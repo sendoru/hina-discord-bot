@@ -59,6 +59,75 @@ def _eligible_implicit_relationship_observations(
     ]
 
 
+def _eligible_owner_relationship_observations(
+    items: Iterable[MemoryItem],
+    scope: Scope,
+    *,
+    min_confidence: float = RELATIONSHIP_MIN_ITEM_CONFIDENCE,
+) -> list[MemoryItem]:
+    """Return owner relationship observations eligible for the DM aggregate profile."""
+
+    if scope.guild_id is not None:
+        return []
+    return [
+        item
+        for item in items
+        if item.user_id == str(scope.user_id)
+        and item.kind == MemoryKind.RELATIONSHIP
+        and item.confidence >= min_confidence
+        and item.relationship_evidence
+        and memory_access(item, scope) == MemoryAccess.FULL
+    ]
+
+
+def _axis_observations(
+    eligible: Iterable[MemoryItem],
+    axis: str,
+) -> list[MemoryItem]:
+    if axis not in RELATIONSHIP_EVIDENCE_AXES:
+        raise ValueError(f"Unknown relationship evidence axis: {axis}")
+    axis_items = [
+        item
+        for item in eligible
+        if getattr(item.relationship_evidence, axis) > 0
+    ]
+    return axis_items[-RELATIONSHIP_MAX_OBSERVATIONS:]
+
+
+def _profile_contributors(eligible: Iterable[MemoryItem]) -> list[MemoryItem]:
+    materialized = list(eligible)
+    selected_ids: set[int] = set()
+    for axis in RELATIONSHIP_EVIDENCE_AXES:
+        selected_ids.update(item.id for item in _axis_observations(materialized, axis))
+    return [item for item in materialized if item.id in selected_ids]
+
+
+def _aggregate_relationship_evidence(
+    eligible: Iterable[MemoryItem],
+) -> dict[str, int]:
+    """Aggregate eligible relationship observations into a sparse 1..4 profile."""
+
+    materialized = list(eligible)
+    profile: dict[str, int] = {}
+    for axis in RELATIONSHIP_EVIDENCE_AXES:
+        candidates = _axis_observations(materialized, axis)
+        if not candidates:
+            continue
+
+        remaining = 1.0
+        for age, item in enumerate(reversed(candidates)):
+            level = getattr(item.relationship_evidence, axis)
+            recency = RELATIONSHIP_RECENCY_DECAY ** age
+            contribution = min(
+                1.0,
+                (level / 4.0) * item.confidence * recency,
+            )
+            remaining *= 1.0 - contribution
+        combined = 1.0 - remaining
+        profile[axis] = max(1, min(4, int(combined * 4.0 + 0.5)))
+    return profile
+
+
 def implicit_relationship_observations(
     items: Iterable[MemoryItem],
     scope: Scope,
@@ -84,19 +153,12 @@ def implicit_relationship_axis_observations(
 ) -> list[MemoryItem]:
     """Return the bounded newest implicit observations that carry one evidence axis."""
 
-    if axis not in RELATIONSHIP_EVIDENCE_AXES:
-        raise ValueError(f"Unknown relationship evidence axis: {axis}")
     eligible = _eligible_implicit_relationship_observations(
         items,
         scope,
         min_confidence=min_confidence,
     )
-    axis_items = [
-        item
-        for item in eligible
-        if getattr(item.relationship_evidence, axis) > 0
-    ]
-    return axis_items[-RELATIONSHIP_MAX_OBSERVATIONS:]
+    return _axis_observations(eligible, axis)
 
 
 def implicit_relationship_profile_contributors(
@@ -105,24 +167,14 @@ def implicit_relationship_profile_contributors(
     *,
     min_confidence: float = RELATIONSHIP_MIN_ITEM_CONFIDENCE,
 ) -> list[MemoryItem]:
-    """Return the union of observations used by any axis in the effective profile."""
+    """Return the union of observations used by any axis in the cross-space profile."""
 
     eligible = _eligible_implicit_relationship_observations(
         items,
         scope,
         min_confidence=min_confidence,
     )
-    selected_ids: set[int] = set()
-    for axis in RELATIONSHIP_EVIDENCE_AXES:
-        axis_items = [
-            item
-            for item in eligible
-            if getattr(item.relationship_evidence, axis) > 0
-        ]
-        selected_ids.update(
-            item.id for item in axis_items[-RELATIONSHIP_MAX_OBSERVATIONS:]
-        )
-    return [item for item in eligible if item.id in selected_ids]
+    return _profile_contributors(eligible)
 
 
 def aggregate_relationship_evidence(
@@ -138,40 +190,73 @@ def aggregate_relationship_evidence(
     Missing axes remain missing; zero never means dislike or rejection.
     """
 
-    materialized = list(items)
+    eligible = _eligible_implicit_relationship_observations(
+        items,
+        scope,
+        min_confidence=min_confidence,
+    )
+    return _aggregate_relationship_evidence(eligible)
 
-    profile: dict[str, int] = {}
-    for axis in RELATIONSHIP_EVIDENCE_AXES:
-        candidates = implicit_relationship_axis_observations(
-            materialized,
-            scope,
-            axis,
-            min_confidence=min_confidence,
-        )
-        if not candidates:
-            continue
 
-        remaining = 1.0
-        for age, item in enumerate(reversed(candidates)):
-            level = getattr(item.relationship_evidence, axis)
-            recency = RELATIONSHIP_RECENCY_DECAY ** age
-            contribution = min(
-                1.0,
-                (level / 4.0) * item.confidence * recency,
-            )
-            remaining *= 1.0 - contribution
-        combined = 1.0 - remaining
-        profile[axis] = max(1, min(4, int(combined * 4.0 + 0.5)))
-    return profile
+def owner_relationship_axis_observations(
+    items: Iterable[MemoryItem],
+    scope: Scope,
+    axis: str,
+    *,
+    min_confidence: float = RELATIONSHIP_MIN_ITEM_CONFIDENCE,
+) -> list[MemoryItem]:
+    """Return the bounded newest owner-DM observations that carry one evidence axis."""
+
+    eligible = _eligible_owner_relationship_observations(
+        items,
+        scope,
+        min_confidence=min_confidence,
+    )
+    return _axis_observations(eligible, axis)
+
+
+def owner_relationship_profile_contributors(
+    items: Iterable[MemoryItem],
+    scope: Scope,
+    *,
+    min_confidence: float = RELATIONSHIP_MIN_ITEM_CONFIDENCE,
+) -> list[MemoryItem]:
+    """Return the union of observations used by any axis in the owner-DM profile."""
+
+    eligible = _eligible_owner_relationship_observations(
+        items,
+        scope,
+        min_confidence=min_confidence,
+    )
+    return _profile_contributors(eligible)
+
+
+def aggregate_owner_relationship_evidence(
+    items: Iterable[MemoryItem],
+    scope: Scope,
+    *,
+    min_confidence: float = RELATIONSHIP_MIN_ITEM_CONFIDENCE,
+) -> dict[str, int]:
+    """Aggregate owner-DM relationship observations with the shared profile formula."""
+
+    eligible = _eligible_owner_relationship_observations(
+        items,
+        scope,
+        min_confidence=min_confidence,
+    )
+    return _aggregate_relationship_evidence(eligible)
 
 
 __all__ = [
     "RELATIONSHIP_MAX_OBSERVATIONS",
     "RELATIONSHIP_MIN_ITEM_CONFIDENCE",
     "RELATIONSHIP_RECENCY_DECAY",
+    "aggregate_owner_relationship_evidence",
     "aggregate_relationship_evidence",
     "full_relationship_observations",
     "implicit_relationship_axis_observations",
     "implicit_relationship_observations",
     "implicit_relationship_profile_contributors",
+    "owner_relationship_axis_observations",
+    "owner_relationship_profile_contributors",
 ]

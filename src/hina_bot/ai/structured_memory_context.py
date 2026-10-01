@@ -13,6 +13,7 @@ from hina_bot.core.relationship_profile import (
     RELATIONSHIP_MAX_OBSERVATIONS,
     RELATIONSHIP_MIN_ITEM_CONFIDENCE,
     RELATIONSHIP_RECENCY_DECAY,
+    aggregate_owner_relationship_evidence,
     aggregate_relationship_evidence,
     full_relationship_observations,
     implicit_relationship_profile_contributors,
@@ -96,7 +97,8 @@ def structured_memory_provenance(
                 "origin_channel_id": item.origin_channel_id,
                 "access": MemoryAccess.FULL.value,
             })
-        return {"items": selected, "relationship_axes": []}
+        profile = aggregate_owner_relationship_evidence(items, scope)
+        return {"items": selected, "relationship_axes": sorted(profile)}
 
     full_items = full_relationship_observations(items, scope)
     for item in full_items:
@@ -159,6 +161,7 @@ def structured_memory_context(
     empty = {
         "structured_owner_memory": [],
         "structured_relationship_memory": [],
+        "owner_relationship_profile": {},
         "cross_space_relationship": {},
         "authorized_factual_memory": [],
     }
@@ -186,6 +189,11 @@ def structured_memory_context(
     return {
         "structured_owner_memory": owner_dm_memory(items, scope),
         "structured_relationship_memory": full_relationship_memory(items, scope),
+        "owner_relationship_profile": (
+            aggregate_owner_relationship_evidence(items, scope)
+            if scope.guild_id is None
+            else {}
+        ),
         "cross_space_relationship": (
             aggregate_relationship_evidence(items, scope)
             if allow_cross_space
@@ -199,6 +207,7 @@ __all__ = [
     "RELATIONSHIP_MAX_OBSERVATIONS",
     "RELATIONSHIP_MIN_ITEM_CONFIDENCE",
     "RELATIONSHIP_RECENCY_DECAY",
+    "aggregate_owner_relationship_evidence",
     "aggregate_relationship_evidence",
     "full_relationship_memory",
     "owner_dm_memory",

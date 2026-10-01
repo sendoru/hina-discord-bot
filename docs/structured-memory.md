@@ -149,11 +149,15 @@ batch pending for retry.
 
 ## Phase 3: owner-DM memory and numeric relationship projection
 
-Structured memory enters the response path in three deliberately different forms:
+Structured memory enters the response path in four deliberately different forms:
 
 - In the owner's DM, `structured_owner_memory` contains all structured items owned by that user,
   regardless of origin realm/channel or disclosure. Relationship rows include their numeric evidence.
   Another user's items are never included.
+- The owner's DM also receives `owner_relationship_profile`, which aggregates eligible active
+  owner relationship evidence into the same sparse 1..4 axes used by the shared-space projection.
+  This stabilizes the overall relationship/tone signal without replacing the concrete raw relationship
+  memories already present in `structured_owner_memory`.
 - In a shared space, relationship items that already resolve to `full` may enter
   `structured_relationship_memory` with raw content and evidence. This covers the same disclosure space
   (and any relationship item explicitly marked `global`).
@@ -175,13 +179,15 @@ reconstructing concrete past events, locations, names, or conversation content f
 
 - `reference_gated` factual content is still not opened in shared spaces, even when the current message
   looks like a reference. Explicit factual recall remains Phase 4.
-- Explicit current-channel-only requests suppress only the cross-space projection; relationship memory
-  already FULL in the current disclosure space remains available.
+- Explicit current-channel-only requests suppress only the shared-space cross-space projection;
+  relationship memory already FULL in the current disclosure space remains available. Owner-DM profile
+  aggregation follows the same private aggregate-memory semantics as `structured_owner_memory`.
 - The structured-memory fields are included in routing context-size accounting so model routing sees the
   same dynamic context that request assembly will serialize.
 
-Owner-DM reads, same-space relationship reads, and cross-space relationship aggregation now consume
-active items only, so successfully superseded factual observations do not remain simultaneously visible.
+Owner-DM reads and relationship aggregation, same-space relationship reads, and cross-space
+relationship aggregation consume active items only, so superseded observations do not remain
+simultaneously visible.
 Deferred conflicts and relationship proposals intentionally remain active until a later policy can resolve
 them safely.
 
