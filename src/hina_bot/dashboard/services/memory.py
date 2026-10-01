@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from hina_bot.core.memory_items import (
-    MemoryAccess,
     MemoryDisclosure,
     MemoryItem,
     MemoryKind,
     MemoryStatus,
     RelationshipEvidence,
-    memory_access,
 )
 from hina_bot.core.relationship_profile import (
     RELATIONSHIP_EVIDENCE_AXES,
@@ -110,26 +108,25 @@ class MemoryService(ReadService):
             guild_id=target_guild_id,
             channel_id=target_channel_id,
         )
-        if target_scope_type == "dm":
-            target_guild_id = ""
         query = query.strip()
 
-        target: tuple[int | None, int] | None = None
+        target: tuple[int | None, int | None] | None = None
         target_error = ""
-        if target_guild_id or target_channel_id:
-            if not target_channel_id:
-                target_error = "Target channel ID is required."
-            elif target_scope_type == "guild" and not target_guild_id:
-                target_error = "Target guild ID is required for a guild scope."
+        if target_scope_type == "dm":
+            # Relationship memory in the owner's DM is an aggregate owner space. Runtime
+            # access does not depend on a Discord DM channel id, and each listed user may
+            # have a different channel anyway.
+            target_guild_id = ""
+            target_channel_id = ""
+            target = (None, None)
+        elif target_guild_id or target_channel_id:
+            if not target_guild_id or not target_channel_id:
+                target_error = "Target guild ID and channel ID are required for a guild scope."
             else:
                 try:
-                    guild_id = (
-                        int(target_guild_id)
-                        if target_scope_type == "guild"
-                        else None
-                    )
+                    guild_id = int(target_guild_id)
                     channel_id = int(target_channel_id)
-                    if channel_id <= 0 or (guild_id is not None and guild_id <= 0):
+                    if guild_id <= 0 or channel_id <= 0:
                         raise ValueError
                     target = (guild_id, channel_id)
                 except ValueError:
@@ -151,14 +148,16 @@ class MemoryService(ReadService):
             contributors = []
             full_relationships = []
             if target is not None and user_id.isdigit():
-                scope = Scope(target[0], target[1], int(user_id))
-                if scope.guild_id is None:
+                if target_scope_type == "dm":
+                    # relationship_profile_items() is already active, relationship-only,
+                    # and owner-filtered, matching the relationship subset of owner DM memory.
                     full_relationships = [
                         self._relationship_item_view(item)
                         for item in typed_items
-                        if memory_access(item, scope) == MemoryAccess.FULL
                     ]
                 else:
+                    assert target[0] is not None and target[1] is not None
+                    scope = Scope(target[0], target[1], int(user_id))
                     full_relationships = [
                         self._relationship_item_view(item)
                         for item in full_relationship_observations(typed_items, scope)
