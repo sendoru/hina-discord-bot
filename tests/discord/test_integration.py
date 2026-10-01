@@ -267,14 +267,28 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
 
         raw = self.event_path.read_text()
         self.assertNotIn(secret, raw)
-        failed = next(
-            json.loads(line) for line in raw.splitlines()
-            if json.loads(line)["event"] == "turn.failed"
-        )
+        rows = [json.loads(line) for line in raw.splitlines()]
+        delivered = next(row for row in rows if row["event"] == "turn.reply_delivered")
+        failed = next(row for row in rows if row["event"] == "turn.failed")
+        self.assertTrue(delivered["fallback"])
+        self.assertEqual(delivered["turn_id"], failed["turn_id"])
         self.assertEqual(failed["status"], "generation_failed")
         self.assertEqual(failed["stage"], "generation")
         self.assertEqual(failed["error_type"], "ValueError")
+        self.assertTrue(failed["reply_delivered"])
         self.assertIn("error_fingerprint", failed)
+
+        stored = self.store.db.execute(
+            "SELECT * FROM failed_turns WHERE message_id=?",
+            ("1",),
+        ).fetchone()
+        self.assertIsNotNone(stored)
+        self.assertEqual(stored["content"], f"히나야 {secret}")
+        self.assertEqual(stored["status"], "generation_failed")
+        self.assertEqual(stored["stage"], "generation")
+        self.assertEqual(stored["reply_delivered"], 1)
+        self.assertEqual(stored["error_type"], "ValueError")
+        self.assertEqual(stored["turn_id"], failed["turn_id"])
 
     async def test_memory_failure_is_partial_success_and_does_not_block_shared_summary(self):
         secret = "private-memory-error-marker"
@@ -395,6 +409,12 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         await self.bot.on_message(self.message())
         self.llm.answer.assert_awaited_once()
         self.assertFalse(self.store.seen(1))
+        self.assertEqual(self.store.history(Scope(1, 10, 100)), [])
+        self.assertEqual(self.store.pending_memory_extraction(Scope(1, 10, 100)), [])
+        self.assertEqual(
+            self.store.db.execute("SELECT COUNT(*) FROM failed_turns").fetchone()[0],
+            1,
+        )
         self.llm.extract_structured_memory.assert_not_awaited()
         self.llm.summarize.assert_not_awaited()
         self.llm.summarize_shared.assert_not_awaited()
