@@ -408,6 +408,27 @@ class HinaClient(BaseHinaClient):
         if own_bot or message.webhook_id is not None:
             return
 
+        guild = getattr(message, "guild", None)
+        channel = getattr(message, "channel", None)
+        guild_name = getattr(guild, "name", None)
+        channel_name = getattr(channel, "name", None)
+        if (
+            guild is not None
+            and channel is not None
+            and (
+                not self.settings.allowed_guild_ids
+                or guild.id in self.settings.allowed_guild_ids
+            )
+            and isinstance(guild_name, str)
+            and isinstance(channel_name, str)
+        ):
+            self.store.observe_guild_channel(
+                guild.id,
+                guild_name,
+                channel.id,
+                channel_name,
+            )
+
         # Passive messages from other bots remain channel context only in chatlog `all` mode.
         # Mention/reply pings remain explicit invocations everywhere; configured always-reply
         # channels additionally accept call prefixes from bots. The implicit always-reply behavior
