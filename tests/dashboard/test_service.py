@@ -740,7 +740,7 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         relationship_evidence={"casualness": 4},
         user_name="Profile User",
     )
-    store.add_memory_item(
+    low_conf_id = store.add_memory_item(
         dm,
         "low confidence relationship",
         kind="relationship",
@@ -827,12 +827,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         first_id,
         second_id,
         same_space_id,
+        low_conf_id,
         global_full_id,
-        next(
-            item["id"]
-            for item in dm_row["full_relationships"]
-            if item["content"] == "low confidence relationship"
-        ),
     }
 
     no_target = service.relationship_profiles(query="Profile")
