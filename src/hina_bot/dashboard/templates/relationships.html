@@ -38,11 +38,15 @@
 <section class="page-heading">
   <div>
     <h1>Effective Relationship Profiles</h1>
-    <p>Target-scope view of raw/FULL relationship memory and cross-space IMPLICIT projection.</p>
+    <p>Target-scope view of relationship memory, including shared-space projection and owner-DM access.</p>
   </div>
   <div class="window">
     <strong>Runtime policy</strong>
+    {% if data.target and data.target.scope_type == "dm" %}
+    <span>DM owner memory · relationship items resolve to FULL · cross-space projection not used</span>
+    {% else %}
     <span>FULL newest {{ data.policy.max_observations }} · IMPLICIT per-axis newest {{ data.policy.max_observations }} · confidence ≥ {{ data.policy.min_confidence }} · decay {{ data.policy.recency_decay }}</span>
+    {% endif %}
   </div>
 </section>
 
@@ -104,10 +108,10 @@
           <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
           <td class="numeric">{{ row.observation_count }}</td>
           <td class="numeric">{{ row.full_relationship_count if data.target else "—" }}</td>
-          <td class="numeric">{{ row.used_observations if data.target else "—" }}</td>
+          <td class="numeric">{{ row.used_observations if data.target and data.target.scope_type == "guild" else "—" }}</td>
           {% for axis in data.axes %}
           <td class="numeric">
-            {% if data.target and row.profile.get(axis) %}
+            {% if data.target and data.target.scope_type == "guild" and row.profile.get(axis) %}
               <strong>{{ row.profile.get(axis) }}/4</strong>
             {% else %}—{% endif %}
           </td>
@@ -120,10 +124,14 @@
           <td colspan="{{ 4 + (data.axes|length) }}">
             <details>
               <summary>
-                FULL/raw relationship memory · {{ row.full_relationship_count }} item{{ "" if row.full_relationship_count == 1 else "s" }}
+                {% if data.target.scope_type == "dm" %}Owner-DM relationship memory{% else %}FULL/raw relationship memory{% endif %} · {{ row.full_relationship_count }} item{{ "" if row.full_relationship_count == 1 else "s" }}
               </summary>
               {% if row.full_relationships %}
+              {% if data.target.scope_type == "dm" %}
+              <p class="muted">These relationship memories are available through <code>structured_owner_memory</code> in the owner's DM. DM owner memory does not use the cross-space relationship projection.</p>
+              {% else %}
               <p class="muted">These are the exact bounded relationship memories eligible for <code>structured_relationship_memory</code> in this target scope.</p>
+              {% endif %}
               <div class="table-wrap">
                 <table class="wide-table">
                   <thead>
@@ -163,6 +171,7 @@
               {% endif %}
             </details>
 
+            {% if data.target.scope_type == "guild" %}
             <details>
               <summary>
                 Cross-space IMPLICIT projection · {{ row.used_observations }} contributing observation{{ "" if row.used_observations == 1 else "s" }}
@@ -212,6 +221,7 @@
               <p class="muted">No implicit observations are eligible in this target scope.</p>
               {% endif %}
             </details>
+            {% endif %}
           </td>
         </tr>
         {% endif %}
@@ -234,19 +244,25 @@
       <div class="relationship-mobile-counts">
         <div><span>Stored</span><strong>{{ row.observation_count }}</strong></div>
         <div><span>FULL/raw</span><strong>{{ row.full_relationship_count if data.target else "—" }}</strong></div>
-        <div><span>IMPLICIT</span><strong>{{ row.used_observations if data.target else "—" }}</strong></div>
+        <div><span>IMPLICIT</span><strong>{{ row.used_observations if data.target and data.target.scope_type == "guild" else "—" }}</strong></div>
       </div>
 
       {% if data.target %}
+      {% if data.target.scope_type == "guild" %}
       <section class="relationship-mobile-projection">
         <h3>Cross-space projection</h3>
         {{ evidence_grid(row.profile, data.axes, true) }}
       </section>
+      {% endif %}
 
       <details class="relationship-mobile-detail">
-        <summary>FULL/raw relationship memory · {{ row.full_relationship_count }}</summary>
+        <summary>{% if data.target.scope_type == "dm" %}Owner-DM relationship memory{% else %}FULL/raw relationship memory{% endif %} · {{ row.full_relationship_count }}</summary>
         {% if row.full_relationships %}
+          {% if data.target.scope_type == "dm" %}
+          <p class="muted">Relationship memories available through <code>structured_owner_memory</code> in the owner's DM.</p>
+          {% else %}
           <p class="muted">Exact relationship memories eligible for <code>structured_relationship_memory</code> in this target.</p>
+          {% endif %}
           {% for item in row.full_relationships %}
             {{ relationship_memory_card(item, data.axes, true) }}
           {% endfor %}
@@ -255,6 +271,7 @@
         {% endif %}
       </details>
 
+      {% if data.target.scope_type == "guild" %}
       <details class="relationship-mobile-detail">
         <summary>
           IMPLICIT source observations · {{ row.used_observations }}
@@ -269,6 +286,7 @@
           <p class="muted">No implicit observations are eligible in this target scope.</p>
         {% endif %}
       </details>
+      {% endif %}
       {% endif %}
     </article>
     {% endfor %}
