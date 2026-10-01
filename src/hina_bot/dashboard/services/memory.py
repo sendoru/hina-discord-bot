@@ -135,6 +135,17 @@ class MemoryService(ReadService):
                 except ValueError:
                     target_error = "Target guild/channel IDs must be positive integers."
 
+        metadata = self.repository.discord_scope_metadata()
+
+        def relationship_view(item: MemoryItem) -> dict[str, object]:
+            value = self._relationship_item_view(item)
+            return self._decorate_scope_names(
+                value,
+                metadata,
+                realm_key="origin_realm",
+                channel_key="origin_channel_id",
+            )
+
         rows = []
         for owner in self.repository.relationship_profile_users(query=query):
             user_id = str(owner["user_id"])
@@ -157,7 +168,7 @@ class MemoryService(ReadService):
                     # produces a stable owner relationship profile for response tone.
                     scope = Scope(None, 0, int(user_id))
                     full_relationships = [
-                        self._relationship_item_view(item)
+                        relationship_view(item)
                         for item in typed_items
                     ]
                     selected = owner_relationship_profile_contributors(
@@ -170,7 +181,7 @@ class MemoryService(ReadService):
                     assert target[0] is not None and target[1] is not None
                     scope = Scope(target[0], target[1], int(user_id))
                     full_relationships = [
-                        self._relationship_item_view(item)
+                        relationship_view(item)
                         for item in full_relationship_observations(typed_items, scope)
                     ]
                     selected = implicit_relationship_profile_contributors(
@@ -192,7 +203,7 @@ class MemoryService(ReadService):
                         for age, item in enumerate(reversed(axis_items))
                     }
                 for item in reversed(selected):
-                    contributor = self._relationship_item_view(item)
+                    contributor = relationship_view(item)
                     contributor["projected_evidence"] = {
                         axis: contributor["evidence"][axis]
                         for axis in RELATIONSHIP_EVIDENCE_AXES
@@ -224,11 +235,14 @@ class MemoryService(ReadService):
                 "q": query,
             },
             "target": (
-                {
-                    "scope_type": target_scope_type,
-                    "guild_id": target[0],
-                    "channel_id": target[1],
-                }
+                self._decorate_scope_names(
+                    {
+                        "scope_type": target_scope_type,
+                        "guild_id": target[0],
+                        "channel_id": target[1],
+                    },
+                    metadata,
+                )
                 if target is not None
                 else None
             ),
@@ -304,9 +318,16 @@ class MemoryService(ReadService):
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
         )
+        metadata = self.repository.discord_scope_metadata()
         view_rows = []
         for raw in rows:
             row = self._memory_row(raw)
+            self._decorate_scope_names(
+                row,
+                metadata,
+                realm_key="origin_realm",
+                channel_key="origin_channel_id",
+            )
             row["search_matches"] = search_matches(
                 query,
                 (
@@ -344,10 +365,21 @@ class MemoryService(ReadService):
         raw = self.repository.memory_item(item_id)
         if raw is None:
             return None
+        metadata = self.repository.discord_scope_metadata()
         item = self._memory_row(raw)
+        self._decorate_scope_names(
+            item,
+            metadata,
+            realm_key="origin_realm",
+            channel_key="origin_channel_id",
+        )
         source_ids = list(item["source_message_ids_decoded"])
         source_turns = self.repository.turns_for_message_ids(source_ids)
-        source_by_id = {str(row["message_id"]): row for row in source_turns}
+        source_by_id = {}
+        for row in source_turns:
+            value = dict(row)
+            self._decorate_scope_names(value, metadata)
+            source_by_id[str(value["message_id"])] = value
         sources = [
             {
                 "message_id": message_id,
@@ -355,10 +387,16 @@ class MemoryService(ReadService):
             }
             for message_id in source_ids
         ]
-        neighbors = [
-            self._memory_row(row)
-            for row in self.repository.neighboring_memory_items(raw)
-        ]
+        neighbors = []
+        for row in self.repository.neighboring_memory_items(raw):
+            value = self._memory_row(row)
+            self._decorate_scope_names(
+                value,
+                metadata,
+                realm_key="origin_realm",
+                channel_key="origin_channel_id",
+            )
+            neighbors.append(value)
         return {
             "item": item,
             "sources": sources,
@@ -378,6 +416,7 @@ class MemoryService(ReadService):
         query = query.strip().lower()
         counts = self.repository.memory_counts_by_user()
         names = self.repository.latest_user_names()
+        metadata = self.repository.discord_scope_metadata()
         cursor_rows = self.repository.extraction_cursor_status()
         cursor_by_scope = {str(row["scope"]): row for row in cursor_rows}
 
@@ -411,6 +450,7 @@ class MemoryService(ReadService):
                     "",
                 )
             )
+            self._decorate_scope_names(value, metadata)
             value["structured_memory_count"] = counts.get(str(row["user_id"]), 0)
             value["extraction_cursor"] = cursor_by_scope.get(str(row["scope"]))
             personal.append(value)
@@ -427,6 +467,7 @@ class MemoryService(ReadService):
                     "",
                 )
             )
+            self._decorate_scope_names(value, metadata)
             shared.append(value)
         return {
             "personal": personal,
@@ -447,6 +488,7 @@ class MemoryService(ReadService):
         pending = pending.strip().lower()
         query = query.strip().lower()
         names = self.repository.latest_user_names()
+        metadata = self.repository.discord_scope_metadata()
         rows: list[dict[str, object]] = []
         for raw in self.repository.extraction_cursor_status():
             row = dict(raw)
@@ -454,6 +496,7 @@ class MemoryService(ReadService):
                 (str(row.get("realm") or ""), str(row.get("user_id") or "")),
                 "",
             )
+            self._decorate_scope_names(row, metadata)
             row["cursor_delta"] = None
             extraction = row.get("extraction_through_id")
             summary = row.get("summary_through_id")
