@@ -892,8 +892,10 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     dm = Scope(None, 20, 100)
 
     store.add(guild, 1, "state source", "reply", name="State User")
+    store.add(dm, 2, "dm state source", "reply", name="State User")
     store.set_memory_mode_override("global", "off")
     store.set_memory_mode_override(guild.realm, "read_only")
+    store.set_memory_mode_override(dm.channel, "read_only")
     store.set_chat_log_mode_override("global", "on")
     store.set_chat_log_mode_override(guild.realm, "off")
     store.set_note("config:chatlog_capture:global", "direct")
@@ -926,6 +928,7 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     assert {(row["scope"], row["mode"]) for row in data["memory_overrides"]} == {
         ("global", "off"),
         ("guild:1", "read_only"),
+        ("dm:100:channel:20", "read_only"),
     }
     assert data["chat_overrides"] == [
         {"scope": "global", "enabled": "on", "capture": "direct"},
@@ -953,7 +956,8 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     )
     dm_effective = dm_data["effective"]
     assert dm_effective is not None
-    assert dm_effective["memory"]["chain"]["effective"] == "off"
+    assert dm_effective["memory"]["chain"]["effective"] == "read_only"
+    assert dm_effective["memory"]["chain"]["source"] == "channel"
     assert dm_effective["chat_log"]["effective"] == "off"
     assert dm_effective["chat_log"]["guild_recent_context_applicable"] is False
     assert dm_effective["notes"]["server"] == ""
@@ -969,6 +973,63 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     assert explicit_dm["effective"] is not None
     assert explicit_dm["effective"]["scope"].guild_id is None
     assert explicit_dm["filters"]["target_guild_id"] == ""
+
+    auto_dm = service.context_state(
+        target_scope_type="dm",
+        target_user_id="100",
+    )
+    assert auto_dm["effective"] is not None
+    assert auto_dm["effective"]["scope"].channel_id == 20
+    assert auto_dm["dm_channel_selection"]["candidates"] == ["20"]
+    assert auto_dm["dm_channel_selection"]["selected"] == "20"
+    assert auto_dm["dm_channel_selection"]["auto_selected"] is True
+
+
+def test_context_state_requires_selection_for_multiple_dm_channels(tmp_path):
+    database = tmp_path / "context-state-multi-dm.sqlite3"
+    store = Store(str(database))
+    first = Scope(None, 20, 100)
+    second = Scope(None, 21, 100)
+    store.add(first, 1, "first dm", "reply", name="State User")
+    store.add(second, 2, "second dm", "reply", name="State User")
+    store.set_memory_mode_override(second.channel, "write_only")
+    store.close()
+
+    service = ContextStateService(AdminRepository(database))
+
+    unresolved = service.context_state(
+        target_scope_type="dm",
+        target_user_id="100",
+    )
+    assert unresolved["effective"] is None
+    assert unresolved["target_error"] == ""
+    assert unresolved["dm_channel_selection"]["candidates"] == ["20", "21"]
+    assert unresolved["dm_channel_selection"]["selection_required"] is True
+
+    selected = service.context_state(
+        target_scope_type="dm",
+        target_dm_channel_id="21",
+        target_user_id="100",
+    )
+    assert selected["effective"] is not None
+    assert selected["effective"]["scope"].channel_id == 21
+    assert selected["effective"]["memory"]["chain"]["effective"] == "write_only"
+    assert selected["effective"]["memory"]["chain"]["source"] == "channel"
+
+    unknown = service.context_state(
+        target_scope_type="dm",
+        target_user_id="999",
+    )
+    assert unknown["effective"] is None
+    assert unknown["dm_channel_selection"]["unavailable"] is True
+
+    manual = service.context_state(
+        target_scope_type="dm",
+        target_dm_channel_id="77",
+        target_user_id="999",
+    )
+    assert manual["effective"] is not None
+    assert manual["effective"]["scope"].channel_id == 77
 
 
 def test_context_state_rejects_partial_or_invalid_target(tmp_path):
@@ -994,6 +1055,13 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
     )
     assert invalid["effective"] is None
     assert "positive integers" in invalid["target_error"]
+
+    invalid_dm_user = service.context_state(
+        target_scope_type="dm",
+        target_user_id="nope",
+    )
+    assert invalid_dm_user["effective"] is None
+    assert "positive integer" in invalid_dm_user["target_error"]
 
 
 
