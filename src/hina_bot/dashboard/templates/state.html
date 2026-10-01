@@ -26,10 +26,43 @@
       </div>
     </header>
     <div class="scope-target-row">
-      {{ scope_picker("target", data.filters.target_scope_type, data.filters.target_guild_id, data.filters.target_channel_id, label="Target scope", allow_any=false) }}
+      {{ scope_picker("target", data.filters.target_scope_type, data.filters.target_guild_id, data.filters.target_channel_id, label="Target scope", allow_any=false, dm_channel=false) }}
       <label class="scope-target-user">
         <span>User ID</span>
         <input name="target_user_id" inputmode="numeric" value="{{ data.filters.target_user_id }}" placeholder="user id">
+      </label>
+      <label class="scope-target-dm-channel">
+        <span>DM channel</span>
+        {% if not data.filters.target_user_id %}
+        <select name="target_dm_channel_id" disabled>
+          <option>Enter a user ID first</option>
+        </select>
+        <small>Known DM channels are discovered from retained database state.</small>
+        {% elif data.dm_channel_selection.candidates %}
+        <select name="target_dm_channel_id">
+          {% if data.dm_channel_selection.candidates|length > 1 and not data.dm_channel_selection.selected %}
+          <option value="" selected>Choose a known DM channel</option>
+          {% endif %}
+          {% if data.dm_channel_selection.selected and data.dm_channel_selection.selected not in data.dm_channel_selection.candidates %}
+          <option value="{{ data.dm_channel_selection.selected }}" selected>{{ data.dm_channel_selection.selected }} · manual/legacy</option>
+          {% endif %}
+          {% for channel_id in data.dm_channel_selection.candidates %}
+          <option value="{{ channel_id }}" {% if channel_id == data.dm_channel_selection.selected %}selected{% endif %}>{{ channel_id }}</option>
+          {% endfor %}
+        </select>
+        <small>
+          {% if data.dm_channel_selection.auto_selected %}
+          Auto-selected the only known DM channel.
+          {% elif data.dm_channel_selection.candidates|length > 1 %}
+          {{ data.dm_channel_selection.candidates|length }} known DM channels found.
+          {% else %}
+          Known DM channel from retained database state.
+          {% endif %}
+        </small>
+        {% else %}
+        <input name="target_dm_channel_id" inputmode="numeric" value="{{ data.dm_channel_selection.selected }}" placeholder="DM channel id">
+        <small>No known DM channel was found; enter one manually as a fallback.</small>
+        {% endif %}
       </label>
       <div class="scope-target-actions">
         <button type="submit">Evaluate scope</button>
@@ -42,6 +75,7 @@
     <input type="hidden" name="target_scope_type" value="{{ data.filters.target_scope_type }}">
     <input type="hidden" name="target_guild_id" value="{{ data.filters.target_guild_id }}">
     <input type="hidden" name="target_channel_id" value="{{ data.filters.target_channel_id }}">
+    <input type="hidden" name="target_dm_channel_id" value="{{ data.filters.target_dm_channel_id }}">
     <input type="hidden" name="target_user_id" value="{{ data.filters.target_user_id }}">
     <header class="state-control-heading">
       <div>
@@ -62,6 +96,15 @@
 
 {% if data.target_error %}
 <section class="notice danger">{{ data.target_error }}</section>
+{% elif data.filters.target_scope_type == "dm" and data.dm_channel_selection.selection_required %}
+<section class="notice info">
+  Multiple known DM channels exist for this user. Choose one from the DM channel list above.
+</section>
+{% elif data.filters.target_scope_type == "dm" and data.dm_channel_selection.unavailable %}
+<section class="notice info">
+  No known DM channel is retained for this user. Enter a channel ID manually above to inspect
+  channel-level overrides.
+</section>
 {% elif not data.effective %}
 <section class="notice info">
   Choose Guild or DM, then enter the IDs needed for that scope.
