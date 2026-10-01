@@ -5,7 +5,7 @@
 {% block content %}
 <section class="page-heading">
   <div>
-    <a class="back" href="/traces">← Traces</a>
+    <a class="back" href="{{ back_url(request, '/traces') }}">← Traces</a>
     <h1>Trace <code>{{ data.turn_id }}</code></h1>
   </div>
 </section>

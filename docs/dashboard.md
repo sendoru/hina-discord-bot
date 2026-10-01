@@ -478,3 +478,7 @@ Memory failures는 `turn.completed`의 실패 횟수 합계와 실패가 있는 
 boolean 조건은 표시하지 않습니다. Scope 유형 제거는 해당 Guild·Channel·legacy realm을
 함께 제거하며 개별 ID 제거는 나머지 조건을 유지합니다. 조건 제거는 첫 페이지로 돌아갑니다.
 Analytics·Identity·Summaries·Cursors에도 같은 칩을 제공합니다.
+
+목록에서 상세 화면으로 이동할 때 `return_to`에 필터와 페이지를 전달합니다. 복귀 경로는
+해당 목록의 정확한 내부 경로만 허용합니다. 외부 URL, fragment, 제어 문자, 역슬래시,
+다른 화면 경로는 기본 목록으로 돌아갑니다.

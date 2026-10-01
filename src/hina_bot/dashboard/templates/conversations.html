@@ -63,7 +63,7 @@
       </div>
       <div class="conversation-head-actions">
         {% if row.record_type == "turn" %}
-        <a href="/conversations/{{ row.id }}/context">context</a>
+        <a href="{{ detail_url('/conversations/' ~ row.id ~ '/context', request, '/conversations') }}">context</a>
         {% else %}
         <span class="muted">no stored context</span>
         {% endif %}

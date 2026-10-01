@@ -467,3 +467,16 @@ def test_invalid_filters_preserve_input_and_do_not_query(tmp_path, monkeypatch):
         assert "올바른 날짜" in response.text
     response = client.get("/memory?confidence_min=0.9&confidence_max=0.1")
     assert "끝 값은 시작 값 이상" in response.text
+
+
+def test_detail_links_preserve_list_filters_and_return_paths(tmp_path):
+    client = dashboard_client(tmp_path)
+    for path, detail in [("/traces", "/traces/trace-ui"), ("/memory", "/memory/1"),
+                         ("/reconciliation", "/reconciliation/1"),
+                         ("/conversations", "/conversations/1/context")]:
+        response = client.get(path, params={"q": "dashboard", "page": 2})
+        assert "return_to=" in response.text or path == "/traces"
+        response = client.get(detail, params={"return_to": path + "?q=dashboard&page=2"})
+        assert f'class="back" href="{path}?q=dashboard&amp;page=2"' in response.text
+        response = client.get(detail, params={"return_to": "https://evil.example"})
+        assert f'class="back" href="{path}"' in response.text

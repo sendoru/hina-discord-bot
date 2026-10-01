@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 
 from .config import DashboardSettings
 from .filterutils import applied_filters, remove_filter_url
+from .navigation import back_url, detail_url
 from .repository import AdminRepository
 from .routes import build_routers
 from .services import (
@@ -38,6 +39,8 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     templates.env.filters["localtime"] = (
         lambda value: format_local_time(value, settings.timezone)
     )
+    templates.env.globals["back_url"] = back_url
+    templates.env.globals["detail_url"] = detail_url
     templates.env.globals["applied_filters"] = applied_filters
     templates.env.globals["remove_filter_url"] = remove_filter_url
     templates.env.globals["dashboard_timezone"] = settings.timezone

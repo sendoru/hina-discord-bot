@@ -108,7 +108,7 @@
       <tbody>
       {% for row in data.rows %}
       <tr>
-        <td><a href="/reconciliation/{{ row.id }}">#{{ row.id }}</a></td>
+        <td><a href="{{ detail_url('/reconciliation/' ~ row.id, request, '/reconciliation') }}">#{{ row.id }}</a></td>
         <td><span class="relation relation-{{ row.relation }}">{{ row.relation }}</span></td>
         <td class="numeric">{{ "%.3f"|format(row.confidence) }}</td>
         <td>

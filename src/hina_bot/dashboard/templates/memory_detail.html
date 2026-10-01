@@ -5,7 +5,7 @@
 {% block content %}
 <section class="page-heading">
   <div>
-    <a class="back" href="/memory">← Memory</a>
+    <a class="back" href="{{ back_url(request, '/memory') }}">← Memory</a>
     <h1>Memory #{{ data.item.id }}</h1>
   </div>
 </section>

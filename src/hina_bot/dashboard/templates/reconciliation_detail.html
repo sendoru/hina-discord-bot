@@ -4,7 +4,7 @@
 {% block content %}
 <section class="page-heading">
   <div>
-    <a class="back" href="/reconciliation">← Reconciliation</a>
+    <a class="back" href="{{ back_url(request, '/reconciliation') }}">← Reconciliation</a>
     <h1>Proposal #{{ data.proposal.id }}</h1>
     <p>
       <span class="relation relation-{{ data.proposal.relation }}">{{ data.proposal.relation }}</span>

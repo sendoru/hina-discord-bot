@@ -4,7 +4,7 @@
 {% block content %}
 <section class="page-heading">
   <div>
-    <a class="back" href="/conversations">← Conversations</a>
+    <a class="back" href="{{ back_url(request, '/conversations') }}">← Conversations</a>
     <h1>Conversation Context</h1>
     <p>{{ data.before }} previous / {{ data.after }} following turns in the same scope.</p>
   </div>
