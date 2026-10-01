@@ -2014,6 +2014,11 @@ pre {
   grid-column: 1 / -1;
 }
 
+.scope-picker[data-dm-channel="false"]:has(input[value="dm"]:checked)
+  .scope-picker-channel-field {
+  display: none;
+}
+
 .scope-target-row {
   display: grid;
   grid-template-columns:
