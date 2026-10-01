@@ -83,8 +83,13 @@
     <code>dm</code> ·
   {% endif %}
   <code>channel:{{ data.target.channel_id }}</code>.
+  {% if data.target.scope_type == "dm" %}
+  Owner-DM relationship memories are shown with raw content below; cross-space IMPLICIT projection is
+  not used in DM.
+  {% else %}
   FULL relationship memories are shown with raw content below. IMPLICIT memories contribute only their
   bounded evidence projection. Missing axes mean no positive evidence was projected.
+  {% endif %}
 </section>
 {% endif %}
 
