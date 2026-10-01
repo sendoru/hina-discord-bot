@@ -672,7 +672,13 @@ class RequestAssembler(BaseLLM):
                 instruction_group_chars["instruction_world_chars"] += len(
                     WORLD_WEB_SEARCH_POLICY
                 )
-        if managed_tool_config(self.settings.provider):
+        managed_tools = managed_tool_config(self.settings.provider)
+        if self.settings.provider == "gemini" and search_mode in {"auto", "required"}:
+            # Gemini Interactions can expose native Google Search as a client-side
+            # function call when code execution is offered in the same request.
+            # Keep the provider-managed tools separate until that backend behavior is stable.
+            managed_tools = []
+        if managed_tools:
             instruction_parts.append(CODE_EXECUTION_POLICY)
             instruction_group_chars["instruction_tools_chars"] += len(
                 CODE_EXECUTION_POLICY
@@ -717,7 +723,6 @@ class RequestAssembler(BaseLLM):
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
         tools = list(tool_config(search_mode) or ())
-        managed_tools = managed_tool_config(self.settings.provider)
         tools.extend(managed_tools)
         if tools:
             request["tools"] = tools
