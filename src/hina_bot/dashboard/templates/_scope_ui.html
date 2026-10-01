@@ -1,4 +1,27 @@
-{% macro scope_key(value) -%}
+{% macro discord_ref(name, value, channel=false) -%}
+{% if name %}
+  {% if channel %}#{{ name }}{% else %}{{ name }}{% endif %}
+  <span class="muted">(<code>{{ value }}</code>)</span>
+{% elif value %}
+  <code>{{ value }}</code>
+{% else %}
+  —
+{% endif %}
+{%- endmacro %}
+
+{% macro origin_ref(realm, channel_id, guild_name="", channel_name="") -%}
+{% if guild_name %}
+  {{ guild_name }} <span class="muted">(<code>{{ realm }}</code>)</span>
+{% else %}
+  <code>{{ realm }}</code>
+{% endif %}
+<br>
+<span class="muted">
+  {% if channel_name %}#{{ channel_name }} (<code>{{ channel_id }}</code>){% else %}#{{ channel_id }}{% endif %}
+</span>
+{%- endmacro %}
+
+{% macro scope_key(value, guild_name="", channel_name="") -%}
 {% set raw = value or "—" %}
 {% set parts = raw.split(":") %}
 <code class="scope-key" title="{{ raw }}">
@@ -13,4 +36,11 @@
     <span class="scope-segment">{{ raw }}</span>
   {%- endif -%}
 </code>
+{% if guild_name or channel_name %}
+<br><span class="muted">
+  {% if guild_name %}{{ guild_name }}{% endif %}
+  {% if guild_name and channel_name %} · {% endif %}
+  {% if channel_name %}#{{ channel_name }}{% endif %}
+</span>
+{% endif %}
 {%- endmacro %}
