@@ -78,7 +78,7 @@
     <a href="{{ request.url.include_query_params(after=preset.after, before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
   </div>
-  {{ active_filter_chips(request, "/traces") }}
+  {{ active_filter_chips(request, "/traces", data) }}
 </form>
 
 {{ epoch_notice(data) }}

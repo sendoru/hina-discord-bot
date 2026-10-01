@@ -473,3 +473,8 @@ Memory failures는 `turn.completed`의 실패 횟수 합계와 실패가 있는 
 날짜와 confidence 필터는 공통 검증을 거칩니다. Confidence는 유한한 `0..1` 범위이며,
 시작 값은 끝 값 이하여야 합니다. 오류가 있으면 조회를 수행하지 않고 입력을 유지하며
 필드 옆에 한국어 오류 이유를 표시합니다. 잘못된 날짜는 text 입력으로 보존합니다.
+
+적용 필터 칩은 read model의 정규화된 조건을 표시합니다. 파생된 Guild realm이나 무시된
+boolean 조건은 표시하지 않습니다. Scope 유형 제거는 해당 Guild·Channel·legacy realm을
+함께 제거하며 개별 ID 제거는 나머지 조건을 유지합니다. 조건 제거는 첫 페이지로 돌아갑니다.
+Analytics·Identity·Summaries·Cursors에도 같은 칩을 제공합니다.

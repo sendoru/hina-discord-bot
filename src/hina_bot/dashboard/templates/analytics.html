@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
 {% from "_telemetry_ui.html" import telemetry_window %}
+{% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Analytics · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -37,6 +38,7 @@
       {% endfor %}
     </div>
   </div>
+  {{ active_filter_chips(request, "/analytics", data) }}
 </form>
 
 <nav class="section-nav" aria-label="Analytics sections">

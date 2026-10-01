@@ -271,7 +271,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'aria-label="Observability epoch"' in traces.text
     assert "Advanced filters" in traces.text
     assert 'class="wide-table"' in traces.text
-    assert 'aria-label="Active filters"' in traces.text
+    assert 'aria-label="Applied filters"' in traces.text
     assert analytics.status_code == 200
     assert "Routing & Usage Analytics" in analytics.text
     assert "test-model" in analytics.text
@@ -304,7 +304,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "<dt>Realm</dt>" in conversations.text
     assert "<dt>Channel</dt>" in conversations.text
     assert 'class="scope-key"' not in conversations.text
-    assert 'aria-label="Active filters"' in conversations.text
+    assert 'aria-label="Applied filters"' in conversations.text
     assert 'type="datetime-local"' in conversations.text
     assert "<mark>dashboard</mark>" in conversations.text
     assert conversations_by_name.status_code == 200
@@ -317,7 +317,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "dashboard memory" in memory.text
     assert "Content search" in memory.text
     assert "Advanced filters" in memory.text
-    assert 'aria-label="Active filters"' in memory.text
+    assert 'aria-label="Applied filters"' in memory.text
     assert 'aria-label="Origin scope type"' in memory.text
     assert 'name="origin_scope_type" value="any" checked' in memory.text
     assert memory_dm.status_code == 200

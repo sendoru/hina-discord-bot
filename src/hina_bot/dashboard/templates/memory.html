@@ -90,7 +90,7 @@
     <a href="{{ request.url.include_query_params(created_after=preset.after, created_before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
   </div>
-  {{ active_filter_chips(request, "/memory") }}
+  {{ active_filter_chips(request, "/memory", data) }}
 </form>
 
 <section class="panel flush">

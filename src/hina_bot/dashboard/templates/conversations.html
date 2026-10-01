@@ -48,7 +48,7 @@
     <a href="{{ request.url.include_query_params(after=preset.after, before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
   </div>
-  {{ active_filter_chips(request, "/conversations") }}
+  {{ active_filter_chips(request, "/conversations", data) }}
 </form>
 
 {% if data.rows %}

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw %}
+{% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Extraction Cursors · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -28,6 +29,7 @@
       <a class="button secondary" href="/memory/cursors">Reset</a>
     </div>
   </div>
+  {{ active_filter_chips(request, "/memory/cursors", data) }}
 </form>
 
 <section class="notice info">

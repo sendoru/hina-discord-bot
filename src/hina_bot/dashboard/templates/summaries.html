@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw %}
+{% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Summaries · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -23,6 +24,7 @@
       <a class="button secondary" href="/summaries">Reset</a>
     </div>
   </div>
+  {{ active_filter_chips(request, "/summaries", data) }}
 </form>
 
 <section class="panel">
