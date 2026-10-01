@@ -128,3 +128,21 @@ __all__ = [
     "telemetry_freshness",
     "utc_iso",
 ]
+
+
+def filter_input_time(value: str, timezone: str) -> str:
+    """Keep seconds and fractional seconds when rendering local date controls."""
+    parsed = parse_local_time(value, timezone)
+    if parsed is None:
+        return value
+    return parsed.astimezone(ZoneInfo(timezone)).replace(tzinfo=None).isoformat()
+
+
+def filter_input_type(value: str, timezone: str) -> str:
+    # Chromium date controls cannot retain precision beyond milliseconds.
+    local = filter_input_time(value, timezone)
+    if parse_local_time(value, timezone) is None and value.strip():
+        return "text"
+    if "." in local and len(local.rsplit(".", 1)[1]) > 3:
+        return "text"
+    return "datetime-local"

@@ -21,7 +21,7 @@ from .services import (
     TraceService,
 )
 from .telemetry import TelemetryReader
-from .timeutils import format_local_time, telemetry_freshness
+from .timeutils import filter_input_time, filter_input_type, format_local_time, telemetry_freshness
 
 
 def create_app(settings: DashboardSettings | None = None) -> FastAPI:
@@ -42,6 +42,8 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     templates.env.filters["localtime"] = (
         lambda value: format_local_time(value, settings.timezone)
     )
+    templates.env.filters["filtertype"] = lambda value: filter_input_type(value, settings.timezone)
+    templates.env.filters["filtertime"] = lambda value: filter_input_time(value, settings.timezone)
     templates.env.globals["back_url"] = back_url
     templates.env.globals["detail_url"] = detail_url
     templates.env.globals["applied_filters"] = applied_filters
