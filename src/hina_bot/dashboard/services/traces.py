@@ -27,6 +27,154 @@ def _conversation_scope_fields(value: object) -> dict[str, str | None]:
     }
 
 
+def _raw_turn_availability(
+    stored: dict[str, object] | None,
+    events: tuple[dict[str, object], ...],
+    usage: tuple[dict[str, object], ...],
+) -> dict[str, str]:
+    if stored is not None:
+        return {
+            "state": "retained",
+            "severity": "info",
+            "title": "Raw conversation record retained",
+            "message": "The raw question/reply row is available for this trace.",
+        }
+
+    terminal = next(
+        (row for row in reversed(events) if row.get("event") in _TERMINAL_EVENTS),
+        None,
+    )
+    if terminal is not None:
+        persistence = str(terminal.get("raw_turn_persistence") or "")
+        reason = str(terminal.get("raw_turn_persistence_reason") or "")
+        if persistence == "failed":
+            return {
+                "state": "persistence_failed",
+                "severity": "warning",
+                "title": "Raw conversation persistence failed",
+                "message": (
+                    "This was a Discord conversation turn, but the raw question/reply row "
+                    "could not be persisted."
+                ),
+            }
+        if persistence == "skipped":
+            messages = {
+                "memory_writes_disabled": (
+                    "Persistent-memory writes were disabled for this turn, so no raw "
+                    "question/reply row was stored."
+                ),
+                "fixed_reply_no_raw_turn": (
+                    "This was a fixed bare-call reply, which intentionally does not create "
+                    "a raw question/reply row."
+                ),
+                "duplicate": (
+                    "This turn was recognized as a duplicate, so no new raw question/reply "
+                    "row was stored."
+                ),
+            }
+            return {
+                "state": "not_retained_by_design",
+                "severity": "info",
+                "title": "Raw conversation record was not stored",
+                "message": messages.get(
+                    reason,
+                    "Raw conversation persistence was intentionally skipped for this turn.",
+                ),
+            }
+
+    dropped = next(
+        (row for row in reversed(events) if row.get("event") == "turn.dropped"),
+        None,
+    )
+    if dropped is not None:
+        reason = str(dropped.get("reason") or "unknown")
+        return {
+            "state": "not_retained_by_design",
+            "severity": "info",
+            "title": "Raw conversation record was not created",
+            "message": (
+                "This Discord turn was dropped before raw conversation storage "
+                f"(reason: {reason})."
+            ),
+        }
+
+    received = next(
+        (row for row in events if row.get("event") == "turn.received"),
+        None,
+    )
+    operations = tuple(
+        sorted(
+            {
+                str(row["operation"])
+                for row in usage
+                if isinstance(row.get("operation"), str) and row.get("operation")
+            }
+        )
+    )
+    answer_seen = "answer" in operations
+
+    if received is not None:
+        if (
+            _as_int(received.get("content_chars")) == 0
+            and not answer_seen
+            and terminal is not None
+            and terminal.get("event") == "turn.completed"
+        ):
+            return {
+                "state": "not_retained_by_design",
+                "severity": "info",
+                "title": "Raw conversation record was not stored",
+                "message": (
+                    "This looks like a bare trigger handled by a fixed reply. Older telemetry "
+                    "did not record an explicit persistence reason for this turn."
+                ),
+            }
+        return {
+            "state": "unavailable",
+            "severity": "warning",
+            "title": "Raw conversation record is unavailable",
+            "message": (
+                "This trace belongs to a Discord conversation turn, but no raw question/reply "
+                "row is retained. This older telemetry cannot distinguish bounded-retention or "
+                "analysis-data cleanup from disabled memory writes or a trace created before "
+                "persistence-reason markers were added."
+            ),
+        }
+
+    if operations and not answer_seen:
+        return {
+            "state": "not_applicable",
+            "severity": "info",
+            "title": "No raw conversation record is expected",
+            "message": (
+                "This trace contains auxiliary/model work rather than a retained Discord "
+                "conversation turn. Operations: " + ", ".join(operations) + "."
+            ),
+        }
+
+    if answer_seen:
+        return {
+            "state": "unavailable",
+            "severity": "warning",
+            "title": "Raw conversation record is unavailable",
+            "message": (
+                "Answer telemetry remains, but the Discord turn lifecycle and raw question/reply "
+                "row are not retained. The available telemetry is insufficient to identify the "
+                "original storage reason."
+            ),
+        }
+
+    return {
+        "state": "unknown",
+        "severity": "warning",
+        "title": "Raw conversation availability is unknown",
+        "message": (
+            "No raw question/reply row is retained, and the remaining telemetry does not contain "
+            "enough lifecycle information to determine whether one was expected."
+        ),
+    }
+
+
 class TraceService(ReadService):
     def __init__(
         self,
@@ -350,6 +498,11 @@ class TraceService(ReadService):
             "memory_context": memory_context,
             "context_provenance": context_provenance,
             "context_telemetry": context_telemetry,
+            "raw_turn_availability": _raw_turn_availability(
+                stored,
+                telemetry.events,
+                telemetry.usage,
+            ),
             "timeline": timeline,
             "events": telemetry.events,
             "usage": telemetry.usage,
