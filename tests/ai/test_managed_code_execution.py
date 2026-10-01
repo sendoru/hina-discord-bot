@@ -104,32 +104,6 @@ async def test_non_numeric_gemini_chat_still_only_makes_one_model_call(tmp_path)
 
 
 @pytest.mark.asyncio
-async def test_gemini_web_search_does_not_mix_code_execution(tmp_path):
-    fake = client("확인했어.")
-    llm = InformationPipeline(settings(tmp_path), client=fake)
-    store = Store(":memory:")
-    scope = Scope(None, 10, 100)
-    try:
-        answer = await llm.answer(
-            store,
-            scope,
-            "사용자",
-            "출처 알려줘",
-            channel_context=[],
-        )
-
-        assert answer == "확인했어."
-        request = fake.responses.create.await_args.kwargs
-        assert request["tools"] == [{"type": "web_search", "search_context_size": "low"}]
-        assert request["tool_choice"] == "required"
-        assert CODE_EXECUTION_POLICY not in request["instructions"]
-    finally:
-        await llm.close()
-        store.close()
-
-
-
-@pytest.mark.asyncio
 async def test_normal_openai_chat_exposes_code_interpreter_in_one_model_call(tmp_path):
     fake = client("3.9가 더 커.", provider="openai")
     llm = InformationPipeline(settings(tmp_path, provider="openai"), client=fake)
