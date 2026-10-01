@@ -333,9 +333,9 @@ class _GeminiResponses:
                 # OpenAI `required` means that a tool must be used before the final answer.
                 # Gemini `any` is stronger: every model step must be a tool call. With a
                 # server-side built-in search this can loop until Gemini rejects the request as
-                # "Model generated too many tool calls". Keep Gemini in auto mode and express
-                # the one-search requirement in the system instruction instead.
-                generation_config["tool_choice"] = "auto"
+                # "Model generated too many tool calls". Do not send an explicit tool_choice;
+                # let Gemini use its default selection behavior and express the one-search
+                # requirement in the system instruction instead.
                 guidance = (
                     "이 요청은 외부 확인이 필수입니다. Google Search를 사용해 필요한 사실을 "
                     "확인한 뒤, 충분한 근거를 얻으면 검색을 반복하지 말고 최종 답변을 작성하세요."
