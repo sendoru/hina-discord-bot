@@ -1986,7 +1986,8 @@ pre {
 }
 
 .scope-picker-field > span,
-.scope-target-user > span {
+.scope-target-user > span,
+.scope-target-dm-channel > span {
   color: var(--muted-2);
   font-size: 10px;
   font-weight: 620;
@@ -1994,7 +1995,9 @@ pre {
 }
 
 .scope-picker-field input,
-.scope-target-user input {
+.scope-target-user input,
+.scope-target-dm-channel input,
+.scope-target-dm-channel select {
   width: 100%;
   min-width: 0;
   min-height: 40px;
@@ -2016,6 +2019,7 @@ pre {
   grid-template-columns:
     minmax(430px, 1.6fr)
     minmax(180px, .65fr)
+    minmax(210px, .8fr)
     auto;
   gap: 12px;
   align-items: end;
@@ -2025,11 +2029,27 @@ pre {
   width: 100%;
 }
 
-.scope-target-user {
+.scope-target-user,
+.scope-target-dm-channel {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 4px;
+}
+
+.scope-target-dm-channel {
+  display: none;
+}
+
+.state-scope-form:has(input[name="target_scope_type"][value="dm"]:checked)
+  .scope-target-dm-channel {
+  display: flex;
+}
+
+.scope-target-dm-channel small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .scope-target-actions {
@@ -2097,6 +2117,10 @@ pre {
     grid-template-columns: minmax(360px, 1fr) minmax(170px, .6fr);
   }
 
+  .scope-target-dm-channel {
+    grid-column: 1 / -1;
+  }
+
   .scope-target-actions {
     grid-column: 1 / -1;
   }
@@ -2148,8 +2172,13 @@ pre {
     width: 100%;
   }
 
-  .scope-target-user {
+  .scope-target-user,
+  .scope-target-dm-channel {
     width: 100%;
+  }
+
+  .scope-target-dm-channel {
+    grid-column: auto;
   }
 
   .state-note-search .button {
