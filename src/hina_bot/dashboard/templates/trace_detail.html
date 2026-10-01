@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_status_ui.html" import status_badge %}
+{% from "_scope_ui.html" import origin_ref, scope_key %}
 {% block title %}Trace {{ data.turn_id }} · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -24,8 +25,7 @@
 <section class="panel">
   <h2>Stored turn</h2>
   <dl class="metadata">
-    <div><dt>Scope</dt><dd>{{ data.stored.scope }}</dd></div>
-    <div><dt>Realm</dt><dd>{{ data.stored.realm }}</dd></div>
+    <div><dt>Scope</dt><dd>{{ scope_key(data.stored.scope, data.stored.guild_name, data.stored.channel_name) }}</dd></div>
     <div><dt>User</dt><dd>{% if data.stored.name %}{{ data.stored.name }} · {% endif %}<code>{{ data.stored.user_id }}</code></dd></div>
     <div><dt>Message</dt><dd><code>{{ data.stored.message_id }}</code></dd></div>
     <div><dt>Created</dt><dd>{{ data.stored.created_at | localtime }}</dd></div>
@@ -201,7 +201,7 @@
           <td><a href="/memory/{{ item.item_id }}">#{{ item.item_id }}</a></td>
           <td>{{ item.projection }}</td>
           <td>{{ item.kind }}<br><span class="muted">{{ item.disclosure }}</span></td>
-          <td><code>{{ item.origin_realm }}</code><br><span class="muted">#{{ item.origin_channel_id }}</span></td>
+          <td>{{ origin_ref(item.origin_realm, item.origin_channel_id, item.guild_name, item.channel_name) }}</td>
           <td>
             {{ item.access }}
             {% if item.current_status %}<br><span class="muted">now: {{ item.current_status }}</span>{% endif %}
