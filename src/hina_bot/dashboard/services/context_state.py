@@ -119,9 +119,14 @@ class ContextStateService(ReadService):
         query = query.strip()
         query_folded = query.lower()
 
+        dm_user_valid = (
+            target_user_id.isdigit() and int(target_user_id) > 0
+            if target_user_id
+            else False
+        )
         dm_channel_candidates = (
             self.repository.dm_channel_candidates(target_user_id)
-            if target_user_id
+            if dm_user_valid
             else []
         )
         dm_channel_auto_selected = False
@@ -137,8 +142,8 @@ class ContextStateService(ReadService):
                 target_dm_channel_id = dm_channel_candidates[0]
                 dm_channel_auto_selected = True
             elif len(dm_channel_candidates) > 1:
-                dm_channel_selection_required = bool(target_user_id)
-            elif target_user_id:
+                dm_channel_selection_required = dm_user_valid
+            elif dm_user_valid:
                 dm_channel_unavailable = True
         else:
             target_dm_channel_id = ""
@@ -187,7 +192,9 @@ class ContextStateService(ReadService):
             if target_scope_type == "dm"
             else target_channel_id
         )
-        if target_scope_type == "dm" and (
+        if target_scope_type == "dm" and target_user_id and not dm_user_valid:
+            scope, target_error = None, "User ID must be a positive integer."
+        elif target_scope_type == "dm" and (
             dm_channel_selection_required or dm_channel_unavailable
         ) and not parse_channel_id:
             scope, target_error = None, ""
