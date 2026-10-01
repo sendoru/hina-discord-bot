@@ -152,6 +152,11 @@ class ContextStateService(ReadService):
         chat_override_rows = self.repository.scope_mode_overrides("chat_log_modes")
         note_rows = self.repository.note_rows()
         names = self.repository.latest_user_names()
+        metadata = self.repository.discord_scope_metadata()
+        for row in memory_override_rows:
+            self._decorate_scope_names(row, metadata)
+        for row in chat_override_rows:
+            self._decorate_scope_names(row, metadata)
 
         memory_overrides = self._mode_map(memory_override_rows)
         chat_overrides = self._mode_map(chat_override_rows)
@@ -172,6 +177,7 @@ class ContextStateService(ReadService):
                 internal_note_count += 1
                 continue
             note = self._manual_note_row(row, names)
+            self._decorate_scope_names(note, metadata)
             if query_folded:
                 haystack = " ".join(
                     (
@@ -237,6 +243,8 @@ class ContextStateService(ReadService):
                 "scope": scope,
                 "realm": scope.realm,
                 "channel": scope.channel,
+                "guild_id": scope.guild_id,
+                "channel_id": scope.channel_id,
                 "user_name": names.get((scope.realm, str(scope.user_id)), ""),
                 "user_note_key": scope.user_note,
                 "memory": {
@@ -260,16 +268,18 @@ class ContextStateService(ReadService):
                     "eligible_by_memory_mode": reads,
                 },
             }
+            self._decorate_scope_names(effective, metadata)
 
         chat_scope_keys = sorted(set(chat_overrides) | set(capture_overrides))
-        chat_override_inventory = [
-            {
+        chat_override_inventory = []
+        for key in chat_scope_keys:
+            row = {
                 "scope": key,
                 "enabled": chat_overrides.get(key),
                 "capture": capture_overrides.get(key),
             }
-            for key in chat_scope_keys
-        ]
+            self._decorate_scope_names(row, metadata)
+            chat_override_inventory.append(row)
 
         return {
             "effective": effective,
