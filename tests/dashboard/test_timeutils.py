@@ -74,4 +74,5 @@ def test_precise_filter_dates_use_text_to_avoid_browser_value_loss():
 
     assert filter_input_type("2026-09-21T00:00:12.345678Z", "Asia/Seoul") == "text"
     assert filter_input_type("2026-09-21T00:00:12Z", "Asia/Seoul") == "datetime-local"
+    assert filter_input_type("2026-09-21T00:00:12.123Z", "Asia/Seoul") == "datetime-local"
     assert filter_input_type("bad", "Asia/Seoul") == "text"

@@ -135,7 +135,8 @@ def filter_input_time(value: str, timezone: str) -> str:
     parsed = parse_local_time(value, timezone)
     if parsed is None:
         return value
-    return parsed.astimezone(ZoneInfo(timezone)).replace(tzinfo=None).isoformat()
+    local = parsed.astimezone(ZoneInfo(timezone)).replace(tzinfo=None).isoformat()
+    return local.rstrip("0") if "." in local else local
 
 
 def filter_input_type(value: str, timezone: str) -> str:

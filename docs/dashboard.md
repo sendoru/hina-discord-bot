@@ -521,3 +521,6 @@ python tests/dashboard/check_browser_ui.py --browser /usr/bin/chromium
 
 보존·재시도·관계 접근·epoch·최근 관측 안내도 한국어 설명을 사용합니다. 상태·필드·
 원본 telemetry 식별자는 영문을 유지하며, Trace의 미관측 문맥 수치를 0으로 보정하지 않습니다.
+
+밀리초까지의 날짜는 native 날짜 컨트롤을 유지하고 불필요한 소수 초의 0을 제거합니다.
+이보다 정밀한 값만 텍스트 입력으로 표시하므로 컨트롤 변경으로 정밀도를 잃지 않습니다.

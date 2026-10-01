@@ -97,6 +97,9 @@ def review(base_url: str, root: Path, long_id: str, browser_path: str | None):
                 assert page.locator("[name=confidence_min]").get_attribute("aria-invalid") == "true"
                 page.goto(base_url + "/traces?after=2026-09-21T00%3A00%3A12.345678Z")
                 assert page.locator("[name=after]").input_value() == "2026-09-21T09:00:12.345678"
+                page.goto(base_url + "/traces?after=2026-09-21T00%3A00%3A12.123Z")
+                assert page.locator("[name=after]").get_attribute("type") == "datetime-local"
+                assert page.locator("[name=after]").input_value() == "2026-09-21T09:00:12.123"
                 page.goto(base_url + "/memory?origin_scope_type=dm")
                 assert page.locator(".mobile-result-list").is_visible() == (width == 390)
                 assert page.locator(".desktop-result-list").is_visible() == (width != 390)
