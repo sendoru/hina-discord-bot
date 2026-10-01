@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_scope_ui.html" import scope_key %}
+{% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw %}
 {% block title %}Extraction Cursors · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -36,15 +36,16 @@
 <section class="panel flush">
   {% if data.rows %}
   <div class="table-wrap">
-    <table class="wide-table">
+    <table class="wide-table cursor-table">
       <thead>
-        <tr><th>Scope</th><th>User</th><th>Initialized</th><th>Extraction through</th><th>Summary through</th><th>Δ</th><th>Effective through</th><th>Latest retained</th><th>Pending</th><th>Updated</th></tr>
+        <tr><th>Realm</th><th>Channel</th><th>User</th><th>Initialized</th><th>Extraction through</th><th>Summary through</th><th>Δ</th><th>Effective through</th><th>Latest retained</th><th>Pending</th><th>Updated</th></tr>
       </thead>
       <tbody>
       {% for row in data.rows %}
       <tr>
-        <td>{{ scope_key(row.scope) }}<br><span class="muted">{{ row.realm }}</span></td>
-        <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
+        <td>{{ scope_realm(row.realm_display) }}{{ scope_raw(row.scope_display) }}</td>
+        <td>{{ scope_channel(row.scope_display) }}</td>
+        <td>{{ scope_user(row.user_id, row.user_name) }}</td>
         <td>{{ "yes" if row.initialized else "no" }}</td>
         <td class="numeric">{{ row.extraction_through_id if row.extraction_through_id is not none else "—" }}</td>
         <td class="numeric">{{ row.summary_through_id if row.summary_through_id is not none else "—" }}</td>

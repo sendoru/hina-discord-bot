@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_filter_ui.html" import active_filter_chips %}
 {% from "_scope_picker.html" import scope_picker %}
+{% from "_scope_ui.html" import scope_origin, scope_user %}
 {% block title %}Reconciliation · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -91,7 +92,12 @@
 <section class="panel flush">
   {% if data.rows %}
   <div class="table-wrap">
-    <table class="wide-table">
+    <table class="wide-table reconciliation-table">
+      <colgroup>
+        <col class="proposal-id"><col class="proposal-relation"><col class="proposal-confidence">
+        <col class="proposal-owner"><col><col>
+        <col class="proposal-sources"><col class="proposal-retry"><col class="proposal-created">
+      </colgroup>
       <thead>
         <tr>
           <th>ID</th><th>Relation</th><th>Confidence</th><th>Owner / origin</th>
@@ -105,9 +111,8 @@
         <td><span class="relation relation-{{ row.relation }}">{{ row.relation }}</span></td>
         <td class="numeric">{{ "%.3f"|format(row.confidence) }}</td>
         <td>
-          {% if row.user_name %}{{ row.user_name }}<br>{% endif %}
-          <code>{{ row.user_id }}</code><br>
-          <span class="muted">{{ row.origin_realm }} · #{{ row.origin_channel_id }}</span>
+          {{ scope_user(row.user_id, row.user_name) }}
+          {{ scope_origin(row.origin_display, row.origin_channel_id) }}
         </td>
         <td>
           <a href="/memory/{{ row.target_memory_item_id }}">#{{ row.target_memory_item_id }}</a>

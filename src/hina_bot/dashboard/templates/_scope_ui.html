@@ -1,20 +1,3 @@
-{% macro scope_key(value) -%}
-{% set raw = value or "—" %}
-{% set parts = raw.split(":") %}
-<code class="scope-key" title="{{ raw }}">
-  {%- if parts | length > 1 -%}
-    {%- for index in range(0, parts | length, 2) -%}
-      <span class="scope-segment">
-        <span class="scope-segment-label">{{ parts[index] }}</span>
-        {%- if index + 1 < parts | length %}:{{ parts[index + 1] }}{% endif -%}
-      </span>
-    {%- endfor -%}
-  {%- else -%}
-    <span class="scope-segment">{{ raw }}</span>
-  {%- endif -%}
-</code>
-{%- endmacro %}
-
 {% macro scope_realm(scope) -%}
 <div class="scope-part">
   {%- if scope.level == "global" -%}
@@ -40,13 +23,19 @@
 {% else %}—{% endif %}
 {%- endmacro %}
 
-{% macro scope_raw(scope, show_raw=false) -%}
+{% macro scope_raw(scope, show_raw=false, label="Scope key") -%}
 {% if scope.level == "unknown" or show_raw %}
 <code class="scope-raw-key">{{ scope.raw or "—" }}</code>
 {% else %}
 <details class="scope-raw">
-  <summary>Scope key</summary>
+  <summary>{{ label }}</summary>
   <code class="scope-raw-key">{{ scope.raw }}</code>
 </details>
 {% endif %}
+{%- endmacro %}
+
+{% macro scope_origin(scope, channel_id) -%}
+{{ scope_realm(scope) }}
+<div class="scope-part muted"><span>Channel</span> <code class="scope-id">{{ channel_id or "—" }}</code></div>
+{{ scope_raw(scope, label="Realm key") }}
 {%- endmacro %}

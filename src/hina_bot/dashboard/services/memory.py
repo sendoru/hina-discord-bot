@@ -20,6 +20,7 @@ from hina_bot.core.relationship_profile import (
 from hina_bot.core.routing import Scope
 
 from ..scopepicker import infer_target_scope_type, normalize_scope_filter
+from ..scopepresenter import parse_scope_key
 from ..searchutils import search_matches
 from ..timeutils import db_utc_timestamp
 from .base import Page, ReadService, _decode_json
@@ -29,6 +30,7 @@ class MemoryService(ReadService):
     @staticmethod
     def _memory_row(row: dict[str, object]) -> dict[str, object]:
         value = dict(row)
+        value["origin_display"] = parse_scope_key(str(value.get("origin_realm") or ""))
         sources = _decode_json(value.get("source_message_ids"), [])
         evidence = _decode_json(value.get("relationship_evidence"), {})
         value["source_message_ids_decoded"] = (
@@ -399,6 +401,8 @@ class MemoryService(ReadService):
                 )
             )
             value["structured_memory_count"] = counts.get(str(row["user_id"]), 0)
+            value["scope_display"] = parse_scope_key(str(row["scope"]))
+            value["realm_display"] = parse_scope_key(str(row.get("realm") or ""))
             value["extraction_cursor"] = cursor_by_scope.get(str(row["scope"]))
             personal.append(value)
 
@@ -414,6 +418,8 @@ class MemoryService(ReadService):
                     "",
                 )
             )
+            value["scope_display"] = parse_scope_key(str(row["scope"]))
+            value["realm_display"] = parse_scope_key(str(row.get("realm") or ""))
             shared.append(value)
         return {
             "personal": personal,
@@ -437,6 +443,8 @@ class MemoryService(ReadService):
         rows: list[dict[str, object]] = []
         for raw in self.repository.extraction_cursor_status():
             row = dict(raw)
+            row["scope_display"] = parse_scope_key(str(row["scope"]))
+            row["realm_display"] = parse_scope_key(str(row.get("realm") or ""))
             row["user_name"] = names.get(
                 (str(row.get("realm") or ""), str(row.get("user_id") or "")),
                 "",

@@ -249,7 +249,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
-    assert 'dashboard.css?v=20261001-3' in overview.text
+    assert 'dashboard.css?v=20261001-4' in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -378,13 +378,15 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "direct" in state.text
     assert 'class="wide-table"' not in state.text
     assert "legacy dashboard summary" in summaries.text
-    assert "Dashboard User<br><code>100</code>" in summaries.text
-    assert 'class="scope-key"' in summaries.text
-    assert 'class="scope-segment-label">dm</span>:10' in summaries.text
+    assert '<code class="scope-id">100</code>' in summaries.text
+    assert "Dashboard User" in summaries.text
+    assert "<th>Realm</th><th>Channel</th><th>User</th>" in summaries.text
+    assert "Scope key" in summaries.text
     assert "Memory Extraction Cursors" in cursors.text
-    assert "Dashboard User<br><code>100</code>" in cursors.text
-    assert 'class="scope-key"' in cursors.text
-    assert 'class="scope-segment-label">dm</span>:10' in cursors.text
+    assert '<code class="scope-id">100</code>' in cursors.text
+    assert "Dashboard User" in cursors.text
+    assert "<th>Realm</th><th>Channel</th><th>User</th>" in cursors.text
+    assert "Scope key" in cursors.text
     assert "dashboard memory updated" in reconciliation.text
     assert "Dashboard User" in reconciliation.text
     assert 'aria-label="Origin scope type"' in reconciliation.text

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_scope_ui.html" import scope_key %}
+{% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw %}
 {% block title %}Summaries · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -28,13 +28,14 @@
   <h2>Personal summaries</h2>
   {% if data.personal %}
   <div class="table-wrap">
-    <table class="wide-table">
-      <thead><tr><th>Scope</th><th>User</th><th>Through</th><th>Latest retained</th><th>Pending</th><th>Exportable</th><th>Structured items</th><th>Extraction cursor</th></tr></thead>
+    <table class="wide-table summary-table">
+      <thead><tr><th>Realm</th><th>Channel</th><th>User</th><th>Through</th><th>Latest retained</th><th>Pending</th><th>Exportable</th><th>Structured items</th><th>Extraction cursor</th></tr></thead>
       <tbody>
       {% for row in data.personal %}
       <tr>
-        <td>{{ scope_key(row.scope) }}<br><span class="muted">{{ row.realm }}</span></td>
-        <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
+        <td>{{ scope_realm(row.realm_display) }}{{ scope_raw(row.scope_display) }}</td>
+        <td>{{ scope_channel(row.scope_display) }}</td>
+        <td>{{ scope_user(row.user_id, row.user_name) }}</td>
         <td class="numeric">{{ row.through_id }}</td>
         <td class="numeric">{{ row.latest_turn_id or "—" }}</td>
         <td class="numeric">{{ row.pending_turns }}</td>
@@ -46,7 +47,7 @@
           {% else %}—{% endif %}
         </td>
       </tr>
-      <tr class="content-row"><td></td><td colspan="7"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
+      <tr class="content-row"><td colspan="9"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -58,18 +59,19 @@
   <h2>Shared summaries</h2>
   {% if data.shared %}
   <div class="table-wrap">
-    <table class="wide-table">
-      <thead><tr><th>Scope</th><th>User</th><th>Through</th><th>Latest retained call</th><th>Pending calls</th></tr></thead>
+    <table class="wide-table summary-table">
+      <thead><tr><th>Realm</th><th>Channel</th><th>User</th><th>Through</th><th>Latest retained call</th><th>Pending calls</th></tr></thead>
       <tbody>
       {% for row in data.shared %}
       <tr>
-        <td>{{ scope_key(row.scope) }}<br><span class="muted">{{ row.realm }}</span></td>
-        <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
+        <td>{{ scope_realm(row.realm_display) }}{{ scope_raw(row.scope_display) }}</td>
+        <td>{{ scope_channel(row.scope_display) }}</td>
+        <td>{{ scope_user(row.user_id, row.user_name) }}</td>
         <td class="numeric">{{ row.through_id }}</td>
         <td class="numeric">{{ row.latest_call_id or "—" }}</td>
         <td class="numeric">{{ row.pending_calls }}</td>
       </tr>
-      <tr class="content-row"><td></td><td colspan="4"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
+      <tr class="content-row"><td colspan="6"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
       {% endfor %}
       </tbody>
     </table>

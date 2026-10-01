@@ -531,10 +531,13 @@ def test_summary_and_cursor_service_show_rollout_state(tmp_path):
     assert len(summaries["personal"]) == 1
     assert summaries["personal"][0]["structured_memory_count"] == 1
     assert summaries["personal"][0]["user_name"] == "Memory User"
+    assert summaries["personal"][0]["scope_display"].raw == scope.conversation
+    assert summaries["personal"][0]["scope_display"].channel_id == str(scope.channel_id)
 
     cursors = service.extraction_cursors(user_id="100")
     row = next(row for row in cursors["rows"] if row["scope"] == scope.conversation)
     assert row["user_name"] == "Memory User"
+    assert row["scope_display"].raw == scope.conversation
     assert row["initialized"] == 0
     assert row["effective_through_id"] == row["summary_through_id"]
     assert row["cursor_delta"] is None

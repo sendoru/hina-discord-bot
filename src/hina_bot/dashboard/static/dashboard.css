@@ -2397,6 +2397,58 @@ pre {
 
 
 /* Keep compound scope identifiers readable without losing the full value. */
+.table-wrap .reconciliation-table {
+  table-layout: fixed;
+  min-width: 1480px;
+}
+
+.reconciliation-table .proposal-id { width: 60px; }
+.reconciliation-table .proposal-relation { width: 110px; }
+.reconciliation-table .proposal-confidence { width: 100px; }
+.reconciliation-table .proposal-owner { width: 240px; }
+.reconciliation-table .proposal-sources { width: 95px; }
+.reconciliation-table .proposal-retry { width: 75px; }
+.reconciliation-table .proposal-created { width: 170px; }
+
+.reconciliation-table th {
+  overflow-wrap: normal;
+}
+
+.reconciliation-table .memory-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  max-width: none;
+  white-space: normal;
+}
+
+.table-wrap .summary-table { min-width: 1280px; }
+.table-wrap .cursor-table { min-width: 1500px; }
+.table-wrap .memory-table { min-width: 1480px; }
+
+.memory-table th {
+  white-space: nowrap;
+}
+
+.memory-table th:first-child { min-width: 60px; }
+.memory-table th:nth-child(2) { min-width: 190px; }
+.memory-table th:nth-child(5) { min-width: 250px; }
+.memory-table th:last-child { min-width: 170px; }
+
+.summary-table th,
+.cursor-table th {
+  overflow-wrap: normal;
+}
+
+.summary-table th:nth-child(-n+3),
+.cursor-table th:nth-child(-n+3) {
+  min-width: 190px;
+}
+
+.cursor-table th:last-child {
+  min-width: 170px;
+}
+
 .scope-part {
   display: flex;
   flex-wrap: wrap;
@@ -2496,26 +2548,6 @@ pre {
     gap: 8px;
     padding-bottom: 0;
   }
-}
-
-.scope-key {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  max-width: 100%;
-  vertical-align: top;
-}
-
-.scope-segment {
-  display: block;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.scope-segment-label {
-  color: var(--muted);
-  font-weight: 650;
 }
 
 .conversation-head-primary {

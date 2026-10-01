@@ -364,7 +364,9 @@ Stored override tables separate **Realm** and **Channel**, while manual notes se
 it does not add a user-level override. Canonical keys remain available in a **Scope key** disclosure.
 Unknown keys and notes classified as `other` show their raw keys directly. The shared dashboard
 `scopepresenter` parses display components without changing stored keys, note eligibility, or runtime
-inheritance. Other pages can reuse these components with their own column layouts.
+inheritance. Summaries and extraction cursors use the same Realm/Channel/User components; Memory and
+Reconciliation keep their existing Origin and Owner/origin groupings with structured realm/channel
+labels. Canonical keys remain available in disclosures instead of being repeated beside the labels.
 On narrow screens, manual-note rows place Realm/User side by side and content below, so long IDs and
 note text remain readable without squeezing four columns together.
 
@@ -407,6 +409,10 @@ proposal counts.
 The **retry suspect** filter is deliberately conservative: it is true only when the target and new
 memory items have the same non-empty source-message ID set. Source order does not matter. This is a
 review heuristic, not a conclusion that a retry or extractor bug occurred.
+
+The reconciliation table reserves readable widths for identifiers, owner/origin, numeric metadata,
+and timestamps. Target/new content uses bounded three-line previews with links to the full memory
+items. Narrow viewports scroll within the table instead of compressing metadata into vertical letters.
 
 Proposal detail compares old/new content and provenance side by side, resolves source message IDs
 against bounded raw turns when still available, and follows retained source `turn_id` values into

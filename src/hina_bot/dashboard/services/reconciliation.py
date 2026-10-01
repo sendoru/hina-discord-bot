@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ..repository import AdminRepository
 from ..scopepicker import normalize_scope_filter
+from ..scopepresenter import parse_scope_key
 from ..telemetry import TelemetryReader
 from ..timeutils import db_utc_timestamp
 from .base import Page, _decode_json
@@ -22,6 +23,7 @@ class ReconciliationService(MemoryService):
     @staticmethod
     def _proposal_row(row: dict[str, object]) -> dict[str, object]:
         value = dict(row)
+        value["origin_display"] = parse_scope_key(str(value.get("origin_realm") or ""))
         for prefix in ("", "new_", "target_"):
             key = f"{prefix}source_message_ids"
             decoded_key = f"{prefix}source_message_ids_decoded"
