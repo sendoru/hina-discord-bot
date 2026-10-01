@@ -485,8 +485,8 @@ class HinaClient(discord.Client):
                 raw_turn_persistence_reason = "memory_writes_disabled"
                 return
             if self.store.seen(message.id):
-                raw_turn_persistence = "skipped"
-                raw_turn_persistence_reason = "duplicate"
+                raw_turn_persistence = "stored"
+                raw_turn_persistence_reason = ""
                 return
             try:
                 self.store.add_failed_turn(
