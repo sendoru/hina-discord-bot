@@ -115,7 +115,7 @@ button, .button { cursor: pointer; background: var(--panel-2); }
 }
 .metadata.compact { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
 .metadata div { min-width: 0; }
-dt { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+dt { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 dd { margin: 2px 0 0; overflow-wrap: anywhere; }
 details { margin-top: 10px; }
 summary { cursor: pointer; color: var(--muted); }
@@ -206,7 +206,7 @@ pre {
   display: block;
   margin-top: 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .section-heading {
   margin: 30px 0 12px;
@@ -458,7 +458,7 @@ code {
     max-width: 100%;
     max-height: 420px;
     padding: 10px;
-    font-size: 11px;
+    font-size: 12px;
   }
   .pagination {
     min-height: 44px;
@@ -544,7 +544,7 @@ code {
 .timezone-badge {
   margin-left: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .search-filter {
@@ -559,7 +559,7 @@ code {
   flex-direction: column;
   gap: 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .search-input {
   width: min(720px, 100%);
@@ -607,7 +607,7 @@ code {
   min-width: 84px;
   margin-right: 6px;
   color: var(--accent);
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
 }
 mark {
@@ -745,7 +745,7 @@ mark {
   --border-strong: #39465a;
   --text: #edf1f7;
   --muted: #98a4b5;
-  --muted-2: #707d90;
+  --muted-2: #9daabd;
   --accent: #91afff;
   --accent-strong: #b0c5ff;
   --accent-soft: rgba(145, 175, 255, .12);
@@ -859,7 +859,7 @@ summary:focus-visible {
 .brand-copy small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -893,7 +893,7 @@ summary:focus-visible {
 .nav-group-label {
   padding: 9px 10px 5px;
   color: var(--muted-2);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: .09em;
   text-transform: uppercase;
@@ -957,7 +957,7 @@ summary:focus-visible {
 
 .sidebar-footer-label {
   color: var(--muted-2);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -966,7 +966,7 @@ summary:focus-visible {
 .sidebar .timezone-badge {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .workspace {
@@ -1026,7 +1026,7 @@ h3 {
 
 .window strong {
   color: var(--text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -1054,7 +1054,7 @@ h3 {
 
 .card span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 620;
   letter-spacing: .015em;
 }
@@ -1274,7 +1274,7 @@ td {
 th {
   background: rgba(29, 36, 48, .92);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 680;
   letter-spacing: .02em;
 }
@@ -1515,7 +1515,7 @@ pre {
   }
 
   .badge {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .cards {
@@ -1593,7 +1593,7 @@ pre {
 
   .mobile-nav-label {
     color: var(--muted-2);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 650;
     letter-spacing: .04em;
     text-transform: uppercase;
@@ -1647,7 +1647,7 @@ pre {
   .mobile-nav-group-label {
     padding: 4px 7px 2px;
     color: var(--muted-2);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: .07em;
     text-transform: uppercase;
@@ -1724,7 +1724,7 @@ pre {
     flex: 0 0 auto;
     max-width: 46%;
     color: var(--muted-2);
-    font-size: 11px;
+    font-size: 12px;
     text-align: right;
   }
 
@@ -1747,7 +1747,7 @@ pre {
   .relationship-axis span {
     display: block;
     color: var(--muted-2);
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1.25;
   }
 
@@ -1817,7 +1817,7 @@ pre {
 
   .relationship-memory-head > span {
     flex: 0 0 auto;
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .relationship-memory-content {
@@ -1840,13 +1840,13 @@ pre {
   }
 
   .relationship-memory-meta dd {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .relationship-memory-sources {
     margin-top: 8px;
     color: var(--muted-2);
-    font-size: 10px;
+    font-size: 12px;
     overflow-wrap: anywhere;
   }
 }
@@ -1900,7 +1900,7 @@ pre {
 .scope-picker-label {
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: .02em;
 }
@@ -1989,7 +1989,7 @@ pre {
 .scope-target-user > span,
 .scope-target-dm-channel > span {
   color: var(--muted-2);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 620;
   line-height: 1.2;
 }
@@ -2072,7 +2072,7 @@ pre {
 
 .scope-target-dm-channel small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
@@ -2252,7 +2252,7 @@ pre {
   padding: 2px 7px;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 680;
   line-height: 1.2;
   white-space: nowrap;
@@ -2288,7 +2288,7 @@ pre {
 .freshness-age {
   margin-top: 4px;
   color: var(--muted-2);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .card strong .status-badge {
@@ -2534,7 +2534,7 @@ pre {
     display: block;
     margin-bottom: 6px;
     color: var(--muted);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 680;
   }
 
@@ -2595,7 +2595,7 @@ pre {
 }
 
 .conversation-metadata dt {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: .035em;
 }
 
@@ -2680,7 +2680,7 @@ pre {
 .filter-cluster legend {
   padding: 0 5px;
   color: var(--muted-2);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 720;
   letter-spacing: .07em;
   text-transform: uppercase;
@@ -2873,3 +2873,6 @@ pre {
   background: var(--panel); transform: translateY(-180%); }
 .skip-link:focus { transform: translateY(0); }
 .table-wrap:focus-visible, main:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.value-legend { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 0 0 18px; }
+.card small { display: block; font-size: 12px; line-height: 1.6; color: var(--muted); }

@@ -48,12 +48,12 @@
           </dl>
           <div class="message">{{ source.turn.content }}</div>
         {% else %}
-          <p class="muted">The raw turn is no longer present in bounded retention.</p>
+          <p class="muted">원본 대화가 보존 데이터에 남아 있지 않습니다.</p>
         {% endif %}
       </article>
     {% endfor %}
   {% else %}
-  <p class="muted">No source message IDs were stored.</p>
+  <p class="muted">보존된 출처 메시지 ID가 없습니다.</p>
   {% endif %}
 </section>
 
@@ -84,7 +84,7 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">No nearby items in this disclosure space.</p>
+  <p class="muted">이 공개 범위에 인접 메모리가 없습니다.</p>
   {% endif %}
 </section>
 {% endblock %}

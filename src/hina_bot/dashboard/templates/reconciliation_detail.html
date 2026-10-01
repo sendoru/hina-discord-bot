@@ -81,12 +81,12 @@
       </dl>
       <div class="message">{{ source.turn.content }}</div>
       {% else %}
-      <p class="muted">Raw turn expired from bounded retention or predates the retained dataset.</p>
+      <p class="muted">원본 대화의 보존 기간이 지났거나 보존 데이터보다 이전에 생성되었습니다.</p>
       {% endif %}
     </article>
     {% endfor %}
   {% else %}
-  <p class="muted">No source IDs are available.</p>
+  <p class="muted">보존된 출처 ID가 없습니다.</p>
   {% endif %}
 </section>
 
@@ -101,7 +101,7 @@
     New and target memory partially overlap in source messages, but their source sets are not identical.
   </div>
   {% else %}
-  <p class="muted">New and target memory do not share retained source-message IDs.</p>
+  <p class="muted">새 메모리와 대상 메모리에 공통으로 보존된 출처 메시지 ID가 없습니다.</p>
   {% endif %}
 
   {% if data.extraction_traces %}
@@ -114,7 +114,7 @@
         <pre>{{ row | tojson(indent=2) }}</pre>
         {% endfor %}
       {% else %}
-      <p class="muted">The source trace remains, but structured-memory usage rows have rotated out or were not recorded.</p>
+      <p class="muted">출처 trace는 남아 있지만 구조화 메모리 사용량은 순환 보존에서 제거되었거나 기록되지 않았습니다.</p>
       {% endif %}
       {% if trace.events %}
       <details>
@@ -125,7 +125,7 @@
     </details>
     {% endfor %}
   {% else %}
-  <p class="muted">No retained source trace can be correlated with this proposal's new memory item.</p>
+  <p class="muted">제안의 새 메모리와 연결할 수 있는 출처 trace가 보존되어 있지 않습니다.</p>
   {% endif %}
 </section>
 
@@ -141,7 +141,7 @@
       {% endfor %}
       </tbody>
     </table>
-    {% else %}<p class="muted">No nearby memory.</p>{% endif %}
+    {% else %}<p class="muted">인접 메모리가 없습니다.</p>{% endif %}
   </section>
   <section class="panel">
     <h2>Nearby new memory</h2>
@@ -154,7 +154,7 @@
       {% endfor %}
       </tbody>
     </table>
-    {% else %}<p class="muted">No nearby memory.</p>{% endif %}
+    {% else %}<p class="muted">인접 메모리가 없습니다.</p>{% endif %}
   </section>
 </div>
 {% endblock %}

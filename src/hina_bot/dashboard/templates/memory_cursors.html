@@ -6,7 +6,7 @@
 <section class="page-heading">
   <div>
     <h1>Memory Extraction Cursors</h1>
-    <p>Structured extraction progress against currently retained turns.</p>
+    <p>현재 보존된 대화를 기준으로 구조화 메모리 추출 진행 상태를 보여줍니다.</p>
   </div>
 </section>
 
@@ -33,7 +33,7 @@
 </form>
 
 <section class="notice info">
-  An uninitialized cursor uses the current legacy summary <code>through_id</code> as its effective baseline, matching Store migration semantics. This page never initializes it.
+  초기화되지 않은 cursor는 기존 요약의 <code>through_id</code>를 기준선으로 사용합니다. Store의 마이그레이션 의미를 유지하며 이 화면에서 초기화하지 않습니다.
 </section>
 
 <section class="panel flush">
@@ -62,6 +62,6 @@
       </tbody>
     </table>
   </div>
-  {% else %}<p class="empty">No cursor states match this filter.</p>{% endif %}
+  {% else %}<p class="empty">조건에 맞는 추출 진행 상태가 없습니다.</p>{% endif %}
 </section>
 {% endblock %}

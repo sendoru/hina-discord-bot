@@ -1,5 +1,5 @@
 {% macro status_badge(value) -%}
-{% set label = value or "unknown" %}
+{% set label = "Unknown" if not value or value | lower == "unknown" else value %}
 {% set normalized = label | lower %}
 {% if normalized in ["completed", "active", "resolved", "available", "ok", "success"] %}
   {% set tone = "success" %}

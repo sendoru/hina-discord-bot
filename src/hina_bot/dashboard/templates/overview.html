@@ -50,7 +50,7 @@
       </tbody>
     </table>
     {% else %}
-    <p class="muted">No scope telemetry.</p>
+    <p class="muted">보존된 범위 관측 데이터가 없습니다.</p>
     {% endif %}
   </section>
 </div>
@@ -67,7 +67,7 @@
       </tbody>
     </table>
     {% else %}
-    <p class="muted">No trace telemetry.</p>
+    <p class="muted">보존된 trace 관측 데이터가 없습니다.</p>
     {% endif %}
   </section>
 
@@ -82,7 +82,7 @@
       </tbody>
     </table>
     {% else %}
-    <p class="muted">No model-tier telemetry.</p>
+    <p class="muted">보존된 모델 등급 관측 데이터가 없습니다.</p>
     {% endif %}
   </section>
 </div>
@@ -104,7 +104,7 @@
           <td>{{ status_badge(row.status) }}</td>
           <td>{{ row.model_tier or "—" }}</td>
           <td>{{ row.models | join(", ") or "—" }}</td>
-          <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "?" }}</td>
+          <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "—" }}</td>
           <td>{{ "yes" if row.web_search else "no" }}</td>
           <td>{{ "yes" if row.stored else "no" }}</td>
         </tr>
@@ -113,7 +113,7 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">No traces are available in the retained telemetry window.</p>
+  <p class="muted">보존된 관측 구간에 trace가 없습니다.</p>
   {% endif %}
 </section>
 

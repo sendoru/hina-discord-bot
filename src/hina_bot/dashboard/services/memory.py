@@ -125,7 +125,7 @@ class MemoryService(ReadService):
             target = (None, None)
         elif target_guild_id or target_channel_id:
             if not target_guild_id or not target_channel_id:
-                target_error = "Target guild ID and channel ID are required for a guild scope."
+                target_error = "Guild 범위에는 대상 Guild ID와 Channel ID가 필요합니다."
             else:
                 try:
                     guild_id = int(target_guild_id)
@@ -134,7 +134,7 @@ class MemoryService(ReadService):
                         raise ValueError
                     target = (guild_id, channel_id)
                 except ValueError:
-                    target_error = "Target guild/channel IDs must be positive integers."
+                    target_error = "대상 Guild·Channel ID는 양의 정수여야 합니다."
 
         rows = []
         for owner in self.repository.relationship_profile_users(query=query):

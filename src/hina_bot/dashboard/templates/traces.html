@@ -8,7 +8,7 @@
 <section class="page-heading">
   <div>
     <h1>Traces</h1>
-    <p>{{ data.page.total }} traces in the current filter.</p>
+    <p>현재 조건에 맞는 trace {{ data.page.total }}개입니다.</p>
   </div>
   {{ telemetry_window(data.available) }}
 </section>
@@ -98,7 +98,7 @@
           <td>{{ status_badge(row.status) }}</td>
           <td>{{ row.model_tier or "—" }}</td>
           <td>{{ row.models | join(", ") or "—" }}</td>
-          <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "?" }}</td>
+          <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "—" }}</td>
           <td class="numeric">{{ row.elapsed_ms ~ " ms" if row.elapsed_ms is not none else "—" }}</td>
           <td>{{ row.web_search_calls if row.web_search else "—" }}</td>
           <td>{% if row.error %}<code>{{ row.error_fingerprint or "yes" }}</code>{% else %}—{% endif %}</td>
@@ -109,7 +109,7 @@
     </table>
   </div>
   {% else %}
-  <p class="empty">No traces match this filter.</p>
+  <p class="empty">조건에 맞는 trace가 없습니다.</p>
   {% endif %}
 </section>
 

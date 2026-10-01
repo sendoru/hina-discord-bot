@@ -35,9 +35,9 @@ class ContextStateService(ReadService):
         if not (guild_id or channel_id or user_id):
             return None, ""
         if not channel_id or not user_id:
-            return None, "Channel ID and user ID are required."
+            return None, "Channel ID와 User ID를 입력하세요."
         if scope_type == "guild" and not guild_id:
-            return None, "Guild ID is required for a guild scope."
+            return None, "Guild 범위에는 Guild ID가 필요합니다."
         try:
             parsed_channel = int(channel_id)
             parsed_user = int(user_id)
@@ -47,7 +47,7 @@ class ContextStateService(ReadService):
             if parsed_guild is not None and parsed_guild <= 0:
                 raise ValueError
         except ValueError:
-            return None, "Guild/channel/user IDs must be positive integers."
+            return None, "Guild·Channel·User ID는 양의 정수여야 합니다."
         return Scope(parsed_guild, parsed_channel, parsed_user), ""
 
     @staticmethod
@@ -185,7 +185,7 @@ class ContextStateService(ReadService):
             else target_channel_id
         )
         if target_scope_type == "dm" and target_user_id and not dm_user_valid:
-            scope, target_error = None, "User ID must be a positive integer."
+            scope, target_error = None, "User ID는 양의 정수여야 합니다."
         elif target_scope_type == "dm" and (
             dm_channel_selection_required or dm_channel_unavailable
         ) and not parse_channel_id:

@@ -38,8 +38,8 @@ def _raw_turn_availability(
         return {
             "state": "retained",
             "severity": "info",
-            "title": "Raw conversation record retained",
-            "message": "The raw question/reply row is available for this trace.",
+            "title": '원본 대화가 보존되어 있습니다',
+            "message": '이 trace의 원본 질문과 응답을 확인할 수 있습니다.',
         }
 
     terminal = next(
@@ -53,34 +53,30 @@ def _raw_turn_availability(
             return {
                 "state": "persistence_failed",
                 "severity": "warning",
-                "title": "Raw conversation persistence failed",
+                "title": '원본 대화 저장에 실패했습니다',
                 "message": (
-                    "This was a Discord conversation turn, but the raw question/reply row "
-                    "could not be persisted."
+                    'Discord 대화였지만 원본 질문과 응답을 저장하지 못했습니다.'
                 ),
             }
         if persistence == "skipped":
             messages = {
                 "memory_writes_disabled": (
-                    "Persistent-memory writes were disabled for this turn, so no raw "
-                    "question/reply row was stored."
+                    '이 대화에서는 영구 메모리 쓰기가 비활성화되어 원본 질문과 응답을 저장하지 않았습니다.'
                 ),
                 "fixed_reply_no_raw_turn": (
-                    "This was a fixed bare-call reply, which intentionally does not create "
-                    "a raw question/reply row."
+                    '단순 호출에 대한 고정 응답이므로 원본 질문과 응답을 저장하지 않습니다.'
                 ),
                 "duplicate": (
-                    "This turn was recognized as a duplicate, so no new raw question/reply "
-                    "row was stored."
+                    '중복 대화로 판단되어 새 원본 질문과 응답을 저장하지 않았습니다.'
                 ),
             }
             return {
                 "state": "not_retained_by_design",
                 "severity": "info",
-                "title": "Raw conversation record was not stored",
+                "title": '원본 대화를 저장하지 않았습니다',
                 "message": messages.get(
                     reason,
-                    "Raw conversation persistence was intentionally skipped for this turn.",
+                    '이 대화의 원본 저장을 의도적으로 생략했습니다.',
                 ),
             }
 
@@ -93,7 +89,7 @@ def _raw_turn_availability(
         return {
             "state": "not_retained_by_design",
             "severity": "info",
-            "title": "Raw conversation record was not created",
+            "title": '원본 대화를 생성하지 않았습니다',
             "message": (
                 "This Discord turn was dropped before raw conversation storage "
                 f"(reason: {reason})."
@@ -125,21 +121,17 @@ def _raw_turn_availability(
             return {
                 "state": "not_retained_by_design",
                 "severity": "info",
-                "title": "Raw conversation record was not stored",
+                "title": '원본 대화를 저장하지 않았습니다',
                 "message": (
-                    "This looks like a bare trigger handled by a fixed reply. Older telemetry "
-                    "did not record an explicit persistence reason for this turn."
+                    '단순 호출에 대한 고정 응답으로 보입니다. 이전 관측 데이터에는 저장 생략의 명시적 이유가 없습니다.'
                 ),
             }
         return {
             "state": "unavailable",
             "severity": "warning",
-            "title": "Raw conversation record is unavailable",
+            "title": '원본 대화를 확인할 수 없습니다',
             "message": (
-                "This trace belongs to a Discord conversation turn, but no raw question/reply "
-                "row is retained. This older telemetry cannot distinguish bounded-retention or "
-                "analysis-data cleanup from disabled memory writes or a trace created before "
-                "persistence-reason markers were added."
+                'Discord 대화 trace이지만 원본 질문과 응답이 보존되어 있지 않습니다. 이전 관측 데이터로는 보존 한계·분석 데이터 정리·메모리 쓰기 비활성화·저장 이유 표식 추가 이전 대화를 구분할 수 없습니다.'
             ),
         }
 
@@ -147,10 +139,9 @@ def _raw_turn_availability(
         return {
             "state": "not_applicable",
             "severity": "info",
-            "title": "No raw conversation record is expected",
+            "title": '원본 대화 저장 대상이 아닙니다',
             "message": (
-                "This trace contains auxiliary/model work rather than a retained Discord "
-                "conversation turn. Operations: " + ", ".join(operations) + "."
+                '이 trace는 Discord 대화 저장이 아닌 보조 모델 작업입니다. Operations: ' + ", ".join(operations) + "."
             ),
         }
 
@@ -158,21 +149,18 @@ def _raw_turn_availability(
         return {
             "state": "unavailable",
             "severity": "warning",
-            "title": "Raw conversation record is unavailable",
+            "title": '원본 대화를 확인할 수 없습니다',
             "message": (
-                "Answer telemetry remains, but the Discord turn lifecycle and raw question/reply "
-                "row are not retained. The available telemetry is insufficient to identify the "
-                "original storage reason."
+                '응답 관측 데이터는 남아 있지만 대화 수명주기와 원본 질문·응답은 보존되어 있지 않습니다. 남은 관측 데이터만으로는 저장 여부의 이유를 확인할 수 없습니다.'
             ),
         }
 
     return {
         "state": "unknown",
         "severity": "warning",
-        "title": "Raw conversation availability is unknown",
+        "title": '원본 대화의 보존 상태는 Unknown입니다',
         "message": (
-            "No raw question/reply row is retained, and the remaining telemetry does not contain "
-            "enough lifecycle information to determine whether one was expected."
+            '원본 질문·응답이 보존되어 있지 않습니다. 남은 수명주기 정보로는 원본 저장 대상이었는지 판단할 수 없습니다.'
         ),
     }
 
@@ -719,7 +707,9 @@ class TraceService(ReadService):
             if exchange and isinstance(exchange.get("total_tokens"), int):
                 total_tokens = exchange["total_tokens"]
             else:
-                total_tokens = sum(_as_int(row.get("total_tokens")) for row in usage)
+                known_tokens = [row["total_tokens"] for row in usage
+                                if type(row.get("total_tokens")) is int]
+                total_tokens = sum(known_tokens) if known_tokens else None
 
             if terminal and isinstance(terminal.get("elapsed_ms"), int):
                 elapsed_ms = terminal["elapsed_ms"]

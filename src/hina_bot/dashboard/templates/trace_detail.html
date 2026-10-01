@@ -15,7 +15,7 @@
   <article class="card"><span>Status</span><strong>{{ status_badge(data.summary.status) }}</strong></article>
   <article class="card"><span>Scope</span><strong>{{ data.summary.scope or "—" }}</strong></article>
   <article class="card"><span>Tier</span><strong>{{ data.summary.model_tier or "—" }}</strong></article>
-  <article class="card"><span>Tokens</span><strong>{{ data.summary.total_tokens if data.summary.total_tokens is not none else "?" }}</strong></article>
+  <article class="card"><span>Tokens</span><strong>{{ data.summary.total_tokens if data.summary.total_tokens is not none else "—" }}</strong></article>
   <article class="card"><span>Latency</span><strong>{{ data.summary.elapsed_ms ~ " ms" if data.summary.elapsed_ms is not none else "—" }}</strong></article>
   <article class="card"><span>Web search</span><strong>{{ "yes" if data.summary.web_search else "no" }}</strong></article>
 </section>
@@ -52,7 +52,7 @@
   <div class="panel-heading">
     <div>
       <h2>Context &amp; provenance</h2>
-      <p class="muted">Content-free snapshot of the context Python admitted to this answer request.</p>
+      <p class="muted">응답 요청에 포함된 문맥의 스냅샷입니다. 원문은 포함하지 않습니다.</p>
     </div>
   </div>
 
@@ -227,7 +227,7 @@
 {% elif data.context_telemetry %}
 <section class="panel">
   <h2>Context &amp; provenance</h2>
-  <p class="muted">Content-free request telemetry is still available for this trace.</p>
+  <p class="muted">이 trace의 본문 없는 요청 관측 데이터가 남아 있습니다.</p>
   <div class="cards">
     <article class="card"><span>Channel</span><strong>{{ data.context_telemetry.context_channel_items or 0 }}</strong></article>
     <article class="card"><span>Reply chain</span><strong>{{ data.context_telemetry.context_reply_items or 0 }}</strong></article>
@@ -257,7 +257,7 @@
     </details>
     {% endfor %}
   {% else %}
-  <p class="muted">No telemetry rows remain for this trace.</p>
+  <p class="muted">이 trace의 관측 데이터가 남아 있지 않습니다.</p>
   {% endif %}
 </section>
 {% endblock %}

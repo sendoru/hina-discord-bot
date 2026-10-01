@@ -15,23 +15,22 @@
 <section class="notice {% if data.epoch.selected == 'all' or data.epoch.selected == 'legacy' or not data.epoch.is_current %}warning{% else %}info{% endif %}">
   {% if data.epoch.selected == "all" %}
   <strong>All observability epochs are combined.</strong>
-  Missing fields can come from older telemetry schemas and should not be interpreted as runtime zero/false.
+  미관측 필드는 이전 관측 스키마 때문일 수 있습니다. 실행 중 0 또는 false였다고 해석하지 마세요.
   {% elif data.epoch.selected == "legacy" %}
   <strong>Legacy / pre-reset telemetry.</strong>
-  This data predates the first analysis baseline reset and may not contain fields used by current dashboards.
+  첫 분석 기준선 초기화 이전 데이터입니다. 현재 화면에서 사용하는 필드가 없을 수 있습니다.
   {% elif data.epoch.is_current %}
   <strong>Current observability epoch #{{ data.epoch.current }}.</strong>
   {% if data.epoch.reset_at %}Baseline started {{ data.epoch.reset_at | localtime }}.{% endif %}
   {% if data.epoch.excluded_rows %} {{ data.epoch.excluded_rows }} retained telemetry rows from other epochs are excluded.{% endif %}
   {% else %}
   <strong>Historical observability epoch #{{ data.epoch.selected }}.</strong>
-  Interpret field coverage within this epoch only; schema availability may differ from the current epoch.
+  이 epoch 안에서 관측 범위를 해석하세요. 현재 epoch와 사용 가능한 스키마가 다를 수 있습니다.
   {% endif %}
 </section>
 {% else %}
 <section class="notice warning">
-  No observability epoch marker exists. Retained telemetry is treated as one untracked generation;
-  missing fields may belong to older schemas.
+  Epoch 표식이 없습니다. 보존 관측 데이터를 하나의 세대로 처리합니다. 미관측 필드는 이전 스키마 때문일 수 있습니다.
 </section>
 {% endif %}
 {%- endmacro %}

@@ -39,7 +39,7 @@
 <section class="page-heading">
   <div>
     <h1>Effective Relationship Profiles</h1>
-    <p>Target-scope view of relationship memory, including shared-space projection and owner-DM access.</p>
+    <p>대상 범위의 관계 메모리입니다. 공유 공간 투영과 소유자 DM 접근을 포함합니다.</p>
   </div>
   <div class="window">
     <strong>Runtime policy</strong>
@@ -73,8 +73,7 @@
 <section class="notice danger">{{ data.target_error }}</section>
 {% elif not data.target %}
 <section class="notice info">
-  Choose Guild or DM, then enter the IDs needed for that scope. FULL/raw access and the cross-space
-  IMPLICIT projection are both target-specific.
+  Guild 또는 DM을 선택하고 필요한 ID를 입력하세요. FULL 원문 접근과 교차 공간 IMPLICIT 투영은 대상 범위에 따라 결정됩니다.
 </section>
 {% else %}
 <section class="notice info">
@@ -135,9 +134,9 @@
               </summary>
               {% if row.full_relationships %}
               {% if data.target.scope_type == "dm" %}
-              <p class="muted">These relationship memories are available through <code>structured_owner_memory</code> in the owner's DM. DM owner memory does not use the cross-space relationship projection.</p>
+              <p class="muted">소유자 DM에서 <code>structured_owner_memory</code>로 접근할 수 있는 관계 메모리입니다. 교차 공간 관계 투영을 사용하지 않습니다.</p>
               {% else %}
-              <p class="muted">These are the exact bounded relationship memories eligible for <code>structured_relationship_memory</code> in this target scope.</p>
+              <p class="muted">대상 범위에서 <code>structured_relationship_memory</code>로 사용할 수 있는 보존 관계 메모리입니다.</p>
               {% endif %}
               <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
                 <table class="wide-table">
@@ -174,7 +173,7 @@
                 </table>
               </div>
               {% else %}
-              <p class="muted">No relationship memories resolve to FULL in this target scope.</p>
+              <p class="muted">대상 범위에서 FULL 접근이 가능한 관계 메모리가 없습니다.</p>
               {% endif %}
             </details>
 
@@ -185,7 +184,7 @@
                 {% if row.invalid_observations %} · {{ row.invalid_observations }} invalid row(s) skipped{% endif %}
               </summary>
               {% if row.contributors %}
-              <p class="muted">Raw content is shown here only for dashboard inspection; runtime cross-space context receives the aggregated axis values above, not these source texts.</p>
+              <p class="muted">원문은 대시보드 점검용입니다. 실행 중 교차 공간 문맥에는 위의 집계된 관계 축 값만 전달합니다.</p>
               <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
                 <table class="wide-table">
                   <thead>
@@ -225,7 +224,7 @@
                 </table>
               </div>
               {% else %}
-              <p class="muted">No implicit observations are eligible in this target scope.</p>
+              <p class="muted">대상 범위에서 사용할 수 있는 암묵적 관측이 없습니다.</p>
               {% endif %}
             </details>
             {% endif %}
@@ -266,15 +265,15 @@
         <summary>{% if data.target.scope_type == "dm" %}Owner-DM relationship memory{% else %}FULL/raw relationship memory{% endif %} · {{ row.full_relationship_count }}</summary>
         {% if row.full_relationships %}
           {% if data.target.scope_type == "dm" %}
-          <p class="muted">Relationship memories available through <code>structured_owner_memory</code> in the owner's DM.</p>
+          <p class="muted">소유자 DM에서 <code>structured_owner_memory</code>로 접근할 수 있는 관계 메모리입니다.</p>
           {% else %}
-          <p class="muted">Exact relationship memories eligible for <code>structured_relationship_memory</code> in this target.</p>
+          <p class="muted">대상에서 <code>structured_relationship_memory</code>로 사용할 수 있는 관계 메모리입니다.</p>
           {% endif %}
           {% for item in row.full_relationships %}
             {{ relationship_memory_card(item, data.axes, true) }}
           {% endfor %}
         {% else %}
-          <p class="muted">No relationship memories resolve to FULL in this target scope.</p>
+          <p class="muted">대상 범위에서 FULL 접근이 가능한 관계 메모리가 없습니다.</p>
         {% endif %}
       </details>
 
@@ -285,12 +284,12 @@
           {% if row.invalid_observations %} · {{ row.invalid_observations }} invalid{% endif %}
         </summary>
         {% if row.contributors %}
-          <p class="muted">These raw texts are dashboard-only inspection data; runtime cross-space context receives only the aggregated axes.</p>
+          <p class="muted">원문은 대시보드 점검용입니다. 실행 중 교차 공간 문맥에는 집계된 관계 축만 전달합니다.</p>
           {% for item in row.contributors %}
             {{ relationship_memory_card(item, data.axes, false, true) }}
           {% endfor %}
         {% else %}
-          <p class="muted">No implicit observations are eligible in this target scope.</p>
+          <p class="muted">대상 범위에서 사용할 수 있는 암묵적 관측이 없습니다.</p>
         {% endif %}
       </details>
       {% endif %}
@@ -299,7 +298,7 @@
     {% endfor %}
   </div>
   {% else %}
-  <p class="empty">No active relationship memories match this user filter.</p>
+  <p class="empty">사용자 조건에 맞는 활성 관계 메모리가 없습니다.</p>
   {% endif %}
 </section>
 {% endblock %}

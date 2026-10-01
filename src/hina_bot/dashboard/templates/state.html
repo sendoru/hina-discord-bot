@@ -13,7 +13,7 @@
 <section class="page-heading">
   <div>
     <h1>Memory &amp; Context State</h1>
-    <p>Read-only view of effective memory, recent-chat context, and manual notes.</p>
+    <p>적용된 메모리·최근 대화 정책과 수동 메모를 읽기 전용으로 보여줍니다.</p>
   </div>
 </section>
 
@@ -24,7 +24,7 @@
     <header class="state-control-heading">
       <div>
         <h2 id="state-scope-title">Evaluate target scope</h2>
-        <p>Inspect the effective memory and recent-context policy for one Discord scope.</p>
+        <p>선택한 Discord 범위의 실제 메모리·최근 대화 정책을 확인합니다.</p>
       </div>
     </header>
     <div class="scope-target-row">
@@ -39,11 +39,11 @@
         <select name="target_dm_channel_id" disabled>
           <option>Enter a user ID first</option>
         </select>
-        <small>Known DM channels are discovered from retained database state.</small>
+        <small>보존된 데이터베이스 상태에서 알려진 DM 채널을 찾습니다.</small>
         {% elif data.dm_channel_selection.candidates %}
         <select name="target_dm_channel_id">
           {% if data.dm_channel_selection.candidates|length > 1 and not data.dm_channel_selection.selected %}
-          <option value="" selected>Choose a known DM channel</option>
+          <option value="" selected>알려진 DM 채널을 선택하세요</option>
           {% endif %}
           {% if data.dm_channel_selection.selected and data.dm_channel_selection.selected not in data.dm_channel_selection.candidates %}
           <option value="{{ data.dm_channel_selection.selected }}" selected>{{ data.dm_channel_selection.selected }} · manual/legacy</option>
@@ -54,16 +54,16 @@
         </select>
         <small>
           {% if data.dm_channel_selection.auto_selected %}
-          Auto-selected the only known DM channel.
+          유일하게 알려진 DM 채널을 자동 선택했습니다.
           {% elif data.dm_channel_selection.candidates|length > 1 %}
-          {{ data.dm_channel_selection.candidates|length }} known DM channels found.
+          {{ data.dm_channel_selection.candidates|length }} 개의 DM 채널을 찾았습니다.
           {% else %}
-          Known DM channel from retained database state.
+          보존된 데이터베이스 상태의 DM 채널입니다.
           {% endif %}
         </small>
         {% else %}
         <input name="target_dm_channel_id" inputmode="numeric" value="{{ data.dm_channel_selection.selected }}" placeholder="DM channel id">
-        <small>No known DM channel was found; enter one manually as a fallback.</small>
+        <small>알려진 DM 채널이 없습니다. 채널 ID를 직접 입력할 수 있습니다.</small>
         {% endif %}
       </label>
       <div class="scope-target-actions">
@@ -82,7 +82,7 @@
     <header class="state-control-heading">
       <div>
         <h2 id="state-note-title">Search manual notes</h2>
-        <p>Search by scope, stored user name or ID, and note content.</p>
+        <p>범위, 보존된 사용자 이름·ID, 메모 내용으로 검색합니다.</p>
       </div>
     </header>
     <div class="search-primary state-note-search">
@@ -141,7 +141,7 @@
       <span>Recent context</span>
       <strong>{{ data.effective.chat_log.effective }}</strong>
       {% if not data.effective.chat_log.guild_recent_context_applicable %}
-      <small>DM: recent channel context is not used</small>
+      <small>DM에서는 최근 채널 문맥을 사용하지 않습니다.</small>
       {% endif %}
     </article>
   </section>
@@ -220,7 +220,7 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">No explicit memory overrides; runtime defaults to <code>normal</code>.</p>
+  <p class="muted">명시적 메모리 재정의가 없습니다. 기본값은 <code>normal</code>입니다.</p>
   {% endif %}
 </section>
 
@@ -247,7 +247,7 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">No explicit recent-context overrides; runtime defaults to <code>on + all</code>.</p>
+  <p class="muted">명시적 최근 문맥 재정의가 없습니다. 기본값은 <code>on + all</code>입니다.</p>
   {% endif %}
 </section>
 
@@ -282,7 +282,7 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">No manual notes match this filter.</p>
+  <p class="muted">조건에 맞는 수동 메모가 없습니다.</p>
   {% endif %}
 </section>
 {% endblock %}

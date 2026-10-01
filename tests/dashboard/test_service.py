@@ -335,7 +335,7 @@ def test_failed_trace_keeps_content_free_context_telemetry(tmp_path):
     assert data["context_telemetry"]["factual_recall_detected"] is True
     assert data["context_telemetry"]["factual_recall_status"] == "ambiguous_single_anchor"
     assert data["raw_turn_availability"]["state"] == "not_retained_by_design"
-    assert "disabled" in data["raw_turn_availability"]["message"]
+    assert "비활성화" in data["raw_turn_availability"]["message"]
 
 
 def test_auxiliary_trace_does_not_claim_raw_turn_expired(tmp_path):
@@ -1043,7 +1043,7 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
 
     partial = service.context_state(target_guild_id="1", target_user_id="100")
     assert partial["effective"] is None
-    assert "Channel ID and user ID are required" in partial["target_error"]
+    assert "Channel ID와 User ID를 입력하세요" in partial["target_error"]
 
     missing_guild = service.context_state(
         target_scope_type="guild",
@@ -1051,7 +1051,7 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
         target_user_id="100",
     )
     assert missing_guild["effective"] is None
-    assert "Guild ID is required" in missing_guild["target_error"]
+    assert "Guild ID가 필요합니다" in missing_guild["target_error"]
 
     invalid = service.context_state(
         target_guild_id="-1",
@@ -1059,14 +1059,14 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
         target_user_id="100",
     )
     assert invalid["effective"] is None
-    assert "positive integers" in invalid["target_error"]
+    assert "양의 정수" in invalid["target_error"]
 
     invalid_dm_user = service.context_state(
         target_scope_type="dm",
         target_user_id="nope",
     )
     assert invalid_dm_user["effective"] is None
-    assert "positive integer" in invalid_dm_user["target_error"]
+    assert "양의 정수" in invalid_dm_user["target_error"]
 
 
 
