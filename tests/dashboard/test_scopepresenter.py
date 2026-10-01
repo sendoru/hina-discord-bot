@@ -1,6 +1,6 @@
 import pytest
 
-from hina_bot.dashboard.scopepresenter import parse_scope_key
+from hina_bot.dashboard.scopepresenter import parse_scope_key, present_turn_scope
 
 
 @pytest.mark.parametrize(
@@ -50,3 +50,19 @@ def test_unknown_scope_preserves_raw_without_guessing_components(raw):
     assert scope.raw == raw
     assert scope.level == "unknown"
     assert scope.realm == scope.realm_id == scope.channel_id == scope.user_id == ""
+
+
+def test_turn_scope_preserves_explicit_metadata_and_unknown_keys():
+    row = {"scope": "dm:001:channel:002:user:003", "realm": "dm:001",
+           "user_id": "004", "name": "Stored name"}
+    view = present_turn_scope(row)
+    assert all(view[key] == value for key, value in row.items())
+    assert view["scope_display"].user_id == "003"
+    assert view["user_id"] == "004"
+    assert view["realm_display"].realm_id == "001"
+    assert "scope_display" not in row
+    legacy = present_turn_scope({**row, "scope": "legacy:<scope>"})
+    assert legacy["scope_display"].level == "unknown"
+    assert legacy["scope_display"].raw == "legacy:<scope>"
+    assert legacy["realm_display"] == view["realm_display"]
+    assert present_turn_scope({"scope": row["scope"]})["realm_display"] == view["realm_display"]

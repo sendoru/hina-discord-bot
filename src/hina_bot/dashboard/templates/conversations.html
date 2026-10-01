@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_scope_ui.html" import turn_scope %}
 {% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Conversations · Hina Dashboard{% endblock %}
 {% block content %}
@@ -70,16 +71,7 @@
       </div>
     </div>
     <dl class="metadata compact conversation-metadata">
-      <div>
-        <dt>Server</dt>
-        <dd>
-          {% if row.guild_id %}<code>{{ row.guild_id }}</code>
-          {% elif row.scope_type == "dm" %}<span class="muted">Direct message</span>
-          {% else %}—{% endif %}
-        </dd>
-      </div>
-      <div><dt>Channel</dt><dd>{% if row.channel_id %}<code>{{ row.channel_id }}</code>{% else %}—{% endif %}</dd></div>
-      <div><dt>User</dt><dd>{% if row.name %}{{ row.name }} · {% endif %}<code>{{ row.user_id }}</code></dd></div>
+      {{ turn_scope(row) }}
       {% if row.record_type == "failed" %}
       <div><dt>Status</dt><dd>{{ row.status }} · {{ row.stage }}</dd></div>
       <div><dt>Fallback delivered</dt><dd>{{ "yes" if row.reply_delivered else "no" }}</dd></div>

@@ -249,7 +249,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
-    assert 'dashboard.css?v=20261001-4' in overview.text
+    assert 'dashboard.css?v=20261001-5' in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -288,7 +288,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "<legend>Time window</legend>" in identity.text
     assert 'class="filter-actions"' in identity.text
     assert "hello dashboard" in detail.text
-    assert "<dt>User</dt><dd>Dashboard User · <code>100</code></dd>" in detail.text
+    assert "Dashboard User" in detail.text
+    assert '<code class="scope-id">100</code>' in detail.text
+    assert "<dt>Channel</dt>" in detail.text
+    assert "Scope key" in detail.text
     assert "Context &amp; provenance" in detail.text
     assert "Egress policy" in detail.text
     assert "hello dashboard" in conversations.text
@@ -298,7 +301,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "<legend>Context</legend>" in conversations.text
     assert 'class="conversation-head-primary"' in conversations.text
     assert 'class="metadata compact conversation-metadata"' in conversations.text
-    assert "<dt>Server</dt>" in conversations.text
+    assert "<dt>Realm</dt>" in conversations.text
     assert "<dt>Channel</dt>" in conversations.text
     assert 'class="scope-key"' not in conversations.text
     assert 'aria-label="Active filters"' in conversations.text
@@ -308,7 +311,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "hello dashboard" in conversations_by_name.text
     assert conversation_context.status_code == 200
     assert "Conversation Context" in conversation_context.text
-    assert "<dt>Server</dt>" in conversation_context.text
+    assert "<dt>Realm</dt>" in conversation_context.text
     assert "<dt>Channel</dt>" in conversation_context.text
     assert 'class="scope-key"' not in conversation_context.text
     assert "dashboard memory" in memory.text
@@ -369,10 +372,11 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'name="target_dm_channel_id"' in state_dm.text
     assert '<option value="10" selected>10</option>' in state_dm.text
     assert "Auto-selected the only known DM channel." in state_dm.text
-    assert "<code>dm:100</code>" in state_dm.text
-    assert "<code>channel:10</code>" in state_dm.text
+    assert '<span>DM · user</span> <code class="scope-id">100</code>' in state_dm.text
+    assert '<code class="scope-raw-key">dm:100:channel:10:user:100</code>' in state_dm.text
+    assert '<code class="scope-id">10</code>' in state_dm.text
     assert "dashboard server note" in state.text
-    assert "Dashboard User · <code>user:100</code>" in state.text
+    assert '<code class="scope-raw-key">guild:1:user:100</code>' in state.text
     assert "dashboard user note" in state.text
     assert "read_only" in state.text
     assert "direct" in state.text

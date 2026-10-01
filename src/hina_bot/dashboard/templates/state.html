@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_scope_picker.html" import scope_picker %}
-{% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw %}
+{% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw, scope_metadata %}
 {% block title %}State · Hina Dashboard{% endblock %}
 {% block content %}
 {% macro chain_rows(chain, include_server=true) -%}
@@ -115,13 +115,12 @@
   <div class="panel-heading">
     <div>
       <h2>Effective target state</h2>
-      <p class="muted">
-        <code>{{ data.effective.realm }}</code> ·
-        <code>channel:{{ data.effective.scope.channel_id }}</code> ·
-        {% if data.effective.user_name %}{{ data.effective.user_name }} · {% endif %}<code>user:{{ data.effective.scope.user_id }}</code>
-      </p>
     </div>
   </div>
+
+  <dl class="metadata compact">
+    {{ scope_metadata(data.effective.scope_display, data.effective.realm_display, data.effective.scope.user_id, data.effective.user_name) }}
+  </dl>
 
   <section class="cards">
     <article class="card">
@@ -190,10 +189,14 @@
     a particular answer received the note.
   </p>
   {% if data.effective.scope.guild_id is not none %}
-  <h3>Server note · <code>{{ data.effective.realm }}</code></h3>
+  <h3>Server note</h3>
+  {{ scope_realm(data.effective.realm_display) }}{{ scope_raw(data.effective.realm_display, label="Note key") }}
   <div class="message">{{ data.effective.notes.server or "—" }}</div>
   {% endif %}
-  <h3>User note{% if data.effective.user_name %} · {{ data.effective.user_name }}{% endif %} · <code>{{ data.effective.user_note_key }}</code></h3>
+  <h3>User note</h3>
+  <dl class="metadata compact">
+    {{ scope_metadata(data.effective.user_note_display, data.effective.realm_display, data.effective.scope.user_id, data.effective.user_name, include_channel=false, raw_label="Note key") }}
+  </dl>
   <div class="message">{{ data.effective.notes.user or "—" }}</div>
 </section>
 {% endif %}

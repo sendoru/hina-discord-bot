@@ -56,3 +56,13 @@ def parse_scope_key(raw: str) -> ScopePresentation:
         channel_id=channel_id,
         user_id=user_id,
     )
+
+
+def present_turn_scope(row: dict[str, object]) -> dict[str, object]:
+    """Add display components while retaining stored turn metadata verbatim."""
+    scope = parse_scope_key(str(row.get("scope") or ""))
+    return {
+        **row,
+        "scope_display": scope,
+        "realm_display": parse_scope_key(str(row.get("realm") or scope.realm)),
+    }

@@ -227,6 +227,9 @@ class ContextStateService(ReadService):
             }
             effective = {
                 "scope": scope,
+                "scope_display": parse_scope_key(scope.conversation),
+                "realm_display": parse_scope_key(scope.realm),
+                "user_note_display": parse_scope_key(scope.user_note),
                 "realm": scope.realm,
                 "channel": scope.channel,
                 "user_name": names.get((scope.realm, str(scope.user_id)), ""),

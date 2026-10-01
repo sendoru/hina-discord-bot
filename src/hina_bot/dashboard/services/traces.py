@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 
 from ..epochs import epoch_view, select_observability_epoch
 from ..repository import AdminRepository
+from ..scopepresenter import parse_scope_key, present_turn_scope
 from ..searchutils import search_matches
 from ..telemetry import TelemetryReader, TelemetrySnapshot
 from ..timeutils import db_utc_timestamp, parse_local_time
@@ -400,6 +401,7 @@ class TraceService(ReadService):
             if not isinstance(item, dict):
                 continue
             row = dict(item)
+            row["origin_display"] = parse_scope_key(str(row.get("origin_realm") or ""))
             try:
                 item_id = int(row.get("item_id"))
             except (TypeError, ValueError):
@@ -440,6 +442,8 @@ class TraceService(ReadService):
             return None
         telemetry = self.telemetry.for_turn(trace_id)
         stored = self.repository.turn_for_trace(trace_id)
+        if stored is not None:
+            stored = present_turn_scope(stored)
         if stored is None and not (telemetry.events or telemetry.usage or telemetry.exchanges):
             return None
 
@@ -543,7 +547,7 @@ class TraceService(ReadService):
         )
         rows = []
         for raw in raw_rows:
-            row = dict(raw)
+            row = present_turn_scope(raw)
             row.update(_conversation_scope_fields(row.get("scope")))
             row["search_matches"] = search_matches(
                 query,
@@ -584,7 +588,7 @@ class TraceService(ReadService):
             return None
         rows = []
         for row in self.repository.turn_context(turn_row_id, before=before, after=after):
-            value = dict(row)
+            value = present_turn_scope(row)
             value.update(_conversation_scope_fields(value.get("scope")))
             value["selected"] = int(value["id"]) == int(turn_row_id)
             rows.append(value)

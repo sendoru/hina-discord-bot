@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ..repository import AdminRepository
 from ..scopepicker import normalize_scope_filter
-from ..scopepresenter import parse_scope_key
+from ..scopepresenter import parse_scope_key, present_turn_scope
 from ..telemetry import TelemetryReader
 from ..timeutils import db_utc_timestamp
 from .base import Page, _decode_json
@@ -166,7 +166,9 @@ class ReconciliationService(MemoryService):
             )
         )
         source_turns = self.repository.turns_for_message_ids(list(all_source_ids))
-        source_by_id = {str(row["message_id"]): row for row in source_turns}
+        source_by_id = {
+            str(row["message_id"]): present_turn_scope(row) for row in source_turns
+        }
         sources = [
             {"message_id": message_id, "turn": source_by_id.get(message_id)}
             for message_id in all_source_ids

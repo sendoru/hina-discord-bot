@@ -20,7 +20,7 @@ from hina_bot.core.relationship_profile import (
 from hina_bot.core.routing import Scope
 
 from ..scopepicker import infer_target_scope_type, normalize_scope_filter
-from ..scopepresenter import parse_scope_key
+from ..scopepresenter import parse_scope_key, present_turn_scope
 from ..searchutils import search_matches
 from ..timeutils import db_utc_timestamp
 from .base import Page, ReadService, _decode_json
@@ -85,6 +85,7 @@ class MemoryService(ReadService):
             "id": item.id,
             "content": item.content,
             "origin_realm": item.origin_realm,
+            "origin_display": parse_scope_key(item.origin_realm),
             "origin_channel_id": item.origin_channel_id,
             "origin_public_at_capture": item.origin_public_at_capture,
             "disclosure": item.disclosure.value,
@@ -336,7 +337,9 @@ class MemoryService(ReadService):
         item = self._memory_row(raw)
         source_ids = list(item["source_message_ids_decoded"])
         source_turns = self.repository.turns_for_message_ids(source_ids)
-        source_by_id = {str(row["message_id"]): row for row in source_turns}
+        source_by_id = {
+            str(row["message_id"]): present_turn_scope(row) for row in source_turns
+        }
         sources = [
             {
                 "message_id": message_id,

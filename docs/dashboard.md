@@ -366,7 +366,12 @@ Unknown keys and notes classified as `other` show their raw keys directly. The s
 `scopepresenter` parses display components without changing stored keys, note eligibility, or runtime
 inheritance. Summaries and extraction cursors use the same Realm/Channel/User components; Memory and
 Reconciliation keep their existing Origin and Owner/origin groupings with structured realm/channel
-labels. Canonical keys remain available in disclosures instead of being repeated beside the labels.
+labels. Trace stored turns, conversation results/context, and source turns in Memory/Reconciliation
+details use Realm/Channel/User metadata. Relationship origins and admitted structured-memory origins
+in Trace also use the shared presenter. Effective State targets and manual-note keys follow the same
+format. Canonical keys remain available in disclosures instead of being repeated beside the labels.
+Telemetry Scope values in Overview/Traces are scope-type categories (`guild`/`dm`), not canonical keys;
+raw event/context JSON retains its original fields for debugging.
 On narrow screens, manual-note rows place Realm/User side by side and content below, so long IDs and
 note text remain readable without squeezing four columns together.
 
