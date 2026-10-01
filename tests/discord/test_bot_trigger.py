@@ -323,6 +323,75 @@ async def test_consecutive_bot_trigger_guard_resets_after_human_activity(base_cl
 
 
 @pytest.mark.asyncio
+async def test_production_wrapper_observes_guild_channel_metadata_for_passive_messages(
+    tmp_path,
+):
+    store = Store(":memory:")
+    llm = NS(close=AsyncMock())
+    client = ProductionHinaClient(
+        Settings(
+            discord_token="test",
+            openai_api_key="test",
+            cooldown=0,
+            event_log_path=str(tmp_path / "events.jsonl"),
+        ),
+        store=store,
+        llm=llm,
+    )
+    client._connection.user = NS(id=99)
+    channel = NS(id=10, name="잡담")
+    guild = NS(id=1, name="히나 서버")
+    bot_author = NS(id=300, bot=True, display_name="다른 봇")
+
+    try:
+        await client.on_message(
+            make_message(
+                channel,
+                guild,
+                message_id=20,
+                author=bot_author,
+                text="그냥 봇 대화",
+            )
+        )
+
+        guild_row = store.db.execute(
+            "SELECT guild_id,name FROM guild_metadata WHERE guild_id=?",
+            ("1",),
+        ).fetchone()
+        channel_row = store.db.execute(
+            "SELECT channel_id,guild_id,name FROM channel_metadata WHERE channel_id=?",
+            ("10",),
+        ).fetchone()
+        assert tuple(guild_row) == ("1", "히나 서버")
+        assert tuple(channel_row) == ("10", "1", "잡담")
+
+        guild.name = "새 히나 서버"
+        channel.name = "일반"
+        await client.on_message(
+            make_message(
+                channel,
+                guild,
+                message_id=21,
+                author=bot_author,
+                text="여전히 그냥 봇 대화",
+            )
+        )
+
+        guild_row = store.db.execute(
+            "SELECT guild_id,name FROM guild_metadata WHERE guild_id=?",
+            ("1",),
+        ).fetchone()
+        channel_row = store.db.execute(
+            "SELECT channel_id,guild_id,name FROM channel_metadata WHERE channel_id=?",
+            ("10",),
+        ).fetchone()
+        assert tuple(guild_row) == ("1", "새 히나 서버")
+        assert tuple(channel_row) == ("10", "1", "일반")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
     store = Store(":memory:")
     llm = NS(close=AsyncMock())
