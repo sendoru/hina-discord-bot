@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 from hina_bot.core.routing import Scope
 from hina_bot.core.scope_overrides import (
     CHATLOG_CAPTURE_NOTE_PREFIX,
@@ -11,11 +9,8 @@ from hina_bot.core.scope_overrides import (
 )
 
 from ..scopepicker import infer_target_scope_type
+from ..scopepresenter import parse_scope_key
 from .base import ReadService
-
-_GUILD_NOTE = re.compile(r"^guild:(\d+)$")
-_GUILD_USER_NOTE = re.compile(r"^guild:(\d+):user:(\d+)$")
-_DM_USER_NOTE = re.compile(r"^dm:(\d+):user:(\d+)$")
 
 
 class ContextStateService(ReadService):
@@ -61,34 +56,27 @@ class ContextStateService(ReadService):
         names: dict[tuple[str, str], str],
     ) -> dict[str, object]:
         scope_key = str(row.get("scope") or "")
+        scope_display = parse_scope_key(scope_key)
         text = str(row.get("text") or "")
         kind = "other"
         realm = ""
         user_id = ""
         user_name = ""
 
-        match = _GUILD_NOTE.fullmatch(scope_key)
-        if match:
+        if scope_display.realm_kind == "guild" and scope_display.level == "realm":
             kind = "server"
             realm = scope_key
-        else:
-            match = _GUILD_USER_NOTE.fullmatch(scope_key)
-            if match:
-                kind = "user"
-                realm = f"guild:{match.group(1)}"
-                user_id = match.group(2)
-            else:
-                match = _DM_USER_NOTE.fullmatch(scope_key)
-                if match:
-                    kind = "user"
-                    realm = f"dm:{match.group(1)}"
-                    user_id = match.group(2)
+        elif scope_display.level == "user":
+            kind = "user"
+            realm = scope_display.realm
+            user_id = scope_display.user_id
 
         if user_id:
             user_name = names.get((realm, user_id), "")
 
         return {
             "scope": scope_key,
+            "scope_display": scope_display,
             "text": text,
             "kind": kind,
             "realm": realm,
@@ -149,6 +137,10 @@ class ContextStateService(ReadService):
             target_dm_channel_id = ""
 
         memory_override_rows = self.repository.scope_mode_overrides("memory_modes")
+        memory_override_rows = [
+            {**row, "scope_display": parse_scope_key(str(row["scope"]))}
+            for row in memory_override_rows
+        ]
         chat_override_rows = self.repository.scope_mode_overrides("chat_log_modes")
         note_rows = self.repository.note_rows()
         names = self.repository.latest_user_names()
@@ -265,6 +257,7 @@ class ContextStateService(ReadService):
         chat_override_inventory = [
             {
                 "scope": key,
+                "scope_display": parse_scope_key(key),
                 "enabled": chat_overrides.get(key),
                 "capture": capture_overrides.get(key),
             }

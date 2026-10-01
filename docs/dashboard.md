@@ -359,6 +359,15 @@ The page resolves the same global -> server -> channel inheritance used by runti
 DM targets intentionally report recent-channel context as `off`, matching runtime behavior even when
 the underlying global chat-log setting is `on`.
 
+Stored override tables separate **Realm** and **Channel**, while manual notes separate **Kind**,
+**Realm**, and **User** alongside their content. A DM realm identifies its owner (`DM · user <id>`);
+it does not add a user-level override. Canonical keys remain available in a **Scope key** disclosure.
+Unknown keys and notes classified as `other` show their raw keys directly. The shared dashboard
+`scopepresenter` parses display components without changing stored keys, note eligibility, or runtime
+inheritance. Other pages can reuse these components with their own column layouts.
+On narrow screens, manual-note rows place Realm/User side by side and content below, so long IDs and
+note text remain readable without squeezing four columns together.
+
 For DM lookup, the operator normally enters only the user ID. The dashboard discovers retained DM
 channel IDs from conversation/summarization rows, structured-memory origins, reconciliation rows, and
 channel-level override keys. A single known channel is selected automatically; multiple known channels

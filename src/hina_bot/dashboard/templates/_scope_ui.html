@@ -14,3 +14,39 @@
   {%- endif -%}
 </code>
 {%- endmacro %}
+
+{% macro scope_realm(scope) -%}
+<div class="scope-part">
+  {%- if scope.level == "global" -%}
+    <span>Global</span>
+  {%- elif scope.realm_kind == "guild" -%}
+    <span>Guild</span> <code class="scope-id">{{ scope.realm_id }}</code>
+  {%- elif scope.realm_kind == "dm" -%}
+    <span>DM · user</span> <code class="scope-id">{{ scope.realm_id }}</code>
+  {%- else -%}
+    <span class="muted">Unknown</span>
+  {%- endif -%}
+</div>
+{%- endmacro %}
+
+{% macro scope_channel(scope) -%}
+{% if scope.channel_id %}<code class="scope-id">{{ scope.channel_id }}</code>{% else %}—{% endif %}
+{%- endmacro %}
+
+{% macro scope_user(user_id, user_name="") -%}
+{% if user_id %}
+  {% if user_name %}<div>{{ user_name }}</div>{% endif %}
+  <code class="scope-id">{{ user_id }}</code>
+{% else %}—{% endif %}
+{%- endmacro %}
+
+{% macro scope_raw(scope, show_raw=false) -%}
+{% if scope.level == "unknown" or show_raw %}
+<code class="scope-raw-key">{{ scope.raw or "—" }}</code>
+{% else %}
+<details class="scope-raw">
+  <summary>Scope key</summary>
+  <code class="scope-raw-key">{{ scope.raw }}</code>
+</details>
+{% endif %}
+{%- endmacro %}

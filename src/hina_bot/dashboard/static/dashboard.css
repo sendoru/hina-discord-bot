@@ -2397,6 +2397,107 @@ pre {
 
 
 /* Keep compound scope identifiers readable without losing the full value. */
+.scope-part {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.scope-id,
+.scope-raw-key {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.scope-raw {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.scope-raw summary {
+  cursor: pointer;
+}
+
+.scope-raw-key {
+  display: block;
+  margin-top: 6px;
+}
+
+.state-inventory th {
+  white-space: normal;
+}
+
+.state-notes {
+  table-layout: fixed;
+}
+
+.state-notes th:first-child {
+  width: 64px;
+}
+
+.state-notes th:nth-child(2),
+.state-notes th:nth-child(3) {
+  width: 25%;
+}
+
+.state-notes .memory-preview {
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+}
+
+@media (max-width: 720px) {
+  .state-notes,
+  .state-notes tbody {
+    display: block;
+  }
+
+  .state-notes thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .state-notes tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .state-notes tbody tr + tr {
+    border-top: 1px solid var(--border);
+  }
+
+  .state-notes td {
+    min-width: 0;
+    border-bottom: 0;
+  }
+
+  .state-notes td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 680;
+  }
+
+  .state-notes td:first-child,
+  .state-notes td:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .state-notes td:first-child {
+    display: flex;
+    gap: 8px;
+    padding-bottom: 0;
+  }
+}
+
 .scope-key {
   display: inline-flex;
   flex-direction: column;

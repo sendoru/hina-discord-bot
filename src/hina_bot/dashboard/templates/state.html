@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_scope_picker.html" import scope_picker %}
+{% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw %}
 {% block title %}State · Hina Dashboard{% endblock %}
 {% block content %}
 {% macro chain_rows(chain, include_server=true) -%}
@@ -201,11 +202,15 @@
   <h2>Stored memory overrides</h2>
   {% if data.memory_overrides %}
   <div class="table-wrap">
-    <table>
-      <thead><tr><th>Scope</th><th>Mode</th></tr></thead>
+    <table class="state-inventory">
+      <thead><tr><th>Realm</th><th>Channel</th><th>Mode</th></tr></thead>
       <tbody>
       {% for row in data.memory_overrides %}
-        <tr><td><code>{{ row.scope }}</code></td><td>{{ row.mode }}</td></tr>
+        <tr>
+          <td>{{ scope_realm(row.scope_display) }}{{ scope_raw(row.scope_display) }}</td>
+          <td>{{ scope_channel(row.scope_display) }}</td>
+          <td>{{ row.mode }}</td>
+        </tr>
       {% endfor %}
       </tbody>
     </table>
@@ -223,12 +228,13 @@
   </p>
   {% if data.chat_overrides %}
   <div class="table-wrap">
-    <table>
-      <thead><tr><th>Scope</th><th>Enabled override</th><th>Capture override</th></tr></thead>
+    <table class="state-inventory">
+      <thead><tr><th>Realm</th><th>Channel</th><th>Enabled override</th><th>Capture override</th></tr></thead>
       <tbody>
       {% for row in data.chat_overrides %}
         <tr>
-          <td><code>{{ row.scope }}</code></td>
+          <td>{{ scope_realm(row.scope_display) }}{{ scope_raw(row.scope_display) }}</td>
+          <td>{{ scope_channel(row.scope_display) }}</td>
           <td>{{ row.enabled or "inherit" }}</td>
           <td>{{ row.capture or "inherit" }}</td>
         </tr>
@@ -254,19 +260,18 @@
   </div>
   {% if data.manual_notes %}
   <div class="table-wrap">
-    <table>
-      <thead><tr><th>Kind</th><th>Scope / owner</th><th>Content</th></tr></thead>
+    <table class="state-inventory state-notes" role="table">
+      <thead><tr><th>Kind</th><th>Realm</th><th>User</th><th>Content</th></tr></thead>
       <tbody>
       {% for row in data.manual_notes %}
         <tr>
-          <td>{{ row.kind }}</td>
-          <td>
-            <code>{{ row.scope }}</code>
-            {% if row.user_id %}
-              <br>{% if row.user_name %}{{ row.user_name }} · {% endif %}<code>{{ row.user_id }}</code>
-            {% endif %}
+          <td data-label="Kind">{{ row.kind }}</td>
+          <td data-label="Realm">
+            {{ scope_realm(row.scope_display) }}
+            {{ scope_raw(row.scope_display, show_raw=row.kind == "other") }}
           </td>
-          <td><div class="memory-preview">{{ row.text }}</div></td>
+          <td data-label="User">{{ scope_user(row.user_id, row.user_name) }}</td>
+          <td data-label="Content"><div class="memory-preview">{{ row.text }}</div></td>
         </tr>
       {% endfor %}
       </tbody>

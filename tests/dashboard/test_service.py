@@ -929,7 +929,10 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
         ("guild:1", "read_only"),
         ("dm:100:channel:20", "read_only"),
     }
-    assert data["chat_overrides"] == [
+    assert [
+        {key: row[key] for key in ("scope", "enabled", "capture")}
+        for row in data["chat_overrides"]
+    ] == [
         {"scope": "global", "enabled": "on", "capture": "direct"},
         {"scope": "guild:1", "enabled": "off", "capture": None},
     ]
