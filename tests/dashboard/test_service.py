@@ -973,6 +973,7 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
             "scope": "guild:1",
             "enabled": "off",
             "capture": None,
+            "guild_id": "1",
             "guild_name": "State Guild",
             "channel_name": "",
         },
