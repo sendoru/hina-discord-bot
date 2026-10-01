@@ -66,7 +66,7 @@
   {% set adapter = data.context_provenance.egress.get("adapter", {}) %}
   {% set provider = data.context_provenance.egress.get("provider_boundary", {}) %}
   <h3>Privacy / egress decisions</h3>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table">
       <thead><tr><th>Boundary</th><th>Channel input</th><th>Allowed</th><th>Blocked</th><th>Public input</th><th>Allowed</th><th>Blocked</th></tr></thead>
       <tbody>
@@ -93,7 +93,7 @@
   </div>
 
   <h3>Context sections</h3>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Section</th><th>Included</th><th>Items / fields</th><th>Blocked</th></tr></thead>
       <tbody>
@@ -111,7 +111,7 @@
 
   {% if data.context_provenance.sources %}
   <h3>Admitted sources</h3>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Source</th><th>Kind / role</th><th>Ownership</th><th>Provenance</th><th>Identifiers</th></tr></thead>
       <tbody>
@@ -163,7 +163,7 @@
   {% set recall = data.context_provenance.factual_recall %}
   {% if recall %}
   <h3>Reference-gated factual recall</h3>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Detected</th><th>Detector</th><th>Status</th><th>Candidates</th><th>Relevant</th><th>Selected</th><th>Authorization</th></tr></thead>
       <tbody>
@@ -191,7 +191,7 @@
 
   {% if data.context_provenance.structured_memory %}
   <h3>Structured memory admitted</h3>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Item</th><th>Projection</th><th>Kind / disclosure</th><th>Origin</th><th>Access / current state</th></tr></thead>
       <tbody>

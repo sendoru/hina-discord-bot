@@ -38,33 +38,33 @@
     <div class="filter-row grouped-filter-row">
       <fieldset class="filter-cluster filter-cluster-1">
         <legend>Owner &amp; origin</legend>
-        <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
+        <div class="filter-field"><label for="filter-reconciliation-user-id">User ID / name</label><input id="filter-reconciliation-user-id" name="user_id" value="{{ data.filters.user_id }}" placeholder="user id"></div>
         {{ scope_picker("origin", data.filters.origin_scope_type, data.filters.origin_guild_id, data.filters.origin_channel_id, label="Origin scope") }}
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-3">
         <legend>Proposal attributes</legend>
-        <select name="relation">
+        <div class="filter-field"><label for="filter-reconciliation-relation">Relation</label><select id="filter-reconciliation-relation" name="relation">
           <option value="">all relations</option>
           {% for value in ["duplicate","corrects","conflicts"] %}
           <option value="{{ value }}" {% if data.filters.relation == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
-        </select>
-        <select name="kind">
+        </select></div>
+        <div class="filter-field"><label for="filter-reconciliation-kind">Kind</label><select id="filter-reconciliation-kind" name="kind">
           <option value="">all memory kinds</option>
           {% for value in ["fact","event","preference","relationship","boundary","task"] %}
           <option value="{{ value }}" {% if data.filters.kind == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
-        </select>
-        <select name="retry">
+        </select></div>
+        <div class="filter-field"><label for="filter-reconciliation-retry">Retry</label><select id="filter-reconciliation-retry" name="retry">
           <option value="">retry suspect: any</option>
           <option value="yes" {% if data.filters.retry == "yes" %}selected{% endif %}>exact same source set</option>
           <option value="no" {% if data.filters.retry == "no" %}selected{% endif %}>different source set</option>
-        </select>
+        </select></div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Confidence</legend>
-        <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥" {% if data.filter_errors and data.filter_errors.get("confidence_min") %}aria-invalid="true" aria-describedby="error-confidence_min"{% endif %}>{% if data.filter_errors and data.filter_errors.get("confidence_min") %}<span id="error-confidence_min" class="field-error">{{ data.filter_errors["confidence_min"] }}</span>{% endif %}
-        <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤" {% if data.filter_errors and data.filter_errors.get("confidence_max") %}aria-invalid="true" aria-describedby="error-confidence_max"{% endif %}>{% if data.filter_errors and data.filter_errors.get("confidence_max") %}<span id="error-confidence_max" class="field-error">{{ data.filter_errors["confidence_max"] }}</span>{% endif %}
+        <div class="filter-field"><label for="filter-reconciliation-confidence-min">Confidence ≥</label><input id="filter-reconciliation-confidence-min" name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥" {% if data.filter_errors and data.filter_errors.get("confidence_min") %}aria-invalid="true" aria-describedby="error-confidence_min"{% endif %}></div>{% if data.filter_errors and data.filter_errors.get("confidence_min") %}<span id="error-confidence_min" class="field-error">{{ data.filter_errors["confidence_min"] }}</span>{% endif %}
+        <div class="filter-field"><label for="filter-reconciliation-confidence-max">Confidence ≤</label><input id="filter-reconciliation-confidence-max" name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤" {% if data.filter_errors and data.filter_errors.get("confidence_max") %}aria-invalid="true" aria-describedby="error-confidence_max"{% endif %}></div>{% if data.filter_errors and data.filter_errors.get("confidence_max") %}<span id="error-confidence_max" class="field-error">{{ data.filter_errors["confidence_max"] }}</span>{% endif %}
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Created</legend>
@@ -92,7 +92,7 @@
 
 <section class="panel flush">
   {% if data.rows %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table reconciliation-table">
       <colgroup>
         <col class="proposal-id"><col class="proposal-relation"><col class="proposal-confidence">

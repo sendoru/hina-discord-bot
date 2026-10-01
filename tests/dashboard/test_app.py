@@ -249,7 +249,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
-    assert 'dashboard.css?v=20261001-5' in overview.text
+    assert 'dashboard.css?v=20261002-review' in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -495,3 +495,35 @@ def test_html_error_pages_preserve_status_and_json_clients(tmp_path):
         assert response.status_code == status
         assert "detail" in response.json()
     assert client.get("/healthz").json()["status"] == "ok"
+
+
+def test_keyboard_and_filter_accessibility_markup(tmp_path):
+    from html.parser import HTMLParser
+
+    class Labels(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.depth = 0
+            self.labels = set()
+            self.controls = []
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "label":
+                self.depth += 1
+                if "for" in attrs:
+                    self.labels.add(attrs["for"])
+            if tag in {"input", "select"} and attrs.get("type") != "hidden":
+                self.controls.append((self.depth, attrs.get("id")))
+        def handle_endtag(self, tag):
+            if tag == "label":
+                self.depth -= 1
+
+    client = dashboard_client(tmp_path)
+    for path in ("/traces", "/memory", "/reconciliation", "/analytics", "/identity",
+                 "/conversations", "/summaries", "/memory/cursors", "/state", "/relationships"):
+        response = client.get(path)
+        parser = Labels()
+        parser.feed(response.text)
+        assert all(depth or control_id in parser.labels for depth, control_id in parser.controls), path
+        assert 'aria-current="page"' in response.text
+        assert 'href="#main-content"' in response.text

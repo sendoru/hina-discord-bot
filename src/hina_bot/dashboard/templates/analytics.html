@@ -16,9 +16,9 @@
 <form class="filters filter-layout" method="get">
   <fieldset class="filter-cluster filter-cluster-4">
     <legend>Match</legend>
-    <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
-    <input name="model" value="{{ data.filters.model }}" placeholder="model">
-    <input name="provider" value="{{ data.filters.provider }}" placeholder="provider">
+    <div class="filter-field"><label for="filter-analytics-operation">Operation</label><input id="filter-analytics-operation" name="operation" value="{{ data.filters.operation }}" placeholder="operation"></div>
+    <div class="filter-field"><label for="filter-analytics-model">Model</label><input id="filter-analytics-model" name="model" value="{{ data.filters.model }}" placeholder="model"></div>
+    <div class="filter-field"><label for="filter-analytics-provider">Provider</label><input id="filter-analytics-provider" name="provider" value="{{ data.filters.provider }}" placeholder="provider"></div>
     {{ epoch_selector(data) }}
   </fieldset>
   <fieldset class="filter-cluster filter-cluster-2">
@@ -146,7 +146,7 @@
 <section class="panel">
   <h2>Request size attribution</h2>
   <p class="muted">Serialized character counts are a privacy-safe attribution proxy; provider-reported input tokens remain authoritative.</p>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Section</th><th>Avg chars</th><th>p95</th><th>Coverage</th></tr></thead>
       <tbody>
@@ -165,7 +165,7 @@
 
 <section class="panel">
   <h2>Token fields</h2>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Field</th><th>Sum of known values</th><th>Known rows</th><th>Missing rows</th></tr></thead>
       <tbody>
@@ -369,7 +369,7 @@
 <section class="panel">
   <h2>{{ title }}</h2>
   {% if rows %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Name</th><th>Calls</th><th>Errors</th><th>Total tokens</th><th>Usage coverage</th><th>Avg latency</th><th>p95</th><th>Search calls</th><th>Empty retries</th></tr></thead>
       <tbody>
@@ -408,7 +408,7 @@
 <section class="panel">
   <h2>Daily provider / model breakdown · {{ dashboard_timezone }}</h2>
   {% if data.usage.daily %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Local day</th><th>Provider</th><th>Model</th><th>Calls</th><th>Errors</th><th>Total tokens</th><th>Coverage</th><th>Avg latency</th></tr></thead>
       <tbody>

@@ -27,18 +27,18 @@
     <div class="filter-row grouped-filter-row">
       <fieldset class="filter-cluster filter-cluster-3">
         <legend>Status</legend>
-        <select name="scope">
+        <div class="filter-field"><label for="filter-traces-scope">Scope</label><select id="filter-traces-scope" name="scope">
           <option value="">all scopes</option>
           <option value="guild" {% if data.filters.scope == "guild" %}selected{% endif %}>guild</option>
           <option value="dm" {% if data.filters.scope == "dm" %}selected{% endif %}>dm</option>
-        </select>
-        <input name="status" value="{{ data.filters.status }}" placeholder="status">
-        <input name="tier" value="{{ data.filters.tier }}" placeholder="tier">
+        </select></div>
+        <div class="filter-field"><label for="filter-traces-status">Status</label><input id="filter-traces-status" name="status" value="{{ data.filters.status }}" placeholder="status"></div>
+        <div class="filter-field"><label for="filter-traces-tier">Tier</label><input id="filter-traces-tier" name="tier" value="{{ data.filters.tier }}" placeholder="tier"></div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Routing</legend>
-        <input name="model" value="{{ data.filters.model }}" placeholder="model">
-        <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
+        <div class="filter-field"><label for="filter-traces-model">Model</label><input id="filter-traces-model" name="model" value="{{ data.filters.model }}" placeholder="model"></div>
+        <div class="filter-field"><label for="filter-traces-operation">Operation</label><input id="filter-traces-operation" name="operation" value="{{ data.filters.operation }}" placeholder="operation"></div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Signals</legend>
@@ -47,16 +47,16 @@
           <option value="yes" {% if data.filters.memory_failure == "yes" %}selected{% endif %}>yes</option>
           <option value="no" {% if data.filters.memory_failure == "no" %}selected{% endif %}>no</option>
         </select></label>
-        <select name="error">
+        <div class="filter-field"><label for="filter-traces-error">Error</label><select id="filter-traces-error" name="error">
           <option value="">error: any</option>
           <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>error: yes</option>
           <option value="no" {% if data.filters.error == "no" %}selected{% endif %}>error: no</option>
-        </select>
-        <select name="web_search">
+        </select></div>
+        <div class="filter-field"><label for="filter-traces-web-search">Web search</label><select id="filter-traces-web-search" name="web_search">
           <option value="">search: any</option>
           <option value="yes" {% if data.filters.web_search == "yes" %}selected{% endif %}>search: used</option>
           <option value="no" {% if data.filters.web_search == "no" %}selected{% endif %}>search: not used</option>
-        </select>
+        </select></div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Time window</legend>
@@ -85,7 +85,7 @@
 
 <section class="panel flush">
   {% if data.rows %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table">
       <thead>
         <tr><th>Time</th><th>Scope</th><th>Status</th><th>Tier</th><th>Models</th><th>Tokens</th><th>Latency</th><th>Search</th><th>Error</th><th>Stored</th></tr>

@@ -16,13 +16,13 @@
 <form class="filters filter-layout" method="get">
   <fieldset class="filter-cluster filter-cluster-3">
     <legend>Match</legend>
-    <select name="outcome">
+    <div class="filter-field"><label for="filter-identity-outcome">Outcome</label><select id="filter-identity-outcome" name="outcome">
       <option value="">outcome: any</option>
       {% for value in ["resolved","ambiguous","none","blocked"] %}
       <option value="{{ value }}" {% if data.filters.outcome == value %}selected{% endif %}>{{ value }}</option>
       {% endfor %}
-    </select>
-    <input name="blocked_reason" value="{{ data.filters.blocked_reason }}" placeholder="blocked reason">
+    </select></div>
+    <div class="filter-field"><label for="filter-identity-blocked-reason">Blocked Reason</label><input id="filter-identity-blocked-reason" name="blocked_reason" value="{{ data.filters.blocked_reason }}" placeholder="blocked reason"></div>
     {{ epoch_selector(data) }}
   </fieldset>
   <fieldset class="filter-cluster filter-cluster-2">
@@ -112,7 +112,7 @@
     Ambiguous/none outcomes invalidate the simulated cache state.
   </p>
   {% if data.repeat_groups %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table">
       <thead><tr><th>Reference group</th><th>Events</th><th>Resolved</th><th>Ambiguous</th><th>None</th><th>Potential hits</th><th>Conflicts</th><th>Distinct users</th><th>Stable?</th></tr></thead>
       <tbody>
@@ -146,7 +146,7 @@
 <section class="panel">
   <h2>Recent resolver / policy cases</h2>
   {% if data.recent %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table">
       <thead><tr><th>Time</th><th>Outcome</th><th>Candidates</th><th>Raw candidates</th><th>Blocked reason</th><th>Reference group</th><th>Resolved user group</th><th>Trace</th></tr></thead>
       <tbody>

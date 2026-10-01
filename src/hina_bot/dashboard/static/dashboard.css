@@ -2862,3 +2862,14 @@ pre {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Filter names, validation and keyboard navigation. */
+.filter-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.filter-field > label, .time-field { font-size: 13px; color: var(--muted); }
+.filter-field > input, .filter-field > select { width: 100%; min-width: 0; }
+.field-error { display: block; color: #ffb9bd; font-size: 13px; overflow-wrap: anywhere; }
+[aria-invalid="true"] { border-color: #ffb9bd; }
+.skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; padding: 12px 18px;
+  background: var(--panel); transform: translateY(-180%); }
+.skip-link:focus { transform: translateY(0); }
+.table-wrap:focus-visible, main:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

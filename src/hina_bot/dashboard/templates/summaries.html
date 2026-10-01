@@ -14,9 +14,9 @@
 <form class="filters filter-layout filter-layout-compact" method="get">
   <fieldset class="filter-cluster filter-cluster-3">
     <legend>Match</legend>
-    <input name="q" value="{{ data.filters.q }}" placeholder="scope / name / summary text">
-    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
-    <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
+    <div class="filter-field"><label for="filter-summaries-q">Search</label><input id="filter-summaries-q" name="q" value="{{ data.filters.q }}" placeholder="scope / name / summary text"></div>
+    <div class="filter-field"><label for="filter-summaries-user-id">User ID / name</label><input id="filter-summaries-user-id" name="user_id" value="{{ data.filters.user_id }}" placeholder="user id"></div>
+    <div class="filter-field"><label for="filter-summaries-realm">Realm</label><input id="filter-summaries-realm" name="realm" value="{{ data.filters.realm }}" placeholder="realm"></div>
   </fieldset>
   <div class="filter-footer">
     <div class="filter-actions">
@@ -30,7 +30,7 @@
 <section class="panel">
   <h2>Personal summaries</h2>
   {% if data.personal %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table summary-table">
       <thead><tr><th>Realm</th><th>Channel</th><th>User</th><th>Through</th><th>Latest retained</th><th>Pending</th><th>Exportable</th><th>Structured items</th><th>Extraction cursor</th></tr></thead>
       <tbody>
@@ -61,7 +61,7 @@
 <section class="panel">
   <h2>Shared summaries</h2>
   {% if data.shared %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table summary-table">
       <thead><tr><th>Realm</th><th>Channel</th><th>User</th><th>Through</th><th>Latest retained call</th><th>Pending calls</th></tr></thead>
       <tbody>

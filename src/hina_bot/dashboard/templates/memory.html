@@ -30,36 +30,36 @@
     <div class="filter-row grouped-filter-row">
       <fieldset class="filter-cluster filter-cluster-1">
         <legend>Owner &amp; origin</legend>
-        <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
+        <div class="filter-field"><label for="filter-memory-user-id">User ID / name</label><input id="filter-memory-user-id" name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name"></div>
         {{ scope_picker("origin", data.filters.origin_scope_type, data.filters.origin_guild_id, data.filters.origin_channel_id, label="Origin scope") }}
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Confidence</legend>
-        <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥" {% if data.filter_errors and data.filter_errors.get("confidence_min") %}aria-invalid="true" aria-describedby="error-confidence_min"{% endif %}>{% if data.filter_errors and data.filter_errors.get("confidence_min") %}<span id="error-confidence_min" class="field-error">{{ data.filter_errors["confidence_min"] }}</span>{% endif %}
-        <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤" {% if data.filter_errors and data.filter_errors.get("confidence_max") %}aria-invalid="true" aria-describedby="error-confidence_max"{% endif %}>{% if data.filter_errors and data.filter_errors.get("confidence_max") %}<span id="error-confidence_max" class="field-error">{{ data.filter_errors["confidence_max"] }}</span>{% endif %}
+        <div class="filter-field"><label for="filter-memory-confidence-min">Confidence ≥</label><input id="filter-memory-confidence-min" name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥" {% if data.filter_errors and data.filter_errors.get("confidence_min") %}aria-invalid="true" aria-describedby="error-confidence_min"{% endif %}></div>{% if data.filter_errors and data.filter_errors.get("confidence_min") %}<span id="error-confidence_min" class="field-error">{{ data.filter_errors["confidence_min"] }}</span>{% endif %}
+        <div class="filter-field"><label for="filter-memory-confidence-max">Confidence ≤</label><input id="filter-memory-confidence-max" name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤" {% if data.filter_errors and data.filter_errors.get("confidence_max") %}aria-invalid="true" aria-describedby="error-confidence_max"{% endif %}></div>{% if data.filter_errors and data.filter_errors.get("confidence_max") %}<span id="error-confidence_max" class="field-error">{{ data.filter_errors["confidence_max"] }}</span>{% endif %}
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-4 filter-cluster-wide">
         <legend>Memory attributes</legend>
-        <select name="kind">
+        <div class="filter-field"><label for="filter-memory-kind">Kind</label><select id="filter-memory-kind" name="kind">
           <option value="">all kinds</option>
           {% for value in ["fact","event","preference","relationship","boundary","task"] %}
           <option value="{{ value }}" {% if data.filters.kind == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
-        </select>
-        <select name="disclosure">
+        </select></div>
+        <div class="filter-field"><label for="filter-memory-disclosure">Disclosure</label><select id="filter-memory-disclosure" name="disclosure">
           <option value="">all disclosure</option>
           {% for value in ["local","implicit","reference_gated","global"] %}
           <option value="{{ value }}" {% if data.filters.disclosure == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
-        </select>
+        </select></div>
         {% if data.schema.has_lifecycle %}
-        <input name="status" value="{{ data.filters.status }}" placeholder="lifecycle status">
+        <div class="filter-field"><label for="filter-memory-status">Status</label><input id="filter-memory-status" name="status" value="{{ data.filters.status }}" placeholder="lifecycle status"></div>
         {% endif %}
-        <select name="relationship">
+        <div class="filter-field"><label for="filter-memory-relationship">Relationship</label><select id="filter-memory-relationship" name="relationship">
           <option value="">relationship: any</option>
           <option value="yes" {% if data.filters.relationship == "yes" %}selected{% endif %}>relationship only</option>
           <option value="no" {% if data.filters.relationship == "no" %}selected{% endif %}>non-relationship</option>
-        </select>
+        </select></div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Created</legend>
@@ -95,7 +95,7 @@
 
 <section class="panel flush">
   {% if data.rows %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table memory-table">
       <thead>
         <tr>

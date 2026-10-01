@@ -149,7 +149,7 @@
   <div class="grid-2">
     <div>
       <h3>Automatic memory inheritance</h3>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
         <table>
           <thead><tr><th>Layer</th><th>Mode</th></tr></thead>
           <tbody>
@@ -160,7 +160,7 @@
     </div>
     <div>
       <h3>Recent-context enablement</h3>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
         <table>
           <thead><tr><th>Layer</th><th>on/off</th></tr></thead>
           <tbody>
@@ -170,7 +170,7 @@
       </div>
 
       <h3>Recent-context capture</h3>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
         <table>
           <thead><tr><th>Layer</th><th>all/direct</th></tr></thead>
           <tbody>
@@ -205,7 +205,7 @@
 <section class="panel">
   <h2>Stored memory overrides</h2>
   {% if data.memory_overrides %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="state-inventory">
       <thead><tr><th>Realm</th><th>Channel</th><th>Mode</th></tr></thead>
       <tbody>
@@ -231,7 +231,7 @@
     separately. The effective target state above combines both.
   </p>
   {% if data.chat_overrides %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="state-inventory">
       <thead><tr><th>Realm</th><th>Channel</th><th>Enabled override</th><th>Capture override</th></tr></thead>
       <tbody>
@@ -263,7 +263,7 @@
     </div>
   </div>
   {% if data.manual_notes %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="state-inventory state-notes" role="table">
       <thead><tr><th>Kind</th><th>Realm</th><th>User</th><th>Content</th></tr></thead>
       <tbody>

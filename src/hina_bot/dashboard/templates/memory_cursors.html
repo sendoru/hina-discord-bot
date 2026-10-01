@@ -14,14 +14,14 @@
 <form class="filters filter-layout filter-layout-compact" method="get">
   <fieldset class="filter-cluster filter-cluster-4">
     <legend>Match</legend>
-    <input name="q" value="{{ data.filters.q }}" placeholder="scope / user name">
-    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
-    <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
-    <select name="pending">
+    <div class="filter-field"><label for="filter-memory-cursors-q">Search</label><input id="filter-memory-cursors-q" name="q" value="{{ data.filters.q }}" placeholder="scope / user name"></div>
+    <div class="filter-field"><label for="filter-memory-cursors-user-id">User ID / name</label><input id="filter-memory-cursors-user-id" name="user_id" value="{{ data.filters.user_id }}" placeholder="user id"></div>
+    <div class="filter-field"><label for="filter-memory-cursors-realm">Realm</label><input id="filter-memory-cursors-realm" name="realm" value="{{ data.filters.realm }}" placeholder="realm"></div>
+    <div class="filter-field"><label for="filter-memory-cursors-pending">Pending</label><select id="filter-memory-cursors-pending" name="pending">
       <option value="">pending: any</option>
       <option value="yes" {% if data.filters.pending == "yes" %}selected{% endif %}>pending only</option>
       <option value="no" {% if data.filters.pending == "no" %}selected{% endif %}>caught up</option>
-    </select>
+    </select></div>
   </fieldset>
   <div class="filter-footer">
     <div class="filter-actions">
@@ -38,7 +38,7 @@
 
 <section class="panel flush">
   {% if data.rows %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table cursor-table">
       <thead>
         <tr><th>Realm</th><th>Channel</th><th>User</th><th>Initialized</th><th>Extraction through</th><th>Summary through</th><th>Δ</th><th>Effective through</th><th>Latest retained</th><th>Pending</th><th>Updated</th></tr>

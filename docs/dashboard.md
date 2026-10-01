@@ -486,3 +486,8 @@ Analytics·Identity·Summaries·Cursors에도 같은 칩을 제공합니다.
 HTML 상세의 404와 잘못된 페이지·식별자의 422는 공통 오류 화면과 목록 복귀 링크를
 제공합니다. HTTP 상태 코드는 유지합니다. `/healthz`, static, JSON을 요청한 클라이언트는
 기존 JSON 오류 형식을 유지합니다. 페이지 번호는 1 이상의 정수여야 합니다.
+
+필터에는 항상 보이는 label을 제공하며 기존 Scope picker의 중첩 label을 유지합니다.
+현재 메뉴는 `aria-current="page"`로 표시합니다. 첫 Tab은 본문 바로가기이며 데이터 표의
+가로 스크롤 영역도 키보드 포커스를 받을 수 있습니다. 입력 오류는 `aria-invalid`와
+`aria-describedby`로 연결합니다.

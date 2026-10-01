@@ -24,9 +24,9 @@
     <div class="filter-row grouped-filter-row">
       <fieldset class="filter-cluster filter-cluster-3">
         <legend>Context</legend>
-        <input name="scope" value="{{ data.filters.scope }}" placeholder="scope">
-        <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
-        <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
+        <div class="filter-field"><label for="filter-conversations-scope">Scope</label><input id="filter-conversations-scope" name="scope" value="{{ data.filters.scope }}" placeholder="scope"></div>
+        <div class="filter-field"><label for="filter-conversations-realm">Realm</label><input id="filter-conversations-realm" name="realm" value="{{ data.filters.realm }}" placeholder="realm"></div>
+        <div class="filter-field"><label for="filter-conversations-user-id">User ID / name</label><input id="filter-conversations-user-id" name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name"></div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Time window</legend>

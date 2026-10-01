@@ -1,12 +1,12 @@
 {% macro epoch_selector(data) -%}
 {% if data.epoch.tracked %}
-<select name="epoch" aria-label="Observability epoch">
+<div class="filter-field"><label for="filter--epoch-ui-epoch">Epoch</label><select id="filter--epoch-ui-epoch" name="epoch" aria-label="Observability epoch">
   {% for item in data.epoch.windows %}
   <option value="{{ item.value }}" {% if data.epoch.selected == item.value %}selected{% endif %}>
     {{ item.label }}{% if item.current %} · current{% endif %}
   </option>
   {% endfor %}
-</select>
+</select></div>
 {% endif %}
 {%- endmacro %}
 
