@@ -126,7 +126,7 @@ class ContextStateService(ReadService):
         )
         dm_channel_candidates = (
             self.repository.dm_channel_candidates(target_user_id)
-            if dm_user_valid
+            if target_scope_type == "dm" and dm_user_valid
             else []
         )
         dm_channel_auto_selected = False
