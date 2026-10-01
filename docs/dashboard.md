@@ -359,6 +359,13 @@ The page resolves the same global -> server -> channel inheritance used by runti
 DM targets intentionally report recent-channel context as `off`, matching runtime behavior even when
 the underlying global chat-log setting is `on`.
 
+For DM lookup, the operator normally enters only the user ID. The dashboard discovers retained DM
+channel IDs from conversation/summarization rows, structured-memory origins, reconciliation rows, and
+channel-level override keys. A single known channel is selected automatically; multiple known channels
+are offered as a selector because a shared test database may contain DM channels from more than one bot.
+If no channel can be recovered, the UI exposes a manual channel-ID fallback so channel-level overrides
+can still be inspected. Legacy URLs that pass `target_channel_id` for a DM remain accepted.
+
 The `notes` table also stores internal configuration markers such as chat-log capture overrides.
 Those rows are excluded from the manual-note list and represented through their relevant configuration
 view instead, so internal state is not mistaken for prompt-visible user/server notes.
