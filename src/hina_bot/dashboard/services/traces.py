@@ -362,6 +362,7 @@ class TraceService(ReadService):
         if not isinstance(raw, dict):
             return None
 
+        metadata = self.repository.discord_scope_metadata()
         context_by_message: dict[str, dict] = {}
         if isinstance(memory_context, list):
             for item in memory_context:
@@ -386,10 +387,11 @@ class TraceService(ReadService):
             source_rows.append(row)
 
         stored_turns = self.repository.turns_for_message_ids(source_message_ids)
-        turn_by_message = {
-            str(row["message_id"]): row
-            for row in stored_turns
-        }
+        turn_by_message = {}
+        for row in stored_turns:
+            value = dict(row)
+            self._decorate_scope_names(value, metadata)
+            turn_by_message[str(value["message_id"])] = value
         for row in source_rows:
             message_id = str(row.get("message_id") or "")
             if message_id and message_id in turn_by_message:
@@ -410,6 +412,12 @@ class TraceService(ReadService):
                     row["current_status"] = current.get("status") or "active"
                     row["superseded_by"] = current.get("superseded_by")
                     row["user_name"] = current.get("user_name") or ""
+            self._decorate_scope_names(
+                row,
+                metadata,
+                realm_key="origin_realm",
+                channel_key="origin_channel_id",
+            )
             structured_rows.append(row)
 
         sections = [
@@ -440,6 +448,12 @@ class TraceService(ReadService):
             return None
         telemetry = self.telemetry.for_turn(trace_id)
         stored = self.repository.turn_for_trace(trace_id)
+        if stored is not None:
+            stored = dict(stored)
+            self._decorate_scope_names(
+                stored,
+                self.repository.discord_scope_metadata(),
+            )
         if stored is None and not (telemetry.events or telemetry.usage or telemetry.exchanges):
             return None
 
