@@ -956,8 +956,20 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
         ("dm:100:channel:20", "read_only"),
     }
     assert data["chat_overrides"] == [
-        {"scope": "global", "enabled": "on", "capture": "direct"},
-        {"scope": "guild:1", "enabled": "off", "capture": None},
+        {
+            "scope": "global",
+            "enabled": "on",
+            "capture": "direct",
+            "guild_name": "",
+            "channel_name": "",
+        },
+        {
+            "scope": "guild:1",
+            "enabled": "off",
+            "capture": None,
+            "guild_name": "State Guild",
+            "channel_name": "",
+        },
     ]
     assert data["internal_note_count"] == 2
     assert {row["text"] for row in data["manual_notes"]} == {
