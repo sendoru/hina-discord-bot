@@ -345,6 +345,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'name="target_guild_id" inputmode="numeric" value=""' in relationships_dm.text
     assert "Target:" in relationships_dm.text
     assert "<code>dm</code>" in relationships_dm.text
+    assert "Owner-DM relationship memory" in relationships_dm.text
+    assert "structured_owner_memory" in relationships_dm.text
+    assert "comfortable recurring interaction" in relationships_dm.text
     assert state.status_code == 200
     assert "Memory &amp; Context State" in state.text
     assert 'class="state-query-panel"' in state.text
