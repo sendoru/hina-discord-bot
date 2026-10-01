@@ -379,11 +379,11 @@ class TraceService(ReadService):
             "created_after": db_utc_timestamp(after, self.timezone),
             "created_before": db_utc_timestamp(before, self.timezone),
         }
-        total = self.repository.count_turns(**repository_filters)
+        total = self.repository.count_conversations(**repository_filters)
         pagination = self._page(page, page_size, total)
         if pagination.number > pagination.pages:
             pagination = Page(pagination.pages, pagination.size, pagination.total)
-        raw_rows = self.repository.search_turns(
+        raw_rows = self.repository.search_conversations(
             **repository_filters,
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
@@ -398,6 +398,10 @@ class TraceService(ReadService):
                     ("input", row.get("content")),
                     ("reply", row.get("reply")),
                     ("message id", row.get("message_id")),
+                    ("status", row.get("status")),
+                    ("stage", row.get("stage")),
+                    ("error", row.get("error_type")),
+                    ("fingerprint", row.get("error_fingerprint")),
                 ),
             )
             rows.append(row)
