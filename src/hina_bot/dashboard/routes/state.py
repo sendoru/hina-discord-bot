@@ -14,6 +14,7 @@ def build_router(service: ContextStateService, templates: Jinja2Templates) -> AP
         target_scope_type: str = "",
         target_guild_id: str = "",
         target_channel_id: str = "",
+        target_dm_channel_id: str = "",
         target_user_id: str = "",
         q: str = "",
     ):
@@ -21,6 +22,7 @@ def build_router(service: ContextStateService, templates: Jinja2Templates) -> AP
             target_scope_type=target_scope_type,
             target_guild_id=target_guild_id,
             target_channel_id=target_channel_id,
+            target_dm_channel_id=target_dm_channel_id,
             target_user_id=target_user_id,
             query=q,
         )
