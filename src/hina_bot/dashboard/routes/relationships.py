@@ -11,11 +11,13 @@ def build_router(service: MemoryService, templates: Jinja2Templates) -> APIRoute
     @router.get("/relationships", response_class=HTMLResponse)
     def relationship_profiles(
         request: Request,
+        target_scope_type: str = "",
         target_guild_id: str = "",
         target_channel_id: str = "",
         q: str = "",
     ):
         data = service.relationship_profiles(
+            target_scope_type=target_scope_type,
             target_guild_id=target_guild_id,
             target_channel_id=target_channel_id,
             query=q,
