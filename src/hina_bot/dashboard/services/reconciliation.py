@@ -100,6 +100,7 @@ class ReconciliationService(MemoryService):
             offset=(pagination.number - 1) * pagination.size,
         )
         names = self.repository.latest_user_names()
+        metadata = self.repository.discord_scope_metadata()
         proposal_rows = []
         for row in rows:
             value = self._proposal_row(row)
@@ -109,6 +110,12 @@ class ReconciliationService(MemoryService):
                     str(value.get("user_id") or ""),
                 ),
                 "",
+            )
+            self._decorate_scope_names(
+                value,
+                metadata,
+                realm_key="origin_realm",
+                channel_key="origin_channel_id",
             )
             proposal_rows.append(value)
         return {
@@ -140,6 +147,7 @@ class ReconciliationService(MemoryService):
             return None
         proposal = self._proposal_row(raw)
         names = self.repository.latest_user_names()
+        metadata = self.repository.discord_scope_metadata()
         proposal["user_name"] = names.get(
             (
                 str(proposal.get("origin_realm") or ""),
@@ -147,12 +155,25 @@ class ReconciliationService(MemoryService):
             ),
             "",
         )
+        self._decorate_scope_names(
+            proposal,
+            metadata,
+            realm_key="origin_realm",
+            channel_key="origin_channel_id",
+        )
         new_item_raw = self.repository.memory_item(int(proposal["new_memory_item_id"]))
         target_item_raw = self.repository.memory_item(int(proposal["target_memory_item_id"]))
         if new_item_raw is None or target_item_raw is None:
             return None
         new_item = self._memory_row(new_item_raw)
         target_item = self._memory_row(target_item_raw)
+        for item in (new_item, target_item):
+            self._decorate_scope_names(
+                item,
+                metadata,
+                realm_key="origin_realm",
+                channel_key="origin_channel_id",
+            )
 
         all_source_ids = tuple(
             dict.fromkeys(
@@ -164,7 +185,11 @@ class ReconciliationService(MemoryService):
             )
         )
         source_turns = self.repository.turns_for_message_ids(list(all_source_ids))
-        source_by_id = {str(row["message_id"]): row for row in source_turns}
+        source_by_id = {}
+        for row in source_turns:
+            value = dict(row)
+            self._decorate_scope_names(value, metadata)
+            source_by_id[str(value["message_id"])] = value
         sources = [
             {"message_id": message_id, "turn": source_by_id.get(message_id)}
             for message_id in all_source_ids
@@ -203,11 +228,21 @@ class ReconciliationService(MemoryService):
             "target_item": target_item,
             "sources": sources,
             "new_neighbors": [
-                self._memory_row(row)
+                self._decorate_scope_names(
+                    self._memory_row(row),
+                    metadata,
+                    realm_key="origin_realm",
+                    channel_key="origin_channel_id",
+                )
                 for row in self.repository.neighboring_memory_items(new_item_raw)
             ],
             "target_neighbors": [
-                self._memory_row(row)
+                self._decorate_scope_names(
+                    self._memory_row(row),
+                    metadata,
+                    realm_key="origin_realm",
+                    channel_key="origin_channel_id",
+                )
                 for row in self.repository.neighboring_memory_items(target_item_raw)
             ],
             "extraction_traces": extraction_traces,
