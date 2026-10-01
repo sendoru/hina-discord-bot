@@ -95,6 +95,8 @@ def dashboard_client(tmp_path):
         user_name="Dashboard User",
     )
     guild_scope = Scope(1, 20, 100, True)
+    store.observe_guild_channel(1, "Dashboard Guild", 10, "general")
+    store.observe_guild_channel(1, "Dashboard Guild", 20, "relationships")
     store.add_memory_item(
         guild_scope,
         "same guild raw relationship",
@@ -334,6 +336,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "comfortable recurring interaction" in relationships.text
     assert "FULL/raw relationship memory" in relationships.text
     assert "same guild raw relationship" in relationships.text
+    assert "Dashboard Guild" in relationships.text
+    assert "#relationships" in relationships.text
     assert "Cross-space IMPLICIT projection" in relationships.text
     assert 'class="table-wrap relationship-desktop"' in relationships.text
     assert 'class="relationship-mobile"' in relationships.text
@@ -371,8 +375,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'name="target_dm_channel_id"' in state_dm.text
     assert '<option value="10" selected>10</option>' in state_dm.text
     assert "Auto-selected the only known DM channel." in state_dm.text
-    assert "<code>dm:100</code>" in state_dm.text
-    assert "<code>channel:10</code>" in state_dm.text
+    assert "Direct message" in state_dm.text
+    assert "<code>10</code>" in state_dm.text
+    assert "Dashboard Guild" in state.text
+    assert "#relationships" in state.text
     assert "dashboard server note" in state.text
     assert "Dashboard User · <code>user:100</code>" in state.text
     assert "dashboard user note" in state.text
