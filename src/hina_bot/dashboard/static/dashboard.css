@@ -2022,16 +2022,35 @@ pre {
 .scope-target-row {
   display: grid;
   grid-template-columns:
-    minmax(430px, 1.6fr)
-    minmax(180px, .65fr)
-    minmax(210px, .8fr)
+    minmax(180px, 1fr)
+    minmax(210px, 1fr)
     auto;
   gap: 12px;
-  align-items: end;
+  align-items: start;
 }
 
 .scope-target-row > .scope-picker {
-  width: 100%;
+  grid-column: 1 / -1;
+  width: min(720px, 100%);
+}
+
+.scope-target-user {
+  grid-column: 1;
+}
+
+.scope-target-dm-channel {
+  grid-column: 2;
+}
+
+.scope-target-actions {
+  grid-column: 3;
+  align-self: start;
+  margin-top: 16px;
+}
+
+.state-scope-form:has(input[name="target_scope_type"][value="guild"]:checked)
+  .scope-target-actions {
+  grid-column: 2;
 }
 
 .scope-target-user,
@@ -2119,15 +2138,26 @@ pre {
 
 @media (max-width: 1100px) {
   .scope-target-row {
-    grid-template-columns: minmax(360px, 1fr) minmax(170px, .6fr);
+    grid-template-columns: minmax(0, 1fr) minmax(210px, .8fr);
+  }
+
+  .scope-target-row > .scope-picker {
+    grid-column: 1 / -1;
+  }
+
+  .scope-target-user {
+    grid-column: 1;
   }
 
   .scope-target-dm-channel {
-    grid-column: 1 / -1;
+    grid-column: 2;
   }
 
-  .scope-target-actions {
+  .scope-target-actions,
+  .state-scope-form:has(input[name="target_scope_type"][value="guild"]:checked)
+    .scope-target-actions {
     grid-column: 1 / -1;
+    margin-top: 0;
   }
 }
 
@@ -2166,11 +2196,20 @@ pre {
     gap: 10px;
   }
 
+  .scope-target-row > .scope-picker,
+  .scope-target-user,
+  .scope-target-dm-channel,
+  .scope-target-actions,
+  .state-scope-form:has(input[name="target_scope_type"][value="guild"]:checked)
+    .scope-target-actions {
+    grid-column: 1;
+  }
+
   .scope-target-actions {
-    grid-column: auto;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     width: 100%;
+    margin-top: 0;
   }
 
   .scope-target-actions > button {
@@ -2583,6 +2622,22 @@ pre {
   padding-top: 2px;
 }
 
+.relationship-scope-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.relationship-scope-row > .scope-picker {
+  grid-column: 1;
+  width: min(720px, 100%);
+}
+
+.relationship-scope-row .filter-row-actions {
+  grid-column: 2;
+  align-self: end;
+  padding-top: 0;
+}
+
 @media (max-width: 1000px) {
   .filters.filter-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -2633,6 +2688,19 @@ pre {
   }
 
   .grouped-filter-row .filter-row-actions {
+    justify-content: flex-start;
+  }
+
+  .relationship-scope-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .relationship-scope-row > .scope-picker,
+  .relationship-scope-row .filter-row-actions {
+    grid-column: 1;
+  }
+
+  .relationship-scope-row .filter-row-actions {
     justify-content: flex-start;
   }
 }
