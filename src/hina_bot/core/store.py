@@ -41,6 +41,24 @@ class Store:
             );
             CREATE INDEX IF NOT EXISTS turns_scope ON turns(scope, id);
             CREATE INDEX IF NOT EXISTS turns_owner ON turns(realm, user_id);
+            CREATE TABLE IF NOT EXISTS failed_turns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scope TEXT NOT NULL, realm TEXT NOT NULL, user_id TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                message_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                reply TEXT NOT NULL DEFAULT '',
+                turn_id TEXT,
+                status TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                reply_delivered INTEGER NOT NULL CHECK(reply_delivered IN (0,1)),
+                error_type TEXT NOT NULL DEFAULT '',
+                error_fingerprint TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS failed_turns_scope ON failed_turns(scope, id);
+            CREATE INDEX IF NOT EXISTS failed_turns_turn_id ON failed_turns(turn_id);
+            CREATE INDEX IF NOT EXISTS failed_turns_message_id ON failed_turns(message_id);
             CREATE TABLE IF NOT EXISTS summaries (
                 scope TEXT PRIMARY KEY, realm TEXT NOT NULL, user_id TEXT NOT NULL,
                 name TEXT NOT NULL DEFAULT '',
@@ -387,6 +405,52 @@ class Store:
             self.db.execute("DELETE FROM turns WHERE scope=? AND id NOT IN "
                             "(SELECT id FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?)",
                             (scope.conversation, scope.conversation, self.history_turns))
+
+    def add_failed_turn(
+        self,
+        scope: Scope,
+        message_id: int,
+        content: str,
+        *,
+        name: str = "",
+        reply: str = "",
+        status: str,
+        stage: str,
+        reply_delivered: bool,
+        error_type: str = "",
+        error_fingerprint: str = "",
+    ):
+        """Persist a failed exchange for observability without feeding memory pipelines."""
+        with self.db:
+            self.db.execute(
+                """INSERT INTO failed_turns(
+                       scope,realm,user_id,name,message_id,content,reply,turn_id,
+                       status,stage,reply_delivered,error_type,error_fingerprint
+                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    scope.conversation,
+                    scope.realm,
+                    str(scope.user_id),
+                    str(name or "")[:100],
+                    str(message_id),
+                    content,
+                    reply,
+                    current_turn_id(),
+                    str(status),
+                    str(stage),
+                    int(bool(reply_delivered)),
+                    str(error_type or ""),
+                    str(error_fingerprint or ""),
+                ),
+            )
+            self.db.execute(
+                """DELETE FROM failed_turns
+                   WHERE scope=? AND id NOT IN (
+                       SELECT id FROM failed_turns
+                       WHERE scope=? ORDER BY id DESC LIMIT ?
+                   )""",
+                (scope.conversation, scope.conversation, self.history_turns),
+            )
 
     def save_summary(self, scope: Scope, text: str, through: int):
         exportable = self.summary_exportable(scope) and all(
