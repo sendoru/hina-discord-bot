@@ -96,6 +96,17 @@ class ReadService:
         if not guild_id and realm.startswith("guild:"):
             guild_id = realm.removeprefix("guild:").split(":", 1)[0]
         channel_id = str(row.get(channel_key) or "")
+        scope = str(row.get("scope") or "")
+        if scope:
+            parts = scope.split(":")
+            fields = {
+                parts[index]: parts[index + 1]
+                for index in range(0, len(parts) - 1, 2)
+            }
+            if not guild_id:
+                guild_id = str(fields.get("guild") or "")
+            if not channel_id:
+                channel_id = str(fields.get("channel") or "")
 
         guilds = metadata.get("guilds", {})
         channels = metadata.get("channels", {})
