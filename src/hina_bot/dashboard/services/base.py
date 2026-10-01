@@ -108,6 +108,11 @@ class ReadService:
             if not channel_id:
                 channel_id = str(fields.get("channel") or "")
 
+        if guild_id and not row.get(guild_id_key):
+            row[guild_id_key] = guild_id
+        if channel_id and not row.get(channel_key):
+            row[channel_key] = channel_id
+
         guilds = metadata.get("guilds", {})
         channels = metadata.get("channels", {})
         guild_meta = guilds.get(guild_id) if guild_id else None
