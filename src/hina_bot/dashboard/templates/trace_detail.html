@@ -42,7 +42,10 @@
   {% endif %}
 </section>
 {% else %}
-<section class="notice info">No retained raw turn is correlated with this trace. It may have expired from bounded retention or predate turn_id persistence.</section>
+<section class="notice {{ data.raw_turn_availability.severity }}">
+  <strong>{{ data.raw_turn_availability.title }}</strong><br>
+  {{ data.raw_turn_availability.message }}
+</section>
 {% endif %}
 
 {% if data.context_provenance %}
@@ -225,7 +228,7 @@
 {% elif data.context_telemetry %}
 <section class="panel">
   <h2>Context &amp; provenance</h2>
-  <p class="muted">The raw turn was not retained, but content-free request telemetry is still available.</p>
+  <p class="muted">Content-free request telemetry is still available for this trace.</p>
   <div class="cards">
     <article class="card"><span>Channel</span><strong>{{ data.context_telemetry.context_channel_items or 0 }}</strong></article>
     <article class="card"><span>Reply chain</span><strong>{{ data.context_telemetry.context_reply_items or 0 }}</strong></article>

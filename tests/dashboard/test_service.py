@@ -249,6 +249,8 @@ def build_service(tmp_path):
                 "status": "generation_failed",
                 "elapsed_ms": 500,
                 "error_fingerprint": "deadbeef",
+                "raw_turn_persistence": "skipped",
+                "raw_turn_persistence_reason": "memory_writes_disabled",
             },
         ],
     )
@@ -332,6 +334,29 @@ def test_failed_trace_keeps_content_free_context_telemetry(tmp_path):
     assert data["context_telemetry"]["context_adapter_blocked"] == 1
     assert data["context_telemetry"]["factual_recall_detected"] is True
     assert data["context_telemetry"]["factual_recall_status"] == "ambiguous_single_anchor"
+    assert data["raw_turn_availability"]["state"] == "not_retained_by_design"
+    assert "disabled" in data["raw_turn_availability"]["message"]
+
+
+def test_auxiliary_trace_does_not_claim_raw_turn_expired(tmp_path):
+    service = build_service(tmp_path)
+    assert service.telemetry.usage_path is not None
+    with service.telemetry.usage_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({
+            "at": "2026-09-21T00:02:00+00:00",
+            "turn_id": "trace-summary",
+            "operation": "summarize",
+            "model": "fast-model",
+            "status": "completed",
+            "total_tokens": 25,
+        }) + "\n")
+
+    data = service.trace("trace-summary")
+
+    assert data is not None
+    assert data["stored"] is None
+    assert data["raw_turn_availability"]["state"] == "not_applicable"
+    assert "summarize" in data["raw_turn_availability"]["message"]
 
 
 def test_conversations_use_bounded_repository_filters(tmp_path):
