@@ -43,7 +43,7 @@
   <div class="window">
     <strong>Runtime policy</strong>
     {% if data.target and data.target.scope_type == "dm" %}
-    <span>DM owner memory · relationship items resolve to FULL · cross-space projection not used</span>
+    <span>DM owner memory · relationship items resolve to FULL · owner profile per-axis newest {{ data.policy.max_observations }} · confidence ≥ {{ data.policy.min_confidence }} · decay {{ data.policy.recency_decay }}</span>
     {% else %}
     <span>FULL newest {{ data.policy.max_observations }} · IMPLICIT per-axis newest {{ data.policy.max_observations }} · confidence ≥ {{ data.policy.min_confidence }} · decay {{ data.policy.recency_decay }}</span>
     {% endif %}
@@ -84,8 +84,8 @@
     <code>dm</code>.
   {% endif %}
   {% if data.target.scope_type == "dm" %}
-  Owner-DM relationship memories are shown with raw content below; cross-space IMPLICIT projection is
-  not used in DM.
+  Owner-DM relationship memories are shown with raw content below. Eligible relationship evidence is
+  also aggregated into the owner relationship profile used by DM responses.
   {% else %}
   FULL relationship memories are shown with raw content below. IMPLICIT memories contribute only their
   bounded evidence projection. Missing axes mean no positive evidence was projected.
@@ -102,7 +102,7 @@
           <th>User</th>
           <th>Stored relationships</th>
           <th>FULL/raw</th>
-          <th>IMPLICIT inputs</th>
+          <th>Profile inputs</th>
           {% for axis in data.axes %}<th>{{ axis | replace("_", " ") }}</th>{% endfor %}
           <th>Latest</th>
         </tr>
@@ -113,10 +113,10 @@
           <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
           <td class="numeric">{{ row.observation_count }}</td>
           <td class="numeric">{{ row.full_relationship_count if data.target else "—" }}</td>
-          <td class="numeric">{{ row.used_observations if data.target and data.target.scope_type == "guild" else "—" }}</td>
+          <td class="numeric">{{ row.used_observations if data.target else "—" }}</td>
           {% for axis in data.axes %}
           <td class="numeric">
-            {% if data.target and data.target.scope_type == "guild" and row.profile.get(axis) %}
+            {% if data.target and row.profile.get(axis) %}
               <strong>{{ row.profile.get(axis) }}/4</strong>
             {% else %}—{% endif %}
           </td>
@@ -133,7 +133,7 @@
               </summary>
               {% if row.full_relationships %}
               {% if data.target.scope_type == "dm" %}
-              <p class="muted">These relationship memories are available through <code>structured_owner_memory</code> in the owner's DM. DM owner memory does not use the cross-space relationship projection.</p>
+              <p class="muted">These relationship memories are available through <code>structured_owner_memory</code> in the owner's DM. Eligible evidence from them also contributes to <code>owner_relationship_profile</code>.</p>
               {% else %}
               <p class="muted">These are the exact bounded relationship memories eligible for <code>structured_relationship_memory</code> in this target scope.</p>
               {% endif %}
@@ -176,14 +176,17 @@
               {% endif %}
             </details>
 
-            {% if data.target.scope_type == "guild" %}
             <details>
               <summary>
-                Cross-space IMPLICIT projection · {{ row.used_observations }} contributing observation{{ "" if row.used_observations == 1 else "s" }}
+                {% if data.target.scope_type == "dm" %}Owner profile inputs{% else %}Cross-space IMPLICIT projection{% endif %} · {{ row.used_observations }} contributing observation{{ "" if row.used_observations == 1 else "s" }}
                 {% if row.invalid_observations %} · {{ row.invalid_observations }} invalid row(s) skipped{% endif %}
               </summary>
               {% if row.contributors %}
+              {% if data.target.scope_type == "dm" %}
+              <p class="muted">These are the owner relationship observations whose eligible evidence is aggregated into <code>owner_relationship_profile</code>; their raw content is already available through owner DM memory.</p>
+              {% else %}
               <p class="muted">Raw content is shown here only for dashboard inspection; runtime cross-space context receives the aggregated axis values above, not these source texts.</p>
+              {% endif %}
               <div class="table-wrap">
                 <table class="wide-table">
                   <thead>
@@ -223,10 +226,9 @@
                 </table>
               </div>
               {% else %}
-              <p class="muted">No implicit observations are eligible in this target scope.</p>
+              <p class="muted">No relationship observations are eligible for the aggregate profile in this target scope.</p>
               {% endif %}
             </details>
-            {% endif %}
           </td>
         </tr>
         {% endif %}
@@ -249,22 +251,20 @@
       <div class="relationship-mobile-counts">
         <div><span>Stored</span><strong>{{ row.observation_count }}</strong></div>
         <div><span>FULL/raw</span><strong>{{ row.full_relationship_count if data.target else "—" }}</strong></div>
-        <div><span>IMPLICIT</span><strong>{{ row.used_observations if data.target and data.target.scope_type == "guild" else "—" }}</strong></div>
+        <div><span>Profile inputs</span><strong>{{ row.used_observations if data.target else "—" }}</strong></div>
       </div>
 
       {% if data.target %}
-      {% if data.target.scope_type == "guild" %}
       <section class="relationship-mobile-projection">
-        <h3>Cross-space projection</h3>
+        <h3>{% if data.target.scope_type == "dm" %}Owner relationship profile{% else %}Cross-space projection{% endif %}</h3>
         {{ evidence_grid(row.profile, data.axes, true) }}
       </section>
-      {% endif %}
 
       <details class="relationship-mobile-detail">
         <summary>{% if data.target.scope_type == "dm" %}Owner-DM relationship memory{% else %}FULL/raw relationship memory{% endif %} · {{ row.full_relationship_count }}</summary>
         {% if row.full_relationships %}
           {% if data.target.scope_type == "dm" %}
-          <p class="muted">Relationship memories available through <code>structured_owner_memory</code> in the owner's DM.</p>
+          <p class="muted">Relationship memories available through <code>structured_owner_memory</code> in the owner's DM; eligible evidence also contributes to <code>owner_relationship_profile</code>.</p>
           {% else %}
           <p class="muted">Exact relationship memories eligible for <code>structured_relationship_memory</code> in this target.</p>
           {% endif %}
@@ -276,22 +276,24 @@
         {% endif %}
       </details>
 
-      {% if data.target.scope_type == "guild" %}
       <details class="relationship-mobile-detail">
         <summary>
-          IMPLICIT source observations · {{ row.used_observations }}
+          {% if data.target.scope_type == "dm" %}Owner profile inputs{% else %}IMPLICIT source observations{% endif %} · {{ row.used_observations }}
           {% if row.invalid_observations %} · {{ row.invalid_observations }} invalid{% endif %}
         </summary>
         {% if row.contributors %}
+          {% if data.target.scope_type == "dm" %}
+          <p class="muted">These relationship observations contribute eligible evidence to <code>owner_relationship_profile</code>.</p>
+          {% else %}
           <p class="muted">These raw texts are dashboard-only inspection data; runtime cross-space context receives only the aggregated axes.</p>
+          {% endif %}
           {% for item in row.contributors %}
             {{ relationship_memory_card(item, data.axes, false, true) }}
           {% endfor %}
         {% else %}
-          <p class="muted">No implicit observations are eligible in this target scope.</p>
+          <p class="muted">No relationship observations are eligible for the aggregate profile in this target scope.</p>
         {% endif %}
       </details>
-      {% endif %}
       {% endif %}
     </article>
     {% endfor %}
