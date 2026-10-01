@@ -43,6 +43,40 @@ def test_repository_reads_turns_and_memory_by_trace(tmp_path):
     assert memories[0]["content"] == "likes coffee"
 
 
+def test_repository_reads_discord_scope_metadata_without_requiring_it(tmp_path):
+    path = tmp_path / "scope-metadata.sqlite3"
+    store = Store(str(path))
+    store.observe_guild_channel(1, "Readable Guild", 10, "general")
+    store.close()
+
+    repository = AdminRepository(path)
+    assert repository.discord_scope_metadata() == {
+        "guilds": {
+            "1": {
+                "name": "Readable Guild",
+                "updated_at": repository.discord_scope_metadata()["guilds"]["1"]["updated_at"],
+            },
+        },
+        "channels": {
+            "10": {
+                "guild_id": "1",
+                "name": "general",
+                "updated_at": repository.discord_scope_metadata()["channels"]["10"]["updated_at"],
+            },
+        },
+    }
+
+    legacy = tmp_path / "legacy.sqlite3"
+    db = sqlite3.connect(legacy)
+    db.execute("CREATE TABLE notes (scope TEXT PRIMARY KEY, text TEXT NOT NULL)")
+    db.commit()
+    db.close()
+    assert AdminRepository(legacy).discord_scope_metadata() == {
+        "guilds": {},
+        "channels": {},
+    }
+
+
 def test_repository_connection_is_sqlite_read_only(tmp_path):
     path = tmp_path / "hina.sqlite3"
     populated_database(path)
