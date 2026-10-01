@@ -104,6 +104,49 @@ def test_repository_search_turns_filters_without_writes(tmp_path):
     assert rows[0]["message_id"] == "55"
 
 
+def test_repository_conversations_include_failed_turns_without_changing_turn_history(tmp_path):
+    path = tmp_path / "hina.sqlite3"
+    store = Store(str(path))
+    scope = Scope(1, 10, 100, True)
+    success_token = CURRENT_TURN_ID.set("trace-success")
+    try:
+        store.add(scope, 55, "question", "answer", name="Dashboard User")
+    finally:
+        CURRENT_TURN_ID.reset(success_token)
+    failed_token = CURRENT_TURN_ID.set("trace-failed")
+    try:
+        store.add_failed_turn(
+            scope,
+            56,
+            "failed question",
+            name="Dashboard User",
+            reply="fallback",
+            status="generation_failed",
+            stage="generation",
+            reply_delivered=True,
+            error_type="ValueError",
+            error_fingerprint="deadbeef",
+        )
+    finally:
+        CURRENT_TURN_ID.reset(failed_token)
+    store.close()
+
+    repository = AdminRepository(path)
+    assert repository.count_turns() == 1
+    assert repository.count_conversations() == 2
+
+    rows = repository.search_conversations(query="failed question", limit=10)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["record_type"] == "failed"
+    assert row["turn_id"] == "trace-failed"
+    assert row["status"] == "generation_failed"
+    assert row["stage"] == "generation"
+    assert row["reply_delivered"] == 1
+    assert row["error_type"] == "ValueError"
+    assert repository.count_conversations(query="deadbeef") == 1
+
+
 def test_repository_memory_inspection_and_lifecycle_columns(tmp_path):
     path = tmp_path / "hina.sqlite3"
     store = Store(str(path))

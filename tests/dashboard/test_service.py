@@ -347,6 +347,42 @@ def test_conversations_use_bounded_repository_filters(tmp_path):
     assert service.conversations(query="not-found")["page"].total == 0
 
 
+def test_conversations_surface_failed_turn_status_and_trace(tmp_path):
+    service = build_service(tmp_path)
+    store = Store(str(service.repository.path))
+    scope = Scope(1, 10, 100, True)
+    token = CURRENT_TURN_ID.set("trace-failed-stored")
+    try:
+        store.add_failed_turn(
+            scope,
+            77,
+            "failed input",
+            name="Failed User",
+            reply="fallback reply",
+            status="generation_failed",
+            stage="generation",
+            reply_delivered=True,
+            error_type="ValueError",
+            error_fingerprint="cafebabe",
+        )
+    finally:
+        CURRENT_TURN_ID.reset(token)
+        store.close()
+
+    data = service.conversations(query="failed input")
+
+    assert data["page"].total == 1
+    row = data["rows"][0]
+    assert row["record_type"] == "failed"
+    assert row["reply"] == "fallback reply"
+    assert row["status"] == "generation_failed"
+    assert row["stage"] == "generation"
+    assert row["turn_id"] == "trace-failed-stored"
+    assert row["scope_type"] == "guild"
+    assert row["guild_id"] == "1"
+    assert row["channel_id"] == "10"
+
+
 def build_memory_service(tmp_path):
     database = tmp_path / "memory.sqlite3"
     store = Store(str(database))
