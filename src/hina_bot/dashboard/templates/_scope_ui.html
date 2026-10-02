@@ -31,10 +31,10 @@
 {% else %}—{% endif %}
 {%- endmacro %}
 
-{% macro scope_raw(scope, show_raw=false, label="Scope key") -%}
-{% if scope.level == "unknown" or show_raw %}
+{% macro scope_raw(scope, show_raw=false, label="Raw scope") -%}
+{% if scope.level == "unknown" %}
 <code class="scope-raw-key">{{ scope.raw or "—" }}</code>
-{% else %}
+{% elif show_raw %}
 <details class="scope-raw">
   <summary>{{ label }}</summary>
   <code class="scope-raw-key">{{ scope.raw }}</code>
@@ -42,20 +42,20 @@
 {% endif %}
 {%- endmacro %}
 
-{% macro scope_origin(scope, channel_id, guild_name="", channel_name="") -%}
+{% macro scope_origin(scope, channel_id, guild_name="", channel_name="", show_raw=false) -%}
 {{ scope_realm(scope, guild_name) }}
 <div class="scope-part muted"><span>Channel</span> {{ channel_ref(channel_id, channel_name) }}</div>
-{{ scope_raw(scope, label="Realm key") }}
+{{ scope_raw(scope, show_raw=show_raw) }}
 {%- endmacro %}
 
-{% macro scope_metadata(scope, realm, user_id, user_name="", include_channel=true, raw_label="Scope key", guild_name="", channel_name="") -%}
-<div><dt>Realm</dt><dd>{{ scope_realm(realm, guild_name) }}{{ scope_raw(scope, label=raw_label) }}</dd></div>
+{% macro scope_metadata(scope, realm, user_id, user_name="", include_channel=true, show_raw=false, raw_label="Raw scope", guild_name="", channel_name="") -%}
+<div><dt>Realm</dt><dd>{{ scope_realm(realm, guild_name) }}{{ scope_raw(scope, show_raw=show_raw, label=raw_label) }}</dd></div>
 {% if include_channel %}
 <div><dt>Channel</dt><dd>{{ scope_channel(scope, channel_name) }}</dd></div>
 {% endif %}
 <div><dt>User</dt><dd>{{ scope_user(user_id, user_name) }}</dd></div>
 {%- endmacro %}
 
-{% macro turn_scope(row) -%}
-{{ scope_metadata(row.scope_display, row.realm_display, row.user_id, row.name, guild_name=row.guild_name, channel_name=row.channel_name) }}
+{% macro turn_scope(row, show_raw=false) -%}
+{{ scope_metadata(row.scope_display, row.realm_display, row.user_id, row.name, show_raw=show_raw, guild_name=row.guild_name, channel_name=row.channel_name) }}
 {%- endmacro %}
