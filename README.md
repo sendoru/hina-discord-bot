@@ -86,12 +86,12 @@ Docker Compose에서는 named volume으로 보존합니다. 같은 SQLite를 여
 Discord Developer Portal에서 Bot을 만들고 **Message Content Intent**를 켭니다. `히나야`처럼 멘션
 없는 호출어를 읽는 데 필요합니다.
 
-서버 표시 이름·global name·username으로 다른 사용자를 안정적으로 찾기 위해 봇은
+서버의 다른 사용자를 이름·별명으로 식별하거나 정확히 mention할 수 있도록 봇은
 **Server Members Intent**를 항상 요청합니다. Developer Portal에서도 이 intent를 반드시 켠 뒤
-봇을 재시작해야 합니다. 멤버 디렉터리가 완전히 채워지면 현재 채널을 볼 수 있는 사람의 고유한 이름은 로컬에서 확인하며,
-전체 멤버 목록은 외부 모델에 보내지 않습니다. `EXTERNAL_CONTEXT_POLICY=bot_interactions_only`에서는
-기존처럼 다른 사용자의 자연어 이름 조회가 차단됩니다. 실제 Discord mention 재사용은 유지됩니다.
-캐시·privacy·fallback 범위는 [identity resolution 문서](docs/identity-resolution.md)를 참고하세요.
+봇을 재시작해야 합니다. 일반 답변에는 사용자 명단을 미리 붙이지 않고, 대화 모델이 필요하다고
+판단한 경우에만 로컬 `get_current_channel_members` 도구로 현재 채널을 볼 수 있는 사람들의
+서버 닉네임·global name·username·user ID를 조회합니다. 대화·기억 조회 권한은 이 도구와 별도로
+기존 privacy 경계를 따릅니다. 자세한 범위는 [채널 멤버 도구](docs/channel-member-tool.md)를 참고하세요.
 
 서버 초대에는 일반적으로 다음 권한이면 충분합니다.
 
