@@ -9,6 +9,7 @@ from hina_bot.ai.rp_output_policy import (
     provenance_mode,
 )
 
+
 def _pipeline(*, web_search: bool = True):
     llm = object.__new__(InformationPipeline)
     llm.settings = SimpleNamespace(chat_web_search=web_search)
