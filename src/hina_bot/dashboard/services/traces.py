@@ -4,7 +4,9 @@ import json
 from collections import Counter, defaultdict
 
 from ..epochs import epoch_view, select_observability_epoch
+from ..filterutils import validate_filters
 from ..repository import AdminRepository
+from ..scopepresenter import parse_scope_key, present_turn_scope
 from ..searchutils import search_matches
 from ..telemetry import TelemetryReader, TelemetrySnapshot
 from ..timeutils import db_utc_timestamp, parse_local_time
@@ -36,8 +38,8 @@ def _raw_turn_availability(
         return {
             "state": "retained",
             "severity": "info",
-            "title": "Raw conversation record retained",
-            "message": "The raw question/reply row is available for this trace.",
+            "title": '원본 대화가 보존되어 있습니다',
+            "message": '이 trace의 원본 질문과 응답을 확인할 수 있습니다.',
         }
 
     terminal = next(
@@ -51,34 +53,30 @@ def _raw_turn_availability(
             return {
                 "state": "persistence_failed",
                 "severity": "warning",
-                "title": "Raw conversation persistence failed",
+                "title": '원본 대화 저장에 실패했습니다',
                 "message": (
-                    "This was a Discord conversation turn, but the raw question/reply row "
-                    "could not be persisted."
+                    'Discord 대화였지만 원본 질문과 응답을 저장하지 못했습니다.'
                 ),
             }
         if persistence == "skipped":
             messages = {
                 "memory_writes_disabled": (
-                    "Persistent-memory writes were disabled for this turn, so no raw "
-                    "question/reply row was stored."
+                    '이 대화에서는 영구 메모리 쓰기가 비활성화되어 원본 질문과 응답을 저장하지 않았습니다.'
                 ),
                 "fixed_reply_no_raw_turn": (
-                    "This was a fixed bare-call reply, which intentionally does not create "
-                    "a raw question/reply row."
+                    '단순 호출에 대한 고정 응답이므로 원본 질문과 응답을 저장하지 않습니다.'
                 ),
                 "duplicate": (
-                    "This turn was recognized as a duplicate, so no new raw question/reply "
-                    "row was stored."
+                    '중복 대화로 판단되어 새 원본 질문과 응답을 저장하지 않았습니다.'
                 ),
             }
             return {
                 "state": "not_retained_by_design",
                 "severity": "info",
-                "title": "Raw conversation record was not stored",
+                "title": '원본 대화를 저장하지 않았습니다',
                 "message": messages.get(
                     reason,
-                    "Raw conversation persistence was intentionally skipped for this turn.",
+                    '이 대화의 원본 저장을 의도적으로 생략했습니다.',
                 ),
             }
 
@@ -91,7 +89,7 @@ def _raw_turn_availability(
         return {
             "state": "not_retained_by_design",
             "severity": "info",
-            "title": "Raw conversation record was not created",
+            "title": '원본 대화를 생성하지 않았습니다',
             "message": (
                 "This Discord turn was dropped before raw conversation storage "
                 f"(reason: {reason})."
@@ -123,21 +121,17 @@ def _raw_turn_availability(
             return {
                 "state": "not_retained_by_design",
                 "severity": "info",
-                "title": "Raw conversation record was not stored",
+                "title": '원본 대화를 저장하지 않았습니다',
                 "message": (
-                    "This looks like a bare trigger handled by a fixed reply. Older telemetry "
-                    "did not record an explicit persistence reason for this turn."
+                    '단순 호출에 대한 고정 응답으로 보입니다. 이전 관측 데이터에는 저장 생략의 명시적 이유가 없습니다.'
                 ),
             }
         return {
             "state": "unavailable",
             "severity": "warning",
-            "title": "Raw conversation record is unavailable",
+            "title": '원본 대화를 확인할 수 없습니다',
             "message": (
-                "This trace belongs to a Discord conversation turn, but no raw question/reply "
-                "row is retained. This older telemetry cannot distinguish bounded-retention or "
-                "analysis-data cleanup from disabled memory writes or a trace created before "
-                "persistence-reason markers were added."
+                'Discord 대화 trace이지만 원본 질문과 응답이 보존되어 있지 않습니다. 이전 관측 데이터로는 보존 한계·분석 데이터 정리·메모리 쓰기 비활성화·저장 이유 표식 추가 이전 대화를 구분할 수 없습니다.'
             ),
         }
 
@@ -145,10 +139,9 @@ def _raw_turn_availability(
         return {
             "state": "not_applicable",
             "severity": "info",
-            "title": "No raw conversation record is expected",
+            "title": '원본 대화 저장 대상이 아닙니다',
             "message": (
-                "This trace contains auxiliary/model work rather than a retained Discord "
-                "conversation turn. Operations: " + ", ".join(operations) + "."
+                '이 trace는 Discord 대화 저장이 아닌 보조 모델 작업입니다. Operations: ' + ", ".join(operations) + "."
             ),
         }
 
@@ -156,21 +149,18 @@ def _raw_turn_availability(
         return {
             "state": "unavailable",
             "severity": "warning",
-            "title": "Raw conversation record is unavailable",
+            "title": '원본 대화를 확인할 수 없습니다',
             "message": (
-                "Answer telemetry remains, but the Discord turn lifecycle and raw question/reply "
-                "row are not retained. The available telemetry is insufficient to identify the "
-                "original storage reason."
+                '응답 관측 데이터는 남아 있지만 대화 수명주기와 원본 질문·응답은 보존되어 있지 않습니다. 남은 관측 데이터만으로는 저장 여부의 이유를 확인할 수 없습니다.'
             ),
         }
 
     return {
         "state": "unknown",
         "severity": "warning",
-        "title": "Raw conversation availability is unknown",
+        "title": '원본 대화의 보존 상태는 Unknown입니다',
         "message": (
-            "No raw question/reply row is retained, and the remaining telemetry does not contain "
-            "enough lifecycle information to determine whether one was expected."
+            '원본 질문·응답이 보존되어 있지 않습니다. 남은 수명주기 정보로는 원본 저장 대상이었는지 판단할 수 없습니다.'
         ),
     }
 
@@ -199,18 +189,31 @@ class TraceService(ReadService):
         tier_counts = Counter(str(row["model_tier"]) for row in traces if row["model_tier"])
 
         exchange_rows = snapshot.exchanges
-        calls = sum(_as_int(row.get("calls")) for row in exchange_rows)
-        tokens = {
-            field: sum(_as_int(row.get(field)) for row in exchange_rows)
-            for field in (
-                "input_tokens",
-                "output_tokens",
-                "total_tokens",
-                "cached_tokens",
-                "reasoning_tokens",
-            )
+        exchange_ids = {_turn_id(row) for row in exchange_rows if _turn_id(row)}
+        usage_ids = {
+            _turn_id(row) for row in snapshot.usage
+            if _turn_id(row) and row.get("operation") != "context.provenance"
         }
-        web_search_calls = sum(_as_int(row.get("web_search_calls")) for row in exchange_rows)
+        missing_exchanges = len(usage_ids - exchange_ids)
+        metrics = {}
+        for field in (
+            "calls", "input_tokens", "output_tokens", "total_tokens",
+            "cached_tokens", "reasoning_tokens", "web_search_calls",
+        ):
+            known = [
+                row[field] for row in exchange_rows
+                if type(row.get(field)) is int and row[field] >= 0
+            ]
+            missing = len(exchange_rows) - len(known) + missing_exchanges
+            metrics[field] = {
+                "value": sum(known) if known else None,
+                "known": len(known),
+                "missing": missing,
+                "partial": bool(known) and missing > 0,
+            }
+        calls = metrics["calls"]["value"]
+        tokens = {field: metrics[field]["value"] for field in metrics if "tokens" in field}
+        web_search_calls = metrics["web_search_calls"]["value"]
 
         errors = Counter(
             str(row["error_fingerprint"])
@@ -235,10 +238,13 @@ class TraceService(ReadService):
             "status_counts": dict(status_counts),
             "scope_counts": dict(scope_counts),
             "tier_counts": dict(tier_counts),
+            "metrics": metrics,
+            "missing_exchanges": missing_exchanges,
             "api_calls": calls,
             "tokens": tokens,
             "web_search_calls": web_search_calls,
             "memory_failures": memory_failures,
+            "memory_failure_traces": sum(row["memory_failures"] > 0 for row in traces),
             "error_fingerprints": errors.most_common(8),
             "recent_traces": traces[:12],
         }
@@ -255,11 +261,13 @@ class TraceService(ReadService):
         operation: str = "",
         error: str = "",
         web_search: str = "",
+        memory_failure: str = "",
         after: str = "",
         before: str = "",
         query: str = "",
         epoch: str = "",
     ) -> dict[str, object]:
+        errors = validate_filters({"after": after, "before": before}, self.timezone)
         selection = select_observability_epoch(
             self.telemetry.snapshot(),
             self.repository.observability_epochs(),
@@ -274,6 +282,9 @@ class TraceService(ReadService):
         model = model.strip().lower()
         operation = operation.strip().lower()
         error = error.strip().lower()
+        memory_failure = memory_failure.strip().lower()
+        if memory_failure not in {"yes", "no"}:
+            memory_failure = ""
         web_search = web_search.strip().lower()
         after = after.strip()
         before = before.strip()
@@ -297,6 +308,10 @@ class TraceService(ReadService):
             if error == "yes" and not row.get("error"):
                 return False
             if error == "no" and row.get("error"):
+                return False
+            if memory_failure == "yes" and not row["memory_failures"]:
+                return False
+            if memory_failure == "no" and row["memory_failures"]:
                 return False
             if web_search == "yes" and not row.get("web_search"):
                 return False
@@ -323,13 +338,14 @@ class TraceService(ReadService):
                     return False
             return True
 
-        rows = [row for row in rows if keep(row)]
+        rows = [row for row in rows if keep(row)] if not errors else []
         pagination = self._page(page, page_size, len(rows))
         if pagination.number > pagination.pages:
             pagination = Page(pagination.pages, pagination.size, pagination.total)
         start = (pagination.number - 1) * pagination.size
         end = start + pagination.size
         return {
+            "filter_errors": errors,
             "rows": rows[start:end],
             "page": pagination,
             "available": {
@@ -344,6 +360,7 @@ class TraceService(ReadService):
                 "operation": operation,
                 "error": error,
                 "web_search": web_search,
+                "memory_failure": memory_failure,
                 "after": after,
                 "before": before,
                 "q": query,
@@ -402,6 +419,7 @@ class TraceService(ReadService):
             if not isinstance(item, dict):
                 continue
             row = dict(item)
+            row["origin_display"] = parse_scope_key(str(row.get("origin_realm") or ""))
             try:
                 item_id = int(row.get("item_id"))
             except (TypeError, ValueError):
@@ -450,10 +468,8 @@ class TraceService(ReadService):
         stored = self.repository.turn_for_trace(trace_id)
         if stored is not None:
             stored = dict(stored)
-            self._decorate_scope_names(
-                stored,
-                self.repository.discord_scope_metadata(),
-            )
+            self._decorate_scope_names(stored, self.repository.discord_scope_metadata())
+            stored = present_turn_scope(stored)
         if stored is None and not (telemetry.events or telemetry.usage or telemetry.exchanges):
             return None
 
@@ -535,6 +551,7 @@ class TraceService(ReadService):
         after: str = "",
         before: str = "",
     ) -> dict[str, object]:
+        errors = validate_filters({"after": after, "before": before}, self.timezone)
         page_size = min(100, max(10, int(page_size)))
         page = max(1, int(page))
         query = query.strip()
@@ -546,7 +563,7 @@ class TraceService(ReadService):
             "created_after": db_utc_timestamp(after, self.timezone),
             "created_before": db_utc_timestamp(before, self.timezone),
         }
-        total = self.repository.count_conversations(**repository_filters)
+        total = 0 if errors else self.repository.count_conversations(**repository_filters)
         pagination = self._page(page, page_size, total)
         if pagination.number > pagination.pages:
             pagination = Page(pagination.pages, pagination.size, pagination.total)
@@ -554,11 +571,11 @@ class TraceService(ReadService):
             **repository_filters,
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
-        )
+        ) if not errors else []
         metadata = self.repository.discord_scope_metadata()
         rows = []
         for raw in raw_rows:
-            row = dict(raw)
+            row = present_turn_scope(raw)
             row.update(_conversation_scope_fields(row.get("scope")))
             self._decorate_scope_names(row, metadata)
             row["search_matches"] = search_matches(
@@ -575,6 +592,7 @@ class TraceService(ReadService):
             )
             rows.append(row)
         return {
+            "filter_errors": errors,
             "rows": rows,
             "page": pagination,
             "filters": {
@@ -601,7 +619,7 @@ class TraceService(ReadService):
         metadata = self.repository.discord_scope_metadata()
         rows = []
         for row in self.repository.turn_context(turn_row_id, before=before, after=after):
-            value = dict(row)
+            value = present_turn_scope(row)
             value.update(_conversation_scope_fields(value.get("scope")))
             self._decorate_scope_names(value, metadata)
             value["selected"] = int(value["id"]) == int(turn_row_id)
@@ -703,7 +721,9 @@ class TraceService(ReadService):
             if exchange and isinstance(exchange.get("total_tokens"), int):
                 total_tokens = exchange["total_tokens"]
             else:
-                total_tokens = sum(_as_int(row.get("total_tokens")) for row in usage)
+                known_tokens = [row["total_tokens"] for row in usage
+                                if type(row.get("total_tokens")) is int]
+                total_tokens = sum(known_tokens) if known_tokens else None
 
             if terminal and isinstance(terminal.get("elapsed_ms"), int):
                 elapsed_ms = terminal["elapsed_ms"]
@@ -752,7 +772,8 @@ class TraceService(ReadService):
                         str(error_row.get("error_fingerprint", "")) if error_row else ""
                     ),
                     "memory_failures": (
-                        _as_int(terminal.get("memory_failures")) if terminal else 0
+                        sum(_as_int(event.get("memory_failures")) for event in events
+                            if event.get("event") == "turn.completed")
                     ),
                     "stored": trace_id in stored_by_trace,
                 }

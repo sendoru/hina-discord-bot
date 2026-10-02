@@ -1,46 +1,61 @@
-{% macro discord_ref(name, value, channel=false) -%}
-{% if name %}
-  {% if channel %}#{{ name }}{% else %}{{ name }}{% endif %}
-  <span class="muted">(<code>{{ value }}</code>)</span>
-{% elif value %}
-  <code>{{ value }}</code>
-{% else %}
-  —
-{% endif %}
+{% macro named_id(name, value, prefix="") -%}
+{% if name %}<span>{{ prefix }}{{ name }}</span> {% endif %}<code class="scope-id">{{ value or "—" }}</code>
 {%- endmacro %}
 
-{% macro origin_ref(realm, channel_id, guild_name="", channel_name="") -%}
-{% if guild_name %}
-  {{ guild_name }} <span class="muted">(<code>{{ realm }}</code>)</span>
-{% else %}
-  <code>{{ realm }}</code>
-{% endif %}
-<br>
-<span class="muted">
-  {% if channel_name %}#{{ channel_name }} (<code>{{ channel_id }}</code>){% else %}#{{ channel_id }}{% endif %}
-</span>
+{% macro channel_ref(channel_id, channel_name="") -%}
+{{ named_id(channel_name, channel_id, "#") }}
 {%- endmacro %}
 
-{% macro scope_key(value, guild_name="", channel_name="") -%}
-{% set raw = value or "—" %}
-{% set parts = raw.split(":") %}
-<code class="scope-key" title="{{ raw }}">
-  {%- if parts | length > 1 -%}
-    {%- for index in range(0, parts | length, 2) -%}
-      <span class="scope-segment">
-        <span class="scope-segment-label">{{ parts[index] }}</span>
-        {%- if index + 1 < parts | length %}:{{ parts[index + 1] }}{% endif -%}
-      </span>
-    {%- endfor -%}
+{% macro scope_realm(scope, guild_name="") -%}
+<div class="scope-part">
+  {%- if scope.level == "global" -%}
+    <span>Global</span>
+  {%- elif scope.realm_kind == "guild" -%}
+    {% if guild_name %}<span>{{ guild_name }}</span> · {% endif %}<span>Guild</span> <code class="scope-id">{{ scope.realm_id }}</code>
+  {%- elif scope.realm_kind == "dm" -%}
+    <span>DM · user</span> <code class="scope-id">{{ scope.realm_id }}</code>
   {%- else -%}
-    <span class="scope-segment">{{ raw }}</span>
+    <span class="muted">Unknown</span>
   {%- endif -%}
-</code>
-{% if guild_name or channel_name %}
-<br><span class="muted">
-  {% if guild_name %}{{ guild_name }}{% endif %}
-  {% if guild_name and channel_name %} · {% endif %}
-  {% if channel_name %}#{{ channel_name }}{% endif %}
-</span>
+</div>
+{%- endmacro %}
+
+{% macro scope_channel(scope, channel_name="") -%}
+{% if scope.channel_id %}{{ channel_ref(scope.channel_id, channel_name) }}{% else %}—{% endif %}
+{%- endmacro %}
+
+{% macro scope_user(user_id, user_name="") -%}
+{% if user_id %}
+  {% if user_name %}<div>{{ user_name }}</div>{% endif %}
+  <code class="scope-id">{{ user_id }}</code>
+{% else %}—{% endif %}
+{%- endmacro %}
+
+{% macro scope_raw(scope, show_raw=false, label="Scope key") -%}
+{% if scope.level == "unknown" or show_raw %}
+<code class="scope-raw-key">{{ scope.raw or "—" }}</code>
+{% else %}
+<details class="scope-raw">
+  <summary>{{ label }}</summary>
+  <code class="scope-raw-key">{{ scope.raw }}</code>
+</details>
 {% endif %}
+{%- endmacro %}
+
+{% macro scope_origin(scope, channel_id, guild_name="", channel_name="") -%}
+{{ scope_realm(scope, guild_name) }}
+<div class="scope-part muted"><span>Channel</span> {{ channel_ref(channel_id, channel_name) }}</div>
+{{ scope_raw(scope, label="Realm key") }}
+{%- endmacro %}
+
+{% macro scope_metadata(scope, realm, user_id, user_name="", include_channel=true, raw_label="Scope key", guild_name="", channel_name="") -%}
+<div><dt>Realm</dt><dd>{{ scope_realm(realm, guild_name) }}{{ scope_raw(scope, label=raw_label) }}</dd></div>
+{% if include_channel %}
+<div><dt>Channel</dt><dd>{{ scope_channel(scope, channel_name) }}</dd></div>
+{% endif %}
+<div><dt>User</dt><dd>{{ scope_user(user_id, user_name) }}</dd></div>
+{%- endmacro %}
+
+{% macro turn_scope(row) -%}
+{{ scope_metadata(row.scope_display, row.realm_display, row.user_id, row.name, guild_name=row.guild_name, channel_name=row.channel_name) }}
 {%- endmacro %}

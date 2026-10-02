@@ -251,7 +251,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
-    assert 'dashboard.css?v=20261001-2' in overview.text
+    assert 'dashboard.css?v=20261002-review' in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -261,7 +261,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Asia/Seoul" in overview.text
     assert "2026-09-21 09:00:00 KST" in overview.text
     assert 'class="freshness-badge freshness-danger"' in overview.text
-    assert "Last event" in overview.text
+    assert "마지막 기록" in overview.text
     assert 'class="status-badge status-success">completed</span>' in overview.text
     assert 'href="/traces" aria-label="View all traces"' in overview.text
     assert 'href="/conversations" aria-label="View stored conversations"' in overview.text
@@ -273,7 +273,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'aria-label="Observability epoch"' in traces.text
     assert "Advanced filters" in traces.text
     assert 'class="wide-table"' in traces.text
-    assert 'aria-label="Active filters"' in traces.text
+    assert 'aria-label="Applied filters"' in traces.text
     assert analytics.status_code == 200
     assert "Routing & Usage Analytics" in analytics.text
     assert "test-model" in analytics.text
@@ -290,33 +290,38 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "<legend>Time window</legend>" in identity.text
     assert 'class="filter-actions"' in identity.text
     assert "hello dashboard" in detail.text
-    assert "<dt>User</dt><dd>Dashboard User · <code>100</code></dd>" in detail.text
+    assert "Dashboard User" in detail.text
+    assert '<code class="scope-id">100</code>' in detail.text
+    assert "<dt>Channel</dt>" in detail.text
+    assert "Scope key" in detail.text
     assert "Context &amp; provenance" in detail.text
     assert "Egress policy" in detail.text
     assert "hello dashboard" in conversations.text
+    assert "Dashboard Guild" in conversations.text
+    assert "#general" in conversations.text
     assert "Content search" in conversations.text
     assert "Advanced filters" in conversations.text
     assert 'class="filter-row grouped-filter-row"' in conversations.text
     assert "<legend>Context</legend>" in conversations.text
     assert 'class="conversation-head-primary"' in conversations.text
     assert 'class="metadata compact conversation-metadata"' in conversations.text
-    assert "<dt>Server</dt>" in conversations.text
+    assert "<dt>Realm</dt>" in conversations.text
     assert "<dt>Channel</dt>" in conversations.text
     assert 'class="scope-key"' not in conversations.text
-    assert 'aria-label="Active filters"' in conversations.text
+    assert 'aria-label="Applied filters"' in conversations.text
     assert 'type="datetime-local"' in conversations.text
     assert "<mark>dashboard</mark>" in conversations.text
     assert conversations_by_name.status_code == 200
     assert "hello dashboard" in conversations_by_name.text
     assert conversation_context.status_code == 200
     assert "Conversation Context" in conversation_context.text
-    assert "<dt>Server</dt>" in conversation_context.text
+    assert "<dt>Realm</dt>" in conversation_context.text
     assert "<dt>Channel</dt>" in conversation_context.text
     assert 'class="scope-key"' not in conversation_context.text
     assert "dashboard memory" in memory.text
     assert "Content search" in memory.text
     assert "Advanced filters" in memory.text
-    assert 'aria-label="Active filters"' in memory.text
+    assert 'aria-label="Applied filters"' in memory.text
     assert 'aria-label="Origin scope type"' in memory.text
     assert 'name="origin_scope_type" value="any" checked' in memory.text
     assert memory_dm.status_code == 200
@@ -336,6 +341,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "comfortable recurring interaction" in relationships.text
     assert "FULL/raw relationship memory" in relationships.text
     assert "same guild raw relationship" in relationships.text
+    assert "Dashboard Guild" in relationships.text
+    assert "#relationships" in relationships.text
     assert "Dashboard Guild" in relationships.text
     assert "#relationships" in relationships.text
     assert "Cross-space IMPLICIT projection" in relationships.text
@@ -374,25 +381,26 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'data-dm-channel="false"' in state_dm.text
     assert 'name="target_dm_channel_id"' in state_dm.text
     assert '<option value="10" selected>10</option>' in state_dm.text
-    assert "Auto-selected the only known DM channel." in state_dm.text
-    assert "Direct message" in state_dm.text
-    assert "<code>10</code>" in state_dm.text
-    assert "Dashboard Guild" in state.text
-    assert "#relationships" in state.text
+    assert "유일하게 알려진 DM 채널을 자동 선택했습니다." in state_dm.text
+    assert '<span>DM · user</span> <code class="scope-id">100</code>' in state_dm.text
+    assert '<code class="scope-raw-key">dm:100:channel:10:user:100</code>' in state_dm.text
+    assert '<code class="scope-id">10</code>' in state_dm.text
     assert "dashboard server note" in state.text
-    assert "Dashboard User · <code>user:100</code>" in state.text
+    assert '<code class="scope-raw-key">guild:1:user:100</code>' in state.text
     assert "dashboard user note" in state.text
     assert "read_only" in state.text
     assert "direct" in state.text
     assert 'class="wide-table"' not in state.text
     assert "legacy dashboard summary" in summaries.text
-    assert "Dashboard User<br><code>100</code>" in summaries.text
-    assert 'class="scope-key"' in summaries.text
-    assert 'class="scope-segment-label">dm</span>:10' in summaries.text
+    assert '<code class="scope-id">100</code>' in summaries.text
+    assert "Dashboard User" in summaries.text
+    assert "<th>Realm</th><th>Channel</th><th>User</th>" in summaries.text
+    assert "Scope key" in summaries.text
     assert "Memory Extraction Cursors" in cursors.text
-    assert "Dashboard User<br><code>100</code>" in cursors.text
-    assert 'class="scope-key"' in cursors.text
-    assert 'class="scope-segment-label">dm</span>:10' in cursors.text
+    assert '<code class="scope-id">100</code>' in cursors.text
+    assert "Dashboard User" in cursors.text
+    assert "<th>Realm</th><th>Channel</th><th>User</th>" in cursors.text
+    assert "Scope key" in cursors.text
     assert "dashboard memory updated" in reconciliation.text
     assert "Dashboard User" in reconciliation.text
     assert 'aria-label="Origin scope type"' in reconciliation.text
@@ -448,3 +456,114 @@ def test_unknown_reconciliation_proposal_returns_404(tmp_path):
     response = client.get("/reconciliation/9999")
 
     assert response.status_code == 404
+
+
+def test_invalid_filters_preserve_input_and_do_not_query(tmp_path, monkeypatch):
+    client = dashboard_client(tmp_path)
+    def forbidden(**kwargs):
+        raise AssertionError("Invalid filters must not reach the repository")
+    monkeypatch.setattr(client.app.state.repository, "count_memory_items", forbidden)
+    for value in ("2", "bad", "nan", "inf", "-0.1"):
+        response = client.get("/memory", params={"confidence_min": value})
+        assert response.status_code == 200
+        assert f'value="{value}"' in response.text
+        assert 'aria-invalid="true"' in response.text
+        assert "입력 오류로 조회하지 않았습니다" in response.text
+    for path in ("/traces", "/conversations", "/analytics", "/identity", "/reconciliation"):
+        field = "created_after" if path == "/reconciliation" else "after"
+        response = client.get(path, params={field: "bad-date"})
+        assert response.status_code == 200
+        assert 'value="bad-date"' in response.text
+        assert "올바른 날짜" in response.text
+    response = client.get("/memory?confidence_min=0.9&confidence_max=0.1")
+    assert "끝 값은 시작 값 이상" in response.text
+
+
+def test_detail_links_preserve_list_filters_and_return_paths(tmp_path):
+    client = dashboard_client(tmp_path)
+    for path, detail in [("/traces", "/traces/trace-ui"), ("/memory", "/memory/1"),
+                         ("/reconciliation", "/reconciliation/1"),
+                         ("/conversations", "/conversations/1/context")]:
+        response = client.get(path, params={"q": "dashboard", "page": 2})
+        assert "return_to=" in response.text or path == "/traces"
+        response = client.get(detail, params={"return_to": path + "?q=dashboard&page=2"})
+        assert f'class="back" href="{path}?q=dashboard&amp;page=2"' in response.text
+        response = client.get(detail, params={"return_to": "https://evil.example"})
+        assert f'class="back" href="{path}"' in response.text
+
+
+def test_html_error_pages_preserve_status_and_json_clients(tmp_path):
+    client = dashboard_client(tmp_path)
+    for url, status in [("/traces/missing", 404), ("/memory/99999", 404),
+                        ("/reconciliation/99999", 404), ("/conversations/999/context", 404),
+                        ("/traces?page=bad", 422), ("/memory?page=0", 422)]:
+        response = client.get(url, headers={"Accept": "text/html"})
+        assert response.status_code == status
+        assert response.headers["content-type"].startswith("text/html")
+        assert "목록으로 돌아가기" in response.text
+        response = client.get(url, headers={"Accept": "application/json"})
+        assert response.status_code == status
+        assert "detail" in response.json()
+    assert client.get("/healthz").json()["status"] == "ok"
+
+
+def test_keyboard_and_filter_accessibility_markup(tmp_path):
+    from html.parser import HTMLParser
+
+    class Labels(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.depth = 0
+            self.labels = set()
+            self.controls = []
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "label":
+                self.depth += 1
+                if "for" in attrs:
+                    self.labels.add(attrs["for"])
+            if tag in {"input", "select"} and attrs.get("type") != "hidden":
+                self.controls.append((self.depth, attrs.get("id")))
+        def handle_endtag(self, tag):
+            if tag == "label":
+                self.depth -= 1
+
+    client = dashboard_client(tmp_path)
+    for path in ("/traces", "/memory", "/reconciliation", "/analytics", "/identity",
+                 "/conversations", "/summaries", "/memory/cursors", "/state", "/relationships"):
+        response = client.get(path)
+        parser = Labels()
+        parser.feed(response.text)
+        assert all(depth or control_id in parser.labels for depth, control_id in parser.controls), path
+        assert 'aria-current="page"' in response.text
+        assert 'href="#main-content"' in response.text
+
+
+def test_identity_group_disclosure_preserves_full_hashes_only(tmp_path):
+    client = dashboard_client(tmp_path)
+    reference = "abcd" * 16
+    user = "9876" * 16
+    write_rows(tmp_path / "events.jsonl", [
+        {"at": "2026-09-21T00:00:01+00:00", "event": "identity.resolution",
+         "outcome": "resolved", "reference_group": reference, "resolved_user_group": user,
+         "resolver_invoked": True, "raw_reference": "PRIVATE NAME"},
+    ])
+    response = client.get("/identity")
+    assert '<details class="identifier-disclosure">' in response.text
+    assert f"ref:{reference[:10]}" in response.text
+    assert f"user:{user[:10]}" in response.text
+    assert reference in response.text and user in response.text
+    assert "PRIVATE NAME" not in response.text
+
+
+def test_trace_sections_and_mobile_results_are_available(tmp_path):
+    client = dashboard_client(tmp_path)
+    response = client.get("/traces/trace-ui")
+    for section in ("trace-summary", "stored-turn", "context-provenance", "trace-timeline"):
+        assert f'href="#{section}"' in response.text
+        assert f'id="{section}"' in response.text
+    for path in ("/traces", "/memory", "/reconciliation"):
+        response = client.get(path)
+        assert 'class="mobile-result-list"' in response.text
+        assert 'class="mobile-result-card"' in response.text
+        assert "메타데이터" in response.text

@@ -3,12 +3,14 @@
 {% from "_scope_picker.html" import scope_picker %}
 {% from "_scope_ui.html" import origin_ref %}
 {% from "_status_ui.html" import status_badge %}
+{% from "_scope_ui.html" import scope_origin %}
+{% from "_mobile_list_ui.html" import mobile_list %}
 {% block title %}Memory · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
     <h1>Structured Memory</h1>
-    <p>{{ data.page.total }} items in the current filter.</p>
+    <p>현재 조건에 맞는 메모리 {{ data.page.total }}개입니다.</p>
   </div>
   <div class="window">
     <strong>Schema</strong>
@@ -16,6 +18,7 @@
   </div>
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters search-filter" method="get">
   <div class="search-primary">
     <label for="memory-search">Content search</label>
@@ -29,53 +32,53 @@
     <div class="filter-row grouped-filter-row">
       <fieldset class="filter-cluster filter-cluster-1">
         <legend>Owner &amp; origin</legend>
-        <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
+        <div class="filter-field"><label for="filter-memory-user-id">User ID / name</label><input id="filter-memory-user-id" name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name"></div>
         {{ scope_picker("origin", data.filters.origin_scope_type, data.filters.origin_guild_id, data.filters.origin_channel_id, label="Origin scope") }}
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Confidence</legend>
-        <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥">
-        <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤">
+        <div class="filter-field"><label for="filter-memory-confidence-min">Confidence ≥</label><input id="filter-memory-confidence-min" name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥" {% if data.filter_errors and data.filter_errors.get("confidence_min") %}aria-invalid="true" aria-describedby="error-confidence_min"{% endif %}>{% if data.filter_errors and data.filter_errors.get("confidence_min") %}<span id="error-confidence_min" class="field-error">{{ data.filter_errors["confidence_min"] }}</span>{% endif %}</div>
+        <div class="filter-field"><label for="filter-memory-confidence-max">Confidence ≤</label><input id="filter-memory-confidence-max" name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤" {% if data.filter_errors and data.filter_errors.get("confidence_max") %}aria-invalid="true" aria-describedby="error-confidence_max"{% endif %}>{% if data.filter_errors and data.filter_errors.get("confidence_max") %}<span id="error-confidence_max" class="field-error">{{ data.filter_errors["confidence_max"] }}</span>{% endif %}</div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-4 filter-cluster-wide">
         <legend>Memory attributes</legend>
-        <select name="kind">
+        <div class="filter-field"><label for="filter-memory-kind">Kind</label><select id="filter-memory-kind" name="kind">
           <option value="">all kinds</option>
           {% for value in ["fact","event","preference","relationship","boundary","task"] %}
           <option value="{{ value }}" {% if data.filters.kind == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
-        </select>
-        <select name="disclosure">
+        </select></div>
+        <div class="filter-field"><label for="filter-memory-disclosure">Disclosure</label><select id="filter-memory-disclosure" name="disclosure">
           <option value="">all disclosure</option>
           {% for value in ["local","implicit","reference_gated","global"] %}
           <option value="{{ value }}" {% if data.filters.disclosure == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
-        </select>
+        </select></div>
         {% if data.schema.has_lifecycle %}
-        <input name="status" value="{{ data.filters.status }}" placeholder="lifecycle status">
+        <div class="filter-field"><label for="filter-memory-status">Status</label><input id="filter-memory-status" name="status" value="{{ data.filters.status }}" placeholder="lifecycle status"></div>
         {% endif %}
-        <select name="relationship">
+        <div class="filter-field"><label for="filter-memory-relationship">Relationship</label><select id="filter-memory-relationship" name="relationship">
           <option value="">relationship: any</option>
           <option value="yes" {% if data.filters.relationship == "yes" %}selected{% endif %}>relationship only</option>
           <option value="no" {% if data.filters.relationship == "no" %}selected{% endif %}>non-relationship</option>
-        </select>
+        </select></div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Created</legend>
         <label class="time-field">After
-          <input type="datetime-local" name="created_after" value="{{ data.filters.created_after }}">
+          <input type="{{ 'text' if data.filter_errors and data.filter_errors.get('created_after') else data.filters.created_after | filtertype }}" step="any" name="created_after" value="{{ data.filters.created_after if data.filter_errors and data.filter_errors.get('created_after') else data.filters.created_after | filtertime }}" {% if data.filter_errors and data.filter_errors.get("created_after") %}aria-invalid="true" aria-describedby="error-created_after"{% endif %}>{% if data.filter_errors and data.filter_errors.get("created_after") %}<span id="error-created_after" class="field-error">{{ data.filter_errors["created_after"] }}</span>{% endif %}
         </label>
         <label class="time-field">Before
-          <input type="datetime-local" name="created_before" value="{{ data.filters.created_before }}">
+          <input type="{{ 'text' if data.filter_errors and data.filter_errors.get('created_before') else data.filters.created_before | filtertype }}" step="any" name="created_before" value="{{ data.filters.created_before if data.filter_errors and data.filter_errors.get('created_before') else data.filters.created_before | filtertime }}" {% if data.filter_errors and data.filter_errors.get("created_before") %}aria-invalid="true" aria-describedby="error-created_before"{% endif %}>{% if data.filter_errors and data.filter_errors.get("created_before") %}<span id="error-created_before" class="field-error">{{ data.filter_errors["created_before"] }}</span>{% endif %}
         </label>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Updated</legend>
         <label class="time-field">After
-          <input type="datetime-local" name="updated_after" value="{{ data.filters.updated_after }}">
+          <input type="{{ 'text' if data.filter_errors and data.filter_errors.get('updated_after') else data.filters.updated_after | filtertype }}" step="any" name="updated_after" value="{{ data.filters.updated_after if data.filter_errors and data.filter_errors.get('updated_after') else data.filters.updated_after | filtertime }}" {% if data.filter_errors and data.filter_errors.get("updated_after") %}aria-invalid="true" aria-describedby="error-updated_after"{% endif %}>{% if data.filter_errors and data.filter_errors.get("updated_after") %}<span id="error-updated_after" class="field-error">{{ data.filter_errors["updated_after"] }}</span>{% endif %}
         </label>
         <label class="time-field">Before
-          <input type="datetime-local" name="updated_before" value="{{ data.filters.updated_before }}">
+          <input type="{{ 'text' if data.filter_errors and data.filter_errors.get('updated_before') else data.filters.updated_before | filtertype }}" step="any" name="updated_before" value="{{ data.filters.updated_before if data.filter_errors and data.filter_errors.get('updated_before') else data.filters.updated_before | filtertime }}" {% if data.filter_errors and data.filter_errors.get("updated_before") %}aria-invalid="true" aria-describedby="error-updated_before"{% endif %}>{% if data.filter_errors and data.filter_errors.get("updated_before") %}<span id="error-updated_before" class="field-error">{{ data.filter_errors["updated_before"] }}</span>{% endif %}
         </label>
       </fieldset>
       <div class="filter-actions filter-row-actions">
@@ -89,13 +92,14 @@
     <a href="{{ request.url.include_query_params(created_after=preset.after, created_before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
   </div>
-  {{ active_filter_chips(request, "/memory") }}
+  {{ active_filter_chips(request, "/memory", data) }}
 </form>
 
 <section class="panel flush">
   {% if data.rows %}
-  <div class="table-wrap">
-    <table class="wide-table">
+  {{ mobile_list(data, request, "memory") }}
+  <div class="table-wrap desktop-result-list" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="wide-table memory-table">
       <thead>
         <tr>
           <th>ID</th><th>User</th><th>Kind</th><th>Disclosure</th><th>Origin</th>
@@ -107,11 +111,11 @@
       <tbody>
       {% for row in data.rows %}
         <tr>
-          <td><a href="/memory/{{ row.id }}">#{{ row.id }}</a></td>
+          <td><a href="{{ detail_url('/memory/' ~ row.id, request, '/memory') }}">#{{ row.id }}</a></td>
           <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
           <td>{{ row.kind }}</td>
           <td>{{ row.disclosure }}</td>
-          <td>{{ origin_ref(row.origin_realm, row.origin_channel_id, row.guild_name, row.channel_name) }}<br><span class="muted">{{ "public" if row.origin_public_at_capture else "private" }}</span></td>
+          <td>{{ scope_origin(row.origin_display, row.origin_channel_id, row.guild_name, row.channel_name) }}<span class="muted">{{ "public" if row.origin_public_at_capture else "private" }}</span></td>
           <td class="numeric">{{ "%.2f"|format(row.confidence) }}</td>
           <td class="numeric">{{ row.source_message_ids_decoded|length }}</td>
           <td>{{ "yes" if row.has_relationship_evidence else "—" }}</td>
@@ -136,7 +140,7 @@
     </table>
   </div>
   {% else %}
-  <p class="empty">No memory items match this filter.</p>
+  <p class="empty">조건에 맞는 메모리가 없습니다.</p>
   {% endif %}
 </section>
 

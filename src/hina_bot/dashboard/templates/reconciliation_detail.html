@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% from "_scope_ui.html" import origin_ref %}
+{% from "_scope_ui.html" import turn_scope, scope_origin %}
 {% block title %}Proposal #{{ data.proposal.id }} · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
-    <a class="back" href="/reconciliation">← Reconciliation</a>
+    <a class="back" href="{{ back_url(request, '/reconciliation') }}">← Reconciliation</a>
     <h1>Proposal #{{ data.proposal.id }}</h1>
     <p>
       <span class="relation relation-{{ data.proposal.relation }}">{{ data.proposal.relation }}</span>
@@ -15,7 +15,7 @@
   <div class="window">
     <strong>Owner / origin</strong>
     <span>{% if data.proposal.user_name %}{{ data.proposal.user_name }} · {% endif %}<code>{{ data.proposal.user_id }}</code></span>
-    <span>{{ origin_ref(data.proposal.origin_realm, data.proposal.origin_channel_id, data.proposal.guild_name, data.proposal.channel_name) }}</span>
+    <div>{{ scope_origin(data.proposal.origin_display, data.proposal.origin_channel_id, data.proposal.guild_name, data.proposal.channel_name) }}</div>
   </div>
 </section>
 
@@ -37,7 +37,7 @@
       <div><dt>Kind</dt><dd>{{ item.kind }}</dd></div>
       <div><dt>Disclosure</dt><dd>{{ item.disclosure }}</dd></div>
       <div><dt>Confidence</dt><dd>{{ "%.3f"|format(item.confidence) }}</dd></div>
-      <div><dt>Origin</dt><dd>{{ origin_ref(item.origin_realm, item.origin_channel_id, item.guild_name, item.channel_name) }}</dd></div>
+      <div><dt>Origin</dt><dd>{{ scope_origin(item.origin_display, item.origin_channel_id, item.guild_name, item.channel_name) }}</dd></div>
       <div><dt>Captured</dt><dd>{{ "public" if item.origin_public_at_capture else "private" }}</dd></div>
       <div><dt>Created / updated</dt><dd>{{ item.created_at | localtime }}<br>{{ item.updated_at | localtime }}</dd></div>
     </dl>
@@ -59,8 +59,8 @@
 <section class="panel">
   <h2>Source / provenance</h2>
   <p class="muted">
-    Proposal sources: {{ data.proposal.source_message_ids_decoded | join(", ") or "none" }}.
-    Shared IDs between old and new: {{ data.proposal.source_overlap_ids | join(", ") or "none" }}.
+    제안 출처: {{ data.proposal.source_message_ids_decoded | join(", ") or "none" }}.
+    기존·새 메모리의 공통 ID: {{ data.proposal.source_overlap_ids | join(", ") or "none" }}.
   </p>
   {% if data.sources %}
     {% for source in data.sources %}
@@ -76,18 +76,17 @@
       </div>
       {% if source.turn %}
       <dl class="metadata compact">
-        <div><dt>Scope</dt><dd>{{ source.turn.scope }}</dd></div>
-        <div><dt>Realm</dt><dd>{{ source.turn.realm }}</dd></div>
+        {{ turn_scope(source.turn) }}
         <div><dt>Created</dt><dd>{{ source.turn.created_at | localtime }}</dd></div>
       </dl>
       <div class="message">{{ source.turn.content }}</div>
       {% else %}
-      <p class="muted">Raw turn expired from bounded retention or predates the retained dataset.</p>
+      <p class="muted">원본 대화의 보존 기간이 지났거나 보존 데이터보다 이전에 생성되었습니다.</p>
       {% endif %}
     </article>
     {% endfor %}
   {% else %}
-  <p class="muted">No source IDs are available.</p>
+  <p class="muted">보존된 출처 ID가 없습니다.</p>
   {% endif %}
 </section>
 
@@ -95,14 +94,14 @@
   <h2>Extraction / retry context</h2>
   {% if data.proposal.same_source_set %}
   <div class="notice inline-notice">
-    New and target memory have the same non-empty source-message set. Review this as a possible retry/extraction duplicate.
+    새 메모리와 대상 메모리의 출처 메시지 집합이 동일하고 비어 있지 않습니다. 재시도·추출 중복 가능성을 점검하세요.
   </div>
   {% elif data.proposal.source_overlap_ids %}
   <div class="notice inline-notice">
-    New and target memory partially overlap in source messages, but their source sets are not identical.
+    새 메모리와 대상 메모리의 출처 메시지가 일부 겹치지만 집합 전체가 같지는 않습니다.
   </div>
   {% else %}
-  <p class="muted">New and target memory do not share retained source-message IDs.</p>
+  <p class="muted">새 메모리와 대상 메모리에 공통으로 보존된 출처 메시지 ID가 없습니다.</p>
   {% endif %}
 
   {% if data.extraction_traces %}
@@ -115,7 +114,7 @@
         <pre>{{ row | tojson(indent=2) }}</pre>
         {% endfor %}
       {% else %}
-      <p class="muted">The source trace remains, but structured-memory usage rows have rotated out or were not recorded.</p>
+      <p class="muted">출처 trace는 남아 있지만 구조화 메모리 사용량은 순환 보존에서 제거되었거나 기록되지 않았습니다.</p>
       {% endif %}
       {% if trace.events %}
       <details>
@@ -126,7 +125,7 @@
     </details>
     {% endfor %}
   {% else %}
-  <p class="muted">No retained source trace can be correlated with this proposal's new memory item.</p>
+  <p class="muted">제안의 새 메모리와 연결할 수 있는 출처 trace가 보존되어 있지 않습니다.</p>
   {% endif %}
 </section>
 
@@ -142,7 +141,7 @@
       {% endfor %}
       </tbody>
     </table>
-    {% else %}<p class="muted">No nearby memory.</p>{% endif %}
+    {% else %}<p class="muted">인접 메모리가 없습니다.</p>{% endif %}
   </section>
   <section class="panel">
     <h2>Nearby new memory</h2>
@@ -155,7 +154,7 @@
       {% endfor %}
       </tbody>
     </table>
-    {% else %}<p class="muted">No nearby memory.</p>{% endif %}
+    {% else %}<p class="muted">인접 메모리가 없습니다.</p>{% endif %}
   </section>
 </div>
 {% endblock %}

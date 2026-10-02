@@ -22,7 +22,9 @@ from hina_bot.core.relationship_profile import (
 )
 from hina_bot.core.routing import Scope
 
+from ..filterutils import confidence_value, validate_filters
 from ..scopepicker import infer_target_scope_type, normalize_scope_filter
+from ..scopepresenter import parse_scope_key, present_turn_scope
 from ..searchutils import search_matches
 from ..timeutils import db_utc_timestamp
 from .base import Page, ReadService, _decode_json
@@ -32,6 +34,7 @@ class MemoryService(ReadService):
     @staticmethod
     def _memory_row(row: dict[str, object]) -> dict[str, object]:
         value = dict(row)
+        value["origin_display"] = parse_scope_key(str(value.get("origin_realm") or ""))
         sources = _decode_json(value.get("source_message_ids"), [])
         evidence = _decode_json(value.get("relationship_evidence"), {})
         value["source_message_ids_decoded"] = (
@@ -86,6 +89,7 @@ class MemoryService(ReadService):
             "id": item.id,
             "content": item.content,
             "origin_realm": item.origin_realm,
+            "origin_display": parse_scope_key(item.origin_realm),
             "origin_channel_id": item.origin_channel_id,
             "origin_public_at_capture": item.origin_public_at_capture,
             "disclosure": item.disclosure.value,
@@ -124,7 +128,7 @@ class MemoryService(ReadService):
             target = (None, None)
         elif target_guild_id or target_channel_id:
             if not target_guild_id or not target_channel_id:
-                target_error = "Target guild ID and channel ID are required for a guild scope."
+                target_error = "Guild 범위에는 대상 Guild ID와 Channel ID가 필요합니다."
             else:
                 try:
                     guild_id = int(target_guild_id)
@@ -133,7 +137,7 @@ class MemoryService(ReadService):
                         raise ValueError
                     target = (guild_id, channel_id)
                 except ValueError:
-                    target_error = "Target guild/channel IDs must be positive integers."
+                    target_error = "대상 Guild·Channel ID는 양의 정수여야 합니다."
 
         metadata = self.repository.discord_scope_metadata()
 
@@ -277,14 +281,14 @@ class MemoryService(ReadService):
         updated_after: str = "",
         updated_before: str = "",
     ) -> dict[str, object]:
-        def optional_float(value: str) -> float | None:
-            text = value.strip()
-            if not text:
-                return None
-            try:
-                return min(1.0, max(0.0, float(text)))
-            except ValueError:
-                return None
+        errors = validate_filters({
+            "confidence_min": confidence_min,
+            "confidence_max": confidence_max,
+            "created_after": created_after,
+            "created_before": created_before,
+            "updated_after": updated_after,
+            "updated_before": updated_before,
+        }, self.timezone)
 
         origin_scope = normalize_scope_filter(
             scope_type=origin_scope_type,
@@ -302,14 +306,14 @@ class MemoryService(ReadService):
             "status": status.strip(),
             "relationship": relationship.strip(),
             "query": query.strip(),
-            "confidence_min": optional_float(confidence_min),
-            "confidence_max": optional_float(confidence_max),
+            "confidence_min": confidence_value(confidence_min),
+            "confidence_max": confidence_value(confidence_max),
             "created_after": db_utc_timestamp(created_after, self.timezone),
             "created_before": db_utc_timestamp(created_before, self.timezone),
             "updated_after": db_utc_timestamp(updated_after, self.timezone),
             "updated_before": db_utc_timestamp(updated_before, self.timezone),
         }
-        total = self.repository.count_memory_items(**filters)
+        total = 0 if errors else self.repository.count_memory_items(**filters)
         pagination = self._page(page, page_size, total)
         if pagination.number > pagination.pages:
             pagination = Page(pagination.pages, pagination.size, pagination.total)
@@ -317,7 +321,7 @@ class MemoryService(ReadService):
             **filters,
             limit=pagination.size,
             offset=(pagination.number - 1) * pagination.size,
-        )
+        ) if not errors else []
         metadata = self.repository.discord_scope_metadata()
         view_rows = []
         for raw in rows:
@@ -337,6 +341,7 @@ class MemoryService(ReadService):
             )
             view_rows.append(row)
         return {
+            "filter_errors": errors,
             "rows": view_rows,
             "page": pagination,
             "filters": {
@@ -379,6 +384,7 @@ class MemoryService(ReadService):
         for row in source_turns:
             value = dict(row)
             self._decorate_scope_names(value, metadata)
+            value = present_turn_scope(value)
             source_by_id[str(value["message_id"])] = value
         sources = [
             {
@@ -452,6 +458,8 @@ class MemoryService(ReadService):
             )
             self._decorate_scope_names(value, metadata)
             value["structured_memory_count"] = counts.get(str(row["user_id"]), 0)
+            value["scope_display"] = parse_scope_key(str(row["scope"]))
+            value["realm_display"] = parse_scope_key(str(row.get("realm") or ""))
             value["extraction_cursor"] = cursor_by_scope.get(str(row["scope"]))
             personal.append(value)
 
@@ -468,6 +476,8 @@ class MemoryService(ReadService):
                 )
             )
             self._decorate_scope_names(value, metadata)
+            value["scope_display"] = parse_scope_key(str(row["scope"]))
+            value["realm_display"] = parse_scope_key(str(row.get("realm") or ""))
             shared.append(value)
         return {
             "personal": personal,
@@ -492,6 +502,8 @@ class MemoryService(ReadService):
         rows: list[dict[str, object]] = []
         for raw in self.repository.extraction_cursor_status():
             row = dict(raw)
+            row["scope_display"] = parse_scope_key(str(row["scope"]))
+            row["realm_display"] = parse_scope_key(str(row.get("realm") or ""))
             row["user_name"] = names.get(
                 (str(row.get("realm") or ""), str(row.get("user_id") or "")),
                 "",

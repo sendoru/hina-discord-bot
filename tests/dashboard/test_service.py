@@ -340,7 +340,7 @@ def test_failed_trace_keeps_content_free_context_telemetry(tmp_path):
     assert data["context_telemetry"]["factual_recall_detected"] is True
     assert data["context_telemetry"]["factual_recall_status"] == "ambiguous_single_anchor"
     assert data["raw_turn_availability"]["state"] == "not_retained_by_design"
-    assert "disabled" in data["raw_turn_availability"]["message"]
+    assert "비활성화" in data["raw_turn_availability"]["message"]
 
 
 def test_auxiliary_trace_does_not_claim_raw_turn_expired(tmp_path):
@@ -545,10 +545,13 @@ def test_summary_and_cursor_service_show_rollout_state(tmp_path):
     assert len(summaries["personal"]) == 1
     assert summaries["personal"][0]["structured_memory_count"] == 1
     assert summaries["personal"][0]["user_name"] == "Memory User"
+    assert summaries["personal"][0]["scope_display"].raw == scope.conversation
+    assert summaries["personal"][0]["scope_display"].channel_id == str(scope.channel_id)
 
     cursors = service.extraction_cursors(user_id="100")
     row = next(row for row in cursors["rows"] if row["scope"] == scope.conversation)
     assert row["user_name"] == "Memory User"
+    assert row["scope_display"].raw == scope.conversation
     assert row["initialized"] == 0
     assert row["effective_through_id"] == row["summary_through_id"]
     assert row["cursor_delta"] is None
@@ -961,7 +964,10 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
         ("guild:1", "read_only"),
         ("dm:100:channel:20", "read_only"),
     }
-    assert data["chat_overrides"] == [
+    assert [
+        {key: row[key] for key in ("scope", "enabled", "capture")}
+        for row in data["chat_overrides"]
+    ] == [
         {
             "scope": "global",
             "enabled": "on",
@@ -1082,7 +1088,7 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
 
     partial = service.context_state(target_guild_id="1", target_user_id="100")
     assert partial["effective"] is None
-    assert "Channel ID and user ID are required" in partial["target_error"]
+    assert "Channel ID와 User ID를 입력하세요" in partial["target_error"]
 
     missing_guild = service.context_state(
         target_scope_type="guild",
@@ -1090,7 +1096,7 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
         target_user_id="100",
     )
     assert missing_guild["effective"] is None
-    assert "Guild ID is required" in missing_guild["target_error"]
+    assert "Guild ID가 필요합니다" in missing_guild["target_error"]
 
     invalid = service.context_state(
         target_guild_id="-1",
@@ -1098,14 +1104,14 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
         target_user_id="100",
     )
     assert invalid["effective"] is None
-    assert "positive integers" in invalid["target_error"]
+    assert "양의 정수" in invalid["target_error"]
 
     invalid_dm_user = service.context_state(
         target_scope_type="dm",
         target_user_id="nope",
     )
     assert invalid_dm_user["effective"] is None
-    assert "positive integer" in invalid_dm_user["target_error"]
+    assert "양의 정수" in invalid_dm_user["target_error"]
 
 
 
@@ -1219,3 +1225,31 @@ def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
     overview = trace_service.overview()
     assert overview["epoch"]["selected"] == "1"
     assert overview["trace_count"] == 1
+
+
+def test_overview_distinguishes_missing_partial_and_observed_zero(tmp_path):
+    service = build_service(tmp_path)
+    path = tmp_path / "logs" / "discord-usage.jsonl"
+    write_rows(path, [
+        {"turn_id": "trace-1", "at": "2026-09-21T00:00:01+00:00", "calls": 0,
+         "total_tokens": 0},
+        {"turn_id": "trace-2", "at": "2026-09-21T00:01:01+00:00"},
+    ])
+    data = service.overview()
+    assert data["metrics"]["total_tokens"]["value"] == 0
+    assert data["metrics"]["total_tokens"]["partial"] is True
+    assert data["metrics"]["input_tokens"]["value"] is None
+    path.unlink()
+    data = service.overview()
+    assert data["api_calls"] is None
+    assert data["missing_exchanges"] > 0
+
+
+def test_memory_failure_filter_uses_count_not_search_text(tmp_path):
+    service = build_service(tmp_path)
+    overview = service.overview()
+    data = service.traces(memory_failure="yes")
+    assert data["page"].total == overview["memory_failure_traces"] == 1
+    assert data["rows"][0]["memory_failures"] == overview["memory_failures"]
+    assert service.traces(query="memory")["page"].total == 0
+    assert service.traces(memory_failure="no")["page"].total == 1

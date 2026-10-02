@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% from "_scope_ui.html" import discord_ref %}
+{% from "_scope_ui.html" import turn_scope %}
 {% block title %}Conversation Context · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
-    <a class="back" href="/conversations">← Conversations</a>
+    <a class="back" href="{{ back_url(request, '/conversations') }}">← Conversations</a>
     <h1>Conversation Context</h1>
-    <p>{{ data.before }} previous / {{ data.after }} following turns in the same scope.</p>
+    <p>같은 범위에서 이전 {{ data.before }}개 / 이후 {{ data.after }}개 대화를 보여줍니다.</p>
   </div>
 </section>
 
@@ -23,16 +23,7 @@
       </div>
     </div>
     <dl class="metadata compact conversation-metadata">
-      <div>
-        <dt>Server</dt>
-        <dd>
-          {% if row.guild_id %}{{ discord_ref(row.guild_name, row.guild_id) }}
-          {% elif row.scope_type == "dm" %}<span class="muted">Direct message</span>
-          {% else %}—{% endif %}
-        </dd>
-      </div>
-      <div><dt>Channel</dt><dd>{% if row.channel_id %}{{ discord_ref(row.channel_name, row.channel_id, channel=true) }}{% else %}—{% endif %}</dd></div>
-      <div><dt>User</dt><dd>{% if row.name %}{{ row.name }} · {% endif %}<code>{{ row.user_id }}</code></dd></div>
+      {{ turn_scope(row) }}
       <div><dt>Selected</dt><dd>{{ "yes" if row.selected else "no" }}</dd></div>
     </dl>
     <h3>Input</h3>

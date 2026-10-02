@@ -1,25 +1,27 @@
 {% extends "base.html" %}
-{% from "_scope_ui.html" import scope_key %}
+{% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw %}
+{% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Extraction Cursors · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
     <h1>Memory Extraction Cursors</h1>
-    <p>Structured extraction progress against currently retained turns.</p>
+    <p>현재 보존된 대화를 기준으로 구조화 메모리 추출 진행 상태를 보여줍니다.</p>
   </div>
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters filter-layout filter-layout-compact" method="get">
   <fieldset class="filter-cluster filter-cluster-4">
     <legend>Match</legend>
-    <input name="q" value="{{ data.filters.q }}" placeholder="scope / user name">
-    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
-    <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
-    <select name="pending">
+    <div class="filter-field"><label for="filter-memory-cursors-q">Search</label><input id="filter-memory-cursors-q" name="q" value="{{ data.filters.q }}" placeholder="scope / user name"></div>
+    <div class="filter-field"><label for="filter-memory-cursors-user-id">User ID / name</label><input id="filter-memory-cursors-user-id" name="user_id" value="{{ data.filters.user_id }}" placeholder="user id"></div>
+    <div class="filter-field"><label for="filter-memory-cursors-realm">Realm</label><input id="filter-memory-cursors-realm" name="realm" value="{{ data.filters.realm }}" placeholder="realm"></div>
+    <div class="filter-field"><label for="filter-memory-cursors-pending">Pending</label><select id="filter-memory-cursors-pending" name="pending">
       <option value="">pending: any</option>
       <option value="yes" {% if data.filters.pending == "yes" %}selected{% endif %}>pending only</option>
       <option value="no" {% if data.filters.pending == "no" %}selected{% endif %}>caught up</option>
-    </select>
+    </select></div>
   </fieldset>
   <div class="filter-footer">
     <div class="filter-actions">
@@ -27,24 +29,26 @@
       <a class="button secondary" href="/memory/cursors">Reset</a>
     </div>
   </div>
+  {{ active_filter_chips(request, "/memory/cursors", data) }}
 </form>
 
 <section class="notice info">
-  An uninitialized cursor uses the current legacy summary <code>through_id</code> as its effective baseline, matching Store migration semantics. This page never initializes it.
+  초기화되지 않은 cursor는 기존 요약의 <code>through_id</code>를 기준선으로 사용합니다. Store의 마이그레이션 의미를 유지하며 이 화면에서 초기화하지 않습니다.
 </section>
 
 <section class="panel flush">
   {% if data.rows %}
-  <div class="table-wrap">
-    <table class="wide-table">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="wide-table cursor-table">
       <thead>
-        <tr><th>Scope</th><th>User</th><th>Initialized</th><th>Extraction through</th><th>Summary through</th><th>Δ</th><th>Effective through</th><th>Latest retained</th><th>Pending</th><th>Updated</th></tr>
+        <tr><th>Realm</th><th>Channel</th><th>User</th><th>Initialized</th><th>Extraction through</th><th>Summary through</th><th>Δ</th><th>Effective through</th><th>Latest retained</th><th>Pending</th><th>Updated</th></tr>
       </thead>
       <tbody>
       {% for row in data.rows %}
       <tr>
-        <td>{{ scope_key(row.scope, row.guild_name, row.channel_name) }}</td>
-        <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
+        <td>{{ scope_realm(row.realm_display, row.guild_name) }}{{ scope_raw(row.scope_display) }}</td>
+        <td>{{ scope_channel(row.scope_display, row.channel_name) }}</td>
+        <td>{{ scope_user(row.user_id, row.user_name) }}</td>
         <td>{{ "yes" if row.initialized else "no" }}</td>
         <td class="numeric">{{ row.extraction_through_id if row.extraction_through_id is not none else "—" }}</td>
         <td class="numeric">{{ row.summary_through_id if row.summary_through_id is not none else "—" }}</td>
@@ -58,6 +62,6 @@
       </tbody>
     </table>
   </div>
-  {% else %}<p class="empty">No cursor states match this filter.</p>{% endif %}
+  {% else %}<p class="empty">조건에 맞는 추출 진행 상태가 없습니다.</p>{% endif %}
 </section>
 {% endblock %}

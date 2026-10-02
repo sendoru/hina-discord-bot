@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_scope_ui.html" import turn_scope %}
 {% from "_filter_ui.html" import active_filter_chips %}
 {% from "_scope_ui.html" import discord_ref %}
 {% block title %}Conversations · Hina Dashboard{% endblock %}
@@ -10,6 +11,7 @@
   </div>
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters search-filter" method="get">
   <div class="search-primary">
     <label for="conversation-search">Content search</label>
@@ -23,17 +25,17 @@
     <div class="filter-row grouped-filter-row">
       <fieldset class="filter-cluster filter-cluster-3">
         <legend>Context</legend>
-        <input name="scope" value="{{ data.filters.scope }}" placeholder="scope">
-        <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
-        <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name">
+        <div class="filter-field"><label for="filter-conversations-scope">Scope</label><input id="filter-conversations-scope" name="scope" value="{{ data.filters.scope }}" placeholder="scope"></div>
+        <div class="filter-field"><label for="filter-conversations-realm">Realm</label><input id="filter-conversations-realm" name="realm" value="{{ data.filters.realm }}" placeholder="realm"></div>
+        <div class="filter-field"><label for="filter-conversations-user-id">User ID / name</label><input id="filter-conversations-user-id" name="user_id" value="{{ data.filters.user_id }}" placeholder="user id / name"></div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Time window</legend>
         <label class="time-field">After
-          <input type="datetime-local" name="after" value="{{ data.filters.after }}">
+          <input type="{{ 'text' if data.filter_errors and data.filter_errors.get('after') else data.filters.after | filtertype }}" step="any" name="after" value="{{ data.filters.after if data.filter_errors and data.filter_errors.get('after') else data.filters.after | filtertime }}" {% if data.filter_errors and data.filter_errors.get("after") %}aria-invalid="true" aria-describedby="error-after"{% endif %}>{% if data.filter_errors and data.filter_errors.get("after") %}<span id="error-after" class="field-error">{{ data.filter_errors["after"] }}</span>{% endif %}
         </label>
         <label class="time-field">Before
-          <input type="datetime-local" name="before" value="{{ data.filters.before }}">
+          <input type="{{ 'text' if data.filter_errors and data.filter_errors.get('before') else data.filters.before | filtertype }}" step="any" name="before" value="{{ data.filters.before if data.filter_errors and data.filter_errors.get('before') else data.filters.before | filtertime }}" {% if data.filter_errors and data.filter_errors.get("before") %}aria-invalid="true" aria-describedby="error-before"{% endif %}>{% if data.filter_errors and data.filter_errors.get("before") %}<span id="error-before" class="field-error">{{ data.filter_errors["before"] }}</span>{% endif %}
         </label>
       </fieldset>
       <div class="filter-actions filter-row-actions">
@@ -47,7 +49,7 @@
     <a href="{{ request.url.include_query_params(after=preset.after, before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
   </div>
-  {{ active_filter_chips(request, "/conversations") }}
+  {{ active_filter_chips(request, "/conversations", data) }}
 </form>
 
 {% if data.rows %}
@@ -62,7 +64,7 @@
       </div>
       <div class="conversation-head-actions">
         {% if row.record_type == "turn" %}
-        <a href="/conversations/{{ row.id }}/context">context</a>
+        <a href="{{ detail_url('/conversations/' ~ row.id ~ '/context', request, '/conversations') }}">context</a>
         {% else %}
         <span class="muted">no stored context</span>
         {% endif %}
@@ -71,16 +73,7 @@
       </div>
     </div>
     <dl class="metadata compact conversation-metadata">
-      <div>
-        <dt>Server</dt>
-        <dd>
-          {% if row.guild_id %}{{ discord_ref(row.guild_name, row.guild_id) }}
-          {% elif row.scope_type == "dm" %}<span class="muted">Direct message</span>
-          {% else %}—{% endif %}
-        </dd>
-      </div>
-      <div><dt>Channel</dt><dd>{% if row.channel_id %}{{ discord_ref(row.channel_name, row.channel_id, channel=true) }}{% else %}—{% endif %}</dd></div>
-      <div><dt>User</dt><dd>{% if row.name %}{{ row.name }} · {% endif %}<code>{{ row.user_id }}</code></dd></div>
+      {{ turn_scope(row) }}
       {% if row.record_type == "failed" %}
       <div><dt>Status</dt><dd>{{ row.status }} · {{ row.stage }}</dd></div>
       <div><dt>Fallback delivered</dt><dd>{{ "yes" if row.reply_delivered else "no" }}</dd></div>
@@ -112,7 +105,7 @@
   </article>
   {% endfor %}
 {% else %}
-<section class="panel"><p class="empty">No retained turns match this filter.</p></section>
+<section class="panel"><p class="empty">조건에 맞는 보존 대화가 없습니다.</p></section>
 {% endif %}
 
 <nav class="pagination">

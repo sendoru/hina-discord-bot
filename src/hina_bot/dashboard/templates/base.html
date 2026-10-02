@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>{% block title %}Hina Dashboard{% endblock %}</title>
   <link rel="icon" type="image/webp" href="{{ url_for('static', path='hina-dashboard-icon.webp') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=20261001-2">
+  <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=20261002-review">
   <script defer src="{{ url_for('static', path='scope-picker.js') }}"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">본문 바로가기</a>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="sidebar-branding">
@@ -23,30 +24,30 @@
       </div>
 
       <nav class="sidebar-nav" aria-label="Dashboard sections">
-        <a class="nav-link nav-home {% if request.url.path == '/' %}active{% endif %}" href="/">
+        <a class="nav-link nav-home {% if request.url.path == '/' %}active{% endif %}" {% if request.url.path == '/' %}aria-current="page"{% endif %} href="/">
           <span>Overview</span>
         </a>
 
         <div class="nav-group">
           <span class="nav-group-label">Observability</span>
-          <a class="nav-link {% if request.url.path.startswith('/traces') %}active{% endif %}" href="/traces">Traces</a>
-          <a class="nav-link {% if request.url.path == '/analytics' %}active{% endif %}" href="/analytics">Analytics</a>
-          <a class="nav-link {% if request.url.path == '/identity' %}active{% endif %}" href="/identity">Identity</a>
+          <a class="nav-link {% if request.url.path.startswith('/traces') %}active{% endif %}" {% if request.url.path.startswith('/traces') %}aria-current="page"{% endif %} href="/traces">Traces</a>
+          <a class="nav-link {% if request.url.path == '/analytics' %}active{% endif %}" {% if request.url.path == '/analytics' %}aria-current="page"{% endif %} href="/analytics">Analytics</a>
+          <a class="nav-link {% if request.url.path == '/identity' %}active{% endif %}" {% if request.url.path == '/identity' %}aria-current="page"{% endif %} href="/identity">Identity</a>
         </div>
 
         <div class="nav-group">
           <span class="nav-group-label">Context</span>
-          <a class="nav-link {% if request.url.path.startswith('/conversations') %}active{% endif %}" href="/conversations">Conversations</a>
-          <a class="nav-link {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}active{% endif %}" href="/memory">Memory</a>
-          <a class="nav-link {% if request.url.path == '/relationships' %}active{% endif %}" href="/relationships">Relationships</a>
-          <a class="nav-link {% if request.url.path == '/state' %}active{% endif %}" href="/state">State</a>
+          <a class="nav-link {% if request.url.path.startswith('/conversations') %}active{% endif %}" {% if request.url.path.startswith('/conversations') %}aria-current="page"{% endif %} href="/conversations">Conversations</a>
+          <a class="nav-link {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}active{% endif %}" {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}aria-current="page"{% endif %} href="/memory">Memory</a>
+          <a class="nav-link {% if request.url.path == '/relationships' %}active{% endif %}" {% if request.url.path == '/relationships' %}aria-current="page"{% endif %} href="/relationships">Relationships</a>
+          <a class="nav-link {% if request.url.path == '/state' %}active{% endif %}" {% if request.url.path == '/state' %}aria-current="page"{% endif %} href="/state">State</a>
         </div>
 
         <div class="nav-group">
           <span class="nav-group-label">Memory ops</span>
-          <a class="nav-link {% if request.url.path == '/summaries' %}active{% endif %}" href="/summaries">Summaries</a>
-          <a class="nav-link {% if request.url.path == '/memory/cursors' %}active{% endif %}" href="/memory/cursors">Cursors</a>
-          <a class="nav-link {% if request.url.path.startswith('/reconciliation') %}active{% endif %}" href="/reconciliation">Reconciliation</a>
+          <a class="nav-link {% if request.url.path == '/summaries' %}active{% endif %}" {% if request.url.path == '/summaries' %}aria-current="page"{% endif %} href="/summaries">Summaries</a>
+          <a class="nav-link {% if request.url.path == '/memory/cursors' %}active{% endif %}" {% if request.url.path == '/memory/cursors' %}aria-current="page"{% endif %} href="/memory/cursors">Cursors</a>
+          <a class="nav-link {% if request.url.path.startswith('/reconciliation') %}active{% endif %}" {% if request.url.path.startswith('/reconciliation') %}aria-current="page"{% endif %} href="/reconciliation">Reconciliation</a>
         </div>
       </nav>
 
@@ -70,28 +71,28 @@
           <span class="mobile-nav-chevron" aria-hidden="true">⌄</span>
         </summary>
         <nav class="mobile-nav-panel" aria-label="Mobile dashboard sections">
-          <a class="mobile-nav-link {% if request.url.path == '/' %}active{% endif %}" href="/">Overview</a>
+          <a class="mobile-nav-link {% if request.url.path == '/' %}active{% endif %}" {% if request.url.path == '/' %}aria-current="page"{% endif %} href="/">Overview</a>
 
           <div class="mobile-nav-group">
             <span class="mobile-nav-group-label">Observability</span>
-            <a class="mobile-nav-link {% if request.url.path.startswith('/traces') %}active{% endif %}" href="/traces">Traces</a>
-            <a class="mobile-nav-link {% if request.url.path == '/analytics' %}active{% endif %}" href="/analytics">Analytics</a>
-            <a class="mobile-nav-link {% if request.url.path == '/identity' %}active{% endif %}" href="/identity">Identity</a>
+            <a class="mobile-nav-link {% if request.url.path.startswith('/traces') %}active{% endif %}" {% if request.url.path.startswith('/traces') %}aria-current="page"{% endif %} href="/traces">Traces</a>
+            <a class="mobile-nav-link {% if request.url.path == '/analytics' %}active{% endif %}" {% if request.url.path == '/analytics' %}aria-current="page"{% endif %} href="/analytics">Analytics</a>
+            <a class="mobile-nav-link {% if request.url.path == '/identity' %}active{% endif %}" {% if request.url.path == '/identity' %}aria-current="page"{% endif %} href="/identity">Identity</a>
           </div>
 
           <div class="mobile-nav-group">
             <span class="mobile-nav-group-label">Context</span>
-            <a class="mobile-nav-link {% if request.url.path.startswith('/conversations') %}active{% endif %}" href="/conversations">Conversations</a>
-            <a class="mobile-nav-link {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}active{% endif %}" href="/memory">Memory</a>
-            <a class="mobile-nav-link {% if request.url.path == '/relationships' %}active{% endif %}" href="/relationships">Relationships</a>
-            <a class="mobile-nav-link {% if request.url.path == '/state' %}active{% endif %}" href="/state">State</a>
+            <a class="mobile-nav-link {% if request.url.path.startswith('/conversations') %}active{% endif %}" {% if request.url.path.startswith('/conversations') %}aria-current="page"{% endif %} href="/conversations">Conversations</a>
+            <a class="mobile-nav-link {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}active{% endif %}" {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}aria-current="page"{% endif %} href="/memory">Memory</a>
+            <a class="mobile-nav-link {% if request.url.path == '/relationships' %}active{% endif %}" {% if request.url.path == '/relationships' %}aria-current="page"{% endif %} href="/relationships">Relationships</a>
+            <a class="mobile-nav-link {% if request.url.path == '/state' %}active{% endif %}" {% if request.url.path == '/state' %}aria-current="page"{% endif %} href="/state">State</a>
           </div>
 
           <div class="mobile-nav-group">
             <span class="mobile-nav-group-label">Memory ops</span>
-            <a class="mobile-nav-link {% if request.url.path == '/summaries' %}active{% endif %}" href="/summaries">Summaries</a>
-            <a class="mobile-nav-link {% if request.url.path == '/memory/cursors' %}active{% endif %}" href="/memory/cursors">Cursors</a>
-            <a class="mobile-nav-link {% if request.url.path.startswith('/reconciliation') %}active{% endif %}" href="/reconciliation">Reconciliation</a>
+            <a class="mobile-nav-link {% if request.url.path == '/summaries' %}active{% endif %}" {% if request.url.path == '/summaries' %}aria-current="page"{% endif %} href="/summaries">Summaries</a>
+            <a class="mobile-nav-link {% if request.url.path == '/memory/cursors' %}active{% endif %}" {% if request.url.path == '/memory/cursors' %}aria-current="page"{% endif %} href="/memory/cursors">Cursors</a>
+            <a class="mobile-nav-link {% if request.url.path.startswith('/reconciliation') %}active{% endif %}" {% if request.url.path.startswith('/reconciliation') %}aria-current="page"{% endif %} href="/reconciliation">Reconciliation</a>
           </div>
         </nav>
       </details>
@@ -103,7 +104,8 @@
     </aside>
 
     <div class="workspace">
-      <main class="container">
+      <main id="main-content" class="container" tabindex="-1">
+        <p class="value-legend">—: 값 미관측·미보존 또는 해당 없음 · Unknown: 상태를 판단할 수 없음</p>
         {% block content %}{% endblock %}
       </main>
     </div>

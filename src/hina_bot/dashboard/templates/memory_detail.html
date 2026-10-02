@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% from "_scope_ui.html" import discord_ref %}
+{% from "_scope_ui.html" import turn_scope, scope_realm, scope_raw, channel_ref %}
 {% from "_status_ui.html" import status_badge %}
 {% block title %}Memory #{{ data.item.id }} · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
-    <a class="back" href="/memory">← Memory</a>
+    <a class="back" href="{{ back_url(request, '/memory') }}">← Memory</a>
     <h1>Memory #{{ data.item.id }}</h1>
   </div>
 </section>
@@ -17,8 +17,8 @@
     <div><dt>Disclosure</dt><dd>{{ data.item.disclosure }}</dd></div>
     <div><dt>Confidence</dt><dd>{{ "%.3f"|format(data.item.confidence) }}</dd></div>
     <div><dt>Captured</dt><dd>{{ "public" if data.item.origin_public_at_capture else "private" }}</dd></div>
-    <div><dt>Origin server</dt><dd>{% if data.item.guild_name %}{{ data.item.guild_name }} <span class="muted">(<code>{{ data.item.origin_realm }}</code>)</span>{% else %}<code>{{ data.item.origin_realm }}</code>{% endif %}</dd></div>
-    <div><dt>Origin channel</dt><dd>{{ discord_ref(data.item.channel_name, data.item.origin_channel_id, channel=true) }}</dd></div>
+    <div><dt>Origin realm</dt><dd>{{ scope_realm(data.item.origin_display, data.item.guild_name) }}{{ scope_raw(data.item.origin_display, label="Realm key") }}</dd></div>
+    <div><dt>Origin channel</dt><dd>{{ channel_ref(data.item.origin_channel_id, data.item.channel_name) }}</dd></div>
     <div><dt>Created</dt><dd>{{ data.item.created_at | localtime }}</dd></div>
     <div><dt>Updated</dt><dd>{{ data.item.updated_at | localtime }}</dd></div>
     {% if data.schema.has_lifecycle %}
@@ -43,20 +43,17 @@
         </div>
         {% if source.turn %}
           <dl class="metadata compact">
-            <div><dt>Scope</dt><dd>{{ source.turn.scope }}</dd></div>
-            <div><dt>Server</dt><dd>{% if source.turn.guild_name %}{{ source.turn.guild_name }} <span class="muted">(<code>{{ source.turn.realm }}</code>)</span>{% else %}<code>{{ source.turn.realm }}</code>{% endif %}</dd></div>
-            <div><dt>Channel</dt><dd>{{ discord_ref(source.turn.channel_name, source.turn.channel_id, channel=true) }}</dd></div>
-            <div><dt>User</dt><dd>{% if source.turn.name %}{{ source.turn.name }} · {% endif %}<code>{{ source.turn.user_id }}</code></dd></div>
+            {{ turn_scope(source.turn) }}
             <div><dt>Created</dt><dd>{{ source.turn.created_at | localtime }}</dd></div>
           </dl>
           <div class="message">{{ source.turn.content }}</div>
         {% else %}
-          <p class="muted">The raw turn is no longer present in bounded retention.</p>
+          <p class="muted">원본 대화가 보존 데이터에 남아 있지 않습니다.</p>
         {% endif %}
       </article>
     {% endfor %}
   {% else %}
-  <p class="muted">No source message IDs were stored.</p>
+  <p class="muted">보존된 출처 메시지 ID가 없습니다.</p>
   {% endif %}
 </section>
 
@@ -70,7 +67,7 @@
 <section class="panel">
   <h2>Nearby memory in the same owner/origin space</h2>
   {% if data.neighbors %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table">
       <thead><tr><th>ID</th><th>Kind</th><th>Disclosure</th><th>Confidence</th><th>Content</th></tr></thead>
       <tbody>
@@ -87,7 +84,7 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">No nearby items in this disclosure space.</p>
+  <p class="muted">이 공개 범위에 인접 메모리가 없습니다.</p>
   {% endif %}
 </section>
 {% endblock %}
