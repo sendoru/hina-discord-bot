@@ -598,6 +598,7 @@ def _gemini_output(data: dict):
         output=output,
         usage=usage,
     )
+    response._hina_interaction_id = str(data.get("id") or "")
     response._hina_web_search_calls = web_search_calls
     response._hina_error_codes = [
         error.get("code") for error in data.get("errors") or []
@@ -710,6 +711,9 @@ class _GeminiResponses:
             "input": _gemini_input(kwargs.get("input", "")),
             "store": self._store_enabled(kwargs.get("store", False)),
         }
+        previous_interaction_id = kwargs.get("previous_interaction_id")
+        if previous_interaction_id:
+            payload["previous_interaction_id"] = str(previous_interaction_id)
         instructions = kwargs.get("instructions")
         if instructions:
             payload["system_instruction"] = instructions
