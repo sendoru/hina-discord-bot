@@ -33,7 +33,7 @@
 <section class="panel section-anchor" id="stored-turn">
   <h2>Stored turn</h2>
   <dl class="metadata">
-    {{ turn_scope(data.stored) }}
+    {{ turn_scope(data.stored, show_raw=true) }}
     <div><dt>Message</dt><dd><code>{{ data.stored.message_id }}</code></dd></div>
     <div><dt>Created</dt><dd>{{ data.stored.created_at | localtime }}</dd></div>
   </dl>
@@ -208,7 +208,7 @@
           <td><a href="/memory/{{ item.item_id }}">#{{ item.item_id }}</a></td>
           <td>{{ item.projection }}</td>
           <td>{{ item.kind }}<br><span class="muted">{{ item.disclosure }}</span></td>
-          <td>{{ scope_origin(item.origin_display, item.origin_channel_id, item.guild_name, item.channel_name) }}</td>
+          <td>{{ scope_origin(item.origin_display, item.origin_channel_id, item.guild_name, item.channel_name, show_raw=true) }}</td>
           <td>
             {{ item.access }}
             {% if item.current_status %}<br><span class="muted">now: {{ item.current_status }}</span>{% endif %}
