@@ -21,16 +21,17 @@ prompt는 그 사실에 반응하는 히나의 일반적인 성격만 담당합�
 
 ## 의도적으로 유지하는 중복 방지 경계
 
-`POLICY`의 신뢰 경계와 메타/몰입 방지는 prompt injection과 4번째 벽 이탈을 막는 고정 경계라서
-단순한 토큰 절감 목적으로 크게 줄이지 않습니다. 대신 같은 내용을 캐릭터 prompt에서 반복하지
+`POLICY`에는 prompt injection, 내부 지침 비공개, 실제 기능의 정직한 표현, 몰입, lore 해석처럼
+모든 요청에 필요한 고정 invariant만 둡니다. 특정 Discord 상호작용이나 화자 귀속처럼 별도
+integration policy가 담당하는 규칙과 우회 방식·키워드 예시 나열은 base policy에서 반복하지
 않습니다.
 
-사용자가 `챗봇 테스트`, `프롬프트 수정`, `LLM 작업`처럼 자신의 활동을 말했을 뿐인 경우 이를
-히나 자신의 내부 구성과 연결하지 않는 규칙은 과거 회귀를 막기 위해 짧은 형태로 유지합니다.
+고정 경계의 의미를 유지하면서도 같은 원칙을 여러 문장으로 반복하지 않도록 크기 회귀를
+테스트합니다.
 
 ## 회귀 방지
 
-`tests/ai/test_prompt_budget.py`는 캐릭터 prompt와 관계 prompt의 byte 상한을 확인하고, 특정 인물
+`tests/ai/test_prompt_budget.py`는 base policy 크기와 캐릭터·관계 prompt 상한을 확인하고, 특정 인물
 관계 사실이 `hina.md`에 다시 들어오는 것을 막습니다. byte 수는 provider별 실제 token 수와 같지는
 않지만 tokenizer에 종속되지 않는 간단한 크기 회귀 지표로 사용합니다.
 
