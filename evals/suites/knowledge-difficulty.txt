@@ -1,0 +1,3 @@
+# Issue #86: knowledge-difficulty calibration regressions
+knowledge_compliment_not_defensive
+knowledge_capability_not_school_norm
