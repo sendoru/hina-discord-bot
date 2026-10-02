@@ -651,7 +651,6 @@ class RequestAssembler(BaseLLM):
             CURRENT_INTERACTION_POLICY,
             self.character,
             relationship_policy,
-            runtime_policy,
             capability_policy,
         ]
         instruction_group_chars = {
@@ -732,6 +731,10 @@ class RequestAssembler(BaseLLM):
         if dynamic:
             instruction_parts.append(dynamic)
             instruction_group_chars["instruction_dynamic_chars"] += len(dynamic)
+
+        # Keep volatile runtime facts after reusable instructions so repeated requests
+        # share the longest possible stable prompt prefix for provider-side caching.
+        instruction_parts.append(runtime_policy)
         instruction_parts.append(FINAL_OUTPUT_CHECK_POLICY)
         instruction_group_chars["instruction_response_chars"] += len(
             FINAL_OUTPUT_CHECK_POLICY
