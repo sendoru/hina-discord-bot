@@ -443,6 +443,7 @@ def test_production_quality_cases_are_sanitized_and_cover_live_failure_shapes():
         "production_multilingual_partial_understanding",
         "production_world_followup_answers_hypothetical",
         "production_multi_bot_addressee_not_self",
+        "production_current_user_first_person_not_assistant_self",
         "production_ambiguous_deictic_does_not_invent",
         "production_visual_address_not_self_attribution",
     }
