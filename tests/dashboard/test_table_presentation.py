@@ -86,27 +86,28 @@ def test_summary_cursor_and_origin_components_preserve_stored_data(tmp_path):
                     assert row.find("td").get("colspan") == str(column_count)
                 else:
                     assert len(row.findall("td")) == column_count
-                    key = row.find("td/details/code")
-                    if key is None:
-                        assert row.find("td/code").text == "legacy:<scope>"
-                        assert row.find("td/div/code").text == str(guild.guild_id)
-                    else:
-                        assert ":channel:" in key.text
+        assert "legacy:&lt;scope&gt;" in response.text
+        assert guild.conversation not in response.text
+        assert dm.conversation not in response.text
+
         cursor_response = client.get("/memory/cursors")
         assert "<th>Realm</th><th>Channel</th><th>User</th>" in cursor_response.text
-        assert guild.conversation in cursor_response.text
+        assert "legacy:&lt;scope&gt;" in cursor_response.text
+        assert guild.conversation not in cursor_response.text
+        assert dm.conversation not in cursor_response.text
+
         review = client.get("/reconciliation")
         assert long_text in review.text
         assert '<code class="scope-id">1489432315523502251</code>' in review.text
         assert '<code class="scope-id">1554321651473195059</code>' in review.text
-        assert "Realm key" in review.text
+        assert 'class="scope-raw-key"' not in review.text
         assert f'href="/memory/{old}"' in review.text
         assert f'href="/memory/{new}"' in review.text
     assert database.read_bytes() == before
 
 
 @pytest.mark.parametrize("guild_id", [1489432315523502251, None])
-def test_all_turn_and_origin_views_use_components_with_raw_disclosures(tmp_path, guild_id):
+def test_raw_scope_keys_are_limited_to_diagnostic_views(tmp_path, guild_id):
     database = tmp_path / "all-views.sqlite3"
     store = Store(str(database))
     scope = Scope(guild_id, 1554321651473195059, 221977862859653120, True)
@@ -122,33 +123,55 @@ def test_all_turn_and_origin_views_use_components_with_raw_disclosures(tmp_path,
     )
     token = CURRENT_TURN_ID.set("scope-trace")
     try:
-        store.add(scope, 55, "Source input", "Source reply", name="Stored user",
-                  context_provenance={
-                      "structured_memory": [{
-                          "item_id": old, "origin_realm": scope.realm,
-                          "origin_channel_id": str(scope.channel_id), "access": "full",
-                      }],
-                  })
+        store.add(
+            scope,
+            55,
+            "Source input",
+            "Source reply",
+            name="Stored user",
+            context_provenance={
+                "structured_memory": [{
+                    "item_id": old,
+                    "origin_realm": scope.realm,
+                    "origin_channel_id": str(scope.channel_id),
+                    "access": "full",
+                }],
+            },
+        )
     finally:
         CURRENT_TURN_ID.reset(token)
     proposal = store.add_memory_reconciliation_proposal(
-        scope, new_memory_item_id=new, target_memory_item_id=old,
-        relation="duplicate", confidence=0.9, source_message_ids=("55",),
+        scope,
+        new_memory_item_id=new,
+        target_memory_item_id=old,
+        relation="duplicate",
+        confidence=0.9,
+        source_message_ids=("55",),
     )
     store.set_note(scope.user_note, "User note")
     store.close()
     before = database.read_bytes()
+
     target = {"target_user_id": str(scope.user_id)}
     if guild_id:
-        target.update(target_guild_id=str(guild_id), target_channel_id=str(scope.channel_id))
+        target.update(
+            target_guild_id=str(guild_id),
+            target_channel_id=str(scope.channel_id),
+        )
     else:
         target.update(target_scope_type="dm")
+
     with TestClient(create_app(DashboardSettings(
-        database_path=str(database), usage_log_path=str(tmp_path / "no-usage.jsonl"),
+        database_path=str(database),
+        usage_log_path=str(tmp_path / "no-usage.jsonl"),
         event_log_path=str(tmp_path / "no-events.jsonl"),
     ))) as client:
-        for path in ["/conversations", "/conversations/1/context", "/traces/scope-trace",
-                     f"/memory/{old}", f"/reconciliation/{proposal}"]:
+        for path in [
+            "/conversations",
+            "/conversations/1/context",
+            f"/memory/{old}",
+            f"/reconciliation/{proposal}",
+        ]:
             response = client.get(path)
             assert response.status_code == 200
             assert "<dt>Realm</dt>" in response.text
@@ -156,24 +179,27 @@ def test_all_turn_and_origin_views_use_components_with_raw_disclosures(tmp_path,
             assert "<dt>User</dt>" in response.text
             assert f'<code class="scope-id">{scope.channel_id}</code>' in response.text
             assert "Stored user" in response.text
-            assert f'<code class="scope-raw-key">{scope.conversation}</code>' in response.text
-            without_disclosures = re.sub(
-                r'<details class="scope-raw">.*?</details>', "", response.text, flags=re.DOTALL,
-            )
-            assert scope.conversation not in without_disclosures
-            assert scope.realm not in without_disclosures
-        response = client.get("/state", params=target)
-        assert response.status_code == 200
-        assert "<dt>Realm</dt>" in response.text
-        assert "User note" in response.text
-        assert f'<code class="scope-raw-key">{scope.user_note}</code>' in response.text
-        for params in [{"target_guild_id": "99", "target_channel_id": "999"},
-                       {"target_scope_type": "dm"}]:
+            assert 'class="scope-raw-key"' not in response.text
+
+        trace = client.get("/traces/scope-trace")
+        assert trace.status_code == 200
+        assert f'<code class="scope-raw-key">{scope.conversation}</code>' in trace.text
+        assert "Raw scope" in trace.text
+
+        state = client.get("/state", params=target)
+        assert state.status_code == 200
+        assert "<dt>Realm</dt>" in state.text
+        assert "User note" in state.text
+        assert f'<code class="scope-raw-key">{scope.user_note}</code>' in state.text
+        assert "Raw scope" in state.text
+
+        for params in [
+            {"target_guild_id": "99", "target_channel_id": "999"},
+            {"target_scope_type": "dm"},
+        ]:
             response = client.get("/relationships", params=params)
             assert response.status_code == 200
-            assert f'<code class="scope-raw-key">{scope.realm}</code>' in response.text
             assert f'<code class="scope-id">{scope.channel_id}</code>' in response.text
-            assert scope.realm not in re.sub(
-                r'<details class="scope-raw">.*?</details>', "", response.text, flags=re.DOTALL,
-            )
+            assert 'class="scope-raw-key"' not in response.text
+
     assert database.read_bytes() == before
