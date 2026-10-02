@@ -387,9 +387,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'name="target_dm_channel_id"' in state_dm.text
     assert '<option value="10" selected>10</option>' in state_dm.text
     assert "유일하게 알려진 DM 채널을 자동 선택했습니다." in state_dm.text
-    assert '<span>DM · user</span> <code class="scope-id">100</code>' in state_dm.text
+    assert '<span>DM · user</span> <code class="scope-id" data-copy-text="100">100</code>' in state_dm.text
     assert '<code class="scope-raw-key">dm:100:channel:10:user:100</code>' in state_dm.text
-    assert '<code class="scope-id">10</code>' in state_dm.text
+    assert '<code class="scope-id" data-copy-text="10">10</code>' in state_dm.text
     assert "dashboard server note" in state.text
     assert '<code class="scope-raw-key">guild:1:user:100</code>' in state.text
     assert "dashboard user note" in state.text
