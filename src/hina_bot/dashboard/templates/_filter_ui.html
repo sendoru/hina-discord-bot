@@ -1,21 +1,14 @@
-{% macro active_filter_chips(request, reset_url) -%}
-{% set ns = namespace(active=false) %}
-{% for key, value in request.query_params.items() %}
-  {% if key != "page" and value %}
-    {% set ns.active = true %}
-  {% endif %}
-{% endfor %}
-{% if ns.active %}
-<div class="active-filter-bar" aria-label="Active filters">
-  <span class="active-filter-label">Active</span>
-  {% for key, value in request.query_params.items() %}
-    {% if key != "page" and value %}
-    <a class="filter-chip" href="{{ request.url.remove_query_params(key).remove_query_params('page') }}" title="Remove {{ key }} filter">
+{% macro active_filter_chips(request, reset_url, data) -%}
+{% set filters = applied_filters(data) %}
+{% if filters %}
+<div class="active-filter-bar" aria-label="Applied filters">
+  <span class="active-filter-label">적용 조건</span>
+  {% for key, value in filters.items() %}
+    <a class="filter-chip" href="{{ remove_filter_url(reset_url, filters, key) }}" title="Remove {{ key }} filter">
       <span>{{ key | replace("_", " ") }}</span>
       <strong>{{ value }}</strong>
       <span aria-hidden="true">×</span>
     </a>
-    {% endif %}
   {% endfor %}
   <a class="clear-filters" href="{{ reset_url }}">Clear all</a>
 </div>

@@ -217,6 +217,38 @@ class AdminRepository:
                 names.setdefault(key, str(row["name"])[:100])
         return names
 
+    def discord_scope_metadata(self) -> dict[str, dict[str, object]]:
+        """Return latest human-readable Discord guild/channel metadata when available."""
+        guilds: dict[str, object] = {}
+        channels: dict[str, object] = {}
+        if self._table_exists("guild_metadata"):
+            with self._connection() as db:
+                rows = db.execute(
+                    "SELECT guild_id,name,updated_at FROM guild_metadata ORDER BY guild_id"
+                ).fetchall()
+            guilds = {
+                str(row["guild_id"]): {
+                    "name": str(row["name"] or ""),
+                    "updated_at": str(row["updated_at"] or ""),
+                }
+                for row in rows
+            }
+        if self._table_exists("channel_metadata"):
+            with self._connection() as db:
+                rows = db.execute(
+                    """SELECT channel_id,guild_id,name,updated_at
+                       FROM channel_metadata ORDER BY channel_id"""
+                ).fetchall()
+            channels = {
+                str(row["channel_id"]): {
+                    "guild_id": str(row["guild_id"] or ""),
+                    "name": str(row["name"] or ""),
+                    "updated_at": str(row["updated_at"] or ""),
+                }
+                for row in rows
+            }
+        return {"guilds": guilds, "channels": channels}
+
     def recent_turns(self, *, limit: int = 100) -> list[dict[str, object]]:
         limit = self._limit(limit)
         turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"

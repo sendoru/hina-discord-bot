@@ -28,6 +28,7 @@ def build_service(tmp_path):
     database = tmp_path / "hina.sqlite3"
     store = Store(str(database))
     scope = Scope(1, 10, 100, True)
+    store.observe_guild_channel(1, "Test Guild", 10, "general")
     memory_id = store.add_memory_item(
         scope,
         "trace relationship memory",
@@ -303,6 +304,8 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
 
     assert data is not None
     assert data["stored"]["content"] == "question"
+    assert data["stored"]["guild_name"] == "Test Guild"
+    assert data["stored"]["channel_name"] == "general"
     assert data["summary"]["status"] == "completed"
     assert data["context_provenance"]["egress_policy"] == "bot_interactions_only"
     assert data["context_provenance"]["egress"]["adapter"]["channel_blocked"] == 1
@@ -313,6 +316,8 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
     assert source["causal_context"]["content"] == "quoted source"
     memory = data["context_provenance"]["structured_memory"][0]
     assert memory["current_status"] == "active"
+    assert memory["guild_name"] == "Test Guild"
+    assert memory["channel_name"] == "general"
     assert [item["source"] for item in data["timeline"]] == [
         "event",
         "usage",
@@ -335,7 +340,7 @@ def test_failed_trace_keeps_content_free_context_telemetry(tmp_path):
     assert data["context_telemetry"]["factual_recall_detected"] is True
     assert data["context_telemetry"]["factual_recall_status"] == "ambiguous_single_anchor"
     assert data["raw_turn_availability"]["state"] == "not_retained_by_design"
-    assert "disabled" in data["raw_turn_availability"]["message"]
+    assert "비활성화" in data["raw_turn_availability"]["message"]
 
 
 def test_auxiliary_trace_does_not_claim_raw_turn_expired(tmp_path):
@@ -369,6 +374,8 @@ def test_conversations_use_bounded_repository_filters(tmp_path):
     assert data["rows"][0]["scope_type"] == "guild"
     assert data["rows"][0]["guild_id"] == "1"
     assert data["rows"][0]["channel_id"] == "10"
+    assert data["rows"][0]["guild_name"] == "Test Guild"
+    assert data["rows"][0]["channel_name"] == "general"
     assert service.conversations(query="not-found")["page"].total == 0
 
 
@@ -412,6 +419,7 @@ def build_memory_service(tmp_path):
     database = tmp_path / "memory.sqlite3"
     store = Store(str(database))
     scope = Scope(1, 10, 100, True)
+    store.observe_guild_channel(1, "Memory Guild", 10, "memory")
     token = CURRENT_TURN_ID.set("memory-trace")
     try:
         store.add(scope, 700, "source for memory", "reply", name="Memory User")
@@ -449,11 +457,17 @@ def test_memory_service_filters_and_source_drilldown(tmp_path):
     )
     assert listing["page"].total == 1
     assert listing["rows"][0]["source_message_ids_decoded"] == ("700",)
+    assert listing["rows"][0]["guild_name"] == "Memory Guild"
+    assert listing["rows"][0]["channel_name"] == "memory"
 
     detail = service.memory_item(item_id)
     assert detail is not None
     assert detail["item"]["content"] == "remembered fact"
+    assert detail["item"]["guild_name"] == "Memory Guild"
+    assert detail["item"]["channel_name"] == "memory"
     assert detail["sources"][0]["turn"]["turn_id"] == "memory-trace"
+    assert detail["sources"][0]["turn"]["channel_id"] == "10"
+    assert detail["sources"][0]["turn"]["channel_name"] == "memory"
 
 
 def test_memory_scope_picker_filters_guild_and_dm_without_raw_realms(tmp_path):
@@ -531,10 +545,13 @@ def test_summary_and_cursor_service_show_rollout_state(tmp_path):
     assert len(summaries["personal"]) == 1
     assert summaries["personal"][0]["structured_memory_count"] == 1
     assert summaries["personal"][0]["user_name"] == "Memory User"
+    assert summaries["personal"][0]["scope_display"].raw == scope.conversation
+    assert summaries["personal"][0]["scope_display"].channel_id == str(scope.channel_id)
 
     cursors = service.extraction_cursors(user_id="100")
     row = next(row for row in cursors["rows"] if row["scope"] == scope.conversation)
     assert row["user_name"] == "Memory User"
+    assert row["scope_display"].raw == scope.conversation
     assert row["initialized"] == 0
     assert row["effective_through_id"] == row["summary_through_id"]
     assert row["cursor_delta"] is None
@@ -712,6 +729,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     store = Store(str(database))
     dm = Scope(None, 10, 100)
     same_target_guild = Scope(1, 20, 100, True)
+    store.observe_guild_channel(1, "Profile Guild", 20, "profile")
+    store.observe_guild_channel(1, "Profile Guild", 99, "target")
 
     first_id = store.add_memory_item(
         dm,
@@ -772,6 +791,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         "scope_type": "guild",
         "guild_id": 1,
         "channel_id": 99,
+        "guild_name": "Profile Guild",
+        "channel_name": "target",
     }
     assert data["axes"] == (
         "familiarity",
@@ -794,6 +815,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     assert row["full_relationships"][0]["content"] == (
         "same disclosure space relationship"
     )
+    assert row["full_relationships"][0]["guild_name"] == "Profile Guild"
+    assert row["full_relationships"][0]["channel_name"] == "profile"
     assert row["full_relationships"][1]["disclosure"] == "global"
     assert row["used_observations"] == 2
     assert [item["id"] for item in row["contributors"]] == [second_id, first_id]
@@ -817,6 +840,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         "scope_type": "dm",
         "guild_id": None,
         "channel_id": None,
+        "guild_name": "",
+        "channel_name": "",
     }
     assert dm_target["filters"]["target_guild_id"] == ""
     assert dm_target["filters"]["target_channel_id"] == ""
@@ -845,6 +870,8 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
         "scope_type": "dm",
         "guild_id": None,
         "channel_id": None,
+        "guild_name": "",
+        "channel_name": "",
     }
     assert dm_without_channel["target_error"] == ""
 
@@ -895,6 +922,7 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     store = Store(str(database))
     guild = Scope(1, 10, 100)
     dm = Scope(None, 20, 100)
+    store.observe_guild_channel(1, "State Guild", 10, "state")
 
     store.add(guild, 1, "state source", "reply", name="State User")
     store.set_memory_mode_override("global", "off")
@@ -919,6 +947,8 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     effective = data["effective"]
     assert effective is not None
     assert effective["user_name"] == "State User"
+    assert effective["guild_name"] == "State Guild"
+    assert effective["channel_name"] == "state"
     assert effective["memory"]["chain"]["effective"] == "read_only"
     assert effective["memory"]["chain"]["source"] == "server"
     assert effective["memory"]["reads"] is True
@@ -934,10 +964,18 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
         ("guild:1", "read_only"),
         ("dm:100:channel:20", "read_only"),
     }
-    assert data["chat_overrides"] == [
+    assert [
+        {key: row[key] for key in ("scope", "enabled", "capture")}
+        for row in data["chat_overrides"]
+    ] == [
         {"scope": "global", "enabled": "on", "capture": "direct"},
         {"scope": "guild:1", "enabled": "off", "capture": None},
     ]
+    guild_chat_override = next(
+        row for row in data["chat_overrides"] if row["scope"] == "guild:1"
+    )
+    assert guild_chat_override["guild_name"] == "State Guild"
+    assert guild_chat_override["channel_name"] == ""
     assert data["internal_note_count"] == 2
     assert {row["text"] for row in data["manual_notes"]} == {
         "guild-wide manual note",
@@ -1042,7 +1080,7 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
 
     partial = service.context_state(target_guild_id="1", target_user_id="100")
     assert partial["effective"] is None
-    assert "Channel ID and user ID are required" in partial["target_error"]
+    assert "Channel ID와 User ID를 입력하세요" in partial["target_error"]
 
     missing_guild = service.context_state(
         target_scope_type="guild",
@@ -1050,7 +1088,7 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
         target_user_id="100",
     )
     assert missing_guild["effective"] is None
-    assert "Guild ID is required" in missing_guild["target_error"]
+    assert "Guild ID가 필요합니다" in missing_guild["target_error"]
 
     invalid = service.context_state(
         target_guild_id="-1",
@@ -1058,14 +1096,14 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
         target_user_id="100",
     )
     assert invalid["effective"] is None
-    assert "positive integers" in invalid["target_error"]
+    assert "양의 정수" in invalid["target_error"]
 
     invalid_dm_user = service.context_state(
         target_scope_type="dm",
         target_user_id="nope",
     )
     assert invalid_dm_user["effective"] is None
-    assert "positive integer" in invalid_dm_user["target_error"]
+    assert "양의 정수" in invalid_dm_user["target_error"]
 
 
 
@@ -1179,3 +1217,31 @@ def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
     overview = trace_service.overview()
     assert overview["epoch"]["selected"] == "1"
     assert overview["trace_count"] == 1
+
+
+def test_overview_distinguishes_missing_partial_and_observed_zero(tmp_path):
+    service = build_service(tmp_path)
+    path = tmp_path / "logs" / "discord-usage.jsonl"
+    write_rows(path, [
+        {"turn_id": "trace-1", "at": "2026-09-21T00:00:01+00:00", "calls": 0,
+         "total_tokens": 0},
+        {"turn_id": "trace-2", "at": "2026-09-21T00:01:01+00:00"},
+    ])
+    data = service.overview()
+    assert data["metrics"]["total_tokens"]["value"] == 0
+    assert data["metrics"]["total_tokens"]["partial"] is True
+    assert data["metrics"]["input_tokens"]["value"] is None
+    path.unlink()
+    data = service.overview()
+    assert data["api_calls"] is None
+    assert data["missing_exchanges"] > 0
+
+
+def test_memory_failure_filter_uses_count_not_search_text(tmp_path):
+    service = build_service(tmp_path)
+    overview = service.overview()
+    data = service.traces(memory_failure="yes")
+    assert data["page"].total == overview["memory_failure_traces"] == 1
+    assert data["rows"][0]["memory_failures"] == overview["memory_failures"]
+    assert service.traces(query="memory")["page"].total == 0
+    assert service.traces(memory_failure="no")["page"].total == 1

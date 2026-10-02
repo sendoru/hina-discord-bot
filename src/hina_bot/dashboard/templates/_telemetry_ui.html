@@ -5,8 +5,8 @@
     <strong>Available telemetry</strong>
     <span class="freshness-badge freshness-{{ freshness.tone }}">{{ freshness.label }}</span>
   </div>
-  <span>{{ available.oldest_at | localtime if available.oldest_at else "none" }}</span>
-  <span>→ {{ available.newest_at | localtime if available.newest_at else "none" }}</span>
-  <small class="freshness-age">{{ freshness.age_label }}</small>
+  <span>{{ available.oldest_at | localtime if available.oldest_at else "—" }}</span>
+  <span>→ {{ available.newest_at | localtime if available.newest_at else "—" }}</span>
+  <small class="freshness-age">{{ freshness.age_label | replace("Last event just now", "방금 기록됨") | replace("Last event ", "마지막 기록 ") | replace("m ago", "분 전") | replace("h ago", "시간 전") | replace("d ago", "일 전") | replace("No retained events", "보존된 기록 없음") }}</small>
 </div>
 {%- endmacro %}

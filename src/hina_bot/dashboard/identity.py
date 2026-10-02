@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from math import ceil
 
+from .filterutils import validate_filters
 from .telemetry import TelemetrySnapshot
 from .timeutils import parse_local_time, quick_ranges
 
@@ -183,6 +184,10 @@ def build_identity_observability(
     before: str = "",
     timezone: str = "Asia/Seoul",
 ) -> dict[str, object]:
+    errors = validate_filters({"after": after, "before": before}, timezone)
+    if errors:
+        snapshot = TelemetrySnapshot((), (), (), snapshot.oldest_at, snapshot.newest_at)
+
     outcome = outcome.strip().lower()
     blocked_reason = blocked_reason.strip().lower()
     after = after.strip()
@@ -227,6 +232,7 @@ def build_identity_observability(
     invoked_count = len(invoked)
 
     return {
+        "filter_errors": errors,
         "available": {
             "oldest_at": snapshot.oldest_at,
             "newest_at": snapshot.newest_at,

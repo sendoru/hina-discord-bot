@@ -364,6 +364,22 @@ The page resolves the same global -> server -> channel inheritance used by runti
 DM targets intentionally report recent-channel context as `off`, matching runtime behavior even when
 the underlying global chat-log setting is `on`.
 
+Stored override tables separate **Realm** and **Channel**, while manual notes separate **Kind**,
+**Realm**, and **User** alongside their content. A DM realm identifies its owner (`DM · user <id>`);
+it does not add a user-level override. Canonical keys remain available in a **Scope key** disclosure.
+Unknown keys and notes classified as `other` show their raw keys directly. The shared dashboard
+`scopepresenter` parses display components without changing stored keys, note eligibility, or runtime
+inheritance. Summaries and extraction cursors use the same Realm/Channel/User components; Memory and
+Reconciliation keep their existing Origin and Owner/origin groupings with structured realm/channel
+labels. Trace stored turns, conversation results/context, and source turns in Memory/Reconciliation
+details use Realm/Channel/User metadata. Relationship origins and admitted structured-memory origins
+in Trace also use the shared presenter. Effective State targets and manual-note keys follow the same
+format. Canonical keys remain available in disclosures instead of being repeated beside the labels.
+Telemetry Scope values in Overview/Traces are scope-type categories (`guild`/`dm`), not canonical keys;
+raw event/context JSON retains its original fields for debugging.
+On narrow screens, manual-note rows place Realm/User side by side and content below, so long IDs and
+note text remain readable without squeezing four columns together.
+
 For DM lookup, the operator normally enters only the user ID. The dashboard discovers retained DM
 channel IDs from conversation/summarization rows, structured-memory origins, reconciliation rows, and
 channel-level override keys. A single known channel is selected automatically; multiple known channels
@@ -404,6 +420,10 @@ The **retry suspect** filter is deliberately conservative: it is true only when 
 memory items have the same non-empty source-message ID set. Source order does not matter. This is a
 review heuristic, not a conclusion that a retry or extractor bug occurred.
 
+The reconciliation table reserves readable widths for identifiers, owner/origin, numeric metadata,
+and timestamps. Target/new content uses bounded three-line previews with links to the full memory
+items. Narrow viewports scroll within the table instead of compressing metadata into vertical letters.
+
 Proposal detail compares old/new content and provenance side by side, resolves source message IDs
 against bounded raw turns when still available, and follows retained source `turn_id` values into
 `extract_memory_items_shadow` and `memory.shadow_extraction` usage rows. Telemetry rotation or raw
@@ -443,3 +463,69 @@ imports, dashboard use of the runtime `Store`, and reverse `core -> dashboard/Fa
 This layout is the extension point for #99-#101: authentication dependencies can be composed at router/app
 boundaries, while future audited write services can remain separate from the existing read repository.
 
+
+### 개요 지표의 관측 범위
+
+Overview의 API calls, tokens, web searches는 현재 epoch의 exchange 로그 합계입니다.
+각 지표는 관측 건수와 누락 건수를 함께 표시합니다. 전부 미관측이면 `—`, 일부
+미관측이면 부분 합계, 실제 관측된 0이면 `0`입니다. usage만 남은 trace는 exchange
+누락에 포함하며 usage 값으로 합계를 대체하지 않습니다. Stored turns는 epoch와 무관한
+SQLite 보존 데이터 수입니다.
+
+Memory failures는 `turn.completed`의 실패 횟수 합계와 실패가 있는 trace 수를 구분합니다.
+카드는 `/traces?memory_failure=yes`로 연결되며 실제 `memory_failures > 0` 조건을 사용합니다.
+
+날짜와 confidence 필터는 공통 검증을 거칩니다. Confidence는 유한한 `0..1` 범위이며,
+시작 값은 끝 값 이하여야 합니다. 오류가 있으면 조회를 수행하지 않고 입력을 유지하며
+필드 옆에 한국어 오류 이유를 표시합니다. 잘못된 날짜는 text 입력으로 보존합니다.
+
+적용 필터 칩은 read model의 정규화된 조건을 표시합니다. 파생된 Guild realm이나 무시된
+boolean 조건은 표시하지 않습니다. Scope 유형 제거는 해당 Guild·Channel·legacy realm을
+함께 제거하며 개별 ID 제거는 나머지 조건을 유지합니다. 조건 제거는 첫 페이지로 돌아갑니다.
+Analytics·Identity·Summaries·Cursors에도 같은 칩을 제공합니다.
+
+목록에서 상세 화면으로 이동할 때 `return_to`에 필터와 페이지를 전달합니다. 복귀 경로는
+해당 목록의 정확한 내부 경로만 허용합니다. 외부 URL, fragment, 제어 문자, 역슬래시,
+다른 화면 경로는 기본 목록으로 돌아갑니다.
+
+HTML 상세의 404와 잘못된 페이지·식별자의 422는 공통 오류 화면과 목록 복귀 링크를
+제공합니다. HTTP 상태 코드는 유지합니다. `/healthz`, static, JSON을 요청한 클라이언트는
+기존 JSON 오류 형식을 유지합니다. 페이지 번호는 1 이상의 정수여야 합니다.
+
+필터에는 항상 보이는 label을 제공하며 기존 Scope picker의 중첩 label을 유지합니다.
+현재 메뉴는 `aria-current="page"`로 표시합니다. 첫 Tab은 본문 바로가기이며 데이터 표의
+가로 스크롤 영역도 키보드 포커스를 받을 수 있습니다. 입력 오류는 `aria-invalid`와
+`aria-describedby`로 연결합니다.
+
+Identity의 reference/user group은 짧은 해시 표시와 전체 값 disclosure를 함께 제공합니다.
+원문 이름이나 참조 문자열은 추가로 표시하지 않습니다.
+
+표시 용어: 메뉴·필드명은 기존 영문을 유지하며 설명·빈 결과·입력 오류는 한국어로
+제공합니다. `—`는 미관측·미보존·해당 없음, `Unknown`은 상태 판단 불가입니다. 작은 보조
+텍스트는 최소 12px로 조정하고 낮은 대비의 보조 색을 밝힙니다. 넓은 CSS 재정리는 포함하지 않습니다.
+
+Trace 상세의 Summary·Stored turn·Context·Timeline 이동 링크는 해당 구간이 있을 때
+표시합니다. 600px 이하에서는 Traces·Memory·Reconciliation을 카드로 보여주며 시간·상태·
+상세 링크·본문 요약을 먼저 배치합니다. 메타데이터는 펼치기로 보존하고, 600px 초과 및
+Analytics 등의 분석 표는 기존 가로 스크롤을 유지합니다.
+
+날짜 입력은 표시 시간대로 변환하되 초·소수 초를 유지합니다. 시간대가 포함된 URL도
+빈 날짜 입력으로 바뀌지 않으며 다시 적용할 때 같은 시각으로 조회합니다.
+
+브라우저 검증은 합성 데이터로 재현합니다. Playwright를 별도로 설치한 뒤 다음을 실행합니다.
+
+```bash
+python tests/dashboard/check_browser_ui.py --browser /usr/bin/chromium
+```
+
+기본 Playwright Chromium을 설치했다면 `--browser`를 생략할 수 있습니다. 픽스처·스크린샷·
+결과 JSON은 매번 `/tmp/hina-dashboard-browser-*`에 생성됩니다. 1440·768·390px에서 긴
+한국어 본문·식별자, 빈 결과, 부분 데이터, 오류 입력, 목록 복귀와 키보드 동작을 점검합니다.
+실제 기기·스크린리더 검증은 별도이며, 밀리초보다 정밀한 날짜는 값을 보존하는 텍스트
+입력으로 표시합니다.
+
+보존·재시도·관계 접근·epoch·최근 관측 안내도 한국어 설명을 사용합니다. 상태·필드·
+원본 telemetry 식별자는 영문을 유지하며, Trace의 미관측 문맥 수치를 0으로 보정하지 않습니다.
+
+밀리초까지의 날짜는 native 날짜 컨트롤을 유지하고 불필요한 소수 초의 0을 제거합니다.
+이보다 정밀한 값만 텍스트 입력으로 표시하므로 컨트롤 변경으로 정밀도를 잃지 않습니다.

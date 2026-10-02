@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -11,7 +11,7 @@ def build_router(service: TraceService, templates: Jinja2Templates) -> APIRouter
     @router.get("/conversations", response_class=HTMLResponse)
     def conversations(
         request: Request,
-        page: int = 1,
+        page: int = Query(1, ge=1),
         scope: str = "",
         realm: str = "",
         user_id: str = "",

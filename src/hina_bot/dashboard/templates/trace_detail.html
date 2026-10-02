@@ -1,39 +1,46 @@
 {% extends "base.html" %}
+{% from "_scope_ui.html" import turn_scope, scope_origin %}
 {% from "_status_ui.html" import status_badge %}
+{% from "_metric_ui.html" import observed %}
 {% block title %}Trace {{ data.turn_id }} · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
-    <a class="back" href="/traces">← Traces</a>
-    <h1>Trace <code>{{ data.turn_id }}</code></h1>
+    <a class="back" href="{{ back_url(request, '/traces') }}">← Traces</a>
+    <h1>Trace <code data-copy-text="{{ data.turn_id }}">{{ data.turn_id }}</code></h1>
   </div>
 </section>
 
+<nav class="section-nav" aria-label="Trace sections">
+  {% if data.summary %}<a href="#trace-summary">Summary</a>{% endif %}
+  <a href="#stored-turn">Stored turn</a>
+  {% if data.context_provenance or data.context_telemetry %}<a href="#context-provenance">Context</a>{% endif %}
+  <a href="#trace-timeline">Timeline</a>
+</nav>
+
 {% if data.summary %}
-<section class="cards">
+<section class="cards section-anchor" id="trace-summary">
   <article class="card"><span>Status</span><strong>{{ status_badge(data.summary.status) }}</strong></article>
   <article class="card"><span>Scope</span><strong>{{ data.summary.scope or "—" }}</strong></article>
   <article class="card"><span>Tier</span><strong>{{ data.summary.model_tier or "—" }}</strong></article>
-  <article class="card"><span>Tokens</span><strong>{{ data.summary.total_tokens if data.summary.total_tokens is not none else "?" }}</strong></article>
+  <article class="card"><span>Tokens</span><strong>{{ data.summary.total_tokens if data.summary.total_tokens is not none else "—" }}</strong></article>
   <article class="card"><span>Latency</span><strong>{{ data.summary.elapsed_ms ~ " ms" if data.summary.elapsed_ms is not none else "—" }}</strong></article>
   <article class="card"><span>Web search</span><strong>{{ "yes" if data.summary.web_search else "no" }}</strong></article>
 </section>
 {% endif %}
 
 {% if data.stored %}
-<section class="panel">
+<section class="panel section-anchor" id="stored-turn">
   <h2>Stored turn</h2>
   <dl class="metadata">
-    <div><dt>Scope</dt><dd>{{ data.stored.scope }}</dd></div>
-    <div><dt>Realm</dt><dd>{{ data.stored.realm }}</dd></div>
-    <div><dt>User</dt><dd>{% if data.stored.name %}{{ data.stored.name }} · {% endif %}<code>{{ data.stored.user_id }}</code></dd></div>
-    <div><dt>Message</dt><dd><code>{{ data.stored.message_id }}</code></dd></div>
+    {{ turn_scope(data.stored, show_raw=true) }}
+    <div><dt>Message</dt><dd><code data-copy-text="{{ data.stored.message_id }}">{{ data.stored.message_id }}</code></dd></div>
     <div><dt>Created</dt><dd>{{ data.stored.created_at | localtime }}</dd></div>
   </dl>
   <h3>Input</h3>
-  <div class="message">{{ data.stored.content }}</div>
+  <div class="message" data-copy-block>{{ data.stored.content }}</div>
   <h3>Reply</h3>
-  <div class="message assistant">{{ data.stored.reply }}</div>
+  <div class="message assistant" data-copy-block>{{ data.stored.reply }}</div>
   {% if data.memory_context %}
   <details>
     <summary>Stored memory context</summary>
@@ -42,18 +49,18 @@
   {% endif %}
 </section>
 {% else %}
-<section class="notice {{ data.raw_turn_availability.severity }}">
+<section class="notice section-anchor {{ data.raw_turn_availability.severity }}" id="stored-turn">
   <strong>{{ data.raw_turn_availability.title }}</strong><br>
   {{ data.raw_turn_availability.message }}
 </section>
 {% endif %}
 
 {% if data.context_provenance %}
-<section class="panel">
+<section class="panel section-anchor" id="context-provenance">
   <div class="panel-heading">
     <div>
       <h2>Context &amp; provenance</h2>
-      <p class="muted">Content-free snapshot of the context Python admitted to this answer request.</p>
+      <p class="muted">응답 요청에 포함된 문맥의 스냅샷입니다. 원문은 포함하지 않습니다.</p>
     </div>
   </div>
 
@@ -67,7 +74,7 @@
   {% set adapter = data.context_provenance.egress.get("adapter", {}) %}
   {% set provider = data.context_provenance.egress.get("provider_boundary", {}) %}
   <h3>Privacy / egress decisions</h3>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table">
       <thead><tr><th>Boundary</th><th>Channel input</th><th>Allowed</th><th>Blocked</th><th>Public input</th><th>Allowed</th><th>Blocked</th></tr></thead>
       <tbody>
@@ -94,7 +101,7 @@
   </div>
 
   <h3>Context sections</h3>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Section</th><th>Included</th><th>Items / fields</th><th>Blocked</th></tr></thead>
       <tbody>
@@ -112,7 +119,7 @@
 
   {% if data.context_provenance.sources %}
   <h3>Admitted sources</h3>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Source</th><th>Kind / role</th><th>Ownership</th><th>Provenance</th><th>Identifiers</th></tr></thead>
       <tbody>
@@ -131,17 +138,17 @@
             {{ source.owner_relation or "—" }}
             {% set source_user_name = source.author_name or source.name or (source.stored_turn.name if source.stored_turn else "") %}
             {% if source_user_name %}<br>{{ source_user_name }}{% endif %}
-            {% if source.author_user_id %}<br><code>{{ source.author_user_id }}</code>{% endif %}
+            {% if source.author_user_id %}<br><code data-copy-text="{{ source.author_user_id }}">{{ source.author_user_id }}</code>{% endif %}
           </td>
           <td>
             {{ source.provenance_class or "—" }}
             {% if source.reference_strength %}<br><span class="muted">{{ source.reference_strength }}</span>{% endif %}
           </td>
           <td>
-            {% if source.message_id %}<code>msg {{ source.message_id }}</code>{% endif %}
-            {% if source.source_turn_message_id %}<br><code>turn-msg {{ source.source_turn_message_id }}</code>{% endif %}
+            {% if source.message_id %}<code data-copy-text="{{ source.message_id }}">msg {{ source.message_id }}</code>{% endif %}
+            {% if source.source_turn_message_id %}<br><code data-copy-text="{{ source.source_turn_message_id }}">turn-msg {{ source.source_turn_message_id }}</code>{% endif %}
             {% if source.source %}<br><code>{{ source.source }}</code>{% endif %}
-            {% if source.reference_id %}<br><code>{{ source.reference_id }}</code>{% endif %}
+            {% if source.reference_id %}<br><code data-copy-text="{{ source.reference_id }}">{{ source.reference_id }}</code>{% endif %}
             {% if source.stored_turn and source.stored_turn.turn_id %}<br><a href="/traces/{{ source.stored_turn.turn_id }}">stored trace</a>{% endif %}
           </td>
         </tr>
@@ -164,7 +171,7 @@
   {% set recall = data.context_provenance.factual_recall %}
   {% if recall %}
   <h3>Reference-gated factual recall</h3>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Detected</th><th>Detector</th><th>Status</th><th>Candidates</th><th>Relevant</th><th>Selected</th><th>Authorization</th></tr></thead>
       <tbody>
@@ -192,7 +199,7 @@
 
   {% if data.context_provenance.structured_memory %}
   <h3>Structured memory admitted</h3>
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table>
       <thead><tr><th>Item</th><th>Projection</th><th>Kind / disclosure</th><th>Origin</th><th>Access / current state</th></tr></thead>
       <tbody>
@@ -201,7 +208,7 @@
           <td><a href="/memory/{{ item.item_id }}">#{{ item.item_id }}</a></td>
           <td>{{ item.projection }}</td>
           <td>{{ item.kind }}<br><span class="muted">{{ item.disclosure }}</span></td>
-          <td><code>{{ item.origin_realm }}</code><br><span class="muted">#{{ item.origin_channel_id }}</span></td>
+          <td>{{ scope_origin(item.origin_display, item.origin_channel_id, item.guild_name, item.channel_name, show_raw=true) }}</td>
           <td>
             {{ item.access }}
             {% if item.current_status %}<br><span class="muted">now: {{ item.current_status }}</span>{% endif %}
@@ -220,35 +227,34 @@
 
   {% if data.context_provenance.truncated.get("sources", 0) or data.context_provenance.truncated.get("structured_memory", 0) %}
   <div class="notice inline-notice">
-    Snapshot was bounded: {{ data.context_provenance.truncated.get("sources", 0) }} source rows and
-    {{ data.context_provenance.truncated.get("structured_memory", 0) }} structured-memory rows were omitted.
+    스냅샷 크기 제한으로 출처 {{ data.context_provenance.truncated.get("sources", 0) }}개와 구조화 메모리 {{ data.context_provenance.truncated.get("structured_memory", 0) }}개가 생략되었습니다.
   </div>
   {% endif %}
 </section>
 {% elif data.context_telemetry %}
-<section class="panel">
+<section class="panel section-anchor" id="context-provenance">
   <h2>Context &amp; provenance</h2>
-  <p class="muted">Content-free request telemetry is still available for this trace.</p>
+  <p class="muted">이 trace의 본문 없는 요청 관측 데이터가 남아 있습니다.</p>
   <div class="cards">
-    <article class="card"><span>Channel</span><strong>{{ data.context_telemetry.context_channel_items or 0 }}</strong></article>
-    <article class="card"><span>Reply chain</span><strong>{{ data.context_telemetry.context_reply_items or 0 }}</strong></article>
-    <article class="card"><span>Public context</span><strong>{{ data.context_telemetry.context_public_items or 0 }}</strong></article>
-    <article class="card"><span>Structured memory</span><strong>{{ data.context_telemetry.context_structured_items or 0 }}</strong></article>
-    <article class="card"><span>Lore</span><strong>{{ data.context_telemetry.context_lore_items or 0 }}</strong></article>
-    <article class="card"><span>Visuals</span><strong>{{ data.context_telemetry.context_visual_items or 0 }}</strong></article>
+    <article class="card"><span>Channel</span><strong>{{ observed(data.context_telemetry.context_channel_items) }}</strong></article>
+    <article class="card"><span>Reply chain</span><strong>{{ observed(data.context_telemetry.context_reply_items) }}</strong></article>
+    <article class="card"><span>Public context</span><strong>{{ observed(data.context_telemetry.context_public_items) }}</strong></article>
+    <article class="card"><span>Structured memory</span><strong>{{ observed(data.context_telemetry.context_structured_items) }}</strong></article>
+    <article class="card"><span>Lore</span><strong>{{ observed(data.context_telemetry.context_lore_items) }}</strong></article>
+    <article class="card"><span>Visuals</span><strong>{{ observed(data.context_telemetry.context_visual_items) }}</strong></article>
   </div>
   <p class="muted">
-    Adapter blocked {{ data.context_telemetry.context_adapter_blocked or 0 }} rows;
-    provider boundary blocked {{ data.context_telemetry.context_provider_blocked or 0 }} rows.
-    Factual recall: {{ data.context_telemetry.factual_recall_status or "unknown" }}
+    Adapter에서 차단된 데이터 {{ observed(data.context_telemetry.context_adapter_blocked) }}개;
+    공급자 경계에서 차단된 데이터 {{ observed(data.context_telemetry.context_provider_blocked) }}개.
+    과거 사실 회상: {{ data.context_telemetry.factual_recall_status or "Unknown" }}
     (detected={{ "yes" if data.context_telemetry.factual_recall_detected else "no" }},
-    candidates={{ data.context_telemetry.factual_recall_candidates or 0 }},
-    selected={{ data.context_telemetry.factual_recall_selected or 0 }}).
+    candidates={{ observed(data.context_telemetry.factual_recall_candidates) }},
+    selected={{ observed(data.context_telemetry.factual_recall_selected) }}).
   </p>
 </section>
 {% endif %}
 
-<section class="panel">
+<section class="panel section-anchor" id="trace-timeline">
   <h2>Timeline</h2>
   {% if data.timeline %}
     {% for item in data.timeline %}
@@ -258,7 +264,7 @@
     </details>
     {% endfor %}
   {% else %}
-  <p class="muted">No telemetry rows remain for this trace.</p>
+  <p class="muted">이 trace의 관측 데이터가 남아 있지 않습니다.</p>
   {% endif %}
 </section>
 {% endblock %}

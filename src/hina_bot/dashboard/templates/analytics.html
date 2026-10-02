@@ -1,28 +1,30 @@
 {% extends "base.html" %}
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
 {% from "_telemetry_ui.html" import telemetry_window %}
+{% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Analytics · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
     <h1>Routing & Usage Analytics</h1>
-    <p>Retained content-free telemetry only. Missing usage fields stay missing instead of becoming zero.</p>
+    <p>본문을 포함하지 않는 보존 관측 데이터입니다. 미관측 사용량은 —로 표시합니다.</p>
   </div>
   {{ telemetry_window(data.available) }}
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters filter-layout" method="get">
   <fieldset class="filter-cluster filter-cluster-4">
     <legend>Match</legend>
-    <input name="operation" value="{{ data.filters.operation }}" placeholder="operation">
-    <input name="model" value="{{ data.filters.model }}" placeholder="model">
-    <input name="provider" value="{{ data.filters.provider }}" placeholder="provider">
+    <div class="filter-field"><label for="filter-analytics-operation">Operation</label><input id="filter-analytics-operation" name="operation" value="{{ data.filters.operation }}" placeholder="operation"></div>
+    <div class="filter-field"><label for="filter-analytics-model">Model</label><input id="filter-analytics-model" name="model" value="{{ data.filters.model }}" placeholder="model"></div>
+    <div class="filter-field"><label for="filter-analytics-provider">Provider</label><input id="filter-analytics-provider" name="provider" value="{{ data.filters.provider }}" placeholder="provider"></div>
     {{ epoch_selector(data) }}
   </fieldset>
   <fieldset class="filter-cluster filter-cluster-2">
     <legend>Time window</legend>
-    <label class="time-field">After<input type="datetime-local" name="after" value="{{ data.filters.after }}"></label>
-    <label class="time-field">Before<input type="datetime-local" name="before" value="{{ data.filters.before }}"></label>
+    <label class="time-field">After<input type="{{ 'text' if data.filter_errors and data.filter_errors.get('after') else data.filters.after | filtertype }}" step="any" name="after" value="{{ data.filters.after if data.filter_errors and data.filter_errors.get('after') else data.filters.after | filtertime }}" {% if data.filter_errors and data.filter_errors.get("after") %}aria-invalid="true" aria-describedby="error-after"{% endif %}>{% if data.filter_errors and data.filter_errors.get("after") %}<span id="error-after" class="field-error">{{ data.filter_errors["after"] }}</span>{% endif %}</label>
+    <label class="time-field">Before<input type="{{ 'text' if data.filter_errors and data.filter_errors.get('before') else data.filters.before | filtertype }}" step="any" name="before" value="{{ data.filters.before if data.filter_errors and data.filter_errors.get('before') else data.filters.before | filtertime }}" {% if data.filter_errors and data.filter_errors.get("before") %}aria-invalid="true" aria-describedby="error-before"{% endif %}>{% if data.filter_errors and data.filter_errors.get("before") %}<span id="error-before" class="field-error">{{ data.filter_errors["before"] }}</span>{% endif %}</label>
   </fieldset>
   <div class="filter-footer">
     <div class="filter-actions">
@@ -36,6 +38,7 @@
       {% endfor %}
     </div>
   </div>
+  {{ active_filter_chips(request, "/analytics", data) }}
 </form>
 
 <nav class="section-nav" aria-label="Analytics sections">
@@ -54,12 +57,12 @@
   <article class="card">
     <span>Total tokens</span>
     <strong>{{ "{:,}".format(data.usage.tokens.total_tokens.value) }}</strong>
-    <small>{{ data.usage.tokens.total_tokens.known }} known / {{ data.usage.tokens.total_tokens.missing }} missing</small>
+    <small>{{ data.usage.tokens.total_tokens.known }}건 관측 / {{ data.usage.tokens.total_tokens.missing }}건 미관측</small>
   </article>
   <article class="card">
     <span>Latency p50 / p95</span>
     <strong>{{ data.usage.latency.p50 if data.usage.latency.p50 is not none else "—" }} / {{ data.usage.latency.p95 if data.usage.latency.p95 is not none else "—" }} ms</strong>
-    <small>{{ data.usage.latency.known }} known</small>
+    <small>{{ data.usage.latency.known }}건 관측</small>
   </article>
   <article class="card"><span>Memory API calls</span><strong>{{ data.usage.memory_calls }}</strong></article>
   <article class="card"><span>Empty-response retries</span><strong>{{ data.usage.empty_response_retries }}</strong></article>
@@ -67,8 +70,7 @@
 
 {% if data.usage.tokens.total_tokens.missing or data.exchanges.usage_completeness.get("partial", 0) or data.exchanges.usage_completeness.get("unknown", 0) %}
 <section class="notice warning">
-  Some retained rows have incomplete usage metadata.
-  Token sums below include only rows where that field is known.
+  일부 보존 데이터의 사용량 정보가 불완전합니다. 토큰 합계에는 해당 필드가 관측된 데이터만 포함합니다.
   Exchange completeness:
   complete={{ data.exchanges.usage_completeness.get("complete", 0) }},
   partial={{ data.exchanges.usage_completeness.get("partial", 0) }},
@@ -78,29 +80,29 @@
 
 <section class="section-heading section-anchor" id="runtime-performance">
   <h2>Runtime performance</h2>
-  <p class="muted">Observed reply latency includes retained web preflight time. Missing preflight or stage fields stay missing.</p>
+  <p class="muted">응답 지연에는 보존된 웹 사전 처리 시간이 포함됩니다. 미관측 사전 처리·단계 값은 —로 표시합니다.</p>
 </section>
 
 <section class="cards">
   <article class="card">
     <span>Observed reply p50 / p95</span>
     <strong>{{ data.performance.reply_latency.p50 if data.performance.reply_latency.p50 is not none else "—" }} / {{ data.performance.reply_latency.p95 if data.performance.reply_latency.p95 is not none else "—" }} ms</strong>
-    <small>{{ data.performance.reply_latency.known }} known / {{ data.performance.reply_latency.missing }} missing</small>
+    <small>{{ data.performance.reply_latency.known }}건 관측 / {{ data.performance.reply_latency.missing }}건 미관측</small>
   </article>
   <article class="card">
     <span>Total turn p50 / p95</span>
     <strong>{{ data.performance.turn_latency.p50 if data.performance.turn_latency.p50 is not none else "—" }} / {{ data.performance.turn_latency.p95 if data.performance.turn_latency.p95 is not none else "—" }} ms</strong>
-    <small>preflight + terminal turn</small>
+    <small>사전 처리 + 대화 종료</small>
   </article>
   <article class="card">
     <span>Post-reply avg</span>
     <strong>{{ data.performance.post_reply.average if data.performance.post_reply.average is not none else "—" }} ms</strong>
-    <small>work after Discord delivery</small>
+    <small>Discord 전달 이후 작업</small>
   </article>
   <article class="card">
     <span>Generation residual avg</span>
     <strong>{{ data.performance.generation.residual.average if data.performance.generation.residual.average is not none else "—" }} ms</strong>
-    <small>generation stage minus critical API calls</small>
+    <small>생성 단계에서 핵심 API 호출을 제외한 시간</small>
   </article>
 </section>
 
@@ -142,9 +144,9 @@
 
 <section class="panel">
   <h2>Request size attribution</h2>
-  <p class="muted">Serialized character counts are a privacy-safe attribution proxy; provider-reported input tokens remain authoritative.</p>
-  <div class="table-wrap">
-    <table>
+  <p class="muted">직렬화된 문자 수는 본문을 저장하지 않는 기여도 추정치입니다. 입력 토큰은 공급자 보고값이 기준입니다.</p>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="wide-table">
       <thead><tr><th>Section</th><th>Avg chars</th><th>p95</th><th>Coverage</th></tr></thead>
       <tbody>
       {% for name, metric in data.performance.context_chars.items() %}
@@ -162,8 +164,8 @@
 
 <section class="panel">
   <h2>Token fields</h2>
-  <div class="table-wrap">
-    <table>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="wide-table">
       <thead><tr><th>Field</th><th>Sum of known values</th><th>Known rows</th><th>Missing rows</th></tr></thead>
       <tbody>
       {% for field, metric in data.usage.tokens.items() %}
@@ -181,14 +183,14 @@
 
 <section class="section-heading section-anchor" id="model-routing">
   <h2>Model routing</h2>
-  <p class="muted">Routing/search panels use answer rows and ignore the operation filter; model/provider/time filters still apply.</p>
+  <p class="muted">라우팅·검색은 answer 데이터 기준입니다. Model·Provider·시간 조건을 적용하고 Operation 조건은 적용하지 않습니다.</p>
 </section>
 
 <section class="cards">
   <article class="card"><span>Answer rows</span><strong>{{ data.routing.answer_rows }}</strong></article>
   <article class="card"><span>FAST</span><strong>{{ data.routing.tiers.get("fast", 0) }}</strong></article>
   <article class="card"><span>SMART</span><strong>{{ data.routing.tiers.get("smart", 0) }}</strong></article>
-  <article class="card"><span>Near threshold (±0.25)</span><strong>{{ data.routing.near_threshold }}</strong><small>{{ data.routing.known_margins }} known / {{ data.routing.missing_margins }} missing</small></article>
+  <article class="card"><span>Near threshold (±0.25)</span><strong>{{ data.routing.near_threshold }}</strong><small>{{ data.routing.known_margins }}건 관측 / {{ data.routing.missing_margins }}건 미관측</small></article>
   <article class="card"><span>Classifier calls</span><strong>{{ data.routing.classifier.calls }}</strong></article>
   <article class="card"><span>Classifier errors</span><strong>{{ data.routing.classifier.errors }}</strong></article>
 </section>
@@ -205,9 +207,9 @@
       {% endfor %}
       </tbody>
     </table>
-    {% else %}<p class="muted">No baseline/final pairs in this window.</p>{% endif %}
+    {% else %}<p class="muted">이 구간에 기본·최종 등급 쌍이 없습니다.</p>{% endif %}
     {% if data.routing.baseline_to_final.missing %}
-    <p class="muted">{{ data.routing.baseline_to_final.missing }} answer rows lack a complete pair.</p>
+    <p class="muted">{{ data.routing.baseline_to_final.missing }} 개의 응답에 완전한 등급 쌍이 없습니다.</p>
     {% endif %}
   </section>
 
@@ -254,7 +256,7 @@
       {% endfor %}
       </tbody>
     </table>
-    {% else %}<p class="muted">No component telemetry.</p>{% endif %}
+    {% else %}<p class="muted">구성 요소 관측 데이터가 없습니다.</p>{% endif %}
   </section>
 </div>
 
@@ -267,7 +269,7 @@
     <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
     {% endfor %}
     </tbody></table>
-    {% else %}<p class="muted">No reason telemetry.</p>{% endif %}
+    {% else %}<p class="muted">판단 이유 관측 데이터가 없습니다.</p>{% endif %}
   </section>
 
   <section class="panel">
@@ -275,7 +277,7 @@
     <dl class="metadata compact">
       <div><dt>Calls</dt><dd>{{ data.routing.classifier.calls }}</dd></div>
       <div><dt>Errors</dt><dd>{{ data.routing.classifier.errors }}</dd></div>
-      <div><dt>Total tokens</dt><dd>{{ data.routing.classifier.tokens.value }} <span class="muted">({{ data.routing.classifier.tokens.known }} known / {{ data.routing.classifier.tokens.missing }} missing)</span></dd></div>
+      <div><dt>Total tokens</dt><dd>{{ data.routing.classifier.tokens.value }} <span class="muted">({{ data.routing.classifier.tokens.known }}건 관측 / {{ data.routing.classifier.tokens.missing }}건 미관측)</span></dd></div>
       <div><dt>Avg latency</dt><dd>{{ data.routing.classifier.latency.average if data.routing.classifier.latency.average is not none else "—" }} ms</dd></div>
     </dl>
     {% if data.routing.classifier.providers %}
@@ -290,7 +292,7 @@
 
 <section class="panel">
   <h2>Shadow classifier proposals</h2>
-  <p class="muted">{{ data.routing.shadow.count }} retained <code>model_route_shadow</code> rows.</p>
+  <p class="muted">{{ data.routing.shadow.count }} 개의 <code>model_route_shadow</code> 데이터가 보존되어 있습니다.</p>
   <div class="grid-2 nested-grid">
     <div>
       <h3>Model baseline → proposal</h3>
@@ -300,7 +302,7 @@
       <tr><td>{{ row["from"] }} → {{ row["to"] }}</td><td class="numeric">{{ row.count }}</td></tr>
       {% endfor %}
       </tbody></table>
-      {% else %}<p class="muted">No shadow tier pairs.</p>{% endif %}
+      {% else %}<p class="muted">Shadow 등급 쌍이 없습니다.</p>{% endif %}
     </div>
     <div>
       <h3>Search baseline → proposal</h3>
@@ -310,7 +312,7 @@
       <tr><td>{{ row["from"] }} → {{ row["to"] }}</td><td class="numeric">{{ row.count }}</td></tr>
       {% endfor %}
       </tbody></table>
-      {% else %}<p class="muted">No shadow search pairs.</p>{% endif %}
+      {% else %}<p class="muted">Shadow 검색 쌍이 없습니다.</p>{% endif %}
     </div>
   </div>
 </section>
@@ -327,7 +329,7 @@
     <tr><td>{{ key }}</td><td class="numeric">{{ value }}</td></tr>
     {% endfor %}
     </tbody></table>
-    {% else %}<p class="muted">No search outcome telemetry.</p>{% endif %}
+    {% else %}<p class="muted">검색 결과 관측 데이터가 없습니다.</p>{% endif %}
   </section>
   <section class="panel">
     <h2>Search decisions</h2>
@@ -354,20 +356,20 @@
   <tr><td><code>{{ key }}</code></td><td class="numeric">{{ value }}</td></tr>
   {% endfor %}
   </tbody></table>
-  {% else %}<p class="muted">No locked-reason telemetry.</p>{% endif %}
+  {% else %}<p class="muted">고정 이유 관측 데이터가 없습니다.</p>{% endif %}
 </section>
 
 <section class="section-heading section-anchor" id="usage-breakdown">
   <h2>Usage breakdown</h2>
-  <p class="muted">These tables use the operation/model/provider/time filters above.</p>
+  <p class="muted">위 Operation·Model·Provider·시간 조건을 적용합니다.</p>
 </section>
 
 {% for title, rows in [("By operation", data.usage.operations), ("By model", data.usage.models), ("By provider", data.usage.providers)] %}
 <section class="panel">
   <h2>{{ title }}</h2>
   {% if rows %}
-  <div class="table-wrap">
-    <table>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="wide-table">
       <thead><tr><th>Name</th><th>Calls</th><th>Errors</th><th>Total tokens</th><th>Usage coverage</th><th>Avg latency</th><th>p95</th><th>Search calls</th><th>Empty retries</th></tr></thead>
       <tbody>
       {% for row in rows %}
@@ -386,17 +388,17 @@
       </tbody>
     </table>
   </div>
-  {% else %}<p class="muted">No rows match this filter.</p>{% endif %}
+  {% else %}<p class="muted">조건에 맞는 데이터가 없습니다.</p>{% endif %}
 </section>
 {% endfor %}
 
 <section class="panel">
   <h2>Discord exchange aggregates</h2>
-  <p class="muted">Exchange rows are filtered by time only and represent whole Discord turns, not the narrowed operation/provider subset.</p>
+  <p class="muted">Exchange는 시간 조건만 적용하며 Discord 대화 전체를 집계합니다. Operation·Provider 조건은 적용하지 않습니다.</p>
   <dl class="metadata">
     <div><dt>Exchanges</dt><dd>{{ data.exchanges.count }}</dd></div>
-    <div><dt>Calls</dt><dd>{{ data.exchanges.calls.value }} <span class="muted">({{ data.exchanges.calls.known }} known)</span></dd></div>
-    <div><dt>Total tokens</dt><dd>{{ data.exchanges.tokens.total_tokens.value }} <span class="muted">({{ data.exchanges.tokens.total_tokens.known }} known / {{ data.exchanges.tokens.total_tokens.missing }} missing)</span></dd></div>
+    <div><dt>Calls</dt><dd>{{ data.exchanges.calls.value }} <span class="muted">({{ data.exchanges.calls.known }}건 관측)</span></dd></div>
+    <div><dt>Total tokens</dt><dd>{{ data.exchanges.tokens.total_tokens.value }} <span class="muted">({{ data.exchanges.tokens.total_tokens.known }}건 관측 / {{ data.exchanges.tokens.total_tokens.missing }}건 미관측)</span></dd></div>
     <div><dt>Avg latency</dt><dd>{{ data.exchanges.latency.average if data.exchanges.latency.average is not none else "—" }} ms</dd></div>
     <div><dt>p95 latency</dt><dd>{{ data.exchanges.latency.p95 if data.exchanges.latency.p95 is not none else "—" }} ms</dd></div>
   </dl>
@@ -405,8 +407,8 @@
 <section class="panel">
   <h2>Daily provider / model breakdown · {{ dashboard_timezone }}</h2>
   {% if data.usage.daily %}
-  <div class="table-wrap">
-    <table>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="wide-table">
       <thead><tr><th>Local day</th><th>Provider</th><th>Model</th><th>Calls</th><th>Errors</th><th>Total tokens</th><th>Coverage</th><th>Avg latency</th></tr></thead>
       <tbody>
       {% for row in data.usage.daily %}
@@ -420,6 +422,6 @@
       </tbody>
     </table>
   </div>
-  {% else %}<p class="muted">No daily usage rows.</p>{% endif %}
+  {% else %}<p class="muted">일별 사용량 데이터가 없습니다.</p>{% endif %}
 </section>
 {% endblock %}

@@ -57,3 +57,22 @@ def test_telemetry_freshness_reports_age_bands():
         "tone": "neutral",
         "age_label": "No retained events",
     }
+
+
+def test_filter_date_input_roundtrips_timezone_seconds_and_fraction():
+    from hina_bot.dashboard.timeutils import filter_input_time, parse_local_time
+
+    original = "2026-09-21T00:00:12.345678+00:00"
+    local = filter_input_time(original, "Asia/Seoul")
+    assert local == "2026-09-21T09:00:12.345678"
+    assert parse_local_time(local, "Asia/Seoul") == parse_local_time(original, "Asia/Seoul")
+    assert filter_input_time("bad-date", "Asia/Seoul") == "bad-date"
+
+
+def test_precise_filter_dates_use_text_to_avoid_browser_value_loss():
+    from hina_bot.dashboard.timeutils import filter_input_type
+
+    assert filter_input_type("2026-09-21T00:00:12.345678Z", "Asia/Seoul") == "text"
+    assert filter_input_type("2026-09-21T00:00:12Z", "Asia/Seoul") == "datetime-local"
+    assert filter_input_type("2026-09-21T00:00:12.123Z", "Asia/Seoul") == "datetime-local"
+    assert filter_input_type("bad", "Asia/Seoul") == "text"

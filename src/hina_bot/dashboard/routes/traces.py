@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -11,7 +11,7 @@ def build_router(service: TraceService, templates: Jinja2Templates) -> APIRouter
     @router.get("/traces", response_class=HTMLResponse)
     def traces(
         request: Request,
-        page: int = 1,
+        page: int = Query(1, ge=1),
         scope: str = "",
         status: str = "",
         tier: str = "",
@@ -19,6 +19,7 @@ def build_router(service: TraceService, templates: Jinja2Templates) -> APIRouter
         operation: str = "",
         error: str = "",
         web_search: str = "",
+        memory_failure: str = "",
         after: str = "",
         before: str = "",
         q: str = "",
@@ -33,6 +34,7 @@ def build_router(service: TraceService, templates: Jinja2Templates) -> APIRouter
             operation=operation,
             error=error,
             web_search=web_search,
+            memory_failure=memory_failure,
             after=after,
             before=before,
             query=q,

@@ -1,16 +1,18 @@
 {% extends "base.html" %}
 {% from "_filter_ui.html" import active_filter_chips %}
 {% from "_scope_picker.html" import scope_picker %}
+{% from "_scope_ui.html" import scope_origin, scope_user %}
+{% from "_mobile_list_ui.html" import mobile_list %}
 {% block title %}Reconciliation · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
     <h1>Reconciliation Review</h1>
-    <p>{{ data.page.total }} shadow proposals in the current filter.</p>
+    <p>현재 조건에 맞는 shadow 제안 {{ data.page.total }}개입니다.</p>
   </div>
   <div class="window">
     <strong>Read-only rollout review</strong>
-    <span>No proposal or memory state is modified here.</span>
+    <span>제안이나 메모리 상태를 변경하지 않습니다.</span>
   </div>
 </section>
 
@@ -23,6 +25,7 @@
   <article class="card"><span>Corrects / conflicts</span><strong>{{ data.stats.relations.get("corrects", 0) }} / {{ data.stats.relations.get("conflicts", 0) }}</strong></article>
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters search-filter" method="get">
   <div class="search-primary">
     <label for="reconciliation-search">Proposal search</label>
@@ -36,38 +39,38 @@
     <div class="filter-row grouped-filter-row">
       <fieldset class="filter-cluster filter-cluster-1">
         <legend>Owner &amp; origin</legend>
-        <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
+        <div class="filter-field"><label for="filter-reconciliation-user-id">User ID / name</label><input id="filter-reconciliation-user-id" name="user_id" value="{{ data.filters.user_id }}" placeholder="user id"></div>
         {{ scope_picker("origin", data.filters.origin_scope_type, data.filters.origin_guild_id, data.filters.origin_channel_id, label="Origin scope") }}
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-3">
         <legend>Proposal attributes</legend>
-        <select name="relation">
+        <div class="filter-field"><label for="filter-reconciliation-relation">Relation</label><select id="filter-reconciliation-relation" name="relation">
           <option value="">all relations</option>
           {% for value in ["duplicate","corrects","conflicts"] %}
           <option value="{{ value }}" {% if data.filters.relation == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
-        </select>
-        <select name="kind">
+        </select></div>
+        <div class="filter-field"><label for="filter-reconciliation-kind">Kind</label><select id="filter-reconciliation-kind" name="kind">
           <option value="">all memory kinds</option>
           {% for value in ["fact","event","preference","relationship","boundary","task"] %}
           <option value="{{ value }}" {% if data.filters.kind == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
-        </select>
-        <select name="retry">
+        </select></div>
+        <div class="filter-field"><label for="filter-reconciliation-retry">Retry</label><select id="filter-reconciliation-retry" name="retry">
           <option value="">retry suspect: any</option>
           <option value="yes" {% if data.filters.retry == "yes" %}selected{% endif %}>exact same source set</option>
           <option value="no" {% if data.filters.retry == "no" %}selected{% endif %}>different source set</option>
-        </select>
+        </select></div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Confidence</legend>
-        <input name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥">
-        <input name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤">
+        <div class="filter-field"><label for="filter-reconciliation-confidence-min">Confidence ≥</label><input id="filter-reconciliation-confidence-min" name="confidence_min" value="{{ data.filters.confidence_min }}" placeholder="confidence ≥" {% if data.filter_errors and data.filter_errors.get("confidence_min") %}aria-invalid="true" aria-describedby="error-confidence_min"{% endif %}>{% if data.filter_errors and data.filter_errors.get("confidence_min") %}<span id="error-confidence_min" class="field-error">{{ data.filter_errors["confidence_min"] }}</span>{% endif %}</div>
+        <div class="filter-field"><label for="filter-reconciliation-confidence-max">Confidence ≤</label><input id="filter-reconciliation-confidence-max" name="confidence_max" value="{{ data.filters.confidence_max }}" placeholder="confidence ≤" {% if data.filter_errors and data.filter_errors.get("confidence_max") %}aria-invalid="true" aria-describedby="error-confidence_max"{% endif %}>{% if data.filter_errors and data.filter_errors.get("confidence_max") %}<span id="error-confidence_max" class="field-error">{{ data.filter_errors["confidence_max"] }}</span>{% endif %}</div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
         <legend>Created</legend>
-        <label class="time-field">After<input type="datetime-local" name="created_after" value="{{ data.filters.created_after }}"></label>
-        <label class="time-field">Before<input type="datetime-local" name="created_before" value="{{ data.filters.created_before }}"></label>
+        <label class="time-field">After<input type="{{ 'text' if data.filter_errors and data.filter_errors.get('created_after') else data.filters.created_after | filtertype }}" step="any" name="created_after" value="{{ data.filters.created_after if data.filter_errors and data.filter_errors.get('created_after') else data.filters.created_after | filtertime }}" {% if data.filter_errors and data.filter_errors.get("created_after") %}aria-invalid="true" aria-describedby="error-created_after"{% endif %}>{% if data.filter_errors and data.filter_errors.get("created_after") %}<span id="error-created_after" class="field-error">{{ data.filter_errors["created_after"] }}</span>{% endif %}</label>
+        <label class="time-field">Before<input type="{{ 'text' if data.filter_errors and data.filter_errors.get('created_before') else data.filters.created_before | filtertype }}" step="any" name="created_before" value="{{ data.filters.created_before if data.filter_errors and data.filter_errors.get('created_before') else data.filters.created_before | filtertime }}" {% if data.filter_errors and data.filter_errors.get("created_before") %}aria-invalid="true" aria-describedby="error-created_before"{% endif %}>{% if data.filter_errors and data.filter_errors.get("created_before") %}<span id="error-created_before" class="field-error">{{ data.filter_errors["created_before"] }}</span>{% endif %}</label>
       </fieldset>
       <div class="filter-actions filter-row-actions">
         <button type="submit">Apply filters</button>
@@ -80,18 +83,23 @@
     <a href="{{ request.url.include_query_params(created_after=preset.after, created_before='', page=1) }}">{{ preset.label }}</a>
     {% endfor %}
   </div>
-  {{ active_filter_chips(request, "/reconciliation") }}
+  {{ active_filter_chips(request, "/reconciliation", data) }}
 </form>
 
 <section class="notice info">
-  <strong>Retry suspect</strong> means the new and target memory items have the exact same non-empty
-  <code>source_message_ids</code> set. It is a review heuristic, not a conclusion that the extractor retried incorrectly.
+  <strong>Retry suspect</strong>는 새 메모리와 대상 메모리에 비어 있지 않은 동일한 <code>source_message_ids</code> 집합이 있다는 뜻입니다. 재시도 오류의 확정이 아닌 점검용 신호입니다.
 </section>
 
 <section class="panel flush">
   {% if data.rows %}
-  <div class="table-wrap">
-    <table class="wide-table">
+  {{ mobile_list(data, request, "reconciliation") }}
+  <div class="table-wrap desktop-result-list" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="wide-table reconciliation-table">
+      <colgroup>
+        <col class="proposal-id"><col class="proposal-relation"><col class="proposal-confidence">
+        <col class="proposal-owner"><col><col>
+        <col class="proposal-sources"><col class="proposal-retry"><col class="proposal-created">
+      </colgroup>
       <thead>
         <tr>
           <th>ID</th><th>Relation</th><th>Confidence</th><th>Owner / origin</th>
@@ -101,13 +109,12 @@
       <tbody>
       {% for row in data.rows %}
       <tr>
-        <td><a href="/reconciliation/{{ row.id }}">#{{ row.id }}</a></td>
+        <td><a href="{{ detail_url('/reconciliation/' ~ row.id, request, '/reconciliation') }}">#{{ row.id }}</a></td>
         <td><span class="relation relation-{{ row.relation }}">{{ row.relation }}</span></td>
         <td class="numeric">{{ "%.3f"|format(row.confidence) }}</td>
         <td>
-          {% if row.user_name %}{{ row.user_name }}<br>{% endif %}
-          <code>{{ row.user_id }}</code><br>
-          <span class="muted">{{ row.origin_realm }} · #{{ row.origin_channel_id }}</span>
+          {{ scope_user(row.user_id, row.user_name) }}
+          {{ scope_origin(row.origin_display, row.origin_channel_id, row.guild_name, row.channel_name) }}
         </td>
         <td>
           <a href="/memory/{{ row.target_memory_item_id }}">#{{ row.target_memory_item_id }}</a>
@@ -128,7 +135,7 @@
     </table>
   </div>
   {% else %}
-  <p class="empty">No reconciliation proposals match this filter.</p>
+  <p class="empty">조건에 맞는 조정 제안이 없습니다.</p>
   {% endif %}
 </section>
 

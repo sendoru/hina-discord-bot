@@ -1,0 +1,62 @@
+{% from "_status_ui.html" import status_badge %}
+{% from "_scope_ui.html" import scope_origin, scope_user %}
+{% macro mobile_list(data, request, kind) -%}
+<div class="mobile-result-list">
+{% for row in data.rows %}
+<article class="mobile-result-card">
+  {% if kind == "traces" %}
+  <div class="mobile-result-head">{{ status_badge(row.status) }}<time>{{ row.at | localtime }}</time></div>
+  <a class="mobile-result-title" href="{{ detail_url('/traces/' ~ row.turn_id, request, '/traces') }}">Trace <code>{{ row.turn_id }}</code></a>
+  <p>{{ row.scope or "—" }} · {{ row.models | join(", ") or "—" }}</p>
+  <details><summary>메타데이터</summary>
+    <dl class="metadata compact">
+      <div><dt>Tier</dt><dd>{{ row.model_tier or "—" }}</dd></div>
+      <div><dt>Tokens</dt><dd>{{ row.total_tokens if row.total_tokens is not none else "—" }}</dd></div>
+      <div><dt>Latency</dt><dd>{{ row.elapsed_ms ~ " ms" if row.elapsed_ms is not none else "—" }}</dd></div>
+      <div><dt>Search</dt><dd>{{ row.web_search_calls if row.web_search else "—" }}</dd></div>
+      <div><dt>Error</dt><dd><code>{{ row.error_fingerprint or ("yes" if row.error else "—") }}</code></dd></div>
+      <div><dt>Memory failures</dt><dd>{{ row.memory_failures }}</dd></div>
+      <div><dt>Stored</dt><dd>{{ "yes" if row.stored else "no" }}</dd></div>
+    </dl>
+  </details>
+  {% elif kind == "memory" %}
+  <div class="mobile-result-head">{{ status_badge(row.status) }}<time>{{ row.updated_at | localtime }}</time></div>
+  <a class="mobile-result-title" href="{{ detail_url('/memory/' ~ row.id, request, '/memory') }}">Memory #{{ row.id }}</a>
+  <div class="mobile-result-preview">{{ row.content }}</div>
+  {% if row.search_matches %}
+  <div class="search-matches compact-search-matches">
+    {% for match in row.search_matches %}<div><span class="match-field">{{ match.field }}</span> {{ match.fragment.before }}<mark>{{ match.fragment.match }}</mark>{{ match.fragment.after }}</div>{% endfor %}
+  </div>
+  {% endif %}
+  <details><summary>메타데이터</summary>
+    <dl class="metadata compact">
+      <div><dt>User</dt><dd>{{ scope_user(row.user_id, row.user_name) }}</dd></div>
+      <div><dt>Kind / disclosure</dt><dd>{{ row.kind }} / {{ row.disclosure }}</dd></div>
+      <div><dt>Origin</dt><dd>{{ scope_origin(row.origin_display, row.origin_channel_id) }} · {{ "public" if row.origin_public_at_capture else "private" }}</dd></div>
+      <div><dt>Confidence</dt><dd>{{ "%.2f"|format(row.confidence) }}</dd></div>
+      <div><dt>Sources</dt><dd>{{ row.source_message_ids_decoded|length }}</dd></div>
+      <div><dt>Relationship</dt><dd>{{ "yes" if row.has_relationship_evidence else "—" }}</dd></div>
+    </dl>
+  </details>
+  {% else %}
+  <div class="mobile-result-head"><span class="relation relation-{{ row.relation }}">{{ row.relation }}</span><time>{{ row.created_at | localtime }}</time></div>
+  <a class="mobile-result-title" href="{{ detail_url('/reconciliation/' ~ row.id, request, '/reconciliation') }}">Proposal #{{ row.id }}</a>
+  <p><a href="/memory/{{ row.target_memory_item_id }}">Target #{{ row.target_memory_item_id }}</a></p>
+  <div class="mobile-result-preview">{{ row.target_content }}</div>
+  <p><a href="/memory/{{ row.new_memory_item_id }}">New #{{ row.new_memory_item_id }}</a></p>
+  <div class="mobile-result-preview">{{ row.new_content }}</div>
+  <details><summary>메타데이터</summary>
+    <dl class="metadata compact">
+      <div><dt>Confidence</dt><dd>{{ "%.3f"|format(row.confidence) }}</dd></div>
+      <div><dt>Owner / origin</dt><dd>{{ scope_user(row.user_id, row.user_name) }}{{ scope_origin(row.origin_display, row.origin_channel_id) }}</dd></div>
+      <div><dt>Target kind / disclosure</dt><dd>{{ row.target_kind }} / {{ row.target_disclosure }}</dd></div>
+      <div><dt>New kind / disclosure</dt><dd>{{ row.new_kind }} / {{ row.new_disclosure }}</dd></div>
+      <div><dt>Sources</dt><dd>{{ row.source_message_ids_decoded | join(", ") or "—" }}</dd></div>
+      <div><dt>Retry?</dt><dd>{{ "yes" if row.retry_suspect else "no" }}</dd></div>
+    </dl>
+  </details>
+  {% endif %}
+</article>
+{% endfor %}
+</div>
+{%- endmacro %}
