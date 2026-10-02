@@ -372,6 +372,65 @@ async def test_gemini_translates_local_function_tool_and_call_output():
 
 
 @pytest.mark.asyncio
+async def test_gemini_generate_content_restores_function_response_name_from_call_id():
+    seen = {}
+
+    async def handler(request: httpx.Request):
+        seen["json"] = __import__("json").loads(request.content)
+        return httpx.Response(200, json={
+            "candidates": [{
+                "finishReason": "STOP",
+                "content": {
+                    "role": "model",
+                    "parts": [{"text": "done"}],
+                },
+            }],
+            "usageMetadata": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        response = await _GeminiResponses(http).create(
+            model="gemini-test",
+            input=[
+                {"role": "user", "content": "으혜 불러줘"},
+                {
+                    "type": "function_call",
+                    "call_id": "call_1",
+                    "name": "get_current_channel_members",
+                    "arguments": "{}",
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_1",
+                    "output": '{"ok":true,"result":{"members":[]}}',
+                },
+            ],
+            tools=[
+                {"type": "web_search"},
+                {
+                    "type": "function",
+                    "name": "get_current_channel_members",
+                    "description": "current channel members",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                },
+            ],
+            tool_choice="auto",
+        )
+    finally:
+        await http.aclose()
+
+    function_response = seen["json"]["contents"][-1]["parts"][0]["functionResponse"]
+    assert function_response["id"] == "call_1"
+    assert function_response["name"] == "get_current_channel_members"
+    assert response.output_text == "done"
+
+
+@pytest.mark.asyncio
 async def test_gemini_non_search_requests_stay_on_interactions():
     seen = {}
 
