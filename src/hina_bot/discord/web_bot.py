@@ -37,6 +37,8 @@ CURRENT_PUBLIC_CONTEXT_REQUEST = ContextVar(
     "current_public_context_request",
     default=(False, ()),
 )
+
+
 async def _timed(awaitable):
     started = time.perf_counter()
     result = await awaitable
