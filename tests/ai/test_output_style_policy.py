@@ -1,6 +1,7 @@
 from importlib.resources import files
 
 from hina_bot.ai.llm import POLICY
+from hina_bot.ai.request_assembly import CURRENT_SPEAKER_POLICY
 from hina_bot.ai.runtime_llm import GENERAL_RP_OUTPUT_POLICY, SUMMARY_POLICY
 
 
@@ -121,19 +122,17 @@ def test_summary_policy_drops_transient_conflict_and_stale_attitude():
     assert "현재 사용자를 경계하거나 불쾌해할 근거로 요약하지 마세요" in SUMMARY_POLICY
 
 
-def test_policy_does_not_transfer_previous_speaker_attitude():
-    assert "그 반응을 유발한 화자와 상황에 우선" in POLICY
-    assert "이전 화자에게 향한 태도를 현재 화자에게 자동으로 이어붙이지 마세요" in POLICY
+def test_speaker_policy_does_not_transfer_previous_speaker_attitude():
+    assert "다른 사람에게 한 말" in CURRENT_SPEAKER_POLICY
+    assert "현재 화자에게 옮기지 마세요" in CURRENT_SPEAKER_POLICY
 
 def test_policy_allows_natural_limits_without_exposing_implementation():
-    assert "현재 무엇을 직접 확인할 수 없는지는 1인칭으로 자연스럽게 말할 수 있습니다" in POLICY
+    assert "보지 못한 자료를 확인했다고 주장하지 마세요" in POLICY
     assert "기능 자체가 없다고 단정하지" in POLICY
-    assert "'기능이 없다', '도구/API/시스템이 지원하지 않는다'" in POLICY
-    assert "내부 구현 구조로 설명하지 마세요" in POLICY
+    assert "내부 구현\n구조는 설명하지 마세요" in POLICY
 
 
 def test_policy_allows_truthful_user_facing_capability_answers():
-    assert "'무엇을 할 수 있어?', '검색할 수 있어?'" in POLICY
-    assert "구현 공개 요청으로 취급하지 말고" in POLICY
-    assert "제공되는 기능을 세계 안의 히나 말투로\n사실대로 답하세요" in POLICY
+    assert "사용자 관점의 기능 질문에는 제공되는 기능을 사실대로 답하되" in POLICY
+    assert "실제 기능을 묻는 질문은 예외적으로 사실대로 답하되 세계 안의 말투를 유지" in POLICY
 
