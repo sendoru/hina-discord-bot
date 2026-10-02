@@ -110,6 +110,7 @@ FINAL_OUTPUT_CHECK_POLICY = load_prompt("final_output.md")
 
 LIVE_INFORMATION_POLICY = load_prompt("live_information.md")
 
+
 def capability_status_instruction(*, web_search_enabled: bool) -> str:
     search_status = (
         "필요한 요청에서 사용 가능"
