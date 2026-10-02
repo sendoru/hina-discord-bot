@@ -240,6 +240,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     reconciliation_detail = client.get("/reconciliation/1")
     static = client.get("/static/dashboard.css")
     scope_script = client.get("/static/scope-picker.js")
+    clipboard_script = client.get("/static/clipboard.js")
     icon = client.get("/static/hina-dashboard-icon.webp")
 
     assert overview.status_code == 200
@@ -251,7 +252,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
-    assert 'dashboard.css?v=20261002-review' in overview.text
+    assert 'dashboard.css?v=20261002-copy' in overview.text
+    assert 'clipboard.js' in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -290,6 +292,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "<legend>Time window</legend>" in identity.text
     assert 'class="filter-actions"' in identity.text
     assert "hello dashboard" in detail.text
+    assert 'data-copy-text="trace-ui"' in detail.text
+    assert 'data-copy-text="55"' in detail.text
+    assert 'data-copy-block' in detail.text
     assert "Dashboard User" in detail.text
     assert '<code class="scope-id">100</code>' in detail.text
     assert "<dt>Channel</dt>" in detail.text
@@ -297,6 +302,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Context &amp; provenance" in detail.text
     assert "Egress policy" in detail.text
     assert "hello dashboard" in conversations.text
+    assert 'data-copy-text="55"' in conversations.text
+    assert conversations.text.count("data-copy-block") >= 2
     assert "Content search" in conversations.text
     assert "Advanced filters" in conversations.text
     assert 'class="filter-row grouped-filter-row"' in conversations.text
@@ -410,7 +417,11 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "dashboard memory updated" in reconciliation_detail.text
     assert static.status_code == 200
     assert scope_script.status_code == 200
+    assert clipboard_script.status_code == 200
     assert "syncScopePicker" in scope_script.text
+    assert "navigator.clipboard" in clipboard_script.text
+    assert "[data-copy-text]" in clipboard_script.text
+    assert "makeBlockCopyable" in clipboard_script.text
     assert icon.status_code == 200
     assert icon.headers["content-type"] == "image/webp"
     assert icon.content
@@ -431,6 +442,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert ".relationship-desktop" in static.text
     assert ".scope-picker" in static.text
     assert ".scope-picker-types" in static.text
+    assert ".copy-button" in static.text
+    assert ".copy-toast" in static.text
+    assert "[data-copy-text]" in static.text
 
 
 def test_unknown_trace_returns_404(tmp_path):
