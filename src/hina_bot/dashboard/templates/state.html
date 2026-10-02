@@ -119,7 +119,7 @@
   </div>
 
   <dl class="metadata compact">
-    {{ scope_metadata(data.effective.scope_display, data.effective.realm_display, data.effective.scope.user_id, data.effective.user_name, guild_name=data.effective.guild_name, channel_name=data.effective.channel_name) }}
+    {{ scope_metadata(data.effective.scope_display, data.effective.realm_display, data.effective.scope.user_id, data.effective.user_name, show_raw=true, guild_name=data.effective.guild_name, channel_name=data.effective.channel_name) }}
   </dl>
 
   <section class="cards">
@@ -188,12 +188,12 @@
   </p>
   {% if data.effective.scope.guild_id is not none %}
   <h3>Server note</h3>
-  {{ scope_realm(data.effective.realm_display, data.effective.guild_name) }}{{ scope_raw(data.effective.realm_display, label="Note key") }}
+  {{ scope_realm(data.effective.realm_display, data.effective.guild_name) }}{{ scope_raw(data.effective.realm_display, show_raw=true, label="Raw note key") }}
   <div class="message">{{ data.effective.notes.server or "—" }}</div>
   {% endif %}
   <h3>User note</h3>
   <dl class="metadata compact">
-    {{ scope_metadata(data.effective.user_note_display, data.effective.realm_display, data.effective.scope.user_id, data.effective.user_name, include_channel=false, raw_label="Note key") }}
+    {{ scope_metadata(data.effective.user_note_display, data.effective.realm_display, data.effective.scope.user_id, data.effective.user_name, include_channel=false, show_raw=true, raw_label="Raw note key") }}
   </dl>
   <div class="message">{{ data.effective.notes.user or "—" }}</div>
 </section>
@@ -208,7 +208,7 @@
       <tbody>
       {% for row in data.memory_overrides %}
         <tr>
-          <td>{{ scope_realm(row.scope_display, row.guild_name) }}{{ scope_raw(row.scope_display) }}</td>
+          <td>{{ scope_realm(row.scope_display, row.guild_name) }}{{ scope_raw(row.scope_display, show_raw=true) }}</td>
           <td>{{ scope_channel(row.scope_display, row.channel_name) }}</td>
           <td>{{ row.mode }}</td>
         </tr>
@@ -233,7 +233,7 @@
       <tbody>
       {% for row in data.chat_overrides %}
         <tr>
-          <td>{{ scope_realm(row.scope_display, row.guild_name) }}{{ scope_raw(row.scope_display) }}</td>
+          <td>{{ scope_realm(row.scope_display, row.guild_name) }}{{ scope_raw(row.scope_display, show_raw=true) }}</td>
           <td>{{ scope_channel(row.scope_display, row.channel_name) }}</td>
           <td>{{ row.enabled or "inherit" }}</td>
           <td>{{ row.capture or "inherit" }}</td>
@@ -266,7 +266,7 @@
           <td data-label="Kind">{{ row.kind }}</td>
           <td data-label="Realm">
             {{ scope_realm(row.scope_display, row.guild_name) }}
-            {{ scope_raw(row.scope_display, show_raw=row.kind == "other") }}
+            {{ scope_raw(row.scope_display, show_raw=true) }}
           </td>
           <td data-label="User">{{ scope_user(row.user_id, row.user_name) }}</td>
           <td data-label="Content"><div class="memory-preview">{{ row.text }}</div></td>
