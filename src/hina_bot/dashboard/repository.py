@@ -544,14 +544,45 @@ class AdminRepository:
 
     def turn_for_trace(self, turn_id: str) -> dict[str, object] | None:
         trace_id = turn_id.strip()
-        if not trace_id or not self._has_column("turns", "turn_id"):
+        if not trace_id:
             return None
+
+        has_turn_trace = self._has_column("turns", "turn_id")
+        has_failed_trace = "turn_id" in self._table_columns("failed_turns")
+        if not has_turn_trace and not has_failed_trace:
+            return None
+
         with self._connection() as db:
-            row = db.execute(
-                "SELECT * FROM turns WHERE turn_id=? ORDER BY id DESC LIMIT 1",
-                (trace_id,),
-            ).fetchone()
-        return dict(row) if row is not None else None
+            row = (
+                db.execute(
+                    "SELECT * FROM turns WHERE turn_id=? ORDER BY id DESC LIMIT 1",
+                    (trace_id,),
+                ).fetchone()
+                if has_turn_trace
+                else None
+            )
+            if row is not None:
+                value = dict(row)
+                value["record_type"] = "turn"
+                return value
+
+            row = (
+                db.execute(
+                    "SELECT * FROM failed_turns WHERE turn_id=? ORDER BY id DESC LIMIT 1",
+                    (trace_id,),
+                ).fetchone()
+                if has_failed_trace
+                else None
+            )
+        if row is None:
+            return None
+
+        value = dict(row)
+        value["record_type"] = "failed"
+        value["exportable"] = 0
+        value["memory_context"] = ""
+        value["context_provenance"] = ""
+        return value
 
     def _table_exists(self, table: str) -> bool:
         with self._connection() as db:

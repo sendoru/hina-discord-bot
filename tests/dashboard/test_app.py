@@ -56,6 +56,24 @@ def dashboard_client(tmp_path):
         )
     finally:
         CURRENT_TURN_ID.reset(token)
+
+    failed_token = CURRENT_TURN_ID.set("trace-failed-ui")
+    try:
+        store.add_failed_turn(
+            scope,
+            56,
+            "failed dashboard request",
+            name="Dashboard User",
+            reply="fallback dashboard reply",
+            status="generation_failed",
+            stage="generation",
+            reply_delivered=True,
+            error_type="RuntimeError",
+            error_fingerprint="feedface",
+        )
+    finally:
+        CURRENT_TURN_ID.reset(failed_token)
+
     through = int(store.db.execute(
         "SELECT id FROM turns WHERE message_id='55'"
     ).fetchone()["id"])
@@ -174,6 +192,25 @@ def dashboard_client(tmp_path):
                 "status": "completed",
                 "elapsed_ms": 100,
             },
+            {
+                "at": "2026-09-21T00:00:03+00:00",
+                "turn_id": "trace-failed-ui",
+                "event": "turn.received",
+                "scope": "dm",
+            },
+            {
+                "at": "2026-09-21T00:00:04+00:00",
+                "turn_id": "trace-failed-ui",
+                "event": "turn.failed",
+                "scope": "dm",
+                "status": "generation_failed",
+                "stage": "generation",
+                "reply_delivered": True,
+                "raw_turn_persistence": "stored",
+                "error_type": "RuntimeError",
+                "error_fingerprint": "feedface",
+                "elapsed_ms": 200,
+            },
         ],
     )
 
@@ -210,6 +247,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     traces = client.get("/traces?tier=fast")
     analytics = client.get("/analytics?operation=answer")
     detail = client.get("/traces/trace-ui")
+    failed_detail = client.get("/traces/trace-failed-ui")
     conversations = client.get("/conversations?q=dashboard")
     conversations_by_name = client.get("/conversations?user_id=Dashboard%20User")
     conversation_context = client.get("/conversations/1/context")
@@ -294,6 +332,14 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Raw scope" in detail.text
     assert "Context &amp; provenance" in detail.text
     assert "Egress policy" in detail.text
+    assert failed_detail.status_code == 200
+    assert "Failed conversation record" in failed_detail.text
+    assert "failed dashboard request" in failed_detail.text
+    assert "fallback dashboard reply" in failed_detail.text
+    assert "generation_failed" in failed_detail.text
+    assert "Fallback delivered" in failed_detail.text
+    assert "feedface" in failed_detail.text
+    assert "일반 대화 기록·요약·구조화 메모리에는 포함되지 않습니다." in failed_detail.text
     assert "hello dashboard" in conversations.text
     assert 'data-copy-text="55"' in conversations.text
     assert conversations.text.count("data-copy-block") >= 2
