@@ -1,5 +1,5 @@
 {% macro named_id(name, value, prefix="") -%}
-{% if name %}<span>{{ prefix }}{{ name }}</span> {% endif %}<code class="scope-id" data-copy-text="{{ value or '' }}">{{ value or "—" }}</code>
+{% if name %}<span>{{ prefix }}{{ name }}</span> {% endif %}<code class="scope-id"{% if value %} data-copy-text="{{ value }}"{% endif %}>{{ value or "—" }}</code>
 {%- endmacro %}
 
 {% macro channel_ref(channel_id, channel_name="") -%}
