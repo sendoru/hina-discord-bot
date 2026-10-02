@@ -7,7 +7,7 @@ from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.discord.reply_context import REPLY_CONTEXT
-from hina_bot.discord.target_context import TARGET_CONTEXT, targets
+from hina_bot.discord.target_context import TARGET_CONTEXT
 from hina_bot.discord.target_recent import TargetAwareRecentMessages
 from hina_bot.discord.web_bot import HinaClient, _public_context_request
 
