@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from hina_bot.core.identity_context import resolved_identity_context
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
@@ -146,6 +147,16 @@ mention되었다는 사실만으로 그 사용자가 현재 발화의 호격 대
 행동/서술 대상을 구분하세요. reply_target도 강한 대화 연결 신호이지만 문장 안의 명시적 호격
 대상과 항상 같지는 않습니다. 여러 사람이 mention되었거나 역할이 모호하면 mention 순서만으로
 한 사람을 임의로 수행자나 대상으로 고르지 마세요.
+"""
+
+RESOLVED_IDENTITY_POLICY = """[현재 요청의 이름 확인 결과]
+resolved_identities는 앱이 이번 요청에서 확인한 이름과 Discord user_id의 연결입니다.
+실제 Discord mention 목록인 current_interaction.mentions와는 별도의 이름 확인 근거이며,
+현재 화자를 바꾸거나 그 사용자의 과거 발언·성격·기억을 제공하는 정보가 아닙니다.
+명시적으로 불러 달라거나 핑해 달라는 요청이면 확인된 user_id를 그대로 <@user_id>로 쓸 수
+있습니다. 이름만 필요할 때 기록이나 기억이 없다는 이유로 확인된 사람을 찾을 수 없다고 하지
+마세요. 요청하지 않은 사람을 핑하지 마세요. 확인되지 않은 이름의 user_id를 추측하지 말고,
+이름이 모호하면 사용자에게 실제 mention으로 대상을 지정해 달라고 하세요.
 """
 
 TURN_RESPONSE_POLICY = """[현재 발화 응답]
@@ -439,6 +450,7 @@ class RequestAssembler(BaseLLM):
                 "relation": "author_of_following_user_message",
             },
             "current_interaction": interaction,
+            "resolved_identities": resolved_identity_context(),
             "space": "server" if scope.guild_id is not None else "DM",
             "server_note": (
                 store.note(scope.realm)
@@ -467,6 +479,7 @@ class RequestAssembler(BaseLLM):
         # provider unless the active egress policy admits it here.
         provider_channel_input = len(context.get("channel_recent_messages", ()) or ())
         provider_public_input = len(context.get("public_server_context", ()) or ())
+        provider_identity_input = len(context.get("resolved_identities", ()) or ())
         context = apply_context_policy(
             context,
             scope.user_id,
@@ -474,6 +487,7 @@ class RequestAssembler(BaseLLM):
         )
         provider_channel_allowed = len(context.get("channel_recent_messages", ()) or ())
         provider_public_allowed = len(context.get("public_server_context", ()) or ())
+        provider_identity_allowed = len(context.get("resolved_identities", ()) or ())
         provider_boundary = {
             "channel_input": provider_channel_input,
             "channel_allowed": provider_channel_allowed,
@@ -481,6 +495,9 @@ class RequestAssembler(BaseLLM):
             "public_input": provider_public_input,
             "public_allowed": provider_public_allowed,
             "public_blocked": provider_public_input - provider_public_allowed,
+            "identity_input": provider_identity_input,
+            "identity_allowed": provider_identity_allowed,
+            "identity_blocked": provider_identity_input - provider_identity_allowed,
         }
         chain_kinds = {
             "reply_reference_source",
@@ -569,6 +586,7 @@ class RequestAssembler(BaseLLM):
         )
         context_size_metrics = {
             "context_chars_total": _serialized_chars(context),
+            "context_identity_chars": _serialized_chars(context.get("resolved_identities", [])),
             "context_summary_chars": _serialized_chars(
                 context.get("conversation_memory", "")
             ),
@@ -615,24 +633,28 @@ class RequestAssembler(BaseLLM):
             "content": visible_content,
         }]
 
+        relationship_policy = self.relationship_instructions(scope)
+        runtime_policy = runtime_instruction(runtime)
         instruction_parts = [
             POLICY,
             REFERENCE_CONTINUITY_POLICY,
             CURRENT_SPEAKER_POLICY,
             CURRENT_INTERACTION_POLICY,
+            RESOLVED_IDENTITY_POLICY,
             self.character,
-            self.relationship_instructions(scope),
-            runtime_instruction(runtime),
+            relationship_policy,
+            runtime_policy,
         ]
         instruction_group_chars = {
             "instruction_base_chars": len(POLICY),
             "instruction_reference_chars": len(REFERENCE_CONTINUITY_POLICY),
             "instruction_identity_chars": (
                 len(CURRENT_SPEAKER_POLICY) + len(CURRENT_INTERACTION_POLICY)
+                + len(RESOLVED_IDENTITY_POLICY)
             ),
             "instruction_character_chars": len(self.character),
-            "instruction_relationship_chars": len(instruction_parts[5]),
-            "instruction_runtime_chars": len(instruction_parts[6]),
+            "instruction_relationship_chars": len(relationship_policy),
+            "instruction_runtime_chars": len(runtime_policy),
             "instruction_memory_chars": 0,
             "instruction_context_policy_chars": 0,
             "instruction_search_chars": 0,

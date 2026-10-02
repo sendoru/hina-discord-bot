@@ -65,6 +65,7 @@ def _env_key(provider: str) -> str:
 @dataclass(frozen=True, kw_only=True)
 class Settings:
     discord_token: str
+    discord_members_intent: bool = False
     model: str = "gpt-4.1-mini"
     model_routing_mode: str = "fixed"
     model_routing_smart_threshold: float = 2.0
@@ -265,6 +266,9 @@ class Settings:
         dm = os.getenv("DM_ALWAYS_REPLY", "false").lower()
         if dm not in {"true", "false"}:
             raise ValueError("DM_ALWAYS_REPLY는 true 또는 false여야 합니다.")
+        members_intent = os.getenv("DISCORD_MEMBERS_INTENT", "false").strip().lower()
+        if members_intent not in {"true", "false"}:
+            raise ValueError("DISCORD_MEMBERS_INTENT는 true 또는 false여야 합니다.")
         public_memory = os.getenv("PUBLIC_SERVER_MEMORY_IN_DM", "true").lower()
         if public_memory not in {"true", "false"}:
             raise ValueError("PUBLIC_SERVER_MEMORY_IN_DM은 true 또는 false여야 합니다.")
@@ -309,6 +313,7 @@ class Settings:
 
         s = cls(
             discord_token=token,
+            discord_members_intent=members_intent == "true",
             provider=provider,
             model_routing_mode=model_routing_mode,
             model_routing_smart_threshold=model_routing_smart_threshold,

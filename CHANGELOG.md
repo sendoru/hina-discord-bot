@@ -6,12 +6,17 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Added
 
+- Opt-in current Discord member identity resolution with local exact matching, bounded semantic
+  fallback and identity context independent of memory/history. Enable Server Members Intent and
+  `DISCORD_MEMBERS_INTENT=true` for a maintained directory; existing strict egress limits remain.
 - Configurable guild channels that treat every human message as a direct bot turn, while keeping bot-authored messages behind explicit triggers.
 - Formal release-version and compatibility lifecycle policy.
 - CI validation for package version format and release-tag consistency.
 
 ### Changed
 
+- Calling/pinging resolved users and querying their recent channel speech no longer automatically
+  requests their cross-channel public memory. Historical aliases are filtered per source channel.
 - Clarified the distinct roles of `app_version`, `build_revision`, and `runtime_id`.
 
 ### Removed

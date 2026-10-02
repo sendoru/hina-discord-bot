@@ -277,6 +277,15 @@ Identity events contain only bounded metadata:
 - opaque reference/user groups,
 - whether the resolver API was invoked.
 
+Member-directory local matching also reports `resolution_method` and `directory_complete`.
+An exact local result has `resolver_invoked=false` and `evidence_source=member_directory`, so it
+must not be counted as an `identity_resolve` API request. Final context provenance includes the
+selected/blocked `resolved_identities` counts without copying their names or reference text.
+The page shows local exact resolutions separately, exposes method/directory completeness per case,
+and includes both local and semantic decisions in repeat-mapping analysis. The simulated hit-rate
+denominator is the resolution-decision count; provider invocation and token counters remain API-only.
+See [identity resolution](identity-resolution.md) for directory completeness and privacy boundaries.
+
 The resolver may return a short `reference` span only when it is copied verbatim from the current
 request. Python validates that constraint, normalizes the span, and immediately replaces it with a
 deployment-local HMAC group before event logging. The Discord token is used only as a secret key

@@ -50,6 +50,7 @@
 
 <section class="cards">
   <article class="card"><span>Resolver invoked</span><strong>{{ data.summary.invoked }}</strong></article>
+  <article class="card"><span>Local exact resolved</span><strong>{{ data.summary.local_exact }}</strong></article>
   <article class="card"><span>Resolved</span><strong>{{ data.summary.resolved }}</strong></article>
   <article class="card"><span>Ambiguous</span><strong>{{ data.summary.ambiguous }}</strong></article>
   <article class="card"><span>None</span><strong>{{ data.summary.none }}</strong></article>
@@ -148,12 +149,14 @@
   {% if data.recent %}
   <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table">
-      <thead><tr><th>Time</th><th>Outcome</th><th>Candidates</th><th>Raw candidates</th><th>Blocked reason</th><th>Reference group</th><th>Resolved user group</th><th>Trace</th></tr></thead>
+      <thead><tr><th>Time</th><th>Outcome</th><th>Method</th><th>Complete directory?</th><th>Candidates</th><th>Raw candidates</th><th>Blocked reason</th><th>Reference group</th><th>Resolved user group</th><th>Trace</th></tr></thead>
       <tbody>
       {% for row in data.recent %}
       <tr>
         <td>{{ row.at | localtime }}</td>
         <td>{{ row.outcome }}</td>
+        <td><code>{{ row.resolution_method }}</code></td>
+        <td>{{ "yes" if row.directory_complete is sameas true else ("no" if row.directory_complete is sameas false else "—") }}</td>
         <td class="numeric">{{ row.candidate_count }}</td>
         <td class="numeric">{{ row.raw_candidate_count }}</td>
         <td><code>{{ row.blocked_reason or "—" }}</code></td>
