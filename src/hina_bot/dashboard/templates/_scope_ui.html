@@ -1,5 +1,5 @@
 {% macro named_id(name, value, prefix="") -%}
-{% if name %}<span>{{ prefix }}{{ name }}</span> {% endif %}<code class="scope-id">{{ value or "—" }}</code>
+{% if name %}<span>{{ prefix }}{{ name }}</span> {% endif %}<code class="scope-id" data-copy-text="{{ value or '' }}">{{ value or "—" }}</code>
 {%- endmacro %}
 
 {% macro channel_ref(channel_id, channel_name="") -%}
@@ -11,9 +11,9 @@
   {%- if scope.level == "global" -%}
     <span>Global</span>
   {%- elif scope.realm_kind == "guild" -%}
-    {% if guild_name %}<span>{{ guild_name }}</span> · {% endif %}<span>Guild</span> <code class="scope-id">{{ scope.realm_id }}</code>
+    {% if guild_name %}<span>{{ guild_name }}</span> · {% endif %}<span>Guild</span> <code class="scope-id" data-copy-text="{{ scope.realm_id }}">{{ scope.realm_id }}</code>
   {%- elif scope.realm_kind == "dm" -%}
-    <span>DM · user</span> <code class="scope-id">{{ scope.realm_id }}</code>
+    <span>DM · user</span> <code class="scope-id" data-copy-text="{{ scope.realm_id }}">{{ scope.realm_id }}</code>
   {%- else -%}
     <span class="muted">Unknown</span>
   {%- endif -%}
@@ -27,7 +27,7 @@
 {% macro scope_user(user_id, user_name="") -%}
 {% if user_id %}
   {% if user_name %}<div>{{ user_name }}</div>{% endif %}
-  <code class="scope-id">{{ user_id }}</code>
+  <code class="scope-id" data-copy-text="{{ user_id }}">{{ user_id }}</code>
 {% else %}—{% endif %}
 {%- endmacro %}
 
