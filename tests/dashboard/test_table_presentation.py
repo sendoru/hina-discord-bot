@@ -98,8 +98,8 @@ def test_summary_cursor_and_origin_components_preserve_stored_data(tmp_path):
 
         review = client.get("/reconciliation")
         assert long_text in review.text
-        assert '<code class="scope-id">1489432315523502251</code>' in review.text
-        assert '<code class="scope-id">1554321651473195059</code>' in review.text
+        assert '<code class="scope-id" data-copy-text="1489432315523502251">1489432315523502251</code>' in review.text
+        assert '<code class="scope-id" data-copy-text="1554321651473195059">1554321651473195059</code>' in review.text
         assert 'class="scope-raw-key"' not in review.text
         assert f'href="/memory/{old}"' in review.text
         assert f'href="/memory/{new}"' in review.text
@@ -177,7 +177,7 @@ def test_raw_scope_keys_are_limited_to_diagnostic_views(tmp_path, guild_id):
             assert "<dt>Realm</dt>" in response.text
             assert "<dt>Channel</dt>" in response.text
             assert "<dt>User</dt>" in response.text
-            assert f'<code class="scope-id">{scope.channel_id}</code>' in response.text
+            assert f'<code class="scope-id" data-copy-text="{scope.channel_id}">{scope.channel_id}</code>' in response.text
             assert "Stored user" in response.text
             assert 'class="scope-raw-key"' not in response.text
 
@@ -199,7 +199,7 @@ def test_raw_scope_keys_are_limited_to_diagnostic_views(tmp_path, guild_id):
         ]:
             response = client.get("/relationships", params=params)
             assert response.status_code == 200
-            assert f'<code class="scope-id">{scope.channel_id}</code>' in response.text
+            assert f'<code class="scope-id" data-copy-text="{scope.channel_id}">{scope.channel_id}</code>' in response.text
             assert 'class="scope-raw-key"' not in response.text
 
     assert database.read_bytes() == before
