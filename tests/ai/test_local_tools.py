@@ -287,7 +287,7 @@ async def test_answer_auto_executes_request_scoped_local_tool():
         },
     )
 
-    client = NS(provider_name="openai", close=AsyncMock())
+    client = NS(provider_name="openai", responses=NS(), close=AsyncMock())
     llm = LLM(
         Settings(
             discord_token="test",
