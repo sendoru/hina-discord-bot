@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
@@ -61,13 +62,16 @@ class LocalToolResult:
     output: Any
     is_error: bool = False
 
-    def provider_input(self) -> dict:
+    def provider_input(self, *, include_name: bool = False) -> dict:
         payload = {"ok": not self.is_error, "result": self.output}
-        return {
+        item = {
             "type": "function_call_output",
             "call_id": self.call_id,
             "output": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
         }
+        if include_name:
+            item["name"] = self.name
+        return item
 
 
 @dataclass(frozen=True)
@@ -210,14 +214,42 @@ def continuation_request(
         next_input = [{"role": "user", "content": previous_input}]
     else:
         next_input = [{"role": "user", "content": str(previous_input)}]
-    next_input.extend(_reasoning_replay_items(response))
-    next_input.extend(_normalized_function_call(call) for call in calls)
-    next_input.extend(result.provider_input() for result in results)
-
+    interaction_id = str(getattr(response, "_hina_interaction_id", "") or "")
     followup = dict(request)
-    followup["input"] = next_input
+    if interaction_id:
+        followup["input"] = [
+            result.provider_input(include_name=True)
+            for result in results
+        ]
+        followup["previous_interaction_id"] = interaction_id
+    else:
+        interaction_steps = tuple(
+            getattr(response, "_hina_interaction_steps", ()) or ()
+        )
+        if interaction_steps:
+            next_input.extend(
+                dict(step)
+                for step in interaction_steps
+                if isinstance(step, dict)
+            )
+            next_input.extend(
+                result.provider_input(include_name=True)
+                for result in results
+            )
+        else:
+            next_input.extend(_reasoning_replay_items(response))
+            next_input.extend(_normalized_function_call(call) for call in calls)
+            next_input.extend(result.provider_input() for result in results)
+        followup["input"] = next_input
+        followup.pop("previous_interaction_id", None)
     followup["tool_choice"] = "auto"
     return followup
+
+
+CURRENT_LOCAL_TOOLS: ContextVar[LocalToolRegistry | None] = ContextVar(
+    "current_local_tools",
+    default=None,
+)
 
 
 class LocalToolExecutor:
@@ -253,6 +285,7 @@ class LocalToolExecutor:
 
 
 __all__ = [
+    "CURRENT_LOCAL_TOOLS",
     "LocalToolCall",
     "LocalToolError",
     "LocalToolExecutor",

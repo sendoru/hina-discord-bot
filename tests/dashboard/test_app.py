@@ -209,7 +209,6 @@ def test_dashboard_read_only_pages_render(tmp_path):
     overview = client.get("/")
     traces = client.get("/traces?tier=fast")
     analytics = client.get("/analytics?operation=answer")
-    identity = client.get("/identity")
     detail = client.get("/traces/trace-ui")
     conversations = client.get("/conversations?q=dashboard")
     conversations_by_name = client.get("/conversations?user_id=Dashboard%20User")
@@ -285,12 +284,6 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'id="model-routing"' in analytics.text
     assert 'id="web-search-routing"' in analytics.text
     assert 'id="usage-breakdown"' in analytics.text
-    assert identity.status_code == 200
-    assert "Speaker Identity Observability" in identity.text
-    assert "Current observability epoch #1" in identity.text
-    assert 'class="filters filter-layout"' in identity.text
-    assert "<legend>Time window</legend>" in identity.text
-    assert 'class="filter-actions"' in identity.text
     assert "hello dashboard" in detail.text
     assert 'data-copy-text="trace-ui"' in detail.text
     assert 'data-copy-text="55"' in detail.text
@@ -482,7 +475,7 @@ def test_invalid_filters_preserve_input_and_do_not_query(tmp_path, monkeypatch):
         assert f'value="{value}"' in response.text
         assert 'aria-invalid="true"' in response.text
         assert "입력 오류로 조회하지 않았습니다" in response.text
-    for path in ("/traces", "/conversations", "/analytics", "/identity", "/reconciliation"):
+    for path in ("/traces", "/conversations", "/analytics", "/reconciliation"):
         field = "created_after" if path == "/reconciliation" else "after"
         response = client.get(path, params={field: "bad-date"})
         assert response.status_code == 200
@@ -542,7 +535,7 @@ def test_keyboard_and_filter_accessibility_markup(tmp_path):
                 self.depth -= 1
 
     client = dashboard_client(tmp_path)
-    for path in ("/traces", "/memory", "/reconciliation", "/analytics", "/identity",
+    for path in ("/traces", "/memory", "/reconciliation", "/analytics",
                  "/conversations", "/summaries", "/memory/cursors", "/state", "/relationships"):
         response = client.get(path)
         parser = Labels()
@@ -550,23 +543,6 @@ def test_keyboard_and_filter_accessibility_markup(tmp_path):
         assert all(depth or control_id in parser.labels for depth, control_id in parser.controls), path
         assert 'aria-current="page"' in response.text
         assert 'href="#main-content"' in response.text
-
-
-def test_identity_group_disclosure_preserves_full_hashes_only(tmp_path):
-    client = dashboard_client(tmp_path)
-    reference = "abcd" * 16
-    user = "9876" * 16
-    write_rows(tmp_path / "events.jsonl", [
-        {"at": "2026-09-21T00:00:01+00:00", "event": "identity.resolution",
-         "outcome": "resolved", "reference_group": reference, "resolved_user_group": user,
-         "resolver_invoked": True, "raw_reference": "PRIVATE NAME"},
-    ])
-    response = client.get("/identity")
-    assert '<details class="identifier-disclosure">' in response.text
-    assert f"ref:{reference[:10]}" in response.text
-    assert f"user:{user[:10]}" in response.text
-    assert reference in response.text and user in response.text
-    assert "PRIVATE NAME" not in response.text
 
 
 def test_trace_sections_and_mobile_results_are_available(tmp_path):

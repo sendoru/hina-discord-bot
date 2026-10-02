@@ -8,16 +8,9 @@ from datetime import timedelta
 import discord
 
 from hina_bot.ai.egress_policy import strict_policy
-from hina_bot.ai.identity_resolution import (
-    SpeakerIdentityCandidate,
-    identity_group,
-    identity_resolution_needed,
-    match_identity_aliases,
-    narrow_identity_candidates,
-)
+from hina_bot.ai.local_tools import CURRENT_LOCAL_TOOLS
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
-from hina_bot.core.identity_context import CURRENT_RESOLVED_IDENTITIES
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope, trigger_text
@@ -25,12 +18,7 @@ from hina_bot.core.routing import Scope, trigger_text
 from .bot import HinaClient as BaseHinaClient
 from .chatlog_capture import capture_mode
 from .interaction_context import build_interaction_context
-from .member_directory import (
-    current_member_directory,
-    historical_identity_candidates,
-    member_names,
-    visible_member,
-)
+from .member_directory import channel_member_tool_registry
 from .reply_context import REPLY_CONTEXT, collect_reply_context
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect, retrieval_mode
@@ -49,6 +37,8 @@ CURRENT_PUBLIC_CONTEXT_REQUEST = ContextVar(
     "current_public_context_request",
     default=(False, ()),
 )
+
+
 async def _timed(awaitable):
     started = time.perf_counter()
     result = await awaitable
@@ -91,7 +81,6 @@ def _public_context_request(
     sampled: list[dict],
     *,
     allow_cross_user: bool = True,
-    resolved_user_ids=(),
 ):
     """Choose whether cross-channel public memory is relevant to this invocation.
 
@@ -106,11 +95,6 @@ def _public_context_request(
             for item in sampled
             if str(item.get("user_id", "")).isdigit()
         ),
-        *(
-            int(user_id)
-            for user_id in resolved_user_ids
-            if str(user_id).isdigit()
-        ),
     })
     if target_ids and allow_cross_user:
         mode = retrieval_mode(text)
@@ -118,7 +102,7 @@ def _public_context_request(
         # calling/pinging someone must not load that person's public summaries/history.
         if mode == "basic":
             return False, ()
-        if mode == "deep" or _PUBLIC_MEMORY_QUERY.search(text) or identity_resolution_needed(text):
+        if mode == "deep" or _PUBLIC_MEMORY_QUERY.search(text):
             return True, target_ids
         return False, ()
     if not _PUBLIC_MEMORY_QUERY.search(text):
@@ -144,226 +128,6 @@ class HinaClient(BaseHinaClient):
         )
         self.vision_limits = VisionLimits.from_settings(settings)
         install_slash_commands(self)
-
-    def _emit_identity_resolution(
-        self,
-        scope: Scope,
-        *,
-        outcome: str,
-        resolver_invoked: bool,
-        candidate_count: int = 0,
-        raw_candidate_count: int = 0,
-        reference: str = "",
-        resolved_user_id: str = "",
-        blocked_reason: str = "",
-        resolution_method: str = "policy",
-        directory_complete: bool = False,
-    ) -> None:
-        fields: dict[str, object] = {
-            "outcome": outcome,
-            "resolver_invoked": resolver_invoked,
-            "candidate_count": int(candidate_count),
-            "raw_candidate_count": int(raw_candidate_count),
-            "evidence_source": "resolver_derived" if resolver_invoked else "policy",
-            "resolution_method": resolution_method,
-            "directory_complete": directory_complete,
-        }
-        if resolution_method == "exact":
-            fields["evidence_source"] = "member_directory"
-        if blocked_reason:
-            fields["blocked_reason"] = blocked_reason
-        if scope.guild_id is not None and reference:
-            group = identity_group(
-                reference,
-                guild_id=scope.guild_id,
-                secret=self.settings.discord_token,
-                kind="reference",
-            )
-            if group:
-                fields["reference_group"] = group
-        if scope.guild_id is not None and resolved_user_id:
-            group = identity_group(
-                resolved_user_id,
-                guild_id=scope.guild_id,
-                secret=self.settings.discord_token,
-                kind="user",
-            )
-            if group:
-                fields["resolved_user_group"] = group
-        self.events.emit("identity.resolution", **fields)
-
-    async def _resolve_text_targets(
-        self,
-        message,
-        scope: Scope,
-        text: str | None,
-        *,
-        strict_egress: bool,
-        third_party_mention: bool,
-    ):
-        if not text or scope.guild_id is None:
-            return [], ()
-
-        if strict_egress:
-            self._emit_identity_resolution(
-                scope,
-                outcome="blocked",
-                resolver_invoked=False,
-                blocked_reason="strict_egress",
-            )
-            return [], ()
-        if third_party_mention:
-            self._emit_identity_resolution(
-                scope,
-                outcome="blocked",
-                resolver_invoked=False,
-                blocked_reason="explicit_third_party_mention",
-            )
-            return [], ()
-        if (self.settings.allowed_guild_ids
-                and scope.guild_id not in self.settings.allowed_guild_ids):
-            return [], ()
-        if not isinstance(getattr(message, "channel", None), discord.TextChannel):
-            return [], ()
-
-        directory = current_member_directory(message, self.user.id)
-        guild = message.guild
-        if guild is None or getattr(guild, "unavailable", False):
-            return [], ()
-        if message.channel.permissions_for(message.author).view_channel is not True:
-            return [], ()
-
-        def objects(rows):
-            return tuple(
-                SpeakerIdentityCandidate(str(row["user_id"]), tuple(row["names"]))
-                for row in rows
-            )
-
-        exact = match_identity_aliases(text, objects(directory.candidates))
-        if exact.status == "ambiguous":
-            self._emit_identity_resolution(
-                scope, outcome="ambiguous", resolver_invoked=False,
-                raw_candidate_count=len(directory.candidates), resolution_method="exact",
-                reference=exact.reference,
-                directory_complete=directory.complete,
-            )
-            return [], ()
-
-        if exact.resolved and directory.complete:
-            resolution = exact
-            candidates = [row for row in directory.candidates if row["user_id"] == exact.user_id]
-            raw_count = len(directory.candidates)
-            method = "exact"
-        else:
-            historical = historical_identity_candidates(message, self.user.id, self.store)
-            if directory.complete:
-                by_user = {row["user_id"]: dict(row) for row in directory.candidates}
-                for row in historical:
-                    current = by_user.get(row["user_id"])
-                    if current is not None:
-                        current["names"] = list(dict.fromkeys(
-                            [*current["names"], *row["historical_names"]]
-                        ))[:4]
-                source = list(by_user.values())
-            else:
-                # A partial cache cannot establish unique aliases. Retain the bounded historical
-                # fallback, with a live membership/visibility check before its provider call.
-                source = historical
-            narrowed = narrow_identity_candidates(text, objects(source))
-            raw_count = len(source)
-            ids = {row.user_id for row in narrowed}
-            candidates = [row for row in source if row["user_id"] in ids]
-            if len(candidates) > (32 if directory.complete else 8):
-                self._emit_identity_resolution(
-                    scope, outcome="ambiguous", resolver_invoked=False,
-                    raw_candidate_count=raw_count, blocked_reason="candidate_limit",
-                    directory_complete=directory.complete,
-                )
-                return [], ()
-            if candidates and not directory.complete:
-                candidates = await self._verify_historical_identities(message, candidates)
-                verified_ids = {
-                    row.user_id for row in narrow_identity_candidates(text, objects(candidates))
-                }
-                candidates = [row for row in candidates if row["user_id"] in verified_ids]
-            if not candidates:
-                self._emit_identity_resolution(
-                    scope, outcome="blocked", resolver_invoked=False,
-                    raw_candidate_count=raw_count,
-                    blocked_reason=(
-                        "directory_incomplete" if exact.resolved else "no_relevant_candidates"
-                    ),
-                    directory_complete=directory.complete,
-                )
-                return [], ()
-            if not hasattr(self.llm, "resolve_speaker_identity"):
-                self._emit_identity_resolution(
-                    scope, outcome="blocked", resolver_invoked=False,
-                    blocked_reason="resolver_unavailable", directory_complete=directory.complete,
-                )
-                return [], ()
-            async with self.slots:
-                resolution = await self.llm.resolve_speaker_identity(text, candidates)
-            method = "semantic"
-
-        resolution_outcome = getattr(
-            resolution,
-            "status",
-            "resolved" if resolution.resolved else "none",
-        )
-        self._emit_identity_resolution(
-            scope,
-            outcome=resolution_outcome,
-            resolver_invoked=method == "semantic",
-            candidate_count=len(candidates),
-            raw_candidate_count=raw_count,
-            resolution_method=method,
-            directory_complete=directory.complete,
-            reference=getattr(resolution, "reference", ""),
-            resolved_user_id=resolution.user_id if resolution.resolved else "",
-        )
-        if not resolution.resolved:
-            return [], ()
-        candidate = next(
-            (
-                row for row in candidates
-                if str(row.get("user_id")) == resolution.user_id
-            ),
-            None,
-        )
-        if candidate is None:
-            return [], ()
-        return ([{
-            "user_id": resolution.user_id,
-            "name": candidate["names"][0] if candidate["names"] else "",
-            "names": list(candidate["names"][:4]),
-            "reference": getattr(resolution, "reference", ""),
-        }], (int(resolution.user_id),))
-
-    async def _verify_historical_identities(self, message, candidates):
-        async def verify(row):
-            fetch_member = getattr(message.guild, "fetch_member", None)
-            if fetch_member is None:
-                return None
-            try:
-                async with self.slots:
-                    member = await asyncio.wait_for(
-                        fetch_member(int(row["user_id"])),
-                        timeout=min(float(self.settings.routing_classifier_timeout_seconds), 4.0),
-                    )
-            except (TimeoutError, discord.HTTPException):
-                return None
-            if (str(member.id) != row["user_id"]
-                    or not visible_member(message, member, self.user.id)):
-                return None
-            return {
-                "user_id": row["user_id"],
-                "names": list(dict.fromkeys(
-                    [*member_names(member), *row["historical_names"]]
-                ))[:4],
-            }
-
-        return [row for row in await asyncio.gather(*(verify(row) for row in candidates)) if row]
 
     async def public_sources(self, user_id: int, guild_id: int | None = None):
         enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
@@ -543,25 +307,6 @@ class HinaClient(BaseHinaClient):
             for user in getattr(message, "mentions", ())
         )
 
-        identity_started = time.perf_counter()
-        identity_token = (
-            CURRENT_TURN_ID.set(preflight_turn_id)
-            if preflight_turn_id is not None
-            else None
-        )
-        try:
-            resolved_targets, resolved_user_ids = await self._resolve_text_targets(
-                message,
-                scope,
-                text,
-                strict_egress=strict_egress,
-                third_party_mention=third_party_mention,
-            )
-        finally:
-            if identity_token is not None:
-                CURRENT_TURN_ID.reset(identity_token)
-        identity_ms = round((time.perf_counter() - identity_started) * 1000)
-
         target_visibility = _target_history_visibility(
             self.store,
             scope,
@@ -577,7 +322,6 @@ class HinaClient(BaseHinaClient):
                         visibility_mode=target_visibility,
                         call_prefixes=self.settings.call_prefixes,
                         always_reply_channel_ids=self.settings.always_reply_channel_ids,
-                        extra_targets=resolved_targets,
                     )
                 ),
                 _timed(
@@ -652,7 +396,6 @@ class HinaClient(BaseHinaClient):
                     text,
                     sampled,
                     allow_cross_user=not strict_egress,
-                    resolved_user_ids=resolved_user_ids,
                 )
             )
             if text is not None
@@ -665,7 +408,6 @@ class HinaClient(BaseHinaClient):
                     "turn.preflight",
                     scope="guild" if scope.guild_id is not None else "dm",
                     preflight_ms=round((time.perf_counter() - preflight_started) * 1000),
-                    identity_ms=identity_ms,
                     target_context_ms=target_context_ms,
                     reply_context_ms=reply_context_ms,
                     visual_context_ms=visual_context_ms,
@@ -716,7 +458,9 @@ class HinaClient(BaseHinaClient):
             if preflight_turn_id is not None
             else None
         )
-        resolved_identity_token = CURRENT_RESOLVED_IDENTITIES.set(tuple(resolved_targets))
+        local_tools_token = CURRENT_LOCAL_TOOLS.set(
+            channel_member_tool_registry(message, self.user.id)
+        )
         try:
             return await super().on_message(message)
         finally:
@@ -724,11 +468,11 @@ class HinaClient(BaseHinaClient):
                 CURRENT_TURN_ID.reset(correlation_token)
             if original_content is not None:
                 message.content = original_content
+            CURRENT_LOCAL_TOOLS.reset(local_tools_token)
             CURRENT_PUBLIC_CONTEXT_REQUEST.reset(public_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)
             CURRENT_TURN_PROVENANCE.reset(provenance_token)
             CURRENT_CHANNEL_CONTEXT.reset(channel_context_token)
             REPLY_CONTEXT.reset(reply_token)
             TARGET_CONTEXT.reset(target_token)
-            CURRENT_RESOLVED_IDENTITIES.reset(resolved_identity_token)
             CURRENT_INTERACTION_CONTEXT.reset(interaction_token)

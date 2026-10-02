@@ -42,7 +42,7 @@ def retrieval_mode(text: str) -> str | None:
     return None
 
 
-def targets(message, bot_id, extra_targets=()):
+def targets(message, bot_id):
     rows, seen = [], set()
     for user in getattr(message, "mentions", ()):
         uid = getattr(user, "id", None)
@@ -55,20 +55,6 @@ def targets(message, bot_id, extra_targets=()):
         })
         if len(rows) == 2:
             return rows
-    for candidate in extra_targets:
-        raw_uid = candidate.get("user_id") if isinstance(candidate, dict) else None
-        if not str(raw_uid or "").isdigit():
-            continue
-        uid = int(raw_uid)
-        if uid in seen or uid in {bot_id, message.author.id}:
-            continue
-        seen.add(uid)
-        rows.append({
-            "user_id": uid,
-            "name": str(candidate.get("name") or "")[:100],
-        })
-        if len(rows) == 2:
-            break
     return rows
 
 
@@ -80,14 +66,13 @@ async def collect(
     visibility_mode: str = "all",
     call_prefixes: tuple[str, ...] = ("히나야",),
     always_reply_channel_ids: frozenset[int] = frozenset(),
-    extra_targets=(),
 ):
     if visibility_mode not in {"all", "direct", "off"}:
         raise ValueError("visibility_mode must be all, direct, or off")
     mode = retrieval_mode(text)
     if visibility_mode == "off" or getattr(message, "guild", None) is None or mode is None:
         return []
-    selected = targets(message, bot_id, extra_targets)
+    selected = targets(message, bot_id)
     if not selected or not hasattr(message.channel, "history"):
         return []
     if hasattr(message.channel, "permissions_for"):

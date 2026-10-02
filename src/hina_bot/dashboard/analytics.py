@@ -405,9 +405,6 @@ def build_analytics(
         for row in performance_api_rows
         if row.get("operation") == "model_route_classify"
     ]
-    identity_rows = [
-        row for row in performance_api_rows if row.get("operation") == "identity_resolve"
-    ]
     performance_memory_rows = [
         row
         for row in performance_api_rows
@@ -564,7 +561,6 @@ def build_analytics(
         "post_reply": _distribution(post_reply_values, total=len(completed_rows)),
         "stages": {
             "preflight_ms": _field_latency(preflight_rows, "preflight_ms"),
-            "identity_ms": _field_latency(preflight_rows, "identity_ms"),
             "target_context_ms": _field_latency(preflight_rows, "target_context_ms"),
             "reply_context_ms": _field_latency(preflight_rows, "reply_context_ms"),
             "visual_context_ms": _field_latency(preflight_rows, "visual_context_ms"),
@@ -601,7 +597,6 @@ def build_analytics(
         "api_categories": {
             "answer": _category_usage(answer_rows),
             "routing": _category_usage(performance_classifier_rows),
-            "identity": _category_usage(identity_rows),
             "memory": _category_usage(performance_memory_rows),
         },
         "context_chars": {

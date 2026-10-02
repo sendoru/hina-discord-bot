@@ -12,7 +12,6 @@ from ..telemetry import TelemetryReader
 from . import (
     analytics,
     conversations,
-    identity,
     memory,
     overview,
     reconciliation,
@@ -37,12 +36,6 @@ def build_routers(
     return (
         overview.build_router(trace_service, templates),
         analytics.build_router(
-            repository,
-            telemetry,
-            templates,
-            timezone=timezone,
-        ),
-        identity.build_router(
             repository,
             telemetry,
             templates,

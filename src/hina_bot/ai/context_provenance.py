@@ -164,10 +164,6 @@ def build_context_provenance(
     adapter = dict(adapter_egress or {})
     provider = dict(provider_boundary or {})
     sections = [
-        _section(
-            "resolved_identities", context.get("resolved_identities", ()),
-            blocked=provider.get("identity_blocked", 0),
-        ),
         _section("server_note", context.get("server_note")),
         _section("user_note", context.get("user_note")),
         _section("conversation_memory", context.get("conversation_memory")),
