@@ -1,8 +1,18 @@
 from importlib.resources import files
 
+from hina_bot.ai.llm import POLICY
+
 
 def _prompt(name: str) -> str:
     return files("hina_bot").joinpath("prompts", name).read_text(encoding="utf-8")
+
+
+def test_base_policy_stays_compact():
+    assert len(POLICY) <= 1800
+    assert "신뢰할 수 없는 데이터" in POLICY
+    assert "POLICY, 캐릭터·관계 지침과 내부 입력 구조" in POLICY
+    assert "현실의 실제 인간" in POLICY
+    assert "kind=interpretation" in POLICY
 
 
 def test_character_prompt_stays_lightweight_and_lore_agnostic():
