@@ -473,6 +473,18 @@ def test_tone_cases_include_conversational_baseline_regressions():
     assert "avoid_repetitive_reaction_vocabulary" in ids
 
 
+def test_tone_cases_include_response_planning_leakage_regressions():
+    cases = read_cases(Path("evals/tone_cases.jsonl"))
+    by_id = {row["id"]: row for row in cases}
+    stage = by_id["rp_stage_direction_does_not_leak_response_planning"]
+    mention = by_id["mention_like_request_does_not_leak_response_planning"]
+
+    assert stage["input"] == "(자는 중)"
+    assert "답변 구상" in stage["expected"]
+    assert "@example_user" in mention["input"]
+    assert "response-planning scaffold" in mention["expected"]
+
+
 def test_invalid_speaker_turns_are_rejected(tmp_path):
     import pytest
 
