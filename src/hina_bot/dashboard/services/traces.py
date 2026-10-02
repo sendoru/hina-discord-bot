@@ -35,6 +35,16 @@ def _raw_turn_availability(
     usage: tuple[dict[str, object], ...],
 ) -> dict[str, str]:
     if stored is not None:
+        if stored.get("record_type") == "failed":
+            return {
+                "state": "retained",
+                "severity": "info",
+                "title": '실패한 대화 원본이 보존되어 있습니다',
+                "message": (
+                    '이 trace의 원본 질문과 fallback 응답이 관측용 기록에 보존되어 있습니다. '
+                    '이 기록은 일반 대화 메모리에는 포함되지 않습니다.'
+                ),
+            }
         return {
             "state": "retained",
             "severity": "info",
