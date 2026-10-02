@@ -30,6 +30,32 @@ def test_gemini_input_preserves_conversation_roles():
     assert value[1]["content"][0]["text"] == "첫 답변"
 
 
+def test_gemini_input_preserves_native_thought_and_function_call_steps():
+    thought = {"type": "thought", "signature": "sig", "summary": []}
+    function_call = {
+        "type": "function_call",
+        "id": "call_1",
+        "name": "echo",
+        "arguments": {"value": "hello"},
+    }
+
+    value = _gemini_input([
+        {"role": "user", "content": "hello"},
+        thought,
+        function_call,
+        {
+            "type": "function_call_output",
+            "call_id": "call_1",
+            "name": "echo",
+            "output": '{"ok":true}',
+        },
+    ])
+
+    assert value[1] == thought
+    assert value[2] == function_call
+    assert value[3]["name"] == "echo"
+
+
 def test_gemini_input_translates_function_call_and_result_steps():
     value = _gemini_input([
         {"role": "user", "content": "계산해줘"},
@@ -490,6 +516,86 @@ async def test_gemini_generate_content_restores_function_response_name_from_call
     assert function_response["id"] == "call_1"
     assert function_response["name"] == "get_current_channel_members"
     assert response.output_text == "done"
+
+
+@pytest.mark.asyncio
+async def test_gemini_stateful_function_result_uses_previous_interaction_id():
+    payloads = []
+
+    async def handler(request: httpx.Request):
+        payload = __import__("json").loads(request.content)
+        payloads.append(payload)
+        if len(payloads) == 1:
+            return httpx.Response(200, json={
+                "id": "int_1",
+                "status": "requires_action",
+                "steps": [{
+                    "type": "function_call",
+                    "id": "call_1",
+                    "name": "get_current_channel_members",
+                    "arguments": {},
+                }],
+                "usage": {},
+            })
+        return httpx.Response(200, json={
+            "id": "int_2",
+            "status": "completed",
+            "steps": [{
+                "type": "model_output",
+                "content": [{"type": "text", "text": "done"}],
+            }],
+            "usage": {},
+        })
+
+    tool = {
+        "type": "function",
+        "name": "get_current_channel_members",
+        "description": "current channel members",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    }
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        responses = _GeminiResponses(http)
+        first = await responses.create(
+            model="gemini-test",
+            input="나기나기 핑해줘",
+            tools=[tool],
+            tool_choice="auto",
+            store=True,
+        )
+        assert first._hina_interaction_id == "int_1"
+
+        second = await responses.create(
+            model="gemini-test",
+            previous_interaction_id=first._hina_interaction_id,
+            input=[{
+                "type": "function_call_output",
+                "call_id": "call_1",
+                "name": "get_current_channel_members",
+                "output": '{"ok":true,"result":{"members":[]}}',
+            }],
+            tools=[tool],
+            tool_choice="auto",
+            store=True,
+        )
+    finally:
+        await http.aclose()
+
+    assert payloads[1]["previous_interaction_id"] == "int_1"
+    assert payloads[1]["input"] == [{
+        "type": "function_result",
+        "call_id": "call_1",
+        "name": "get_current_channel_members",
+        "result": [{
+            "type": "text",
+            "text": '{"ok":true,"result":{"members":[]}}',
+        }],
+    }]
+    assert second.output_text == "done"
 
 
 @pytest.mark.asyncio
