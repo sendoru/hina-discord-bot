@@ -42,7 +42,6 @@ def test_gemini_input_translates_function_call_and_result_steps():
         {
             "type": "function_call_output",
             "call_id": "call_1",
-            "name": "calculator",
             "output": '{"ok":true,"result":3}',
         },
     ])
@@ -59,6 +58,69 @@ def test_gemini_input_translates_function_call_and_result_steps():
         "name": "calculator",
         "result": [{"type": "text", "text": '{"ok":true,"result":3}'}],
     }
+
+
+@pytest.mark.asyncio
+async def test_gemini_interaction_restores_function_result_name_from_call_id():
+    seen = {}
+
+    async def handler(request: httpx.Request):
+        seen["url"] = str(request.url)
+        seen["json"] = __import__("json").loads(request.content)
+        return httpx.Response(200, json={
+            "status": "completed",
+            "steps": [{
+                "type": "model_output",
+                "content": [{"type": "text", "text": "done"}],
+            }],
+            "usage": {},
+        })
+
+    tool = {
+        "type": "function",
+        "name": "get_current_channel_members",
+        "description": "current channel members",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    }
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        response = await _GeminiResponses(http).create(
+            model="gemini-test",
+            input=[
+                {"role": "user", "content": "나기나기 핑해줘"},
+                {
+                    "type": "function_call",
+                    "call_id": "call_1",
+                    "name": "get_current_channel_members",
+                    "arguments": "{}",
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_1",
+                    "output": '{"ok":true,"result":{"members":[]}}',
+                },
+            ],
+            tools=[tool],
+            tool_choice="auto",
+        )
+    finally:
+        await http.aclose()
+
+    assert seen["url"].endswith("/v1beta/interactions")
+    assert seen["json"]["input"][-2] == {
+        "type": "function_call",
+        "id": "call_1",
+        "name": "get_current_channel_members",
+        "arguments": {},
+    }
+    assert seen["json"]["input"][-1]["type"] == "function_result"
+    assert seen["json"]["input"][-1]["call_id"] == "call_1"
+    assert seen["json"]["input"][-1]["name"] == "get_current_channel_members"
+    assert response.output_text == "done"
 
 
 @pytest.mark.asyncio
