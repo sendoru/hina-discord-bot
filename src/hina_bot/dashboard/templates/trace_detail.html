@@ -7,7 +7,7 @@
 <section class="page-heading">
   <div>
     <a class="back" href="{{ back_url(request, '/traces') }}">← Traces</a>
-    <h1>Trace <code>{{ data.turn_id }}</code></h1>
+    <h1>Trace <code data-copy-text="{{ data.turn_id }}">{{ data.turn_id }}</code></h1>
   </div>
 </section>
 
@@ -34,13 +34,13 @@
   <h2>Stored turn</h2>
   <dl class="metadata">
     {{ turn_scope(data.stored, show_raw=true) }}
-    <div><dt>Message</dt><dd><code>{{ data.stored.message_id }}</code></dd></div>
+    <div><dt>Message</dt><dd><code data-copy-text="{{ data.stored.message_id }}">{{ data.stored.message_id }}</code></dd></div>
     <div><dt>Created</dt><dd>{{ data.stored.created_at | localtime }}</dd></div>
   </dl>
   <h3>Input</h3>
-  <div class="message">{{ data.stored.content }}</div>
+  <div class="message" data-copy-block>{{ data.stored.content }}</div>
   <h3>Reply</h3>
-  <div class="message assistant">{{ data.stored.reply }}</div>
+  <div class="message assistant" data-copy-block>{{ data.stored.reply }}</div>
   {% if data.memory_context %}
   <details>
     <summary>Stored memory context</summary>
@@ -138,17 +138,17 @@
             {{ source.owner_relation or "—" }}
             {% set source_user_name = source.author_name or source.name or (source.stored_turn.name if source.stored_turn else "") %}
             {% if source_user_name %}<br>{{ source_user_name }}{% endif %}
-            {% if source.author_user_id %}<br><code>{{ source.author_user_id }}</code>{% endif %}
+            {% if source.author_user_id %}<br><code data-copy-text="{{ source.author_user_id }}">{{ source.author_user_id }}</code>{% endif %}
           </td>
           <td>
             {{ source.provenance_class or "—" }}
             {% if source.reference_strength %}<br><span class="muted">{{ source.reference_strength }}</span>{% endif %}
           </td>
           <td>
-            {% if source.message_id %}<code>msg {{ source.message_id }}</code>{% endif %}
-            {% if source.source_turn_message_id %}<br><code>turn-msg {{ source.source_turn_message_id }}</code>{% endif %}
+            {% if source.message_id %}<code data-copy-text="{{ source.message_id }}">msg {{ source.message_id }}</code>{% endif %}
+            {% if source.source_turn_message_id %}<br><code data-copy-text="{{ source.source_turn_message_id }}">turn-msg {{ source.source_turn_message_id }}</code>{% endif %}
             {% if source.source %}<br><code>{{ source.source }}</code>{% endif %}
-            {% if source.reference_id %}<br><code>{{ source.reference_id }}</code>{% endif %}
+            {% if source.reference_id %}<br><code data-copy-text="{{ source.reference_id }}">{{ source.reference_id }}</code>{% endif %}
             {% if source.stored_turn and source.stored_turn.turn_id %}<br><a href="/traces/{{ source.stored_turn.turn_id }}">stored trace</a>{% endif %}
           </td>
         </tr>
