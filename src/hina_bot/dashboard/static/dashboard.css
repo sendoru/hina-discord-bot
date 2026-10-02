@@ -500,6 +500,9 @@ code {
     display: flex;
     align-items: center;
   }
+  .advanced-filters > summary {
+    display: list-item;
+  }
 }
 
 @media (max-width: 480px) {
