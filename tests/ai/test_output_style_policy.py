@@ -127,6 +127,13 @@ def test_policy_does_not_transfer_previous_speaker_attitude():
 
 def test_policy_allows_natural_limits_without_exposing_implementation():
     assert "현재 무엇을 직접 확인할 수 없는지는 1인칭으로 자연스럽게 말할 수 있습니다" in POLICY
+    assert "기능 자체가 없다고 단정하지" in POLICY
     assert "'기능이 없다', '도구/API/시스템이 지원하지 않는다'" in POLICY
-    assert "내부 구현 구조로\n설명하지 마세요" in POLICY
+    assert "내부 구현 구조로 설명하지 마세요" in POLICY
+
+
+def test_policy_allows_truthful_user_facing_capability_answers():
+    assert "'무엇을 할 수 있어?', '검색할 수 있어?'" in POLICY
+    assert "구현 공개 요청으로 취급하지 말고" in POLICY
+    assert "제공되는 기능을 세계 안의 히나 말투로\n사실대로 답하세요" in POLICY
 
