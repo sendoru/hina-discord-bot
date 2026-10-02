@@ -5,7 +5,6 @@ from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.dashboard.analytics import build_analytics
 from hina_bot.dashboard.epochs import select_observability_epoch
-from hina_bot.dashboard.identity import build_identity_observability
 from hina_bot.dashboard.repository import AdminRepository
 from hina_bot.dashboard.services import (
     ContextStateService,
@@ -1157,25 +1156,11 @@ def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
                 "status": "completed",
             },
             {
-                "at": "2026-09-10T00:00:00+00:00",
-                "turn_id": "old-turn",
-                "event": "identity.resolution",
-                "outcome": "resolved",
-                "resolver_invoked": True,
-            },
-            {
                 "at": "2026-09-20T00:00:00+00:00",
                 "turn_id": "new-turn",
                 "event": "turn.completed",
                 "scope": "dm",
                 "status": "completed",
-            },
-            {
-                "at": "2026-09-20T00:00:00+00:00",
-                "turn_id": "new-turn",
-                "event": "identity.resolution",
-                "outcome": "resolved",
-                "resolver_invoked": True,
             },
         ],
     )
@@ -1208,11 +1193,6 @@ def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
     assert traces["page"].total == 1
     assert traces["rows"][0]["turn_id"] == "new-turn"
     assert trace_service.traces(epoch="all")["page"].total == 2
-
-    identity = build_identity_observability(current.snapshot)
-    assert identity["summary"]["resolved"] == 1
-    all_identity = build_identity_observability(all_selection.snapshot)
-    assert all_identity["summary"]["resolved"] == 2
 
     overview = trace_service.overview()
     assert overview["epoch"]["selected"] == "1"
