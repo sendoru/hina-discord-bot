@@ -105,7 +105,7 @@ command 자체는 epoch ID를 telemetry row에 직접 주입하지 않습니다.
 - 가장 최근 reset 이후: current epoch
 
 Observability marker가 하나라도 있으면 telemetry 기반 dashboard 화면은 기본적으로 current
-epoch만 분석합니다. `Traces`, `Analytics`, `Identity`에서는 과거 epoch, `legacy`, 또는
+epoch만 분석합니다. `Traces`, `Analytics`에서는 과거 epoch, `legacy`, 또는
 `all`을 명시적으로 선택할 수 있습니다.
 
 `all`은 서로 다른 telemetry schema 세대를 섞을 수 있으므로 dashboard가 경고를 표시합니다.
