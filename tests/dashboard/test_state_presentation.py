@@ -127,7 +127,7 @@ def test_state_tables_render_components_raw_keys_and_unknowns_safely(tmp_path):
     assert memory["dm:100:channel:20"][0].find("div/span").text == "DM · user"
     assert memory["dm:100:channel:20"][0].find("div/code").text == "100"
     assert memory["dm:100:channel:20"][1].find("code").text == "20"
-    assert memory["dm:100:channel:20"][0].find("details/summary").text == "Scope key"
+    assert memory["dm:100:channel:20"][0].find("details/summary").text == "Raw scope"
     assert memory[UNKNOWN_KEY][0].find("div/span").text == "Unknown"
     assert memory[UNKNOWN_KEY][0].find("details") is None
     chat = rows_by_key(tables[1], 0)
