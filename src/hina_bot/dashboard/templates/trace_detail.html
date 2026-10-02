@@ -13,7 +13,7 @@
 
 <nav class="section-nav" aria-label="Trace sections">
   {% if data.summary %}<a href="#trace-summary">Summary</a>{% endif %}
-  <a href="#stored-turn">Stored turn</a>
+  <a href="#stored-turn">{% if data.stored and data.stored.record_type == "failed" %}Failed record{% else %}Stored turn{% endif %}</a>
   {% if data.context_provenance or data.context_telemetry %}<a href="#context-provenance">Context</a>{% endif %}
   <a href="#trace-timeline">Timeline</a>
 </nav>
@@ -31,16 +31,32 @@
 
 {% if data.stored %}
 <section class="panel section-anchor" id="stored-turn">
-  <h2>Stored turn</h2>
+  <h2>{% if data.stored.record_type == "failed" %}Failed conversation record{% else %}Stored turn{% endif %}</h2>
+  {% if data.stored.record_type == "failed" %}
+  <p class="muted">관측용으로만 보존된 실패 대화입니다. 일반 대화 기록·요약·구조화 메모리에는 포함되지 않습니다.</p>
+  {% endif %}
   <dl class="metadata">
     {{ turn_scope(data.stored, show_raw=true) }}
     <div><dt>Message</dt><dd><code data-copy-text="{{ data.stored.message_id }}">{{ data.stored.message_id }}</code></dd></div>
     <div><dt>Created</dt><dd>{{ data.stored.created_at | localtime }}</dd></div>
+    {% if data.stored.record_type == "failed" %}
+    <div><dt>Status</dt><dd>{{ data.stored.status }} · {{ data.stored.stage }}</dd></div>
+    <div><dt>Fallback delivered</dt><dd>{{ "yes" if data.stored.reply_delivered else "no" }}</dd></div>
+    {% if data.stored.error_type %}
+    <div><dt>Error</dt><dd>{{ data.stored.error_type }}{% if data.stored.error_fingerprint %} · <code>{{ data.stored.error_fingerprint }}</code>{% endif %}</dd></div>
+    {% endif %}
+    {% endif %}
   </dl>
   <h3>Input</h3>
   <div class="message" data-copy-block>{{ data.stored.content }}</div>
-  <h3>Reply</h3>
+  <h3>{% if data.stored.record_type == "failed" %}Fallback reply{% else %}Reply{% endif %}</h3>
+  {% if data.stored.reply %}
   <div class="message assistant" data-copy-block>{{ data.stored.reply }}</div>
+  {% elif data.stored.record_type == "failed" %}
+  <div class="message assistant muted">No reply was delivered.</div>
+  {% else %}
+  <div class="message assistant" data-copy-block></div>
+  {% endif %}
   {% if data.memory_context %}
   <details>
     <summary>Stored memory context</summary>
