@@ -171,6 +171,15 @@ def test_repository_conversations_include_failed_turns_without_changing_turn_his
     assert row["error_type"] == "ValueError"
     assert repository.count_conversations(query="deadbeef") == 1
 
+    failed_trace = repository.turn_for_trace("trace-failed")
+    assert failed_trace is not None
+    assert failed_trace["record_type"] == "failed"
+    assert failed_trace["content"] == "failed question"
+    assert failed_trace["reply"] == "fallback"
+    assert failed_trace["status"] == "generation_failed"
+    assert failed_trace["memory_context"] == ""
+    assert failed_trace["context_provenance"] == ""
+
 
 def test_repository_memory_inspection_and_lifecycle_columns(tmp_path):
     path = tmp_path / "hina.sqlite3"
