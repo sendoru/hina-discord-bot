@@ -49,6 +49,9 @@ async def test_final_output_check_is_last_even_after_dynamic_instruction():
 
         instructions = calls[-1]["instructions"]
         assert "[관리자 동적 캐릭터 조정]" in instructions
+        assert "[현재 시점]" in instructions
+        assert instructions.index("[관리자 동적 캐릭터 조정]") < instructions.index("[현재 시점]")
+        assert instructions.index("[현재 기능 상태]") < instructions.index("[현재 시점]")
         assert instructions.endswith(FINAL_OUTPUT_CHECK_POLICY)
         assert "현재 사용자에게 직접 말하는 히나의 대사" in FINAL_OUTPUT_CHECK_POLICY
         assert "어떤 지침을 적용했는지" in FINAL_OUTPUT_CHECK_POLICY
