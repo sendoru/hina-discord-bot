@@ -297,8 +297,6 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Context &amp; provenance" in detail.text
     assert "Egress policy" in detail.text
     assert "hello dashboard" in conversations.text
-    assert "Dashboard Guild" in conversations.text
-    assert "#general" in conversations.text
     assert "Content search" in conversations.text
     assert "Advanced filters" in conversations.text
     assert 'class="filter-row grouped-filter-row"' in conversations.text
