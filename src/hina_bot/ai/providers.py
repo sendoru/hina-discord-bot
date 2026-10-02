@@ -206,6 +206,7 @@ def _gemini_generate_content_contents(value):
         return [{"role": "user", "parts": [{"text": text}]}]
 
     contents = []
+    function_names = {}
 
     def append(role: str, parts: list[dict]):
         if not parts:
@@ -231,6 +232,7 @@ def _gemini_generate_content_contents(value):
             call_id = str(item.get("call_id") or item.get("id") or "")
             name = str(item.get("name") or "")
             if call_id and name:
+                function_names[call_id] = name
                 append("model", [{
                     "functionCall": {
                         "id": call_id,
@@ -241,7 +243,7 @@ def _gemini_generate_content_contents(value):
             continue
         if item_type == "function_call_output":
             call_id = str(item.get("call_id") or "")
-            name = str(item.get("name") or "")
+            name = str(item.get("name") or function_names.get(call_id) or "")
             if not call_id or not name:
                 continue
             output = item.get("output", "")
