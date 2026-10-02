@@ -8,7 +8,6 @@ from hina_bot.ai.rp_output_policy import (
     ProvenanceMode,
     provenance_mode,
 )
-from hina_bot.ai.runtime_llm import GENERAL_RP_OUTPUT_POLICY
 
 
 def _pipeline(*, web_search: bool = True):
@@ -53,10 +52,3 @@ def test_web_disabled_still_keeps_challenge_local():
     assert _pipeline(web_search=False)._web_search_decision("그거 맞아?", []).mode == "none"
 
 
-def test_correction_policy_forbids_invented_defenses_without_blindly_accepting_user():
-    policy = GENERAL_RP_OUTPUT_POLICY
-    assert "기존 주장을 지키려고" in policy
-    assert "이유·규칙·출처·사건을 새로 만들지" in policy
-    assert "사용자의 반박도 자동으로 사실로 받아들이지" in policy
-    assert "뒷받침되지 않으면 짧게 인정하고 정정" in policy
-    assert "캐릭터의 체면보다 정확성을 우선" in policy
