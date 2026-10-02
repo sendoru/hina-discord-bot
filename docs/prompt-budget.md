@@ -4,10 +4,16 @@
 
 ## 항상 주입하는 내용
 
-- 고정 신뢰·보안·몰입 경계(`POLICY`)
+- 고정 신뢰·보안·몰입 경계(`prompts/integration/base.md` → `POLICY`)
 - 히나의 핵심 성격, 말투, 반복 연출 방지, 소수의 선택적 장난 규칙(`prompts/hina.md`)
 - 현재 대화의 관계 모드(`ordinary_relationship.md` 또는 `special_dm.md`)
 - 현재 시각과 지역 fallback에 필요한 짧은 runtime context
+
+## 파일 배치
+
+런타임 answer에 주입되는 정적 자연어 정책은 `src/hina_bot/prompts/integration/`에 둡니다.
+Python 모듈은 상수 이름과 조건부 조립 로직만 유지하고, `load_prompt()`로 리소스를 읽습니다.
+현재 시각·기능 상태처럼 런타임 값을 삽입하는 instruction builder는 코드에 남깁니다.
 
 ## lore로만 두는 내용
 
