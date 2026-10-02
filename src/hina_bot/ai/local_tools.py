@@ -223,9 +223,23 @@ def continuation_request(
         ]
         followup["previous_interaction_id"] = interaction_id
     else:
-        next_input.extend(_reasoning_replay_items(response))
-        next_input.extend(_normalized_function_call(call) for call in calls)
-        next_input.extend(result.provider_input() for result in results)
+        interaction_steps = tuple(
+            getattr(response, "_hina_interaction_steps", ()) or ()
+        )
+        if interaction_steps:
+            next_input.extend(
+                dict(step)
+                for step in interaction_steps
+                if isinstance(step, dict)
+            )
+            next_input.extend(
+                result.provider_input(include_name=True)
+                for result in results
+            )
+        else:
+            next_input.extend(_reasoning_replay_items(response))
+            next_input.extend(_normalized_function_call(call) for call in calls)
+            next_input.extend(result.provider_input() for result in results)
         followup["input"] = next_input
         followup.pop("previous_interaction_id", None)
     followup["tool_choice"] = "auto"
