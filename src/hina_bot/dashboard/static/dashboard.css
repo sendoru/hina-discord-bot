@@ -2902,3 +2902,105 @@ pre {
   .section-nav a { display: inline-flex; align-items: center; }
   .mobile-result-card .metadata { grid-template-columns: 1fr; }
 }
+
+
+/* Clipboard affordances: block copy buttons for long text and click-to-copy IDs. */
+.copy-block {
+  position: relative;
+  min-width: 0;
+}
+
+.copy-block > .message,
+.copy-block > pre {
+  padding-right: 46px;
+}
+
+.copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: rgba(13, 16, 22, .86);
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.copy-button:hover,
+.copy-button:focus-visible,
+.copy-button.is-copied {
+  border-color: rgba(145, 175, 255, .48);
+  background: var(--panel-2);
+  color: var(--accent-strong);
+}
+
+[data-copy-text] {
+  position: relative;
+  cursor: copy;
+  transition:
+    border-color .12s ease,
+    background .12s ease,
+    color .12s ease;
+}
+
+[data-copy-text]:hover,
+[data-copy-text]:focus-visible,
+[data-copy-text].is-copied {
+  border-color: rgba(145, 175, 255, .44);
+  background: rgba(145, 175, 255, .10);
+  color: var(--accent-strong);
+  outline: none;
+}
+
+[data-copy-text]:focus-visible {
+  box-shadow: 0 0 0 2px rgba(145, 175, 255, .22);
+}
+
+.copy-toast {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 1000;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: rgba(18, 23, 32, .96);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition: opacity .12s ease, transform .12s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.copy-toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 720px) {
+  .copy-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+  }
+
+  .copy-block > .message,
+  .copy-block > pre {
+    padding-right: 52px;
+  }
+}
