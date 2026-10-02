@@ -19,7 +19,7 @@
       </div>
       <div class="conversation-head-actions">
         {% if row.turn_id %}<a href="/traces/{{ row.turn_id }}">trace</a>{% endif %}
-        <code>msg {{ row.message_id }}</code>
+        <code data-copy-text="{{ row.message_id }}">msg {{ row.message_id }}</code>
       </div>
     </div>
     <dl class="metadata compact conversation-metadata">
@@ -27,9 +27,9 @@
       <div><dt>Selected</dt><dd>{{ "yes" if row.selected else "no" }}</dd></div>
     </dl>
     <h3>Input</h3>
-    <div class="message">{{ row.content }}</div>
+    <div class="message" data-copy-block>{{ row.content }}</div>
     <h3>Reply</h3>
-    <div class="message assistant">{{ row.reply }}</div>
+    <div class="message assistant" data-copy-block>{{ row.reply }}</div>
   </article>
   {% endfor %}
 </section>
