@@ -20,6 +20,7 @@ def test_member_intent_and_startup_chunking_are_always_enabled():
     finally:
         store.close()
 
+
 def test_historical_alias_filter_is_applied_per_source_before_aggregation():
     store = Store(":memory:")
     try:
