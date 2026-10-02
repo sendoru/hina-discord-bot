@@ -6,20 +6,24 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Added
 
-- 현재 Discord 멤버 기반 사용자 식별 기능을 추가했습니다. 로컬 정확 일치, 제한된 시맨틱
-  폴백, 기억/기록 조회와 독립된 식별 문맥을 사용합니다. 봇은 Server Members Intent를 항상 요청하며,
-  기존의 엄격한 외부 전송 제한은 그대로 유지됩니다.
+- 대화 모델이 필요할 때만 현재 Discord 채널의 사용자 명단을 로컬 function tool로 조회할 수
+  있습니다. 도구는 현재 채널을 볼 수 있는 사람의 server nickname, global name, username, user ID만
+  반환하며, 봇은 이를 위해 Server Members Intent를 항상 요청합니다.
 - Configurable guild channels that treat every human message as a direct bot turn, while keeping bot-authored messages behind explicit triggers.
 - Formal release-version and compatibility lifecycle policy.
 - CI validation for package version format and release-tag consistency.
 
 ### Changed
 
-- 식별된 사용자를 호출·핑하거나 현재 채널의 최근 발언을 조회할 때 더 이상 해당 사용자의
-  채널 간 공개 기억을 자동으로 요청하지 않습니다. 과거 별칭은 출처 채널별로 필터링합니다.
+- 사용자 이름 해석은 별도 preflight resolver 대신 일반 답변의 `get_current_channel_members`
+  도구 호출로 처리합니다. 사용자 명단은 매 요청에 선제적으로 포함하지 않고 모델이 실제로 요청한
+  턴에만 provider로 전달됩니다.
 - Clarified the distinct roles of `app_version`, `build_revision`, and `runtime_id`.
 
 ### Removed
+
+- 실효성이 낮았던 exact/fuzzy/semantic identity resolver, historical alias fallback, `resolved_identities`
+  context와 전용 Identity dashboard를 제거했습니다.
 
 - Obsolete Discord-client implicit LLM construction and standalone module entrypoints; `hina-bot`
   now has a single composition root in `discord.runtime_entry`.
