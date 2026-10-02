@@ -69,7 +69,7 @@
         <span class="muted">no stored context</span>
         {% endif %}
         {% if row.turn_id %}<a href="/traces/{{ row.turn_id }}">trace</a>{% else %}<span class="muted">no trace id</span>{% endif %}
-        <code>msg {{ row.message_id }}</code>
+        <code data-copy-text="{{ row.message_id }}">msg {{ row.message_id }}</code>
       </div>
     </div>
     <dl class="metadata compact conversation-metadata">
@@ -90,10 +90,10 @@
     </div>
     {% endif %}
     <h3>Input</h3>
-    <div class="message">{{ row.content }}</div>
+    <div class="message" data-copy-block>{{ row.content }}</div>
     <h3>{% if row.record_type == "failed" %}Fallback reply{% else %}Reply{% endif %}</h3>
     {% if row.reply %}
-    <div class="message assistant">{{ row.reply }}</div>
+    <div class="message assistant" data-copy-block>{{ row.reply }}</div>
     {% elif row.record_type == "failed" %}
     <div class="message assistant muted">No reply was delivered.</div>
     {% else %}
