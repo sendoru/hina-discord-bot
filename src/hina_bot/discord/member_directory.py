@@ -16,9 +16,10 @@ class ChannelMemberDirectory:
 CHANNEL_MEMBER_TOOL = LocalToolSpec(
     name="get_current_channel_members",
     description=(
-        "현재 Discord 채널에서 볼 수 있는 사람들의 user_id, 서버 닉네임, global name, "
-        "username을 조회합니다. 사람을 이름·별명으로 식별하거나 정확한 사용자 mention ID가 "
-        "필요할 때만 사용하세요."
+        "현재 Discord 채널의 사용자 이름과 user_id를 조회합니다. 이름·별명으로 사람을 "
+        "식별하거나 정확한 mention ID가 필요할 때 사용하세요. 불러 달라거나 핑해 달라는 "
+        "대상이 확인되면 반환된 user_id를 <@user_id>로 사용할 수 있으며, 여러 후보가 "
+        "그럴듯하면 임의로 고르지 마세요."
     ),
     parameters={
         "type": "object",
