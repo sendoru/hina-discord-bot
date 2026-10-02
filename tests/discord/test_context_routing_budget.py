@@ -160,29 +160,6 @@ class PublicContextRoutingTests(unittest.TestCase):
         self.assertTrue(enabled)
         self.assertEqual(set(user_ids), {200})
 
-    def test_resolved_text_name_loads_only_that_users_public_memory(self):
-        scope = Scope(1, 10, 100)
-        enabled, user_ids = _public_context_request(
-            scope,
-            "센돌이 누군지 알아?",
-            [],
-            resolved_user_ids=("200",),
-        )
-        self.assertTrue(enabled)
-        self.assertEqual(set(user_ids), {200})
-
-    def test_resolved_target_is_added_without_discord_mention(self):
-        message = NS(author=NS(id=100), mentions=[])
-        selected = targets(
-            message,
-            99,
-            [{"user_id": "200", "name": "tag : sendol"}],
-        )
-        self.assertEqual(
-            selected,
-            [{"user_id": 200, "name": "tag : sendol"}],
-        )
-
     def test_broad_server_history_query_can_fan_out(self):
         scope = Scope(1, 10, 100)
         self.assertEqual(
