@@ -1,9 +1,11 @@
 import json
 from types import SimpleNamespace as NS
+from unittest.mock import AsyncMock
 
 import pytest
 
 from hina_bot.ai.local_tools import (
+    CURRENT_LOCAL_TOOLS,
     LocalToolCall,
     LocalToolError,
     LocalToolExecutor,
@@ -12,6 +14,10 @@ from hina_bot.ai.local_tools import (
     ToolRoundLimitError,
     extract_local_tool_calls,
 )
+from hina_bot.ai.runtime_llm import LLM
+from hina_bot.core.config import Settings
+from hina_bot.core.routing import Scope
+from hina_bot.core.store import Store
 
 
 def spec():
@@ -258,3 +264,89 @@ async def test_executor_stops_after_bounded_tool_rounds():
 
     with pytest.raises(ToolRoundLimitError):
         await executor.run(send, {"model": "test", "input": "hello"})
+
+
+@pytest.mark.asyncio
+async def test_answer_auto_executes_request_scoped_local_tool():
+    registry = LocalToolRegistry()
+    roster_spec = LocalToolSpec(
+        name="get_current_channel_members",
+        description="current channel members",
+        parameters={"type": "object", "properties": {}, "additionalProperties": False},
+    )
+    registry.register(
+        roster_spec,
+        lambda _arguments: {
+            "count": 1,
+            "members": [{
+                "user_id": "200",
+                "server_nickname": "tag : uhe",
+                "global_name": "Uhe",
+                "username": "2_718281",
+            }],
+        },
+    )
+
+    client = NS(provider_name="openai", close=AsyncMock())
+    llm = LLM(
+        Settings(
+            discord_token="test",
+            db_path=":memory:",
+            provider="openai",
+            model_routing_mode="fixed",
+            routing_classifier_mode="off",
+            chat_web_search=False,
+        ),
+        client=client,
+    )
+    llm.usage.request = AsyncMock(side_effect=[
+        NS(
+            status="completed",
+            output_text="",
+            output=[NS(
+                type="function_call",
+                id="call-1",
+                call_id="call-1",
+                name="get_current_channel_members",
+                arguments="{}",
+            )],
+        ),
+        NS(status="completed", output_text="<@200>", output=[]),
+    ])
+    store = Store(":memory:")
+    token = CURRENT_LOCAL_TOOLS.set(registry)
+    try:
+        answer = await llm.answer(
+            store,
+            Scope(1, 10, 100),
+            "caller",
+            "으혜 불러줘",
+            use_memory=False,
+        )
+        calls = list(llm.usage.request.await_args_list)
+    finally:
+        CURRENT_LOCAL_TOOLS.reset(token)
+        await llm.close()
+        store.close()
+
+    assert answer == "<@200>"
+    assert len(calls) == 2
+    first = calls[0].kwargs
+    assert {
+        "type": "function",
+        "name": "get_current_channel_members",
+        "description": "current channel members",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    } in first["tools"]
+    assert first["tool_choice"] == "auto"
+
+    second = calls[1].kwargs
+    tool_output = second["input"][-1]
+    assert tool_output["type"] == "function_call_output"
+    payload = json.loads(tool_output["output"])
+    assert payload["ok"] is True
+    assert payload["result"]["members"][0]["username"] == "2_718281"
