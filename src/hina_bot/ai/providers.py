@@ -601,9 +601,24 @@ def _gemini_output(data: dict):
 
 
 class _GeminiResponses:
-    def __init__(self, http: httpx.AsyncClient, *, thinking_level: str = "low"):
+    def __init__(
+        self,
+        http: httpx.AsyncClient,
+        *,
+        thinking_level: str = "low",
+        store_interactions=False,
+    ):
         self.http = http
         self.thinking_level = thinking_level
+        self.store_interactions = store_interactions
+
+    def _store_enabled(self, requested=False) -> bool:
+        configured = (
+            self.store_interactions()
+            if callable(self.store_interactions)
+            else self.store_interactions
+        )
+        return bool(configured or requested)
 
     async def _generate_content(
         self,
@@ -628,7 +643,7 @@ class _GeminiResponses:
 
         payload = {
             "contents": _gemini_generate_content_contents(kwargs.get("input", "")),
-            "store": bool(kwargs.get("store", False)),
+            "store": self._store_enabled(kwargs.get("store", False)),
             "generationConfig": {
                 "thinkingConfig": {"thinkingLevel": thinking_level},
             },
@@ -687,7 +702,7 @@ class _GeminiResponses:
         payload = {
             "model": kwargs["model"],
             "input": _gemini_input(kwargs.get("input", "")),
-            "store": bool(kwargs.get("store", False)),
+            "store": self._store_enabled(kwargs.get("store", False)),
         }
         instructions = kwargs.get("instructions")
         if instructions:
@@ -758,8 +773,14 @@ class _GeminiResponses:
 class GeminiClient:
     provider_name = "gemini"
 
-    def __init__(self, credential: str, *, timeout: float = 45,
-                 thinking_level: str = "low"):
+    def __init__(
+        self,
+        credential: str,
+        *,
+        timeout: float = 45,
+        thinking_level: str = "low",
+        store_interactions=False,
+    ):
         self._http = httpx.AsyncClient(
             timeout=timeout,
             headers={"x-goog-api-key": credential, "Content-Type": "application/json"},
@@ -767,6 +788,7 @@ class GeminiClient:
         self.responses = _GeminiResponses(
             self._http,
             thinking_level=thinking_level,
+            store_interactions=store_interactions,
         )
 
     async def close(self):
@@ -840,6 +862,9 @@ def create_provider_client(
             credential,
             timeout=timeout,
             thinking_level=thinking_level or settings.gemini_thinking_level,
+            store_interactions=lambda: bool(
+                getattr(settings, "gemini_store_interactions", False)
+            ),
         )
     if provider == "openrouter":
         return OpenRouterClient(credential, timeout=timeout, max_retries=max_retries)
