@@ -41,7 +41,6 @@ The dashboard currently exposes the following read-only routes:
 - `/traces`: server-side filtered/paginated turn traces
 - `/traces/{turn_id}`: correlated stored turn + event/usage/exchange timeline
 - `/analytics`: model/search routing and API usage analytics
-- `/identity`: speaker identity resolver outcomes and repeat-pattern observability
 - `/conversations`: bounded raw-turn inspection with server-side filters
 - `/memory`: structured-memory list/filter view
 - `/memory/{id}`: memory provenance/source-turn detail
@@ -218,7 +217,7 @@ epoch ID into every JSONL row. The dashboard assigns retained telemetry to a gen
 - the newest epoch is the current analysis baseline.
 
 When at least one marker exists, telemetry-based pages default to the current epoch. Overview is always
-current-epoch scoped; Traces, Analytics and Identity can explicitly select a historical epoch,
+current-epoch scoped; Traces and Analytics can explicitly select a historical epoch,
 `legacy`, or `all`.
 
 This default prevents fields introduced after an older deployment from being silently compared with
@@ -259,47 +258,6 @@ silently undercounting it.
 
 No provider price table is embedded in the dashboard. Cost conversion can be added later as a
 configurable layer if needed.
-
-## Speaker identity observability
-
-`/identity` observes the existing query-time speaker resolver without creating an alias database or
-changing memory visibility.
-
-For an identity query, the Discord preflight and the final response share one opaque `turn_id`.
-This lets `identity.resolution` events, `identity_resolve` API usage, and the final answer trace be
-correlated without storing Discord message IDs in telemetry.
-
-Identity events contain only bounded metadata:
-
-- `resolved` / `ambiguous` / `none` / `blocked`,
-- visible and pre-visibility candidate counts,
-- policy block reason,
-- opaque reference/user groups,
-- whether the resolver API was invoked.
-
-멤버 디렉터리의 로컬 매칭은 `resolution_method`와 `directory_complete`도 기록합니다.
-로컬 정확 일치 결과는 `resolver_invoked=false`, `evidence_source=member_directory`이므로
-`identity_resolve` API 요청으로 집계하면 안 됩니다. 최종 context provenance에는 이름이나 참조
-원문을 복사하지 않고 선택·차단된 `resolved_identities` 개수만 포함합니다.
-대시보드에서는 로컬 정확 일치를 별도로 표시하고, 각 사례의 방식과 디렉터리 완전성 여부를 보여주며,
-반복 매핑 분석에는 로컬 판단과 시맨틱 판단을 모두 포함합니다. 예상 hit rate의 분모는 식별 판단
-건수이며, provider 호출 수와 token 집계는 실제 API 호출만 포함합니다.
-디렉터리 완전성과 privacy 경계는 [사용자 식별](identity-resolution.md) 문서를 참고하세요.
-
-The resolver may return a short `reference` span only when it is copied verbatim from the current
-request. Python validates that constraint, normalizes the span, and immediately replaces it with a
-deployment-local HMAC group before event logging. The Discord token is used only as a secret key
-with an identity-observability domain separator; neither the token nor the raw nickname/reference
-is written to telemetry. User IDs used for repeat-mapping analysis are grouped the same way.
-
-The dashboard simulates a conservative cache over these opaque groups. A second stable
-reference-group -> user-group resolution counts as a potential cache hit. `ambiguous` and `none`
-clear the simulated mapping; a different resolved user is counted as a conflict. These numbers are
-planning data for #84, not a runtime cache.
-
-Until #84 exists, no identity event is alias-learning evidence. The dashboard still tracks the
-`evidence_source` field and surfaces any `assistant_generated` count so a future feedback-loop
-regression is visible.
 
 ## Memory inspection
 
@@ -460,8 +418,8 @@ explicit:
 - `dashboard/routes/` owns FastAPI request/response wiring by domain.
 - `dashboard/services/` owns trace, memory, context-state, and reconciliation read models. Routes receive
   the specific domain service they need rather than a shared compatibility facade.
-- `dashboard/analytics.py` and `dashboard/identity.py` remain pure read-model builders instead of being
-  wrapped in unnecessary service classes; their routes compose observability-epoch selection directly.
+- `dashboard/analytics.py` remains a pure read-model builder instead of being wrapped in an unnecessary
+  service class; its route composes observability-epoch selection directly.
 - `dashboard/repository.py` remains the explicit SQLite read boundary. It still opens the database
   read-only and does not construct the production `Store`.
 
@@ -491,7 +449,7 @@ Memory failures는 `turn.completed`의 실패 횟수 합계와 실패가 있는 
 적용 필터 칩은 read model의 정규화된 조건을 표시합니다. 파생된 Guild realm이나 무시된
 boolean 조건은 표시하지 않습니다. Scope 유형 제거는 해당 Guild·Channel·legacy realm을
 함께 제거하며 개별 ID 제거는 나머지 조건을 유지합니다. 조건 제거는 첫 페이지로 돌아갑니다.
-Analytics·Identity·Summaries·Cursors에도 같은 칩을 제공합니다.
+Analytics·Summaries·Cursors에도 같은 칩을 제공합니다.
 
 목록에서 상세 화면으로 이동할 때 `return_to`에 필터와 페이지를 전달합니다. 복귀 경로는
 해당 목록의 정확한 내부 경로만 허용합니다. 외부 URL, fragment, 제어 문자, 역슬래시,
@@ -505,9 +463,6 @@ HTML 상세의 404와 잘못된 페이지·식별자의 422는 공통 오류 화
 현재 메뉴는 `aria-current="page"`로 표시합니다. 첫 Tab은 본문 바로가기이며 데이터 표의
 가로 스크롤 영역도 키보드 포커스를 받을 수 있습니다. 입력 오류는 `aria-invalid`와
 `aria-describedby`로 연결합니다.
-
-Identity의 reference/user group은 짧은 해시 표시와 전체 값 disclosure를 함께 제공합니다.
-원문 이름이나 참조 문자열은 추가로 표시하지 않습니다.
 
 표시 용어: 메뉴·필드명은 기존 영문을 유지하며 설명·빈 결과·입력 오류는 한국어로
 제공합니다. `—`는 미관측·미보존·해당 없음, `Unknown`은 상태 판단 불가입니다. 작은 보조
