@@ -1,20 +1,22 @@
 {% extends "base.html" %}
-{% from "_scope_ui.html" import scope_key %}
+{% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw %}
+{% from "_filter_ui.html" import active_filter_chips %}
 {% block title %}Summaries · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
     <h1>Legacy Summaries</h1>
-    <p>Legacy summary state alongside structured-memory rollout.</p>
+    <p>구조화 메모리 도입과 함께 유지되는 기존 요약 상태입니다.</p>
   </div>
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters filter-layout filter-layout-compact" method="get">
   <fieldset class="filter-cluster filter-cluster-3">
     <legend>Match</legend>
-    <input name="q" value="{{ data.filters.q }}" placeholder="scope / name / summary text">
-    <input name="user_id" value="{{ data.filters.user_id }}" placeholder="user id">
-    <input name="realm" value="{{ data.filters.realm }}" placeholder="realm">
+    <div class="filter-field"><label for="filter-summaries-q">Search</label><input id="filter-summaries-q" name="q" value="{{ data.filters.q }}" placeholder="scope / name / summary text"></div>
+    <div class="filter-field"><label for="filter-summaries-user-id">User ID / name</label><input id="filter-summaries-user-id" name="user_id" value="{{ data.filters.user_id }}" placeholder="user id"></div>
+    <div class="filter-field"><label for="filter-summaries-realm">Realm</label><input id="filter-summaries-realm" name="realm" value="{{ data.filters.realm }}" placeholder="realm"></div>
   </fieldset>
   <div class="filter-footer">
     <div class="filter-actions">
@@ -22,19 +24,21 @@
       <a class="button secondary" href="/summaries">Reset</a>
     </div>
   </div>
+  {{ active_filter_chips(request, "/summaries", data) }}
 </form>
 
 <section class="panel">
   <h2>Personal summaries</h2>
   {% if data.personal %}
-  <div class="table-wrap">
-    <table class="wide-table">
-      <thead><tr><th>Scope</th><th>User</th><th>Through</th><th>Latest retained</th><th>Pending</th><th>Exportable</th><th>Structured items</th><th>Extraction cursor</th></tr></thead>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="wide-table summary-table">
+      <thead><tr><th>Realm</th><th>Channel</th><th>User</th><th>Through</th><th>Latest retained</th><th>Pending</th><th>Exportable</th><th>Structured items</th><th>Extraction cursor</th></tr></thead>
       <tbody>
       {% for row in data.personal %}
       <tr>
-        <td>{{ scope_key(row.scope) }}<br><span class="muted">{{ row.realm }}</span></td>
-        <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
+        <td>{{ scope_realm(row.realm_display, row.guild_name) }}{{ scope_raw(row.scope_display) }}</td>
+        <td>{{ scope_channel(row.scope_display, row.channel_name) }}</td>
+        <td>{{ scope_user(row.user_id, row.user_name) }}</td>
         <td class="numeric">{{ row.through_id }}</td>
         <td class="numeric">{{ row.latest_turn_id or "—" }}</td>
         <td class="numeric">{{ row.pending_turns }}</td>
@@ -46,34 +50,35 @@
           {% else %}—{% endif %}
         </td>
       </tr>
-      <tr class="content-row"><td></td><td colspan="7"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
+      <tr class="content-row"><td colspan="9"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
-  {% else %}<p class="muted">No personal summaries match this filter.</p>{% endif %}
+  {% else %}<p class="muted">조건에 맞는 개인 요약이 없습니다.</p>{% endif %}
 </section>
 
 <section class="panel">
   <h2>Shared summaries</h2>
   {% if data.shared %}
-  <div class="table-wrap">
-    <table class="wide-table">
-      <thead><tr><th>Scope</th><th>User</th><th>Through</th><th>Latest retained call</th><th>Pending calls</th></tr></thead>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="wide-table summary-table">
+      <thead><tr><th>Realm</th><th>Channel</th><th>User</th><th>Through</th><th>Latest retained call</th><th>Pending calls</th></tr></thead>
       <tbody>
       {% for row in data.shared %}
       <tr>
-        <td>{{ scope_key(row.scope) }}<br><span class="muted">{{ row.realm }}</span></td>
-        <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
+        <td>{{ scope_realm(row.realm_display, row.guild_name) }}{{ scope_raw(row.scope_display) }}</td>
+        <td>{{ scope_channel(row.scope_display, row.channel_name) }}</td>
+        <td>{{ scope_user(row.user_id, row.user_name) }}</td>
         <td class="numeric">{{ row.through_id }}</td>
         <td class="numeric">{{ row.latest_call_id or "—" }}</td>
         <td class="numeric">{{ row.pending_calls }}</td>
       </tr>
-      <tr class="content-row"><td></td><td colspan="4"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
+      <tr class="content-row"><td colspan="6"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
-  {% else %}<p class="muted">No shared summaries match this filter.</p>{% endif %}
+  {% else %}<p class="muted">조건에 맞는 공유 요약이 없습니다.</p>{% endif %}
 </section>
 {% endblock %}

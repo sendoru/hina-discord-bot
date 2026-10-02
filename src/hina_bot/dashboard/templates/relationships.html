@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_scope_picker.html" import scope_picker %}
+{% from "_scope_ui.html" import scope_origin, named_id %}
 {% macro evidence_grid(values, axes, projected=false) -%}
 <div class="relationship-axis-grid">
   {% for axis in axes %}
@@ -22,7 +23,7 @@
   </div>
   <div class="relationship-memory-content">{{ item.content }}</div>
   <dl class="relationship-memory-meta">
-    <div><dt>Origin</dt><dd><code>{{ item.origin_realm }}</code> · #{{ item.origin_channel_id }}</dd></div>
+    <div><dt>Origin</dt><dd>{{ scope_origin(item.origin_display, item.origin_channel_id, item.guild_name, item.channel_name) }}</dd></div>
     <div><dt>Captured</dt><dd>{{ "public" if item.origin_public_at_capture else "private" }}</dd></div>
     {% if show_disclosure %}<div><dt>Disclosure</dt><dd><code>{{ item.disclosure }}</code></dd></div>{% endif %}
     <div><dt>Updated</dt><dd>{{ item.updated_at | localtime }}</dd></div>
@@ -38,7 +39,7 @@
 <section class="page-heading">
   <div>
     <h1>Effective Relationship Profiles</h1>
-    <p>Target-scope view of relationship memory, including shared-space projection and owner-DM access.</p>
+    <p>대상 범위의 관계 메모리입니다. 공유 공간 투영과 소유자 DM 접근을 포함합니다.</p>
   </div>
   <div class="window">
     <strong>Runtime policy</strong>
@@ -50,6 +51,7 @@
   </div>
 </section>
 
+{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters search-filter" method="get">
   <div class="search-primary">
     <label for="relationship-user-search">User search</label>
@@ -71,15 +73,14 @@
 <section class="notice danger">{{ data.target_error }}</section>
 {% elif not data.target %}
 <section class="notice info">
-  Choose Guild or DM, then enter the IDs needed for that scope. FULL/raw access and the cross-space
-  IMPLICIT projection are both target-specific.
+  Guild 또는 DM을 선택하고 필요한 ID를 입력하세요. FULL 원문 접근과 교차 공간 IMPLICIT 투영은 대상 범위에 따라 결정됩니다.
 </section>
 {% else %}
 <section class="notice info">
   Target:
   {% if data.target.scope_type == "guild" %}
-    <code>guild:{{ data.target.guild_id }}</code> ·
-    <code>channel:{{ data.target.channel_id }}</code>.
+    {{ named_id(data.target.guild_name, data.target.guild_id) }} ·
+    {{ named_id(data.target.channel_name, data.target.channel_id, "#") }}.
   {% else %}
     <code>dm</code>.
   {% endif %}
@@ -87,8 +88,7 @@
   Owner-DM relationship memories are shown with raw content below. Eligible relationship evidence is
   also aggregated into the owner relationship profile used by DM responses.
   {% else %}
-  FULL relationship memories are shown with raw content below. IMPLICIT memories contribute only their
-  bounded evidence projection. Missing axes mean no positive evidence was projected.
+  FULL 관계 메모리는 아래에 원문으로 표시합니다. IMPLICIT 메모리는 제한된 근거 투영만 반영합니다. 표시되지 않은 축에는 양의 근거가 투영되지 않았습니다.
   {% endif %}
 </section>
 {% endif %}
@@ -135,9 +135,9 @@
               {% if data.target.scope_type == "dm" %}
               <p class="muted">These relationship memories are available through <code>structured_owner_memory</code> in the owner's DM. Eligible evidence from them also contributes to <code>owner_relationship_profile</code>.</p>
               {% else %}
-              <p class="muted">These are the exact bounded relationship memories eligible for <code>structured_relationship_memory</code> in this target scope.</p>
+              <p class="muted">대상 범위에서 <code>structured_relationship_memory</code>로 사용할 수 있는 보존 관계 메모리입니다.</p>
               {% endif %}
-              <div class="table-wrap">
+              <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
                 <table class="wide-table">
                   <thead>
                     <tr>
@@ -150,7 +150,7 @@
                   {% for item in row.full_relationships %}
                     <tr>
                       <td><a href="/memory/{{ item.id }}">#{{ item.id }}</a></td>
-                      <td><code>{{ item.origin_realm }}</code><br><span class="muted">#{{ item.origin_channel_id }} · {{ "public" if item.origin_public_at_capture else "private" }}</span></td>
+                      <td>{{ scope_origin(item.origin_display, item.origin_channel_id, item.guild_name, item.channel_name) }}<br><span class="muted">{{ "public" if item.origin_public_at_capture else "private" }}</span></td>
                       <td><code>{{ item.disclosure }}</code></td>
                       <td class="numeric">{{ "%.2f"|format(item.confidence) }}</td>
                       {% for axis in data.axes %}
@@ -172,7 +172,7 @@
                 </table>
               </div>
               {% else %}
-              <p class="muted">No relationship memories resolve to FULL in this target scope.</p>
+              <p class="muted">대상 범위에서 FULL 접근이 가능한 관계 메모리가 없습니다.</p>
               {% endif %}
             </details>
 
@@ -200,7 +200,7 @@
                   {% for item in row.contributors %}
                     <tr>
                       <td><a href="/memory/{{ item.id }}">#{{ item.id }}</a></td>
-                      <td><code>{{ item.origin_realm }}</code><br><span class="muted">#{{ item.origin_channel_id }} · {{ "public" if item.origin_public_at_capture else "private" }}</span></td>
+                      <td>{{ scope_origin(item.origin_display, item.origin_channel_id, item.guild_name, item.channel_name) }}<span class="muted">{{ "public" if item.origin_public_at_capture else "private" }}</span></td>
                       <td class="numeric">{{ "%.2f"|format(item.confidence) }}</td>
                       {% for axis in data.axes %}
                       <td class="numeric">
@@ -266,13 +266,13 @@
           {% if data.target.scope_type == "dm" %}
           <p class="muted">Relationship memories available through <code>structured_owner_memory</code> in the owner's DM; eligible evidence also contributes to <code>owner_relationship_profile</code>.</p>
           {% else %}
-          <p class="muted">Exact relationship memories eligible for <code>structured_relationship_memory</code> in this target.</p>
+          <p class="muted">대상에서 <code>structured_relationship_memory</code>로 사용할 수 있는 관계 메모리입니다.</p>
           {% endif %}
           {% for item in row.full_relationships %}
             {{ relationship_memory_card(item, data.axes, true) }}
           {% endfor %}
         {% else %}
-          <p class="muted">No relationship memories resolve to FULL in this target scope.</p>
+          <p class="muted">대상 범위에서 FULL 접근이 가능한 관계 메모리가 없습니다.</p>
         {% endif %}
       </details>
 
@@ -299,7 +299,7 @@
     {% endfor %}
   </div>
   {% else %}
-  <p class="empty">No active relationship memories match this user filter.</p>
+  <p class="empty">사용자 조건에 맞는 활성 관계 메모리가 없습니다.</p>
   {% endif %}
 </section>
 {% endblock %}

@@ -2,6 +2,7 @@
 {% from "_epoch_ui.html" import epoch_notice, epoch_selector %}
 {% from "_status_ui.html" import status_badge %}
 {% from "_telemetry_ui.html" import telemetry_window %}
+{% from "_metric_ui.html" import exchange_metric %}
 {% block title %}Overview · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
@@ -16,12 +17,14 @@
 
 <section class="cards">
   <a class="card metric-card" href="/traces" aria-label="View all traces"><span>Traces</span><strong>{{ data.trace_count }}</strong></a>
-  <a class="card metric-card" href="/conversations" aria-label="View stored conversations"><span>Stored turns</span><strong>{{ data.stored_turn_count }}</strong></a>
-  <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View API call breakdown"><span>API calls</span><strong>{{ data.api_calls }}</strong></a>
-  <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View token usage breakdown"><span>Total tokens</span><strong>{{ "{:,}".format(data.tokens.total_tokens) }}</strong></a>
-  <a class="card metric-card" href="/analytics#web-search-routing" aria-label="View web-search analytics"><span>Web searches</span><strong>{{ data.web_search_calls }}</strong></a>
-  <a class="card metric-card {% if data.memory_failures %}metric-card-danger{% endif %}" href="/traces?q=memory" aria-label="Find traces related to memory failures"><span>Memory failures</span><strong>{{ data.memory_failures }}</strong></a>
+  <a class="card metric-card" href="/conversations" aria-label="View stored conversations"><span>Stored turns</span><strong>{{ data.stored_turn_count }}</strong><small>SQLite 보존 데이터 기준 · epoch와 무관</small></a>
+  <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View API call breakdown"><span>API calls</span>{{ exchange_metric(data.metrics.calls) }}</a>
+  <a class="card metric-card" href="/analytics#usage-breakdown" aria-label="View token usage breakdown"><span>Total tokens</span>{{ exchange_metric(data.metrics.total_tokens) }}</a>
+  <a class="card metric-card" href="/analytics#web-search-routing" aria-label="View web-search analytics"><span>Web searches</span>{{ exchange_metric(data.metrics.web_search_calls) }}</a>
+  <a class="card metric-card {% if data.memory_failures %}metric-card-danger{% endif %}" href="/traces?memory_failure=yes" aria-label="View traces with memory failures"><span>Memory failures</span><strong>{{ data.memory_failures }}</strong><small>실패 횟수 · 해당 trace {{ data.memory_failure_traces }}개</small></a>
 </section>
+
+<p class="muted">usage 로그의 exchange 미관측 trace: {{ data.missing_exchanges }}건. 미관측 값은 —, 관측된 0은 0으로 표시합니다.</p>
 
 <div class="grid-2">
   <section class="panel">
@@ -47,7 +50,7 @@
       </tbody>
     </table>
     {% else %}
-    <p class="muted">No scope telemetry.</p>
+    <p class="muted">보존된 범위 관측 데이터가 없습니다.</p>
     {% endif %}
   </section>
 </div>
@@ -64,7 +67,7 @@
       </tbody>
     </table>
     {% else %}
-    <p class="muted">No trace telemetry.</p>
+    <p class="muted">보존된 trace 관측 데이터가 없습니다.</p>
     {% endif %}
   </section>
 
@@ -79,7 +82,7 @@
       </tbody>
     </table>
     {% else %}
-    <p class="muted">No model-tier telemetry.</p>
+    <p class="muted">보존된 모델 등급 관측 데이터가 없습니다.</p>
     {% endif %}
   </section>
 </div>
@@ -90,7 +93,7 @@
     <a href="/traces">View all</a>
   </div>
   {% if data.recent_traces %}
-  <div class="table-wrap">
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table">
       <thead><tr><th>Time</th><th>Scope</th><th>Status</th><th>Tier</th><th>Model</th><th>Tokens</th><th>Search</th><th>Stored</th></tr></thead>
       <tbody>
@@ -101,7 +104,7 @@
           <td>{{ status_badge(row.status) }}</td>
           <td>{{ row.model_tier or "—" }}</td>
           <td>{{ row.models | join(", ") or "—" }}</td>
-          <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "?" }}</td>
+          <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "—" }}</td>
           <td>{{ "yes" if row.web_search else "no" }}</td>
           <td>{{ "yes" if row.stored else "no" }}</td>
         </tr>
@@ -110,7 +113,7 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">No traces are available in the retained telemetry window.</p>
+  <p class="muted">보존된 관측 구간에 trace가 없습니다.</p>
   {% endif %}
 </section>
 

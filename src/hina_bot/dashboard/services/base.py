@@ -82,6 +82,56 @@ class ReadService:
         return quick_ranges(self.timezone)
 
     @staticmethod
+    def _decorate_scope_names(
+        row: dict[str, object],
+        metadata: dict[str, dict[str, object]],
+        *,
+        realm_key: str = "realm",
+        channel_key: str = "channel_id",
+        guild_id_key: str = "guild_id",
+    ) -> dict[str, object]:
+        """Attach guild/channel names without changing canonical ID fields."""
+        realm = str(row.get(realm_key) or "")
+        guild_id = str(row.get(guild_id_key) or "")
+        if not guild_id and realm.startswith("guild:"):
+            guild_id = realm.removeprefix("guild:").split(":", 1)[0]
+        channel_id = str(row.get(channel_key) or "")
+        scope = str(row.get("scope") or "")
+        if scope:
+            parts = scope.split(":")
+            fields = {
+                parts[index]: parts[index + 1]
+                for index in range(0, len(parts) - 1, 2)
+            }
+            if not guild_id:
+                guild_id = str(fields.get("guild") or "")
+            if not channel_id:
+                channel_id = str(fields.get("channel") or "")
+
+        if guild_id and not row.get(guild_id_key):
+            row[guild_id_key] = guild_id
+        if channel_id and not row.get(channel_key):
+            row[channel_key] = channel_id
+
+        guilds = metadata.get("guilds", {})
+        channels = metadata.get("channels", {})
+        guild_meta = guilds.get(guild_id) if guild_id else None
+        channel_meta = channels.get(channel_id) if guild_id and channel_id else None
+
+        row["guild_name"] = (
+            str(guild_meta.get("name") or "")
+            if isinstance(guild_meta, dict)
+            else ""
+        )
+        row["channel_name"] = (
+            str(channel_meta.get("name") or "")
+            if isinstance(channel_meta, dict)
+            and str(channel_meta.get("guild_id") or "") == guild_id
+            else ""
+        )
+        return row
+
+    @staticmethod
     def _page(number: int, size: int, total: int) -> Page:
         number = max(1, int(number))
         size = min(100, max(10, int(size)))

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 from hina_bot.core.routing import Scope
 from hina_bot.core.scope_overrides import (
     CHATLOG_CAPTURE_NOTE_PREFIX,
@@ -11,11 +9,8 @@ from hina_bot.core.scope_overrides import (
 )
 
 from ..scopepicker import infer_target_scope_type
+from ..scopepresenter import parse_scope_key
 from .base import ReadService
-
-_GUILD_NOTE = re.compile(r"^guild:(\d+)$")
-_GUILD_USER_NOTE = re.compile(r"^guild:(\d+):user:(\d+)$")
-_DM_USER_NOTE = re.compile(r"^dm:(\d+):user:(\d+)$")
 
 
 class ContextStateService(ReadService):
@@ -40,9 +35,9 @@ class ContextStateService(ReadService):
         if not (guild_id or channel_id or user_id):
             return None, ""
         if not channel_id or not user_id:
-            return None, "Channel ID and user ID are required."
+            return None, "Channel ID와 User ID를 입력하세요."
         if scope_type == "guild" and not guild_id:
-            return None, "Guild ID is required for a guild scope."
+            return None, "Guild 범위에는 Guild ID가 필요합니다."
         try:
             parsed_channel = int(channel_id)
             parsed_user = int(user_id)
@@ -52,7 +47,7 @@ class ContextStateService(ReadService):
             if parsed_guild is not None and parsed_guild <= 0:
                 raise ValueError
         except ValueError:
-            return None, "Guild/channel/user IDs must be positive integers."
+            return None, "Guild·Channel·User ID는 양의 정수여야 합니다."
         return Scope(parsed_guild, parsed_channel, parsed_user), ""
 
     @staticmethod
@@ -61,34 +56,27 @@ class ContextStateService(ReadService):
         names: dict[tuple[str, str], str],
     ) -> dict[str, object]:
         scope_key = str(row.get("scope") or "")
+        scope_display = parse_scope_key(scope_key)
         text = str(row.get("text") or "")
         kind = "other"
         realm = ""
         user_id = ""
         user_name = ""
 
-        match = _GUILD_NOTE.fullmatch(scope_key)
-        if match:
+        if scope_display.realm_kind == "guild" and scope_display.level == "realm":
             kind = "server"
             realm = scope_key
-        else:
-            match = _GUILD_USER_NOTE.fullmatch(scope_key)
-            if match:
-                kind = "user"
-                realm = f"guild:{match.group(1)}"
-                user_id = match.group(2)
-            else:
-                match = _DM_USER_NOTE.fullmatch(scope_key)
-                if match:
-                    kind = "user"
-                    realm = f"dm:{match.group(1)}"
-                    user_id = match.group(2)
+        elif scope_display.level == "user":
+            kind = "user"
+            realm = scope_display.realm
+            user_id = scope_display.user_id
 
         if user_id:
             user_name = names.get((realm, user_id), "")
 
         return {
             "scope": scope_key,
+            "scope_display": scope_display,
             "text": text,
             "kind": kind,
             "realm": realm,
@@ -149,9 +137,18 @@ class ContextStateService(ReadService):
             target_dm_channel_id = ""
 
         memory_override_rows = self.repository.scope_mode_overrides("memory_modes")
+        memory_override_rows = [
+            {**row, "scope_display": parse_scope_key(str(row["scope"]))}
+            for row in memory_override_rows
+        ]
         chat_override_rows = self.repository.scope_mode_overrides("chat_log_modes")
         note_rows = self.repository.note_rows()
         names = self.repository.latest_user_names()
+        metadata = self.repository.discord_scope_metadata()
+        for row in memory_override_rows:
+            self._decorate_scope_names(row, metadata)
+        for row in chat_override_rows:
+            self._decorate_scope_names(row, metadata)
 
         memory_overrides = self._mode_map(memory_override_rows)
         chat_overrides = self._mode_map(chat_override_rows)
@@ -172,6 +169,7 @@ class ContextStateService(ReadService):
                 internal_note_count += 1
                 continue
             note = self._manual_note_row(row, names)
+            self._decorate_scope_names(note, metadata)
             if query_folded:
                 haystack = " ".join(
                     (
@@ -193,7 +191,7 @@ class ContextStateService(ReadService):
             else target_channel_id
         )
         if target_scope_type == "dm" and target_user_id and not dm_user_valid:
-            scope, target_error = None, "User ID must be a positive integer."
+            scope, target_error = None, "User ID는 양의 정수여야 합니다."
         elif target_scope_type == "dm" and (
             dm_channel_selection_required or dm_channel_unavailable
         ) and not parse_channel_id:
@@ -235,8 +233,13 @@ class ContextStateService(ReadService):
             }
             effective = {
                 "scope": scope,
+                "scope_display": parse_scope_key(scope.conversation),
+                "realm_display": parse_scope_key(scope.realm),
+                "user_note_display": parse_scope_key(scope.user_note),
                 "realm": scope.realm,
                 "channel": scope.channel,
+                "guild_id": scope.guild_id,
+                "channel_id": scope.channel_id,
                 "user_name": names.get((scope.realm, str(scope.user_id)), ""),
                 "user_note_key": scope.user_note,
                 "memory": {
@@ -260,16 +263,19 @@ class ContextStateService(ReadService):
                     "eligible_by_memory_mode": reads,
                 },
             }
+            self._decorate_scope_names(effective, metadata)
 
         chat_scope_keys = sorted(set(chat_overrides) | set(capture_overrides))
-        chat_override_inventory = [
-            {
+        chat_override_inventory = []
+        for key in chat_scope_keys:
+            row = {
                 "scope": key,
+                "scope_display": parse_scope_key(key),
                 "enabled": chat_overrides.get(key),
                 "capture": capture_overrides.get(key),
             }
-            for key in chat_scope_keys
-        ]
+            self._decorate_scope_names(row, metadata)
+            chat_override_inventory.append(row)
 
         return {
             "effective": effective,

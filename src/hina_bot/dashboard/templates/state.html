@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_scope_picker.html" import scope_picker %}
+{% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw, scope_metadata %}
 {% block title %}State · Hina Dashboard{% endblock %}
 {% block content %}
 {% macro chain_rows(chain, include_server=true) -%}
@@ -12,17 +13,18 @@
 <section class="page-heading">
   <div>
     <h1>Memory &amp; Context State</h1>
-    <p>Read-only view of effective memory, recent-chat context, and manual notes.</p>
+    <p>적용된 메모리·최근 대화 정책과 수동 메모를 읽기 전용으로 보여줍니다.</p>
   </div>
 </section>
 
 <section class="state-query-panel" aria-label="State lookup controls">
-  <form class="state-control-section state-scope-form" method="get" aria-labelledby="state-scope-title">
+  {% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
+<form class="state-control-section state-scope-form" method="get" aria-labelledby="state-scope-title">
     {% if data.filters.q %}<input type="hidden" name="q" value="{{ data.filters.q }}">{% endif %}
     <header class="state-control-heading">
       <div>
         <h2 id="state-scope-title">Evaluate target scope</h2>
-        <p>Inspect the effective memory and recent-context policy for one Discord scope.</p>
+        <p>선택한 Discord 범위의 실제 메모리·최근 대화 정책을 확인합니다.</p>
       </div>
     </header>
     <div class="scope-target-row">
@@ -37,11 +39,11 @@
         <select name="target_dm_channel_id" disabled>
           <option>Enter a user ID first</option>
         </select>
-        <small>Known DM channels are discovered from retained database state.</small>
+        <small>보존된 데이터베이스 상태에서 알려진 DM 채널을 찾습니다.</small>
         {% elif data.dm_channel_selection.candidates %}
         <select name="target_dm_channel_id">
           {% if data.dm_channel_selection.candidates|length > 1 and not data.dm_channel_selection.selected %}
-          <option value="" selected>Choose a known DM channel</option>
+          <option value="" selected>알려진 DM 채널을 선택하세요</option>
           {% endif %}
           {% if data.dm_channel_selection.selected and data.dm_channel_selection.selected not in data.dm_channel_selection.candidates %}
           <option value="{{ data.dm_channel_selection.selected }}" selected>{{ data.dm_channel_selection.selected }} · manual/legacy</option>
@@ -52,16 +54,16 @@
         </select>
         <small>
           {% if data.dm_channel_selection.auto_selected %}
-          Auto-selected the only known DM channel.
+          유일하게 알려진 DM 채널을 자동 선택했습니다.
           {% elif data.dm_channel_selection.candidates|length > 1 %}
-          {{ data.dm_channel_selection.candidates|length }} known DM channels found.
+          {{ data.dm_channel_selection.candidates|length }} 개의 DM 채널을 찾았습니다.
           {% else %}
-          Known DM channel from retained database state.
+          보존된 데이터베이스 상태의 DM 채널입니다.
           {% endif %}
         </small>
         {% else %}
         <input name="target_dm_channel_id" inputmode="numeric" value="{{ data.dm_channel_selection.selected }}" placeholder="DM channel id">
-        <small>No known DM channel was found; enter one manually as a fallback.</small>
+        <small>알려진 DM 채널이 없습니다. 채널 ID를 직접 입력할 수 있습니다.</small>
         {% endif %}
       </label>
       <div class="scope-target-actions">
@@ -80,7 +82,7 @@
     <header class="state-control-heading">
       <div>
         <h2 id="state-note-title">Search manual notes</h2>
-        <p>Search by scope, stored user name or ID, and note content.</p>
+        <p>범위, 보존된 사용자 이름·ID, 메모 내용으로 검색합니다.</p>
       </div>
     </header>
     <div class="search-primary state-note-search">
@@ -98,29 +100,27 @@
 <section class="notice danger">{{ data.target_error }}</section>
 {% elif data.filters.target_scope_type == "dm" and data.dm_channel_selection.selection_required %}
 <section class="notice info">
-  Multiple known DM channels exist for this user. Choose one from the DM channel list above.
+  이 사용자에게 알려진 DM 채널이 여러 개 있습니다. 위 목록에서 선택하세요.
 </section>
 {% elif data.filters.target_scope_type == "dm" and data.dm_channel_selection.unavailable %}
 <section class="notice info">
-  No known DM channel is retained for this user. Enter a channel ID manually above to inspect
-  channel-level overrides.
+  이 사용자에게 보존된 DM 채널이 없습니다. 위에서 채널 ID를 직접 입력해 채널별 재정의를 확인하세요.
 </section>
 {% elif not data.effective %}
 <section class="notice info">
-  Choose Guild or DM, then enter the IDs needed for that scope.
+  Guild 또는 DM을 선택하고 범위에 필요한 ID를 입력하세요.
 </section>
 {% else %}
 <section class="panel">
   <div class="panel-heading">
     <div>
       <h2>Effective target state</h2>
-      <p class="muted">
-        <code>{{ data.effective.realm }}</code> ·
-        <code>channel:{{ data.effective.scope.channel_id }}</code> ·
-        {% if data.effective.user_name %}{{ data.effective.user_name }} · {% endif %}<code>user:{{ data.effective.scope.user_id }}</code>
-      </p>
     </div>
   </div>
+
+  <dl class="metadata compact">
+    {{ scope_metadata(data.effective.scope_display, data.effective.realm_display, data.effective.scope.user_id, data.effective.user_name, show_raw=true, guild_name=data.effective.guild_name, channel_name=data.effective.channel_name) }}
+  </dl>
 
   <section class="cards">
     <article class="card">
@@ -140,7 +140,7 @@
       <span>Recent context</span>
       <strong>{{ data.effective.chat_log.effective }}</strong>
       {% if not data.effective.chat_log.guild_recent_context_applicable %}
-      <small>DM: recent channel context is not used</small>
+      <small>DM에서는 최근 채널 문맥을 사용하지 않습니다.</small>
       {% endif %}
     </article>
   </section>
@@ -148,7 +148,7 @@
   <div class="grid-2">
     <div>
       <h3>Automatic memory inheritance</h3>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
         <table>
           <thead><tr><th>Layer</th><th>Mode</th></tr></thead>
           <tbody>
@@ -159,7 +159,7 @@
     </div>
     <div>
       <h3>Recent-context enablement</h3>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
         <table>
           <thead><tr><th>Layer</th><th>on/off</th></tr></thead>
           <tbody>
@@ -169,7 +169,7 @@
       </div>
 
       <h3>Recent-context capture</h3>
-      <div class="table-wrap">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
         <table>
           <thead><tr><th>Layer</th><th>all/direct</th></tr></thead>
           <tbody>
@@ -184,15 +184,17 @@
 <section class="panel">
   <h2>Manual notes for this scope</h2>
   <p class="muted">
-    Notes are eligible only when automatic-memory reads are enabled. Per-request context routing can
-    still suppress cross-channel memory, so this is configuration eligibility rather than proof that
-    a particular answer received the note.
+    자동 메모리 읽기가 활성화되었을 때만 메모를 사용할 수 있습니다. 요청별 문맥 라우팅이 교차 채널 메모리를 제외할 수 있으므로, 이 설정만으로 특정 응답에 메모가 전달되었다고 판단할 수는 없습니다.
   </p>
   {% if data.effective.scope.guild_id is not none %}
-  <h3>Server note · <code>{{ data.effective.realm }}</code></h3>
+  <h3>Server note</h3>
+  {{ scope_realm(data.effective.realm_display, data.effective.guild_name) }}{{ scope_raw(data.effective.realm_display, show_raw=true, label="Raw note key") }}
   <div class="message">{{ data.effective.notes.server or "—" }}</div>
   {% endif %}
-  <h3>User note{% if data.effective.user_name %} · {{ data.effective.user_name }}{% endif %} · <code>{{ data.effective.user_note_key }}</code></h3>
+  <h3>User note</h3>
+  <dl class="metadata compact">
+    {{ scope_metadata(data.effective.user_note_display, data.effective.realm_display, data.effective.scope.user_id, data.effective.user_name, include_channel=false, show_raw=true, raw_label="Raw note key") }}
+  </dl>
   <div class="message">{{ data.effective.notes.user or "—" }}</div>
 </section>
 {% endif %}
@@ -200,35 +202,39 @@
 <section class="panel">
   <h2>Stored memory overrides</h2>
   {% if data.memory_overrides %}
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Scope</th><th>Mode</th></tr></thead>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="state-inventory">
+      <thead><tr><th>Realm</th><th>Channel</th><th>Mode</th></tr></thead>
       <tbody>
       {% for row in data.memory_overrides %}
-        <tr><td><code>{{ row.scope }}</code></td><td>{{ row.mode }}</td></tr>
+        <tr>
+          <td>{{ scope_realm(row.scope_display, row.guild_name) }}{{ scope_raw(row.scope_display, show_raw=true) }}</td>
+          <td>{{ scope_channel(row.scope_display, row.channel_name) }}</td>
+          <td>{{ row.mode }}</td>
+        </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <p class="muted">No explicit memory overrides; runtime defaults to <code>normal</code>.</p>
+  <p class="muted">명시적 메모리 재정의가 없습니다. 기본값은 <code>normal</code>입니다.</p>
   {% endif %}
 </section>
 
 <section class="panel">
   <h2>Stored recent-context overrides</h2>
   <p class="muted">
-    Runtime stores enablement (<code>on/off</code>) and capture scope (<code>all/direct</code>)
-    separately. The effective target state above combines both.
+    활성화 여부(<code>on/off</code>)와 캡처 범위(<code>all/direct</code>)를 따로 저장합니다. 위의 실제 대상 상태는 두 설정을 함께 반영합니다.
   </p>
   {% if data.chat_overrides %}
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Scope</th><th>Enabled override</th><th>Capture override</th></tr></thead>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="state-inventory">
+      <thead><tr><th>Realm</th><th>Channel</th><th>Enabled override</th><th>Capture override</th></tr></thead>
       <tbody>
       {% for row in data.chat_overrides %}
         <tr>
-          <td><code>{{ row.scope }}</code></td>
+          <td>{{ scope_realm(row.scope_display, row.guild_name) }}{{ scope_raw(row.scope_display, show_raw=true) }}</td>
+          <td>{{ scope_channel(row.scope_display, row.channel_name) }}</td>
           <td>{{ row.enabled or "inherit" }}</td>
           <td>{{ row.capture or "inherit" }}</td>
         </tr>
@@ -237,7 +243,7 @@
     </table>
   </div>
   {% else %}
-  <p class="muted">No explicit recent-context overrides; runtime defaults to <code>on + all</code>.</p>
+  <p class="muted">명시적 최근 문맥 재정의가 없습니다. 기본값은 <code>on + all</code>입니다.</p>
   {% endif %}
 </section>
 
@@ -246,34 +252,31 @@
     <div>
       <h2>Manual notes</h2>
       <p class="muted">
-        Internal <code>config:*</code> rows are excluded here. {{ data.internal_note_count }} internal/config
-        row{{ "" if data.internal_note_count == 1 else "s" }} currently exist; chat-log capture rows are
-        represented in the override table above.
+        내부 <code>config:*</code> 데이터 {{ data.internal_note_count }}개는 제외합니다. 대화 캡처 설정은 위 재정의 표에서 확인할 수 있습니다.
       </p>
     </div>
   </div>
   {% if data.manual_notes %}
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Kind</th><th>Scope / owner</th><th>Content</th></tr></thead>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
+    <table class="state-inventory state-notes" role="table">
+      <thead><tr><th>Kind</th><th>Realm</th><th>User</th><th>Content</th></tr></thead>
       <tbody>
       {% for row in data.manual_notes %}
         <tr>
-          <td>{{ row.kind }}</td>
-          <td>
-            <code>{{ row.scope }}</code>
-            {% if row.user_id %}
-              <br>{% if row.user_name %}{{ row.user_name }} · {% endif %}<code>{{ row.user_id }}</code>
-            {% endif %}
+          <td data-label="Kind">{{ row.kind }}</td>
+          <td data-label="Realm">
+            {{ scope_realm(row.scope_display, row.guild_name) }}
+            {{ scope_raw(row.scope_display, show_raw=true) }}
           </td>
-          <td><div class="memory-preview">{{ row.text }}</div></td>
+          <td data-label="User">{{ scope_user(row.user_id, row.user_name) }}</td>
+          <td data-label="Content"><div class="memory-preview">{{ row.text }}</div></td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <p class="muted">No manual notes match this filter.</p>
+  <p class="muted">조건에 맞는 수동 메모가 없습니다.</p>
   {% endif %}
 </section>
 {% endblock %}
