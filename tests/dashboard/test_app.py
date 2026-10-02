@@ -416,6 +416,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert icon.content
     assert "color-scheme" in static.text
     assert "@media (max-width: 720px)" in static.text
+    assert ".advanced-filters > summary {\n    display: list-item;" in static.text
     assert "@media (max-width: 480px)" in static.text
     assert "Some mobile browsers expose an effective CSS viewport wider than 720px" in static.text
     assert "white-space: nowrap" in static.text
