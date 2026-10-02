@@ -148,3 +148,33 @@ def test_identity_filters_recent_cases_without_changing_summary_window():
     assert data["summary"]["events"] == 2
     assert len(data["recent"]) == 1
     assert data["recent"][0]["turn_id"] == "t4"
+
+
+def test_local_exact_results_participate_in_repeat_groups_without_inflating_api_calls():
+    events = tuple({
+        "at": f"2026-10-02T00:0{index}:00+00:00",
+        "event": "identity.resolution", "turn_id": f"local-{index}",
+        "outcome": "resolved", "resolver_invoked": False, "candidate_count": 1,
+        "raw_candidate_count": 80, "resolution_method": "exact", "directory_complete": True,
+        "reference_group": "opaque-ref", "resolved_user_group": "opaque-user",
+        "evidence_source": "member_directory",
+    } for index in range(2))
+    data = build_identity_observability(TelemetrySnapshot(
+        events=events, usage=(), exchanges=(), oldest_at=events[0]["at"], newest_at=events[1]["at"],
+    ))
+    assert data["summary"]["invoked"] == 0
+    assert data["summary"]["local_exact"] == 2
+    assert data["summary"]["resolved"] == 2
+    assert data["summary"]["potential_cache_hits"] == 1
+    assert data["summary"]["potential_hit_rate"] == 50.0
+    assert data["usage"]["calls"] == 0
+    assert data["repeat_groups"][0]["stable"] is True
+    assert data["recent"][0]["resolution_method"] == "exact"
+    assert data["recent"][0]["directory_complete"] is True
+
+
+def test_legacy_identity_events_have_explicit_presentation_fallbacks():
+    data = build_identity_observability(snapshot())
+    assert data["summary"]["local_exact"] == 0
+    assert data["recent"][0]["resolution_method"] == "semantic"
+    assert data["recent"][0]["directory_complete"] is None

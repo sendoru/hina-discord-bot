@@ -9,6 +9,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 _IDENTITY_QUERY = re.compile(
     r"(?:누구(?:야|지|인지)?|누군지|어떤\s*(?:사람|애|분|유저)|성격|인상|평판|"
@@ -76,6 +77,147 @@ def normalize_identity_reference(value: str) -> str:
     return re.sub(r"[\W_]+", "", normalized, flags=re.UNICODE)
 
 
+def _alias_key(value: str) -> str:
+    # Unlike observability grouping, matching preserves username separators.
+    return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
+
+
+def _request_with_offsets(request: str):
+    chars, offsets = [], []
+    clusters = list(re.finditer(r"[^\r\n](?:[\u0300-\u036f]*)|[\r\n]", request))
+    for cluster in clusters:
+        for char in unicodedata.normalize("NFKC", cluster.group()).casefold():
+            if char.isspace():
+                if chars and chars[-1] == " ":
+                    # Include every original whitespace character in a matched span.
+                    offsets[-1] = (offsets[-1][0], cluster.end())
+                    continue
+                char = " "
+            chars.append(char)
+            offsets.append((cluster.start(), cluster.end()))
+    return "".join(chars), offsets
+
+
+_PARTICLES = ("에게", "한테", "이랑", "이", "가", "은", "는", "을", "를", "의", "랑", "와", "과")
+
+
+def _name_character(text: str, index: int) -> bool:
+    if not 0 <= index < len(text):
+        return False
+    char = text[index]
+    if char.isalnum() or char == "_":
+        return True
+    # A dot/hyphen inside a username is not a boundary; terminal sentence punctuation is.
+    return (
+        char in ".-" and 0 < index < len(text) - 1
+        and (text[index - 1].isalnum() or text[index - 1] == "_")
+        and (text[index + 1].isalnum() or text[index + 1] == "_")
+    )
+
+
+def match_identity_aliases(request: str, candidates) -> SpeakerIdentityResolution:
+    """Match full, bounded name spans; the caller must certify directory completeness."""
+    text, offsets = _request_with_offsets(request or "")
+    matches = {}
+    for candidate in candidates:
+        for alias in candidate.names:
+            key = _alias_key(alias)
+            if sum(char.isalnum() for char in key) < 3 or key.isdecimal():
+                continue
+            start = text.find(key)
+            while start >= 0:
+                end = start + len(key)
+                left = not _name_character(text, start - 1)
+                tail = text[end:]
+                right = not _name_character(text, end)
+                if not right:
+                    right = any(
+                        tail.startswith(particle) and (
+                            not _name_character(text, end + len(particle))
+                        )
+                        for particle in _PARTICLES
+                    )
+                if left and right:
+                    reference = request[offsets[start][0]:offsets[end - 1][1]]
+                    if _alias_key(reference) == key:
+                        old = matches.get(candidate.user_id, "")
+                        if len(reference) > len(old):
+                            matches[candidate.user_id] = reference
+                start = text.find(key, start + 1)
+    if len(matches) > 1:
+        references = set(matches.values())
+        reference = next(iter(references)) if len(references) == 1 else ""
+        return SpeakerIdentityResolution("ambiguous", reference=reference)
+    if matches:
+        user_id, reference = next(iter(matches.items()))
+        return SpeakerIdentityResolution("resolved", user_id, reference)
+    return SpeakerIdentityResolution("none")
+
+
+# Revised Romanization is only a search key. It never authorizes an identity.
+_HANGUL_INITIAL = (
+    "g", "kk", "n", "d", "tt", "r", "m", "b", "pp", "s", "ss", "", "j", "jj", "ch",
+    "k", "t", "p", "h",
+)
+_HANGUL_VOWEL = (
+    "a", "ae", "ya", "yae", "eo", "e", "yeo", "ye", "o", "wa", "wae", "oe", "yo", "u",
+    "wo", "we", "wi", "yu", "eu", "ui", "i",
+)
+_HANGUL_FINAL = (
+    "", "k", "k", "k", "n", "n", "n", "t", "l", "k", "m", "l", "l", "l", "p", "l",
+    "m", "p", "p", "t", "t", "ng", "t", "t", "k", "t", "p", "t",
+)
+
+
+def _romanized_key(value: str) -> str:
+    parts = []
+    for char in value:
+        syllable = ord(char) - 0xAC00
+        if 0 <= syllable < 11172:
+            parts.append(
+                _HANGUL_INITIAL[syllable // 588]
+                + _HANGUL_VOWEL[(syllable % 588) // 28]
+                + _HANGUL_FINAL[syllable % 28]
+            )
+        else:
+            parts.append(char)
+    return "".join(parts)
+
+
+def _name_keys(value: str) -> set[str]:
+    parts = re.findall(r"[^\W_]+(?:[_.-][^\W_]+)*", _alias_key(value))
+    values = {normalize_identity_reference(value), *map(normalize_identity_reference, parts)}
+    values.update(
+        token[:-len(particle)]
+        for token in tuple(values)
+        for particle in _PARTICLES
+        if token.endswith(particle) and len(token) > len(particle) + 1
+    )
+    return {key for token in values for key in (token, _romanized_key(token)) if len(key) >= 2}
+
+
+def narrow_identity_candidates(request: str, candidates) -> tuple[SpeakerIdentityCandidate, ...]:
+    """Shortlist lexically/phonetically related names without exporting a guild roster.
+
+    Keep every plausible match, including collisions. An oversized shortlist fails closed rather
+    than truncating away a competing identity. Empty and oversized results require no provider call.
+    """
+    request_keys = _name_keys((request or "")[:1000])
+    matched = []
+    for candidate in candidates:
+        name_keys = {key for name in candidate.names[:4] for key in _name_keys(name)}
+        if any(
+            left == right or (
+                min(len(left), len(right)) >= 4
+                and abs(len(left) - len(right)) <= 2
+                and SequenceMatcher(None, left, right).ratio() >= 0.8
+            )
+            for left in request_keys for right in name_keys
+        ):
+            matched.append(candidate)
+    return tuple(matched)
+
+
 def identity_group(value: str, *, guild_id: int, secret: str, kind: str) -> str:
     normalized = normalize_identity_reference(value) if kind == "reference" else str(value).strip()
     if not normalized or not secret:
@@ -126,7 +268,9 @@ class SpeakerIdentityResolver:
         request: str,
         candidates: tuple[SpeakerIdentityCandidate, ...] | list[SpeakerIdentityCandidate],
     ) -> SpeakerIdentityResolution:
-        bounded = tuple(candidates)[:_MAX_CANDIDATES]
+        bounded = tuple(candidates)
+        if len(bounded) > _MAX_CANDIDATES:
+            return SpeakerIdentityResolution("ambiguous")
         if not bounded:
             return SpeakerIdentityResolution("none")
 
@@ -177,6 +321,8 @@ __all__ = [
     "SpeakerIdentityResolver",
     "identity_group",
     "identity_resolution_needed",
+    "match_identity_aliases",
+    "narrow_identity_candidates",
     "normalize_identity_reference",
     "parse_identity_resolution",
 ]

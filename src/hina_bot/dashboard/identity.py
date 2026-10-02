@@ -200,6 +200,9 @@ def build_identity_observability(
         and _in_window(row, after, before, timezone)
     ]
     invoked = [row for row in all_events if row.get("resolver_invoked") is True]
+    decisions = [
+        row for row in all_events if row.get("outcome") in {"resolved", "ambiguous", "none"}
+    ]
     usage = [
         row
         for row in snapshot.usage
@@ -213,7 +216,7 @@ def build_identity_observability(
         for row in all_events
         if isinstance(row.get("blocked_reason"), str) and row.get("blocked_reason")
     )
-    repeat_rows, potential_hits, conflicts = _repeat_groups(invoked)
+    repeat_rows, potential_hits, conflicts = _repeat_groups(decisions)
 
     visible = []
     for row in sorted(all_events, key=lambda item: str(item.get("at") or ""), reverse=True):
@@ -223,7 +226,13 @@ def build_identity_observability(
             continue
         if blocked_reason and row_blocked != blocked_reason:
             continue
-        visible.append(row)
+        visible.append({
+            **row,
+            "resolution_method": row.get("resolution_method") or (
+                "semantic" if row.get("resolver_invoked") is True else "policy"
+            ),
+            "directory_complete": row.get("directory_complete"),
+        })
         if len(visible) >= 100:
             break
 
@@ -247,13 +256,17 @@ def build_identity_observability(
         "summary": {
             "events": len(all_events),
             "invoked": invoked_count,
+            "local_exact": sum(
+                row.get("resolution_method") == "exact" and row.get("outcome") == "resolved"
+                for row in all_events
+            ),
             "resolved": outcomes.get("resolved", 0),
             "ambiguous": outcomes.get("ambiguous", 0),
             "none": outcomes.get("none", 0),
             "blocked": outcomes.get("blocked", 0),
             "potential_cache_hits": potential_hits,
             "potential_hit_rate": (
-                round(potential_hits * 100 / invoked_count, 1) if invoked_count else 0.0
+                round(potential_hits * 100 / len(decisions), 1) if decisions else 0.0
             ),
             "repeat_groups": len(repeat_rows),
             "stable_repeat_groups": stable_repeat_groups,
