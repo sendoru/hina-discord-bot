@@ -991,61 +991,6 @@ class Store:
         return [Scope(int(r["scope"].split(":")[1]), int(r["scope"].split(":")[3]),
                       int(r["user_id"])) for r in rows]
 
-    def identity_candidates(
-        self,
-        guild_id: int,
-        *,
-        exclude_user_ids=(),
-        limit: int = 32,
-        scan_limit: int = 256,
-        allowed_channel_ids=None,
-    ) -> list[dict]:
-        """Return bounded recent public speaker identities without fuzzy inference."""
-
-        excluded = {str(value) for value in exclude_user_ids}
-        allowed_channels = (
-            None if allowed_channel_ids is None else set(allowed_channel_ids)
-        )
-        rows = self.db.execute(
-            """SELECT scope,user_id,name,id FROM shared_calls
-               WHERE realm=?
-               ORDER BY id DESC LIMIT ?""",
-            (f"guild:{int(guild_id)}", max(int(scan_limit), int(limit))),
-        ).fetchall()
-        by_user: dict[str, dict] = {}
-        for row in rows:
-            parts = str(row["scope"] or "").split(":")
-            channel_id = (
-                int(parts[3])
-                if len(parts) >= 4 and parts[2] == "channel" and parts[3].isdigit()
-                else None
-            )
-            # Filter before aggregating aliases: a visible row cannot authorize an alias
-            # observed only in another, now-hidden channel.
-            if allowed_channels is not None and channel_id not in allowed_channels:
-                continue
-            user_id = str(row["user_id"])
-            if user_id in excluded:
-                continue
-            entry = by_user.get(user_id)
-            if entry is None:
-                if len(by_user) >= int(limit):
-                    continue
-                entry = {
-                    "user_id": user_id,
-                    "names": [],
-                    "channel_ids": [],
-                    "recent_id": int(row["id"]),
-                }
-                by_user[user_id] = entry
-            name = str(row["name"] or "").strip()
-            if name and name not in entry["names"] and len(entry["names"]) < 4:
-                entry["names"].append(name[:100])
-            if (channel_id is not None and channel_id not in entry["channel_ids"]
-                    and len(entry["channel_ids"]) < 4):
-                entry["channel_ids"].append(channel_id)
-        return list(by_user.values())
-
     def public_context(self, allowed_scopes):
         context = []
         for source in allowed_scopes[:4]:

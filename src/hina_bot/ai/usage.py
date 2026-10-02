@@ -69,15 +69,53 @@ def _usage_fields(response) -> dict:
     }
 
 
-def _combined_attempt_fields(responses) -> dict:
+def _usage_delta_fields(response, baseline: dict | None = None) -> dict:
+    values = _usage_fields(response)
+    if not baseline:
+        return values
+
+    delta = {}
+    for field in _TOKEN_FIELDS:
+        value = values[field]
+        previous = baseline.get(field)
+        if (
+            isinstance(value, int)
+            and isinstance(previous, int)
+            and value >= previous
+        ):
+            delta[field] = value - previous
+        else:
+            # If a provider omits or resets one counter, keep the current value instead
+            # of inventing a negative delta.
+            delta[field] = value
+    return delta
+
+
+def _combined_attempt_fields(responses, *, baseline: dict | None = None) -> dict:
     combined = {field: None for field in _TOKEN_FIELDS}
     for response in responses:
-        values = _usage_fields(response)
+        values = _usage_delta_fields(response, baseline)
         for field in _TOKEN_FIELDS:
             value = values[field]
             if isinstance(value, int):
                 combined[field] = (combined[field] or 0) + value
     return combined
+
+
+def _cumulative_usage_fields(response) -> dict:
+    return {
+        f"provider_cumulative_{field}": value
+        for field, value in _usage_fields(response).items()
+        if isinstance(value, int)
+    }
+
+
+def _has_function_call(response) -> bool:
+    for item in getattr(response, "output", None) or ():
+        item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
+        if item_type == "function_call":
+            return True
+    return False
 
 
 def _visible_text(response) -> str:
@@ -106,6 +144,9 @@ class UsageLogger:
             exchange_path = Path(path).with_name("discord-usage.jsonl")
             self.exchange_handler = self._handler(str(exchange_path))
         self._exchange = ContextVar(f"hina_usage_exchange_{id(self)}", default=None)
+        # Gemini Interactions reports cumulative usage for stateful continuations.
+        # Keep only short-lived baselines for interactions that requested a local function.
+        self._interaction_usage: dict[str, dict] = {}
 
     @staticmethod
     def _handler(path: str):
@@ -253,6 +294,12 @@ class UsageLogger:
             }
             row.update({key: value for key, value in route_metadata.items() if key in allowed})
         responses = []
+        previous_interaction_id = str(kwargs.get("previous_interaction_id") or "")
+        cumulative_baseline = (
+            self._interaction_usage.get(previous_interaction_id)
+            if provider == "gemini" and previous_interaction_id
+            else None
+        )
 
         try:
             response = await client.responses.create(**kwargs)
@@ -272,11 +319,31 @@ class UsageLogger:
                         "gemini", str(getattr(response, "status", "unknown")))
 
             web_calls = sum(_web_search_calls(item) for item in responses)
-            row.update(status=response.status,
-                       **_combined_attempt_fields(responses),
-                       web_search_calls=web_calls,
-                       web_search_used=web_calls > 0,
-                       api_attempts=len(responses))
+            usage_fields = _combined_attempt_fields(
+                responses,
+                baseline=cumulative_baseline,
+            )
+            row.update(
+                status=response.status,
+                **usage_fields,
+                web_search_calls=web_calls,
+                web_search_used=web_calls > 0,
+                api_attempts=len(responses),
+            )
+            if cumulative_baseline is not None:
+                row["usage_accounting"] = "gemini_interaction_delta"
+                row.update(_cumulative_usage_fields(response))
+            if previous_interaction_id:
+                self._interaction_usage.pop(previous_interaction_id, None)
+            interaction_id = str(getattr(response, "_hina_interaction_id", "") or "")
+            if (
+                provider == "gemini"
+                and interaction_id
+                and _has_function_call(response)
+            ):
+                if len(self._interaction_usage) >= 256:
+                    self._interaction_usage.pop(next(iter(self._interaction_usage)))
+                self._interaction_usage[interaction_id] = _usage_fields(response)
             error_codes = []
             for item in responses:
                 error_codes.extend(getattr(item, "_hina_error_codes", None) or [])
@@ -289,7 +356,13 @@ class UsageLogger:
             row.update(status="error", error_type=type(exc).__name__)
             row.update(_provider_error_fields(exc))
             if responses:
-                row.update(_combined_attempt_fields(responses))
+                row.update(_combined_attempt_fields(
+                    responses,
+                    baseline=cumulative_baseline,
+                ))
+                if cumulative_baseline is not None:
+                    row["usage_accounting"] = "gemini_interaction_delta"
+                    row.update(_cumulative_usage_fields(responses[-1]))
                 web_calls = sum(_web_search_calls(item) for item in responses)
                 row["web_search_calls"] = web_calls
                 row["web_search_used"] = web_calls > 0

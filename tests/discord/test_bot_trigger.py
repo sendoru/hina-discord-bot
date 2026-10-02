@@ -477,7 +477,6 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
     assert [row["turn_id"] for row in preflight] == forwarded_turn_ids
     assert set(preflight[0]) >= {
         "preflight_ms",
-        "identity_ms",
         "target_context_ms",
         "reply_context_ms",
         "visual_context_ms",

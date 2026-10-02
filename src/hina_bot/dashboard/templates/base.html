@@ -33,7 +33,6 @@
           <span class="nav-group-label">Observability</span>
           <a class="nav-link {% if request.url.path.startswith('/traces') %}active{% endif %}" {% if request.url.path.startswith('/traces') %}aria-current="page"{% endif %} href="/traces">Traces</a>
           <a class="nav-link {% if request.url.path == '/analytics' %}active{% endif %}" {% if request.url.path == '/analytics' %}aria-current="page"{% endif %} href="/analytics">Analytics</a>
-          <a class="nav-link {% if request.url.path == '/identity' %}active{% endif %}" {% if request.url.path == '/identity' %}aria-current="page"{% endif %} href="/identity">Identity</a>
         </div>
 
         <div class="nav-group">
@@ -59,7 +58,6 @@
             {% if request.url.path == '/' %}Overview
             {% elif request.url.path.startswith('/traces') %}Traces
             {% elif request.url.path == '/analytics' %}Analytics
-            {% elif request.url.path == '/identity' %}Identity
             {% elif request.url.path.startswith('/conversations') %}Conversations
             {% elif request.url.path == '/memory/cursors' %}Cursors
             {% elif request.url.path.startswith('/memory') %}Memory
@@ -78,7 +76,6 @@
             <span class="mobile-nav-group-label">Observability</span>
             <a class="mobile-nav-link {% if request.url.path.startswith('/traces') %}active{% endif %}" {% if request.url.path.startswith('/traces') %}aria-current="page"{% endif %} href="/traces">Traces</a>
             <a class="mobile-nav-link {% if request.url.path == '/analytics' %}active{% endif %}" {% if request.url.path == '/analytics' %}aria-current="page"{% endif %} href="/analytics">Analytics</a>
-            <a class="mobile-nav-link {% if request.url.path == '/identity' %}active{% endif %}" {% if request.url.path == '/identity' %}aria-current="page"{% endif %} href="/identity">Identity</a>
           </div>
 
           <div class="mobile-nav-group">

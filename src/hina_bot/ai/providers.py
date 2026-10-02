@@ -120,10 +120,35 @@ def _gemini_input(value):
         return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
     steps = []
+    function_names = {}
     for item in value:
         if not isinstance(item, dict):
             continue
         item_type = item.get("type")
+        if item_type in {
+            "thought",
+            "model_output",
+            "code_execution_call",
+            "code_execution_result",
+            "google_search_call",
+            "google_search_result",
+            "file_search_call",
+            "file_search_result",
+        }:
+            steps.append(dict(item))
+            continue
+        if (
+            item_type == "function_call"
+            and item.get("id")
+            and not item.get("call_id")
+            and isinstance(item.get("arguments"), dict)
+        ):
+            call_id = str(item.get("id") or "")
+            name = str(item.get("name") or "")
+            if call_id and name:
+                function_names[call_id] = name
+                steps.append(dict(item))
+            continue
         if item_type == "function_call":
             raw_arguments = item.get("arguments", {})
             if isinstance(raw_arguments, str):
@@ -136,6 +161,7 @@ def _gemini_input(value):
             call_id = str(item.get("call_id") or item.get("id") or "")
             name = str(item.get("name") or "")
             if call_id and name:
+                function_names[call_id] = name
                 steps.append({
                     "type": "function_call",
                     "id": call_id,
@@ -156,7 +182,9 @@ def _gemini_input(value):
                 "result": [{"type": "text", "text": output}],
             }
             name = item.get("name")
-            if isinstance(name, str) and name:
+            if not isinstance(name, str) or not name:
+                name = function_names.get(call_id, "")
+            if name:
                 result["name"] = name
             steps.append(result)
             continue
@@ -206,6 +234,7 @@ def _gemini_generate_content_contents(value):
         return [{"role": "user", "parts": [{"text": text}]}]
 
     contents = []
+    function_names = {}
 
     def append(role: str, parts: list[dict]):
         if not parts:
@@ -231,6 +260,7 @@ def _gemini_generate_content_contents(value):
             call_id = str(item.get("call_id") or item.get("id") or "")
             name = str(item.get("name") or "")
             if call_id and name:
+                function_names[call_id] = name
                 append("model", [{
                     "functionCall": {
                         "id": call_id,
@@ -241,7 +271,7 @@ def _gemini_generate_content_contents(value):
             continue
         if item_type == "function_call_output":
             call_id = str(item.get("call_id") or "")
-            name = str(item.get("name") or "")
+            name = str(item.get("name") or function_names.get(call_id) or "")
             if not call_id or not name:
                 continue
             output = item.get("output", "")
@@ -704,6 +734,9 @@ class _GeminiResponses:
             "input": _gemini_input(kwargs.get("input", "")),
             "store": self._store_enabled(kwargs.get("store", False)),
         }
+        previous_interaction_id = kwargs.get("previous_interaction_id")
+        if previous_interaction_id:
+            payload["previous_interaction_id"] = str(previous_interaction_id)
         instructions = kwargs.get("instructions")
         if instructions:
             payload["system_instruction"] = instructions
@@ -740,7 +773,17 @@ class _GeminiResponses:
             error = _gemini_http_error(response)
             log.warning("Provider request failed (%s)", error.safe_diagnostic)
             raise error from exc
-        return _gemini_output(response.json())
+        data = response.json()
+        normalized = _gemini_output(data)
+        normalized._hina_interaction_id = (
+            str(data.get("id") or "") if payload["store"] else ""
+        )
+        normalized._hina_interaction_steps = tuple(
+            dict(step)
+            for step in (data.get("steps") or ())
+            if isinstance(step, dict)
+        )
+        return normalized
 
     async def create(self, **kwargs):
         tools = list(kwargs.get("tools") or [])

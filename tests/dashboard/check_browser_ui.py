@@ -43,9 +43,6 @@ def build_fixture(root: Path):
         "events.jsonl": [
             {"at": timestamp, "turn_id": "trace-ui", "event": "turn.completed",
              "status": "completed", "memory_failures": 2},
-            {"at": timestamp, "event": "identity.resolution", "outcome": "resolved",
-             "reference_group": "abcdef0123456789" * 4,
-             "resolved_user_group": "0123456789abcdef" * 4},
         ],
         "discord-usage.jsonl": [
             {"at": timestamp, "turn_id": "partial-data", "calls": 0},
@@ -64,7 +61,7 @@ def build_fixture(root: Path):
 def review(base_url: str, root: Path, long_id: str, browser_path: str | None):
     paths = [
         "/", "/traces?memory_failure=yes", "/memory?origin_scope_type=dm", "/reconciliation",
-        "/traces/trace-ui", "/identity", "/analytics", "/memory?confidence_min=2",
+        "/traces/trace-ui", "/analytics", "/memory?confidence_min=2",
         "/traces?after=bad-date", "/memory?q=no-results", "/memory/999999", "/traces?page=bad",
         "/conversations?q=한국어&page=2", "/summaries", "/memory/cursors", "/state",
         "/relationships", "/traces/" + long_id,
@@ -131,10 +128,6 @@ def review(base_url: str, root: Path, long_id: str, browser_path: str | None):
             page.keyboard.press("ArrowRight")
             assert page.locator(".scope-picker input[value=dm]").is_checked()
             assert page.locator("[name=origin_guild_id]").is_disabled()
-            page.goto(base_url + "/identity")
-            page.locator(".identifier-disclosure summary").first.focus()
-            page.keyboard.press("Enter")
-            assert page.locator(".identifier-disclosure").first.get_attribute("open") is not None
             page.goto(base_url + "/traces/trace-ui")
             for link in page.locator("[aria-label='Trace sections'] a").all():
                 target = link.get_attribute("href")
