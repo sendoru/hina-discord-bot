@@ -299,6 +299,63 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
         store.close()
 
 @pytest.mark.asyncio
+async def test_verified_current_user_mention_can_be_reused_when_explicitly_requested():
+    calls = []
+
+    def handler(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json=_response())
+
+    client = AsyncOpenAI(
+        api_key="test-not-a-real-key",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    llm = LLM(
+        Settings(discord_token="test", openai_api_key="test", external_context_policy="full"),
+        client=client,
+    )
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100, True)
+    interaction = {
+        "speaker": {
+            "user_id": "100",
+            "name": "사용자",
+            "is_bot": False,
+            "is_self": False,
+        },
+        "self": {
+            "user_id": "99",
+            "name": "히나",
+            "is_bot": True,
+            "is_self": True,
+        },
+        "mentions": [{
+            "user_id": "200",
+            "name": "대상",
+            "is_bot": False,
+            "is_self": False,
+        }],
+        "reply_target": None,
+    }
+    token = CURRENT_INTERACTION_CONTEXT.set(interaction)
+    try:
+        await llm.answer(store, scope, "사용자", "<@200> 불러줘")
+        payload = calls[-1]
+        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+
+        assert reference["current_interaction"]["mentions"][0]["user_id"] == "200"
+        assert "다시 mention해 달라고 요청했고" in payload["instructions"]
+        assert "is_self=false, is_bot=false" in payload["instructions"]
+        assert "user_id를 그대로 <@user_id> 형태로 사용할 수 있습니다" in payload["instructions"]
+        assert "직접 부를 수 없다고 말하지 마세요" in payload["instructions"]
+        assert "mentions에 없는 user_id를 추측해서" in payload["instructions"]
+    finally:
+        CURRENT_INTERACTION_CONTEXT.reset(token)
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
 async def test_plain_explicit_reply_is_always_split_into_active_reply_chain():
     calls = []
 
