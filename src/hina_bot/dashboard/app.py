@@ -66,7 +66,7 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
         path = request.url.path
         default = next((item for item in (
             "/memory/cursors", "/traces", "/memory", "/reconciliation", "/conversations",
-            "/analytics", "/identity", "/summaries", "/relationships", "/state",
+            "/analytics", "/summaries", "/relationships", "/state",
         ) if path == item or path.startswith(item + "/")), "/")
         return templates.TemplateResponse(
             request=request, name="error.html", status_code=status,
