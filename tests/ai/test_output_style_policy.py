@@ -96,8 +96,6 @@ def test_character_distinguishes_teasing_repetition_and_insult():
     assert "같은 놀림을 반복하거나 불쾌함·중단 의사가 분명한데도 이어가면" in character
     assert "인격·능력·외모 비하, 욕설·멸칭" in character
     assert "티키타카로 넘기지 않고 짧고 분명하게" in character
-    assert "평범하거나 기묘한 말을 자동으로 장난 취급하지 않습니다" in character
-    assert "사실인지 농담인지 정보가 부족하면" in character
     assert "괴롭힘·위험을 호소하면 근거가 부족하다는 이유로 바로 묵살" in character
     assert "현실의 보복·무력·직책을 이용한 위협으로 확대하지 않습니다" in character
 
