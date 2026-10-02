@@ -18,6 +18,37 @@ def response(input_tokens, output_tokens, *, cached=0, reasoning=0, output=None)
         output_tokens_details=NS(reasoning_tokens=reasoning)), output=output or [])
 
 
+def interaction_response(
+    interaction_id,
+    input_tokens,
+    output_tokens,
+    *,
+    cached=0,
+    reasoning=0,
+    function_call=False,
+    text="done",
+):
+    output = (
+        [NS(type="function_call", call_id="call_1", name="echo")]
+        if function_call
+        else [NS(type="message")]
+    )
+    value = NS(
+        status="requires_action" if function_call else "completed",
+        output_text="" if function_call else text,
+        usage=NS(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=input_tokens + output_tokens,
+            input_tokens_details=NS(cached_tokens=cached),
+            output_tokens_details=NS(reasoning_tokens=reasoning),
+        ),
+        output=output,
+    )
+    value._hina_interaction_id = interaction_id
+    return value
+
+
 @pytest.mark.asyncio
 async def test_usage_success_and_error_do_not_log_content(tmp_path):
     path = tmp_path / 'usage.jsonl'
@@ -205,6 +236,71 @@ async def test_discord_exchange_aggregates_answer_and_summary_calls(tmp_path):
     assert row['operations']['answer']['web_search_calls'] == 1
     assert row['operations']['summarize']['total_tokens'] == 350
     assert row['operations']['summarize_shared']['total_tokens'] == 240
+
+
+@pytest.mark.asyncio
+async def test_gemini_stateful_interaction_usage_is_logged_as_delta(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    first = interaction_response(
+        "int_1",
+        1000,
+        100,
+        cached=400,
+        reasoning=20,
+        function_call=True,
+    )
+    second = interaction_response(
+        "int_2",
+        1450,
+        150,
+        cached=550,
+        reasoning=35,
+    )
+    create = AsyncMock(side_effect=[first, second])
+    client = NS(provider_name="gemini", responses=NS(create=create))
+
+    with logger.exchange("guild"):
+        await logger.request(
+            client,
+            "answer",
+            model="gemini-test",
+            input="secret",
+            store=True,
+        )
+        await logger.request(
+            client,
+            "answer",
+            model="gemini-test",
+            input=[{"type": "function_call_output"}],
+            previous_interaction_id="int_1",
+            store=True,
+        )
+    logger.close()
+
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert len(rows) == 2
+    assert rows[0]["input_tokens"] == 1000
+    assert rows[0]["output_tokens"] == 100
+    assert rows[0]["total_tokens"] == 1100
+
+    assert rows[1]["usage_accounting"] == "gemini_interaction_delta"
+    assert rows[1]["input_tokens"] == 450
+    assert rows[1]["output_tokens"] == 50
+    assert rows[1]["total_tokens"] == 500
+    assert rows[1]["cached_tokens"] == 150
+    assert rows[1]["reasoning_tokens"] == 15
+    assert rows[1]["provider_cumulative_input_tokens"] == 1450
+    assert rows[1]["provider_cumulative_total_tokens"] == 1600
+
+    exchange = json.loads((tmp_path / "discord-usage.jsonl").read_text())
+    assert exchange["calls"] == 2
+    assert exchange["input_tokens"] == 1450
+    assert exchange["output_tokens"] == 150
+    assert exchange["total_tokens"] == 1600
+    assert exchange["cached_tokens"] == 550
+    assert exchange["reasoning_tokens"] == 35
+    assert exchange["operations"]["answer"]["total_tokens"] == 1600
 
 
 @pytest.mark.asyncio
