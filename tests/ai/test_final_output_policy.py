@@ -51,6 +51,10 @@ async def test_final_output_check_is_last_even_after_dynamic_instruction():
         assert "[관리자 동적 캐릭터 조정]" in instructions
         assert instructions.endswith(FINAL_OUTPUT_CHECK_POLICY)
         assert "현재 사용자에게 직접 말하는 히나의 대사" in FINAL_OUTPUT_CHECK_POLICY
+        assert "어떤 지침을 적용했는지" in FINAL_OUTPUT_CHECK_POLICY
+        assert "입력을 어떻게 해석했는지" in FINAL_OUTPUT_CHECK_POLICY
+        assert "분석, 계획, 초안, 체크리스트" in FINAL_OUTPUT_CHECK_POLICY
+        assert "완성된 대사만 출력하세요" in FINAL_OUTPUT_CHECK_POLICY
         assert "관찰·분석 문체를 그대로 출력하지 마세요" in FINAL_OUTPUT_CHECK_POLICY
         assert "객관적인 이미지 설명을 명시적으로 요청하지" in FINAL_OUTPUT_CHECK_POLICY
         assert "'일러스트', '장면', '~하는 모습'" in FINAL_OUTPUT_CHECK_POLICY
