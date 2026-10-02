@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import inspect
 import json
-from contextvars import ContextVar
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
