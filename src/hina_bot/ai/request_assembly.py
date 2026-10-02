@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 
 import httpx
 
-from hina_bot.core.identity_context import resolved_identity_context
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
@@ -19,6 +18,7 @@ from .freshness import FreshnessMode
 from .information_plan import InformationPlan
 from .llm import LLM as BaseLLM
 from .llm import POLICY
+from .local_tools import CURRENT_LOCAL_TOOLS, LocalToolExecutor
 from .managed_tools import CODE_EXECUTION_POLICY, managed_tool_config, search_tool_choice
 from .model_routing import ModelPlan, fixed_model_plan
 from .providers import ProviderAPIError
@@ -149,14 +149,17 @@ mention되었다는 사실만으로 그 사용자가 현재 발화의 호격 대
 한 사람을 임의로 수행자나 대상으로 고르지 마세요.
 """
 
-RESOLVED_IDENTITY_POLICY = """[현재 요청의 이름 확인 결과]
-resolved_identities는 앱이 이번 요청에서 확인한 이름과 Discord user_id의 연결입니다.
-실제 Discord mention 목록인 current_interaction.mentions와는 별도의 이름 확인 근거이며,
-현재 화자를 바꾸거나 그 사용자의 과거 발언·성격·기억을 제공하는 정보가 아닙니다.
-명시적으로 불러 달라거나 핑해 달라는 요청이면 확인된 user_id를 그대로 <@user_id>로 쓸 수
-있습니다. 이름만 필요할 때 기록이나 기억이 없다는 이유로 확인된 사람을 찾을 수 없다고 하지
-마세요. 요청하지 않은 사람을 핑하지 마세요. 확인되지 않은 이름의 user_id를 추측하지 말고,
-이름이 모호하면 사용자에게 실제 mention으로 대상을 지정해 달라고 하세요.
+CHANNEL_MEMBER_TOOL_POLICY = """[현재 Discord 채널 사용자 확인]
+현재 채널의 사람을 이름, 별명, Discord 닉네임, username 등으로 식별하거나 실제 사용자 mention ID가
+필요한 경우 get_current_channel_members 도구를 사용하세요. 이미 current_interaction.mentions에 정확한
+대상이 있으면 그 정보를 우선하고, 그렇지 않으면 이름을 추측하거나 ID를 만들어내지 말고 이 도구로
+확인하세요.
+
+도구 결과의 server_nickname, global_name, username은 같은 사람을 가리키는 Discord 이름 정보입니다.
+사용자가 부르는 자연어 별명이 이 문자열과 완전히 같지 않아도 발음, 표기, 대화 문맥상 같은 사람인지
+판단할 수 있습니다. 여러 후보가 그럴듯하면 임의로 하나를 고르지 말고 대상을 확인하세요.
+도구가 반환한 user_id는 사용자가 그 사람을 불러 달라거나 핑해 달라고 명시한 경우 <@user_id> 형태로
+사용할 수 있습니다. 명단을 조회했다는 과정 자체는 사용자가 묻지 않는 한 답변에 설명하지 마세요.
 """
 
 TURN_RESPONSE_POLICY = """[현재 발화 응답]
@@ -450,7 +453,6 @@ class RequestAssembler(BaseLLM):
                 "relation": "author_of_following_user_message",
             },
             "current_interaction": interaction,
-            "resolved_identities": resolved_identity_context(),
             "space": "server" if scope.guild_id is not None else "DM",
             "server_note": (
                 store.note(scope.realm)
@@ -479,7 +481,6 @@ class RequestAssembler(BaseLLM):
         # provider unless the active egress policy admits it here.
         provider_channel_input = len(context.get("channel_recent_messages", ()) or ())
         provider_public_input = len(context.get("public_server_context", ()) or ())
-        provider_identity_input = len(context.get("resolved_identities", ()) or ())
         context = apply_context_policy(
             context,
             scope.user_id,
@@ -487,7 +488,6 @@ class RequestAssembler(BaseLLM):
         )
         provider_channel_allowed = len(context.get("channel_recent_messages", ()) or ())
         provider_public_allowed = len(context.get("public_server_context", ()) or ())
-        provider_identity_allowed = len(context.get("resolved_identities", ()) or ())
         provider_boundary = {
             "channel_input": provider_channel_input,
             "channel_allowed": provider_channel_allowed,
@@ -495,9 +495,6 @@ class RequestAssembler(BaseLLM):
             "public_input": provider_public_input,
             "public_allowed": provider_public_allowed,
             "public_blocked": provider_public_input - provider_public_allowed,
-            "identity_input": provider_identity_input,
-            "identity_allowed": provider_identity_allowed,
-            "identity_blocked": provider_identity_input - provider_identity_allowed,
         }
         chain_kinds = {
             "reply_reference_source",
@@ -586,7 +583,6 @@ class RequestAssembler(BaseLLM):
         )
         context_size_metrics = {
             "context_chars_total": _serialized_chars(context),
-            "context_identity_chars": _serialized_chars(context.get("resolved_identities", [])),
             "context_summary_chars": _serialized_chars(
                 context.get("conversation_memory", "")
             ),
@@ -633,6 +629,13 @@ class RequestAssembler(BaseLLM):
             "content": visible_content,
         }]
 
+        local_tool_registry = CURRENT_LOCAL_TOOLS.get()
+        local_tool_schemas = (
+            local_tool_registry.schemas()
+            if local_tool_registry is not None
+            else []
+        )
+
         relationship_policy = self.relationship_instructions(scope)
         runtime_policy = runtime_instruction(runtime)
         instruction_parts = [
@@ -640,7 +643,6 @@ class RequestAssembler(BaseLLM):
             REFERENCE_CONTINUITY_POLICY,
             CURRENT_SPEAKER_POLICY,
             CURRENT_INTERACTION_POLICY,
-            RESOLVED_IDENTITY_POLICY,
             self.character,
             relationship_policy,
             runtime_policy,
@@ -650,7 +652,6 @@ class RequestAssembler(BaseLLM):
             "instruction_reference_chars": len(REFERENCE_CONTINUITY_POLICY),
             "instruction_identity_chars": (
                 len(CURRENT_SPEAKER_POLICY) + len(CURRENT_INTERACTION_POLICY)
-                + len(RESOLVED_IDENTITY_POLICY)
             ),
             "instruction_character_chars": len(self.character),
             "instruction_relationship_chars": len(relationship_policy),
@@ -716,6 +717,11 @@ class RequestAssembler(BaseLLM):
             instruction_group_chars["instruction_tools_chars"] += len(
                 CODE_EXECUTION_POLICY
             )
+        if local_tool_schemas:
+            instruction_parts.append(CHANNEL_MEMBER_TOOL_POLICY)
+            instruction_group_chars["instruction_tools_chars"] += len(
+                CHANNEL_MEMBER_TOOL_POLICY
+            )
         instruction_parts.append(TURN_RESPONSE_POLICY)
         instruction_group_chars["instruction_response_chars"] += len(
             TURN_RESPONSE_POLICY
@@ -758,12 +764,13 @@ class RequestAssembler(BaseLLM):
         tools = list(tool_config(search_mode) or ())
         managed_tools = managed_tool_config(self.settings.provider)
         tools.extend(managed_tools)
+        tools.extend(local_tool_schemas)
         if tools:
             request["tools"] = tools
             tool_choice = search_tool_choice(
                 self.settings.provider,
                 search_mode,
-                has_managed_tools=bool(managed_tools),
+                has_managed_tools=bool(managed_tools or local_tool_schemas),
             )
             if tool_choice is not None:
                 request["tool_choice"] = tool_choice
@@ -771,41 +778,61 @@ class RequestAssembler(BaseLLM):
         route_metadata = model_plan.telemetry()
         if self.settings.provider != "gemini":
             route_metadata.pop("requested_thinking_level", None)
-        try:
-            response = await self.usage.request(
-                self.client,
-                "answer",
-                route_metadata=route_metadata,
-                **request,
-            )
-        except (ProviderAPIError, httpx.TimeoutException) as exc:
-            if not _transient_answer_failure(exc):
-                raise
+        transient_retry_used = False
 
-            retry_request = dict(request)
-            retry_metadata = dict(route_metadata)
-            fallback_to_fast = (
-                self.settings.model_routing_mode == "adaptive"
-                and retry_request["model"] != self.settings.fast_model
+        async def send_answer(current_request):
+            nonlocal transient_retry_used
+            metadata = dict(route_metadata)
+            if current_request.get("model") == self.settings.fast_model:
+                metadata["model_tier"] = "fast"
+            if self.settings.provider == "gemini":
+                metadata["requested_thinking_level"] = current_request.get("thinking_level")
+            try:
+                return await self.usage.request(
+                    self.client,
+                    "answer",
+                    route_metadata=metadata,
+                    **current_request,
+                )
+            except (ProviderAPIError, httpx.TimeoutException) as exc:
+                if transient_retry_used or not _transient_answer_failure(exc):
+                    raise
+                transient_retry_used = True
+                fallback_to_fast = (
+                    self.settings.model_routing_mode == "adaptive"
+                    and current_request["model"] != self.settings.fast_model
+                )
+                retry_reason = (
+                    "transient_fast_fallback" if fallback_to_fast else "transient_retry"
+                )
+                if fallback_to_fast:
+                    current_request["model"] = self.settings.fast_model
+                    metadata["model_tier"] = "fast"
+                    if self.settings.provider == "gemini":
+                        current_request["thinking_level"] = (
+                            self.settings.gemini_fast_thinking_level
+                        )
+                        metadata["requested_thinking_level"] = (
+                            self.settings.gemini_fast_thinking_level
+                        )
+                metadata["model_route_reasons"] = list(
+                    metadata.get("model_route_reasons") or ()
+                ) + [retry_reason]
+                return await self.usage.request(
+                    self.client,
+                    "answer",
+                    route_metadata=metadata,
+                    **current_request,
+                )
+
+        if local_tool_registry is not None and local_tool_schemas:
+            tool_loop = await LocalToolExecutor(local_tool_registry).run(
+                send_answer,
+                request,
             )
-            retry_reason = "transient_fast_fallback" if fallback_to_fast else "transient_retry"
-            if fallback_to_fast:
-                retry_request["model"] = self.settings.fast_model
-                retry_metadata["model_tier"] = "fast"
-                if self.settings.provider == "gemini":
-                    retry_request["thinking_level"] = self.settings.gemini_fast_thinking_level
-                    retry_metadata["requested_thinking_level"] = (
-                        self.settings.gemini_fast_thinking_level
-                    )
-            retry_metadata["model_route_reasons"] = list(
-                retry_metadata.get("model_route_reasons") or ()
-            ) + [retry_reason]
-            response = await self.usage.request(
-                self.client,
-                "answer",
-                route_metadata=retry_metadata,
-                **retry_request,
-            )
+            response = tool_loop.response
+        else:
+            response = await send_answer(request)
 
         text = response_text(response, hide_citations=hide_web_citations(provenance))
         if response.status != "completed" or not text:

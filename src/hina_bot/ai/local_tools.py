@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+from contextvars import ContextVar
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -220,6 +221,12 @@ def continuation_request(
     return followup
 
 
+CURRENT_LOCAL_TOOLS: ContextVar[LocalToolRegistry | None] = ContextVar(
+    "current_local_tools",
+    default=None,
+)
+
+
 class LocalToolExecutor:
     """Run model-requested local tools with a strict round bound."""
 
@@ -253,6 +260,7 @@ class LocalToolExecutor:
 
 
 __all__ = [
+    "CURRENT_LOCAL_TOOLS",
     "LocalToolCall",
     "LocalToolError",
     "LocalToolExecutor",

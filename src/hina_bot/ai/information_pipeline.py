@@ -5,13 +5,11 @@ import logging
 import re
 from dataclasses import replace
 
-from hina_bot.core.identity_context import resolved_identity_context
 from hina_bot.core.memory_context import CURRENT_MEMORY_CONTEXT, build_memory_context
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode, is_live_domain
-from .identity_resolution import SpeakerIdentityCandidate, SpeakerIdentityResolver
 from .information_evidence import SearchDecision, search_decision
 from .information_plan import InformationPlan
 from .information_routing import (
@@ -87,11 +85,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             )
         else:
             self.semantic_model_router = None
-        self.speaker_identity_resolver = SpeakerIdentityResolver(
-            settings,
-            self.client,
-            self.usage,
-        )
 
     async def start_background_tasks(self):
         self.ambient_weather.start_polling(self.settings)
@@ -138,21 +131,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
 
     def _call_prefixes(self) -> tuple[str, ...] | None:
         return getattr(self.settings, "call_prefixes", None)
-
-    async def resolve_speaker_identity(self, request: str, candidates: list[dict]):
-        normalized = [
-            SpeakerIdentityCandidate(
-                user_id=str(candidate.get("user_id") or ""),
-                names=tuple(
-                    str(name)
-                    for name in candidate.get("names", ())
-                    if str(name).strip()
-                ),
-            )
-            for candidate in candidates
-            if str(candidate.get("user_id") or "")
-        ]
-        return await self.speaker_identity_resolver.resolve(request, normalized)
 
     @staticmethod
     def _looks_like_relation_or_event_question(content: str) -> bool:
@@ -274,7 +252,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             ),
         )
         context = {
-            "resolved_identities": resolved_identity_context(),
             "server_note": (
                 store.note(scope.realm)
                 if cross_channel_memory and scope.guild_id is not None
