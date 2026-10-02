@@ -1,96 +1,104 @@
-"""Local current-member identities and visibility-scoped historical alias evidence."""
+"""Request-scoped Discord member-list tool for conversational answers."""
 
 from dataclasses import dataclass
 
 import discord
 
+from hina_bot.ai.local_tools import LocalToolError, LocalToolRegistry, LocalToolSpec
+
 
 @dataclass(frozen=True)
-class MemberIdentityDirectory:
-    candidates: tuple[dict, ...]
+class ChannelMemberDirectory:
+    members: tuple[dict, ...]
     complete: bool
 
 
-def member_names(member) -> list[str]:
-    return list(dict.fromkeys(
-        str(value).strip()[:100]
-        for value in (
-            getattr(member, "display_name", ""),
-            getattr(member, "global_name", ""),
-            getattr(member, "name", ""),
-        )
-        if value and str(value).strip()
-    ))
+CHANNEL_MEMBER_TOOL = LocalToolSpec(
+    name="get_current_channel_members",
+    description=(
+        "현재 Discord 채널에서 볼 수 있는 사람들의 user_id, 서버 닉네임, global name, "
+        "username을 조회합니다. 사람을 이름·별명으로 식별하거나 정확한 사용자 mention ID가 "
+        "필요할 때만 사용하세요."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+)
 
 
-def visible_member(message, member, bot_id: int) -> bool:
+def _visible_human(message, member, bot_id: int) -> bool:
     if member is None or getattr(member, "bot", False):
         return False
-    uid = getattr(member, "id", None)
-    if not isinstance(uid, int) or uid <= 0 or uid == bot_id:
+    user_id = getattr(member, "id", None)
+    if not isinstance(user_id, int) or user_id <= 0 or user_id == bot_id:
         return False
     channel = getattr(message, "channel", None)
     if not isinstance(channel, discord.TextChannel):
-        # Private threads need a separate membership check, not just parent permissions.
         return False
     return channel.permissions_for(member).view_channel is True
 
 
-def current_member_directory(message, bot_id: int):
-    guild = message.guild
+def _member_row(member) -> dict:
+    return {
+        "user_id": str(member.id),
+        "server_nickname": str(getattr(member, "nick", "") or "")[:100],
+        "global_name": str(getattr(member, "global_name", "") or "")[:100],
+        "username": str(getattr(member, "name", "") or "")[:100],
+    }
+
+
+def current_channel_members(message, bot_id: int) -> ChannelMemberDirectory:
+    guild = getattr(message, "guild", None)
     channel = getattr(message, "channel", None)
-    if (guild is None or getattr(guild, "unavailable", False)
-            or not isinstance(channel, discord.TextChannel)
-            or channel.permissions_for(message.author).view_channel is not True):
-        return MemberIdentityDirectory((), False)
+    if (
+        guild is None
+        or getattr(guild, "unavailable", False)
+        or not isinstance(channel, discord.TextChannel)
+        or channel.permissions_for(message.author).view_channel is not True
+    ):
+        return ChannelMemberDirectory((), False)
+
     rows = {}
     for member in getattr(guild, "members", ()):
-        if not visible_member(message, member, bot_id):
-            continue
-        names = member_names(member)
-        if names:
-            rows[str(member.id)] = {"user_id": str(member.id), "names": names}
-    # The current message may carry fresher caller metadata than the cached member object.
-    if visible_member(message, message.author, bot_id):
-        names = member_names(message.author)
-        if names:
-            rows[str(message.author.id)] = {"user_id": str(message.author.id), "names": names}
-    return MemberIdentityDirectory(
+        if _visible_human(message, member, bot_id):
+            rows[str(member.id)] = _member_row(member)
+
+    if _visible_human(message, message.author, bot_id):
+        rows[str(message.author.id)] = _member_row(message.author)
+
+    return ChannelMemberDirectory(
         tuple(rows.values()),
         getattr(guild, "chunked", False) is True,
     )
 
 
-def historical_identity_candidates(message, bot_id: int, store) -> list[dict]:
-    """Keep each historical alias within its own currently public, readable source."""
-    guild = message.guild
-    excluded = {message.author.id, bot_id}
-    raw = store.identity_candidates(guild.id, exclude_user_ids=excluded)
-    allowed_channels = set()
-    for channel_id in {value for row in raw for value in row.get("channel_ids", ())}:
-        channel = guild.get_channel(channel_id)
-        if not isinstance(channel, discord.TextChannel):
-            continue
-        public = channel.permissions_for(guild.default_role)
-        caller = channel.permissions_for(message.author)
-        if (public.view_channel is True and public.read_message_history is True
-                and caller.view_channel is True and caller.read_message_history is True):
-            allowed_channels.add(channel_id)
-    if not allowed_channels:
-        return []
-    rows = store.identity_candidates(
-        guild.id, exclude_user_ids=excluded, allowed_channel_ids=allowed_channels,
-    )
-    # Current names have reserved space. Old aliases never crowd out the username.
-    for row in rows:
-        row["historical_names"] = tuple(row["names"])
-        member = guild.get_member(int(row["user_id"]))
-        current = member_names(member) if member is not None else []
-        row["names"] = list(dict.fromkeys([*current, *row["names"]]))[:4]
-    return rows
+def channel_member_tool_registry(message, bot_id: int) -> LocalToolRegistry | None:
+    if (
+        getattr(message, "guild", None) is None
+        or not isinstance(getattr(message, "channel", None), discord.TextChannel)
+    ):
+        return None
+
+    registry = LocalToolRegistry()
+
+    def get_current_channel_members(_arguments):
+        directory = current_channel_members(message, bot_id)
+        if not directory.complete:
+            raise LocalToolError("member_directory_incomplete")
+        return {
+            "count": len(directory.members),
+            "members": list(directory.members),
+        }
+
+    registry.register(CHANNEL_MEMBER_TOOL, get_current_channel_members)
+    return registry
 
 
 __all__ = [
-    "MemberIdentityDirectory", "current_member_directory", "historical_identity_candidates",
-    "member_names", "visible_member",
+    "CHANNEL_MEMBER_TOOL",
+    "ChannelMemberDirectory",
+    "channel_member_tool_registry",
+    "current_channel_members",
 ]
