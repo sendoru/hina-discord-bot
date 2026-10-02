@@ -413,6 +413,17 @@ def test_conversations_surface_failed_turn_status_and_trace(tmp_path):
     assert row["guild_id"] == "1"
     assert row["channel_id"] == "10"
 
+    trace = service.trace("trace-failed-stored")
+    assert trace is not None
+    assert trace["stored"]["record_type"] == "failed"
+    assert trace["stored"]["content"] == "failed input"
+    assert trace["stored"]["reply"] == "fallback reply"
+    assert trace["stored"]["status"] == "generation_failed"
+    assert trace["memory_context"] is None
+    assert trace["context_provenance"] is None
+    assert trace["raw_turn_availability"]["state"] == "retained"
+    assert "관측용" in trace["raw_turn_availability"]["message"]
+
 
 def build_memory_service(tmp_path):
     database = tmp_path / "memory.sqlite3"
