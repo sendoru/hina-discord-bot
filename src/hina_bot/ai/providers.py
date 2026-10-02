@@ -120,6 +120,7 @@ def _gemini_input(value):
         return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
     steps = []
+    function_names = {}
     for item in value:
         if not isinstance(item, dict):
             continue
@@ -136,6 +137,7 @@ def _gemini_input(value):
             call_id = str(item.get("call_id") or item.get("id") or "")
             name = str(item.get("name") or "")
             if call_id and name:
+                function_names[call_id] = name
                 steps.append({
                     "type": "function_call",
                     "id": call_id,
@@ -156,7 +158,9 @@ def _gemini_input(value):
                 "result": [{"type": "text", "text": output}],
             }
             name = item.get("name")
-            if isinstance(name, str) and name:
+            if not isinstance(name, str) or not name:
+                name = function_names.get(call_id, "")
+            if name:
                 result["name"] = name
             steps.append(result)
             continue
