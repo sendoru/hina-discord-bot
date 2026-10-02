@@ -6,6 +6,7 @@ import pytest
 
 from hina_bot.ai.local_tools import LocalToolCall
 from hina_bot.discord.member_directory import (
+    CHANNEL_MEMBER_TOOL,
     channel_member_tool_registry,
     current_channel_members,
 )
@@ -50,6 +51,15 @@ def runtime(*, chunked=True):
     )
     message = NS(guild=guild, channel=channel, author=author)
     return message
+
+
+def test_channel_member_tool_description_carries_minimal_usage_guidance():
+    description = CHANNEL_MEMBER_TOOL.description
+
+    assert "이름·별명으로 사람을 식별" in description
+    assert "정확한 mention ID" in description
+    assert "반환된 user_id를 <@user_id>로 사용할 수" in description
+    assert "여러 후보가 그럴듯하면 임의로 고르지" in description
 
 
 def test_current_channel_members_returns_only_visible_humans_and_current_names():
