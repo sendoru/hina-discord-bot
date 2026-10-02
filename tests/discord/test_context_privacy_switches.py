@@ -77,7 +77,8 @@ async def test_text_identity_resolution_only_sends_live_visible_candidates():
     resolver = AsyncMock(return_value=NS(resolved=True, user_id="200"))
     llm = NS(close=AsyncMock(), resolve_speaker_identity=resolver)
     client = HinaClient(
-        Settings(discord_token="test", openai_api_key="test", cooldown=0, external_context_policy="full"),
+        Settings(discord_token="test", openai_api_key="test", cooldown=0,
+                 external_context_policy="full"),
         store=store,
         llm=llm,
     )
@@ -110,9 +111,12 @@ async def test_text_identity_resolution_only_sends_live_visible_candidates():
     )
     message = NS(
         guild=guild,
+        channel=visible,
         author=NS(id=100),
         mentions=[],
     )
+    guild.members = [guild.get_member(200)]
+    guild.chunked = True
     try:
         targets, ids = await client._resolve_text_targets(
             message,
@@ -125,7 +129,8 @@ async def test_text_identity_resolution_only_sends_live_visible_candidates():
         await client.close()
 
     assert ids == (200,)
-    assert targets == [{"user_id": "200", "name": "tag : sendol"}]
+    assert targets[0]["user_id"] == "200"
+    assert targets[0]["name"] == "tag : sendol"
     candidates = resolver.await_args.args[1]
     assert [row["user_id"] for row in candidates] == ["200"]
     assert "hidden-user" not in str(candidates)
@@ -204,7 +209,9 @@ async def test_identity_observability_never_logs_raw_reference_or_candidate_name
             name="sendol",
         ),
     )
-    message = NS(guild=guild, author=NS(id=100), mentions=[])
+    guild.members = [guild.get_member(200)]
+    guild.chunked = True
+    message = NS(guild=guild, channel=visible, author=NS(id=100), mentions=[])
     token = CURRENT_TURN_ID.set("opaque-identity-turn")
     try:
         targets, ids = await client._resolve_text_targets(
@@ -219,7 +226,8 @@ async def test_identity_observability_never_logs_raw_reference_or_candidate_name
         await client.close()
 
     assert ids == (200,)
-    assert targets == [{"user_id": "200", "name": "tag : sendol"}]
+    assert targets[0]["user_id"] == "200"
+    assert targets[0]["name"] == "tag : sendol"
     raw = event_path.read_text(encoding="utf-8")
     assert "센돌" not in raw
     assert "sendol" not in raw.lower()

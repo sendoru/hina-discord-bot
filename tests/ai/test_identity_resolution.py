@@ -9,6 +9,8 @@ from hina_bot.ai.identity_resolution import (
     SpeakerIdentityResolver,
     identity_group,
     identity_resolution_needed,
+    match_identity_aliases,
+    narrow_identity_candidates,
     normalize_identity_reference,
     parse_identity_resolution,
 )
@@ -123,6 +125,70 @@ def test_reference_must_be_copied_from_request_and_group_is_keyed():
         secret="deployment-secret",
         kind="reference",
     )
+
+
+@pytest.mark.parametrize(
+    "text,reference",
+    [
+        ("히나야 2_718281 핑해줘", "2_718281"),
+        ("tag : uhe 불러줘", "tag : uhe"),
+        ("TAG : UHE가 방금 뭐라고 했어?", "TAG : UHE"),
+        ("２_７１８２８１ 불러줘", "２_７１８２８１"),
+        ("tag  :  uhe 불러줘", "tag  :  uhe"),
+    ],
+)
+def test_current_alias_match_preserves_exact_original_reference(text, reference):
+    result = match_identity_aliases(text, [candidate(200, "tag : uhe", "2_718281")])
+    assert result.resolved
+    assert result.user_id == "200"
+    assert result.reference == reference
+
+
+@pytest.mark.parametrize(
+    "text,alias",
+    [
+        ("sendolish 불러줘", "sendol"),
+        ("xsendol 불러줘", "sendol"),
+        ("sendol.foo 불러줘", "sendol"),
+        ("other-sendol 불러줘", "sendol"),
+        ("a_b 불러줘", "ab"),
+        ("ab 불러줘", "a_b"),
+        ("아무 말이나 해", "a"),
+        ("2026년 이야기", "2026"),
+        ("센돌 불러줘", "sendol"),
+    ],
+)
+def test_local_match_rejects_substrings_short_names_and_inferred_identity(text, alias):
+    assert not match_identity_aliases(text, [candidate(200, alias)]).resolved
+
+
+def test_exact_match_checks_collisions_beyond_provider_candidate_limit():
+    candidates = [candidate(i, f"unrelated-{i}") for i in range(1, 40)]
+    candidates.extend([candidate(100, "duplicate"), candidate(200, "ＤＵＰＬＩＣＡＴＥ")])
+    assert match_identity_aliases("duplicate 불러줘", candidates).status == "ambiguous"
+    assert match_identity_aliases("unrelated-1과 duplicate 불러줘", candidates).status == "ambiguous"
+
+
+def test_local_shortlist_supports_phonetic_names_and_preserves_competing_candidates():
+    candidates = [candidate(i, f"unrelated-{i}") for i in range(1, 100)]
+    candidates.extend([candidate(200, "tag : sendol"), candidate(300, "sendol")])
+    assert {row.user_id for row in narrow_identity_candidates("센돌이 누군지 알아?", candidates)} == {
+        "200", "300",
+    }
+    assert narrow_identity_candidates("없는이름 핑해줘", candidates) == ()
+
+
+@pytest.mark.asyncio
+async def test_semantic_resolver_does_not_truncate_away_identity_competitors():
+    usage = NS(request=AsyncMock())
+    resolver = SpeakerIdentityResolver(
+        Settings(discord_token="test"), NS(provider_name="gemini"), usage,
+    )
+    result = await resolver.resolve(
+        "duplicate 불러줘", [candidate(i, "duplicate") for i in range(1, 34)],
+    )
+    assert result.status == "ambiguous"
+    usage.request.assert_not_awaited()
 
 
 @pytest.mark.asyncio

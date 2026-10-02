@@ -108,6 +108,9 @@ def apply_context_policy(context: dict, current_user_id: int | str, policy: str)
         return context
 
     filtered = deepcopy(context)
+    # Cross-user textual resolution stays disabled even if an adapter injects its results.
+    # Actual current-message mentions keep their existing structural metadata policy.
+    filtered["resolved_identities"] = []
     filtered["server_note"] = ""
     filtered["channel_recent_messages"] = filter_channel_context(
         filtered.get("channel_recent_messages"), current_user_id, normalized

@@ -5,6 +5,7 @@ import logging
 import re
 from dataclasses import replace
 
+from hina_bot.core.identity_context import resolved_identity_context
 from hina_bot.core.memory_context import CURRENT_MEMORY_CONTEXT, build_memory_context
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
@@ -273,6 +274,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             ),
         )
         context = {
+            "resolved_identities": resolved_identity_context(),
             "server_note": (
                 store.note(scope.realm)
                 if cross_channel_memory and scope.guild_id is not None
