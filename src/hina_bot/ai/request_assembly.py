@@ -149,19 +149,6 @@ mention되었다는 사실만으로 그 사용자가 현재 발화의 호격 대
 한 사람을 임의로 수행자나 대상으로 고르지 마세요.
 """
 
-CHANNEL_MEMBER_TOOL_POLICY = """[현재 Discord 채널 사용자 확인]
-현재 채널의 사람을 이름, 별명, Discord 닉네임, username 등으로 식별하거나 실제 사용자 mention ID가
-필요한 경우 get_current_channel_members 도구를 사용하세요. 이미 current_interaction.mentions에 정확한
-대상이 있으면 그 정보를 우선하고, 그렇지 않으면 이름을 추측하거나 ID를 만들어내지 말고 이 도구로
-확인하세요.
-
-도구 결과의 server_nickname, global_name, username은 같은 사람을 가리키는 Discord 이름 정보입니다.
-사용자가 부르는 자연어 별명이 이 문자열과 완전히 같지 않아도 발음, 표기, 대화 문맥상 같은 사람인지
-판단할 수 있습니다. 여러 후보가 그럴듯하면 임의로 하나를 고르지 말고 대상을 확인하세요.
-도구가 반환한 user_id는 사용자가 그 사람을 불러 달라거나 핑해 달라고 명시한 경우 <@user_id> 형태로
-사용할 수 있습니다. 명단을 조회했다는 과정 자체는 사용자가 묻지 않는 한 답변에 설명하지 마세요.
-"""
-
 TURN_RESPONSE_POLICY = """[현재 발화 응답]
 현재 화자의 현재 발화에 먼저 답하세요. 근거가 부족한 짧은 호출·말놀이·이모지는 중립적인 일상
 대화로 받아들이고 짧게 반응하거나 필요한 의미만 확인하세요. 같은 화자가 명확히 반복한 도발이
@@ -736,11 +723,6 @@ class RequestAssembler(BaseLLM):
             instruction_parts.append(CODE_EXECUTION_POLICY)
             instruction_group_chars["instruction_tools_chars"] += len(
                 CODE_EXECUTION_POLICY
-            )
-        if local_tool_schemas:
-            instruction_parts.append(CHANNEL_MEMBER_TOOL_POLICY)
-            instruction_group_chars["instruction_tools_chars"] += len(
-                CHANNEL_MEMBER_TOOL_POLICY
             )
         instruction_parts.append(TURN_RESPONSE_POLICY)
         instruction_group_chars["instruction_response_chars"] += len(
