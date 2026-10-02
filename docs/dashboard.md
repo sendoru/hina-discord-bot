@@ -277,14 +277,14 @@ Identity events contain only bounded metadata:
 - opaque reference/user groups,
 - whether the resolver API was invoked.
 
-Member-directory local matching also reports `resolution_method` and `directory_complete`.
-An exact local result has `resolver_invoked=false` and `evidence_source=member_directory`, so it
-must not be counted as an `identity_resolve` API request. Final context provenance includes the
-selected/blocked `resolved_identities` counts without copying their names or reference text.
-The page shows local exact resolutions separately, exposes method/directory completeness per case,
-and includes both local and semantic decisions in repeat-mapping analysis. The simulated hit-rate
-denominator is the resolution-decision count; provider invocation and token counters remain API-only.
-See [identity resolution](identity-resolution.md) for directory completeness and privacy boundaries.
+멤버 디렉터리의 로컬 매칭은 `resolution_method`와 `directory_complete`도 기록합니다.
+로컬 정확 일치 결과는 `resolver_invoked=false`, `evidence_source=member_directory`이므로
+`identity_resolve` API 요청으로 집계하면 안 됩니다. 최종 context provenance에는 이름이나 참조
+원문을 복사하지 않고 선택·차단된 `resolved_identities` 개수만 포함합니다.
+대시보드에서는 로컬 정확 일치를 별도로 표시하고, 각 사례의 방식과 디렉터리 완전성 여부를 보여주며,
+반복 매핑 분석에는 로컬 판단과 시맨틱 판단을 모두 포함합니다. 예상 hit rate의 분모는 식별 판단
+건수이며, provider 호출 수와 token 집계는 실제 API 호출만 포함합니다.
+디렉터리 완전성과 privacy 경계는 [사용자 식별](identity-resolution.md) 문서를 참고하세요.
 
 The resolver may return a short `reference` span only when it is copied verbatim from the current
 request. Python validates that constraint, normalizes the span, and immediately replaces it with a
