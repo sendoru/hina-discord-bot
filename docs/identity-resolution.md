@@ -6,13 +6,11 @@
 
 ## 현재 멤버 소스
 
-`DISCORD_MEMBERS_INTENT=true`를 설정하고 Discord Developer Portal에서
-**Server Members Intent**를 켠 뒤 봇을 재시작합니다. 이 설정은 `/config`로 바꾸는 runtime 설정이
-아니라 startup-only 설정입니다. 기본값은 false이며, 기존 배포가 설정하지 않은 privileged intent를
-예기치 않게 요청하지 않도록 합니다. 활성화 전에 Portal 권한과 필요한 intent 심사를 모두 갖춰야 하며,
-그렇지 않으면 Discord가 Gateway 연결을 4014 코드로 종료할 수 있습니다.
+봇은 **Server Members Intent**를 항상 요청합니다. Discord Developer Portal에서도 이 intent를
+반드시 켠 뒤 봇을 재시작해야 합니다. Portal 권한과 필요한 intent 심사를 갖추지 않은 상태에서
+실행하면 Discord가 Gateway 연결을 4014 코드로 종료할 수 있습니다.
 
-클라이언트는 discord.py의 members intent 캐시와 시작 시 chunking을 사용합니다. 해당 intent가 켜져 있고
+클라이언트는 discord.py의 members intent 캐시와 시작 시 chunking을 사용합니다.
 `guild.chunked`가 true일 때만 디렉터리를 완전한 것으로 취급합니다. 따라서 서버 멤버 수가 많을수록
 시작 시간과 메모리 사용량이 늘어날 수 있습니다. 개별 메시지를 처리하는 경로에서는 전체 멤버 fetch나
 chunk를 실행하지 않습니다. 시작 시 chunking에 실패했거나 guild를 사용할 수 없으면 부분 캐시를 완전한

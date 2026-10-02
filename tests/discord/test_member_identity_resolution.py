@@ -25,7 +25,7 @@ def runtime(tmp_path):
     store = Store(":memory:")
     client = HinaClient(
         Settings(
-            discord_token="test", discord_members_intent=True, external_context_policy="full",
+            discord_token="test", external_context_policy="full",
             cooldown=0, event_log_path=str(tmp_path / "events.jsonl"),
         ),
         store=store, llm=NS(close=AsyncMock(), resolve_speaker_identity=resolver),
@@ -107,12 +107,8 @@ async def test_duplicate_name_does_not_pick_first_cached_member(runtime):
     runtime.resolver.assert_not_awaited()
 
 
-@pytest.mark.parametrize("complete,members_intent", [(False, True), (True, False)])
-async def test_partial_or_unmaintained_cache_does_not_establish_uniqueness(
-    runtime, complete, members_intent,
-):
-    runtime.guild.chunked = complete
-    runtime.client._connection._intents.members = members_intent
+async def test_partial_cache_does_not_establish_uniqueness(runtime):
+    runtime.guild.chunked = False
     assert await resolve(runtime, "2_718281 핑해줘") == ([], ())
     runtime.resolver.assert_not_awaited()
     runtime.guild.fetch_member.assert_not_awaited()

@@ -78,7 +78,7 @@ async def test_text_identity_resolution_only_sends_live_visible_candidates():
     llm = NS(close=AsyncMock(), resolve_speaker_identity=resolver)
     client = HinaClient(
         Settings(discord_token="test", openai_api_key="test", cooldown=0,
-                 external_context_policy="full", discord_members_intent=True),
+                 external_context_policy="full"),
         store=store,
         llm=llm,
     )
@@ -186,7 +186,6 @@ async def test_identity_observability_never_logs_raw_reference_or_candidate_name
         Settings(discord_token="deployment-secret-token", openai_api_key="test",
             cooldown=0,
             external_context_policy="full",
-            discord_members_intent=True,
             event_log_path=str(event_path),
         ),
         store=store,

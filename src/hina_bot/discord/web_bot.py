@@ -226,9 +226,7 @@ class HinaClient(BaseHinaClient):
         if not isinstance(getattr(message, "channel", None), discord.TextChannel):
             return [], ()
 
-        directory = current_member_directory(
-            message, self.user.id, members_intent=self.intents.members,
-        )
+        directory = current_member_directory(message, self.user.id)
         guild = message.guild
         if guild is None or getattr(guild, "unavailable", False):
             return [], ()

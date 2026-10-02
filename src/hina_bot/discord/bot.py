@@ -94,13 +94,13 @@ def _bare_call_reply(
 class HinaClient(discord.Client):
     def __init__(self, settings: Settings, *, store=None, llm):
         intents = discord.Intents.default()
-        intents.members = settings.discord_members_intent
+        intents.members = True
         intents.message_content = True
         intents.emojis_and_stickers = True
         super().__init__(
             intents=intents,
             member_cache_flags=discord.MemberCacheFlags.from_intents(intents),
-            chunk_guilds_at_startup=settings.discord_members_intent,
+            chunk_guilds_at_startup=True,
             allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
             max_messages=None,
         )

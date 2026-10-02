@@ -36,7 +36,7 @@ def visible_member(message, member, bot_id: int) -> bool:
     return channel.permissions_for(member).view_channel is True
 
 
-def current_member_directory(message, bot_id: int, *, members_intent: bool):
+def current_member_directory(message, bot_id: int):
     guild = message.guild
     channel = getattr(message, "channel", None)
     if (guild is None or getattr(guild, "unavailable", False)
@@ -57,7 +57,7 @@ def current_member_directory(message, bot_id: int, *, members_intent: bool):
             rows[str(message.author.id)] = {"user_id": str(message.author.id), "names": names}
     return MemberIdentityDirectory(
         tuple(rows.values()),
-        members_intent and getattr(guild, "chunked", False) is True,
+        getattr(guild, "chunked", False) is True,
     )
 
 

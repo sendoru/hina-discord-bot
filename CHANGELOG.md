@@ -6,10 +6,9 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Added
 
-- 현재 Discord 멤버 기반 사용자 식별 기능을 선택적으로 사용할 수 있습니다. 로컬 정확 일치,
-  제한된 시맨틱 폴백, 기억/기록 조회와 독립된 식별 문맥을 사용합니다. 유지되는 멤버 디렉터리를
-  사용하려면 Server Members Intent와 `DISCORD_MEMBERS_INTENT=true`를 켜야 하며, 기존의 엄격한
-  외부 전송 제한은 그대로 유지됩니다.
+- 현재 Discord 멤버 기반 사용자 식별 기능을 추가했습니다. 로컬 정확 일치, 제한된 시맨틱
+  폴백, 기억/기록 조회와 독립된 식별 문맥을 사용합니다. 봇은 Server Members Intent를 항상 요청하며,
+  기존의 엄격한 외부 전송 제한은 그대로 유지됩니다.
 - Configurable guild channels that treat every human message as a direct bot turn, while keeping bot-authored messages behind explicit triggers.
 - Formal release-version and compatibility lifecycle policy.
 - CI validation for package version format and release-tag consistency.
