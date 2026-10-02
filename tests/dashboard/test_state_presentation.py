@@ -139,5 +139,8 @@ def test_state_tables_render_components_raw_keys_and_unknowns_safely(tmp_path):
     assert notes["guild:1"][2].text.strip() == "—"
     assert notes["dm:100:user:100"][2].find("div").text == "DM User"
     assert notes["dm:100:user:100"][2].find("code").text == "100"
-    assert notes["guild:1:channel:10:user:100"][1].find("details") is None
+    assert (
+        notes["guild:1:channel:10:user:100"][1].find("details/summary").text
+        == "Raw scope"
+    )
     assert notes[UNKNOWN_KEY][3].find("div").text == "<b>unknown note</b>"
