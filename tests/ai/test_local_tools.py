@@ -219,6 +219,87 @@ async def test_executor_runs_function_and_appends_provider_neutral_result():
 
 
 @pytest.mark.asyncio
+async def test_executor_uses_gemini_previous_interaction_for_tool_result():
+    registry = LocalToolRegistry()
+    registry.register(spec(), lambda arguments: {"echo": arguments["value"]})
+    executor = LocalToolExecutor(registry)
+    requests = []
+    first = function_response()
+    first._hina_interaction_id = "int_1"
+    first._hina_interaction_steps = ({
+        "type": "function_call",
+        "id": "call_1",
+        "name": "echo",
+        "arguments": {"value": "hello"},
+    },)
+    responses = [first, final_response("finished")]
+
+    async def send(request):
+        requests.append(request)
+        return responses[len(requests) - 1]
+
+    await executor.run(
+        send,
+        {
+            "model": "test",
+            "input": [{"role": "user", "content": "hello"}],
+            "tools": registry.schemas(),
+            "tool_choice": "auto",
+            "store": True,
+        },
+    )
+
+    followup = requests[1]
+    assert followup["previous_interaction_id"] == "int_1"
+    assert followup["input"] == [{
+        "type": "function_call_output",
+        "call_id": "call_1",
+        "name": "echo",
+        "output": '{"ok":true,"result":{"echo":"hello"}}',
+    }]
+
+
+@pytest.mark.asyncio
+async def test_executor_replays_raw_gemini_steps_when_stateless():
+    registry = LocalToolRegistry()
+    registry.register(spec(), lambda arguments: {"echo": arguments["value"]})
+    executor = LocalToolExecutor(registry)
+    requests = []
+    first = function_response()
+    first._hina_interaction_id = ""
+    first._hina_interaction_steps = (
+        {"type": "thought", "signature": "sig", "summary": []},
+        {
+            "type": "function_call",
+            "id": "call_1",
+            "name": "echo",
+            "arguments": {"value": "hello"},
+        },
+    )
+    responses = [first, final_response("finished")]
+
+    async def send(request):
+        requests.append(request)
+        return responses[len(requests) - 1]
+
+    await executor.run(
+        send,
+        {
+            "model": "test",
+            "input": [{"role": "user", "content": "hello"}],
+            "tools": registry.schemas(),
+            "tool_choice": "auto",
+            "store": False,
+        },
+    )
+
+    followup = requests[1]
+    assert "previous_interaction_id" not in followup
+    assert followup["input"][1:3] == list(first._hina_interaction_steps)
+    assert followup["input"][-1]["name"] == "echo"
+
+
+@pytest.mark.asyncio
 async def test_executor_returns_unknown_tool_error_to_model():
     registry = LocalToolRegistry()
     executor = LocalToolExecutor(registry)
