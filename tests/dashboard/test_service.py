@@ -968,22 +968,14 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
         {key: row[key] for key in ("scope", "enabled", "capture")}
         for row in data["chat_overrides"]
     ] == [
-        {
-            "scope": "global",
-            "enabled": "on",
-            "capture": "direct",
-            "guild_name": "",
-            "channel_name": "",
-        },
-        {
-            "scope": "guild:1",
-            "enabled": "off",
-            "capture": None,
-            "guild_id": "1",
-            "guild_name": "State Guild",
-            "channel_name": "",
-        },
+        {"scope": "global", "enabled": "on", "capture": "direct"},
+        {"scope": "guild:1", "enabled": "off", "capture": None},
     ]
+    guild_chat_override = next(
+        row for row in data["chat_overrides"] if row["scope"] == "guild:1"
+    )
+    assert guild_chat_override["guild_name"] == "State Guild"
+    assert guild_chat_override["channel_name"] == ""
     assert data["internal_note_count"] == 2
     assert {row["text"] for row in data["manual_notes"]} == {
         "guild-wide manual note",
