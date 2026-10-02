@@ -273,6 +273,8 @@ async def test_general_chat_has_no_web_search_prompt_or_tool(chat_llm):
         payload = calls[-1]
         assert_code_only(payload)
         assert "[외부 확인]" not in payload["instructions"]
+        assert "외부 정보 검색: 필요한 요청에서 사용 가능." in payload["instructions"]
+        assert "기능 자체가 없다고 말하지 마세요" in payload["instructions"]
     finally:
         store.close()
 
@@ -299,5 +301,6 @@ async def test_web_search_can_be_disabled_in_settings(chat_llm):
         payload = calls[-1]
         assert_code_only(payload)
         assert "[외부 확인]" not in payload["instructions"]
+        assert "외부 정보 검색: 현재 설정에서 비활성화." in payload["instructions"]
     finally:
         store.close()

@@ -1,0 +1,2 @@
+# User-facing capability grounding regressions
+search_capability_not_denied_for_immersion
