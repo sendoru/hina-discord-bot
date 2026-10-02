@@ -296,7 +296,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'data-copy-text="55"' in detail.text
     assert 'data-copy-block' in detail.text
     assert "Dashboard User" in detail.text
-    assert '<code class="scope-id">100</code>' in detail.text
+    assert '<code class="scope-id" data-copy-text="100">100</code>' in detail.text
     assert "<dt>Channel</dt>" in detail.text
     assert "Raw scope" in detail.text
     assert "Context &amp; provenance" in detail.text
@@ -397,12 +397,12 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "direct" in state.text
     assert 'class="wide-table"' not in state.text
     assert "legacy dashboard summary" in summaries.text
-    assert '<code class="scope-id">100</code>' in summaries.text
+    assert '<code class="scope-id" data-copy-text="100">100</code>' in summaries.text
     assert "Dashboard User" in summaries.text
     assert "<th>Realm</th><th>Channel</th><th>User</th>" in summaries.text
     assert "Raw scope" not in summaries.text
     assert "Memory Extraction Cursors" in cursors.text
-    assert '<code class="scope-id">100</code>' in cursors.text
+    assert '<code class="scope-id" data-copy-text="100">100</code>' in cursors.text
     assert "Dashboard User" in cursors.text
     assert "<th>Realm</th><th>Channel</th><th>User</th>" in cursors.text
     assert "Raw scope" not in cursors.text
