@@ -548,10 +548,7 @@ class AdminRepository:
             return None
 
         has_turn_trace = self._has_column("turns", "turn_id")
-        has_failed_trace = (
-            self._table_exists("failed_turns")
-            and self._has_column("failed_turns", "turn_id")
-        )
+        has_failed_trace = "turn_id" in self._table_columns("failed_turns")
         if not has_turn_trace and not has_failed_trace:
             return None
 
