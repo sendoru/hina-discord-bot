@@ -125,6 +125,30 @@ def _gemini_input(value):
         if not isinstance(item, dict):
             continue
         item_type = item.get("type")
+        if item_type in {
+            "thought",
+            "model_output",
+            "code_execution_call",
+            "code_execution_result",
+            "google_search_call",
+            "google_search_result",
+            "file_search_call",
+            "file_search_result",
+        }:
+            steps.append(dict(item))
+            continue
+        if (
+            item_type == "function_call"
+            and item.get("id")
+            and not item.get("call_id")
+            and isinstance(item.get("arguments"), dict)
+        ):
+            call_id = str(item.get("id") or "")
+            name = str(item.get("name") or "")
+            if call_id and name:
+                function_names[call_id] = name
+                steps.append(dict(item))
+            continue
         if item_type == "function_call":
             raw_arguments = item.get("arguments", {})
             if isinstance(raw_arguments, str):
@@ -598,7 +622,6 @@ def _gemini_output(data: dict):
         output=output,
         usage=usage,
     )
-    response._hina_interaction_id = str(data.get("id") or "")
     response._hina_web_search_calls = web_search_calls
     response._hina_error_codes = [
         error.get("code") for error in data.get("errors") or []
@@ -750,7 +773,17 @@ class _GeminiResponses:
             error = _gemini_http_error(response)
             log.warning("Provider request failed (%s)", error.safe_diagnostic)
             raise error from exc
-        return _gemini_output(response.json())
+        data = response.json()
+        normalized = _gemini_output(data)
+        normalized._hina_interaction_id = (
+            str(data.get("id") or "") if payload["store"] else ""
+        )
+        normalized._hina_interaction_steps = tuple(
+            dict(step)
+            for step in (data.get("steps") or ())
+            if isinstance(step, dict)
+        )
+        return normalized
 
     async def create(self, **kwargs):
         tools = list(kwargs.get("tools") or [])
