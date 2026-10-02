@@ -132,6 +132,7 @@ def _reference_instruction_parts(context: dict) -> tuple[str, ...]:
         parts.append(REFERENCE_PROVENANCE_POLICY)
     return tuple(parts)
 
+
 CURRENT_SPEAKER_POLICY = """[현재 화자와 제3자]
 current_speaker는 바로 뒤에 오는 사용자 메시지의 작성자입니다. 현재 사용자에게 직접 말을 걸거나
 이름·호칭으로 부를 때는 current_speaker의 user_id와 같은 사람에게 속한 이름·합의된 호칭만
