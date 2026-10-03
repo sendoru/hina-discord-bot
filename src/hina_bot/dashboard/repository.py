@@ -57,6 +57,15 @@ class AdminRepository:
             rows = db.execute(f"PRAGMA table_info({table})").fetchall()
         return any(str(row["name"]) == column for row in rows)
 
+    def runtime_config_startup_rows(self) -> list[dict[str, object]]:
+        if not self._table_exists("runtime_config_startup"):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT key,value,captured_at FROM runtime_config_startup ORDER BY key"
+            ).fetchall()
+        return self._dicts(rows)
+
     def runtime_config_rows(self) -> list[dict[str, object]]:
         if not self._table_exists("runtime_config"):
             return []
