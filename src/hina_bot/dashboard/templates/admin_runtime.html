@@ -5,7 +5,7 @@
 <section class="page-heading">
   <div>
     <h1>Runtime Config</h1>
-    <p class="muted">DB override를 봇 프로세스의 RuntimeSettings를 통해 적용합니다. override가 없는 startup 값은 이 화면에서 재해석하지 않습니다.</p>
+    <p class="muted">DB override를 봇 프로세스의 RuntimeSettings를 통해 적용합니다. startup 값은 봇 시작 시 캡처한 설정을 함께 보여줍니다.</p>
   </div>
 </section>
 
@@ -24,7 +24,7 @@
   <div class="panel-heading">
     <div>
       <h2>Settings</h2>
-      <p class="muted">DB 값은 현재 override입니다. <code>startup</code>은 봇 시작 시 읽은 설정을 사용한다는 뜻입니다.</p>
+      <p class="muted">현재 적용값과 source를 보여줍니다. DB override가 있으면 startup 기준값도 함께 표시합니다.</p>
     </div>
   </div>
   <div class="table-wrap runtime-config-table-wrap" tabindex="0">
@@ -33,7 +33,7 @@
         <tr>
           <th>Setting</th>
           <th>Source</th>
-          <th>Current DB override</th>
+          <th>Current value</th>
           <th>Reset</th>
         </tr>
       </thead>
@@ -48,16 +48,29 @@
           <td class="runtime-config-current" data-runtime-config-editor>
             <div class="runtime-config-current-view" data-runtime-config-view>
               <span class="runtime-config-current-value">
-                {% if row.error %}<span class="badge error">invalid stored value</span>
-                {% elif row.source == "db" %}<code>{{ row.value }}</code>
-                {% else %}<span class="muted">startup</span>{% endif %}
-                {% if row.updated_at %}<small>{{ row.updated_at | localtime }}</small>{% endif %}
+                {% if row.value is not none %}
+                  <code>{{ row.value }}</code>
+                {% elif row.startup_error %}
+                  <span class="badge error">invalid startup snapshot</span>
+                {% else %}
+                  <span class="muted">startup snapshot unavailable</span>
+                {% endif %}
+                {% if row.override_error %}
+                  <small class="runtime-config-value-note">invalid DB override · using startup</small>
+                {% elif row.source == "db" and row.startup_value is not none %}
+                  <small class="runtime-config-value-note">startup {{ row.startup_value }}</small>
+                {% elif row.source == "startup" and row.startup_captured_at %}
+                  <small class="runtime-config-value-note">captured {{ row.startup_captured_at | localtime }}</small>
+                {% endif %}
+                {% if row.updated_at and row.has_override %}
+                  <small class="runtime-config-value-note">override updated {{ row.updated_at | localtime }}</small>
+                {% endif %}
               </span>
               <button type="button"
                       class="secondary runtime-config-edit-button"
                       data-runtime-config-edit
                       {% if not dashboard_write_enabled %}disabled{% endif %}>
-                {{ "Edit" if row.source == "db" else "Set override" }}
+                {{ "Edit" if row.has_override else "Set override" }}
               </button>
             </div>
             <form class="runtime-config-edit-form"
@@ -71,9 +84,9 @@
               <input id="runtime-{{ row.key }}"
                      name="value"
                      type="text"
-                     value="{{ row.value if row.source == 'db' and not row.error else '' }}"
+                     value="{{ row.edit_value }}"
                      data-runtime-config-input
-                     data-original-value="{{ row.value if row.source == 'db' and not row.error else '' }}"
+                     data-original-value="{{ row.edit_value }}"
                      aria-label="Override value for {{ row.env_name }}"
                      placeholder="new override value"
                      {% if not dashboard_write_enabled %}disabled{% endif %}>
@@ -89,7 +102,7 @@
               <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
               <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
               <input type="hidden" name="key" value="{{ row.key }}">
-              <button type="submit" {% if not dashboard_write_enabled or row.source != "db" %}disabled{% endif %}>Reset</button>
+              <button type="submit" {% if not dashboard_write_enabled or not row.has_override %}disabled{% endif %}>Reset</button>
             </form>
           </td>
         </tr>
