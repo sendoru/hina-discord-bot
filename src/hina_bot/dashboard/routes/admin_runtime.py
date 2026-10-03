@@ -16,32 +16,76 @@ from ..admin_write import AdminCommandWriter
 from ..repository import AdminRepository
 
 
+def _runtime_edit_value(value: object) -> str:
+    if isinstance(value, tuple):
+        return ", ".join(value)
+    if isinstance(value, (set, frozenset)):
+        return ", ".join(str(item) for item in sorted(value))
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    if value == "":
+        return ""
+    return str(value)
+
+
 def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
     overrides = {
         str(row["key"]): row
         for row in repository.runtime_config_rows()
     }
+    startup = {
+        str(row["key"]): row
+        for row in repository.runtime_config_startup_rows()
+    }
     rows: list[dict[str, object]] = []
     for key, spec in RUNTIME_SETTING_SPECS.items():
         stored = overrides.get(key)
-        value = None
-        error = ""
+        snapshot = startup.get(key)
+
+        startup_value = None
+        startup_edit_value = ""
+        startup_error = ""
+        if snapshot is not None:
+            try:
+                decoded_startup = decode_runtime_value(spec, str(snapshot["value"]))
+                startup_value = format_runtime_value(decoded_startup)
+                startup_edit_value = _runtime_edit_value(decoded_startup)
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                startup_error = type(exc).__name__
+
+        override_value = None
+        override_edit_value = ""
+        override_error = ""
         if stored is not None:
             try:
-                value = format_runtime_value(
-                    decode_runtime_value(spec, str(stored["value"]))
-                )
+                decoded_override = decode_runtime_value(spec, str(stored["value"]))
+                override_value = format_runtime_value(decoded_override)
+                override_edit_value = _runtime_edit_value(decoded_override)
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                error = type(exc).__name__
+                override_error = type(exc).__name__
+
+        override_valid = stored is not None and not override_error
+        effective_value = override_value if override_valid else startup_value
+        effective_edit_value = (
+            override_edit_value if override_valid else startup_edit_value
+        )
         rows.append(
             {
                 "key": key,
                 "env_name": spec.env_name,
                 "kind": spec.kind,
-                "source": "db" if stored is not None else "startup",
-                "value": value,
+                "source": "db" if override_valid else "startup",
+                "value": effective_value,
+                "edit_value": effective_edit_value,
+                "startup_value": startup_value,
+                "startup_captured_at": (
+                    snapshot.get("captured_at") if snapshot else None
+                ),
+                "startup_error": startup_error,
+                "has_override": stored is not None,
+                "override_value": override_value,
+                "override_error": override_error,
                 "updated_at": stored.get("updated_at") if stored else None,
-                "error": error,
             }
         )
     return rows
