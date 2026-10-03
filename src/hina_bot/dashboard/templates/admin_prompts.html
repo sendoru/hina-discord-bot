@@ -33,24 +33,26 @@
     </div>
   </div>
 
-  <form method="post" action="/admin/prompts/instruction" class="panel">
+  <form method="post" action="/admin/prompts/instruction" class="panel prompt-editor-card prompt-add-card">
     {{ command_fields() }}
     <input type="hidden" name="action" value="add">
     <h3>Add instruction</h3>
-    <div class="grid-2">
-      <label>ID
+    <div class="prompt-form-grid prompt-instruction-grid">
+      <label class="prompt-field">ID
         <input name="id" type="text" maxlength="64" placeholder="example.instruction" {% if not dashboard_write_enabled %}disabled{% endif %}>
       </label>
-      <label>Text
+      <label class="prompt-field prompt-field-body">Text
         <textarea name="text" rows="4" maxlength="1200" placeholder="instruction text" {% if not dashboard_write_enabled %}disabled{% endif %}></textarea>
       </label>
     </div>
-    <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Add instruction</button>
+    <div class="prompt-actions">
+      <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Add instruction</button>
+    </div>
   </form>
 
   {% if data.instructions %}
   {% for row in data.instructions %}
-  <form method="post" action="/admin/prompts/instruction" class="panel">
+  <form method="post" action="/admin/prompts/instruction" class="panel prompt-editor-card">
     {{ command_fields() }}
     <input type="hidden" name="id" value="{{ row.id }}">
     <div class="panel-heading">
@@ -63,10 +65,10 @@
       </div>
       <span class="status-badge status-{{ 'success' if row.enabled else 'neutral' }}">{{ "enabled" if row.enabled else "disabled" }}</span>
     </div>
-    <label>Text
+    <label class="prompt-field prompt-field-body">Text
       <textarea name="text" rows="5" maxlength="1200" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ row.text }}</textarea>
     </label>
-    <div class="scope-target-actions">
+    <div class="prompt-actions">
       <button type="submit" name="action" value="edit" {% if not dashboard_write_enabled %}disabled{% endif %}>Save</button>
       <button type="submit" name="action" value="{{ 'disable' if row.enabled else 'enable' }}" class="secondary" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ "Disable" if row.enabled else "Enable" }}</button>
       <label>
@@ -90,44 +92,46 @@
     </div>
   </div>
 
-  <form method="post" action="/admin/prompts/knowledge" class="panel">
+  <form method="post" action="/admin/prompts/knowledge" class="panel prompt-editor-card prompt-add-card">
     {{ command_fields() }}
     <input type="hidden" name="action" value="add">
     <h3>Add knowledge</h3>
-    <div class="grid-2">
-      <label>Kind
+    <div class="prompt-form-grid">
+      <label class="prompt-field">Kind
         <select name="kind" {% if not dashboard_write_enabled %}disabled{% endif %}>
           <option value="world_fact">world_fact</option>
           <option value="interpretation">interpretation</option>
         </select>
       </label>
-      <label>ID
+      <label class="prompt-field">ID
         <input name="id" type="text" maxlength="64" placeholder="example.fact" {% if not dashboard_write_enabled %}disabled{% endif %}>
       </label>
-      <label>Awareness
+      <label class="prompt-field">Awareness
         <select name="awareness" {% if not dashboard_write_enabled %}disabled{% endif %}>
           {% for level in data.awareness_levels %}<option value="{{ level }}">{{ level }}</option>{% endfor %}
         </select>
       </label>
-      <label>Timeline
+      <label class="prompt-field">Timeline
         <input name="timeline" type="text" maxlength="120" placeholder="시점 미지정" {% if not dashboard_write_enabled %}disabled{% endif %}>
       </label>
-      <label>Keywords
+      <label class="prompt-field">Keywords
         <input name="keywords" type="text" placeholder="comma, separated" {% if not dashboard_write_enabled %}disabled{% endif %}>
       </label>
-      <label>Subjects
+      <label class="prompt-field">Subjects
         <input name="subjects" type="text" placeholder="comma, separated" {% if not dashboard_write_enabled %}disabled{% endif %}>
       </label>
+      <label class="prompt-field prompt-field-body prompt-field-full">Content
+        <textarea name="content" rows="5" maxlength="1800" {% if not dashboard_write_enabled %}disabled{% endif %}></textarea>
+      </label>
     </div>
-    <label>Content
-      <textarea name="content" rows="5" maxlength="1800" {% if not dashboard_write_enabled %}disabled{% endif %}></textarea>
-    </label>
-    <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Add knowledge</button>
+    <div class="prompt-actions">
+      <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Add knowledge</button>
+    </div>
   </form>
 
   {% if data.knowledge %}
   {% for row in data.knowledge %}
-  <form method="post" action="/admin/prompts/knowledge" class="panel">
+  <form method="post" action="/admin/prompts/knowledge" class="panel prompt-editor-card">
     {{ command_fields() }}
     <input type="hidden" name="kind" value="{{ row.kind }}">
     <input type="hidden" name="id" value="{{ row.id }}">
@@ -138,26 +142,26 @@
       </div>
       <span class="status-badge status-{{ 'success' if row.enabled else 'neutral' }}">{{ "enabled" if row.enabled else "disabled" }}</span>
     </div>
-    <div class="grid-2">
-      <label>Awareness
+    <div class="prompt-form-grid">
+      <label class="prompt-field">Awareness
         <select name="awareness" {% if not dashboard_write_enabled %}disabled{% endif %}>
           {% for level in data.awareness_levels %}<option value="{{ level }}" {% if level == row.awareness %}selected{% endif %}>{{ level }}</option>{% endfor %}
         </select>
       </label>
-      <label>Timeline
+      <label class="prompt-field">Timeline
         <input name="timeline" type="text" maxlength="120" value="{{ row.timeline }}" {% if not dashboard_write_enabled %}disabled{% endif %}>
       </label>
-      <label>Keywords
+      <label class="prompt-field">Keywords
         <input name="keywords" type="text" value="{{ row.keywords_list | join(', ') }}" {% if not dashboard_write_enabled %}disabled{% endif %}>
       </label>
-      <label>Subjects
+      <label class="prompt-field">Subjects
         <input name="subjects" type="text" value="{{ row.subjects_list | join(', ') }}" {% if not dashboard_write_enabled %}disabled{% endif %}>
       </label>
     </div>
-    <label>Content
+    <label class="prompt-field prompt-field-body prompt-field-full">Content
       <textarea name="content" rows="5" maxlength="1800" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ row.content }}</textarea>
     </label>
-    <div class="scope-target-actions">
+    <div class="prompt-actions">
       <button type="submit" name="action" value="edit" {% if not dashboard_write_enabled %}disabled{% endif %}>Save</button>
       <button type="submit" name="action" value="{{ 'disable' if row.enabled else 'enable' }}" class="secondary" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ "Disable" if row.enabled else "Enable" }}</button>
       <label>
