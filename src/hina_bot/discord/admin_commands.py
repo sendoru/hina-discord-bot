@@ -3,6 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from hina_bot.core.runtime_config import RuntimeSettings, format_runtime_value
+
+from .config_commands import apply_runtime_setting_side_effects
+
 from hina_bot.core.admin_commands import (
     AdminCommand,
     claim_next_admin_command,
@@ -20,6 +24,22 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
     executor in the Discord runtime means side effects such as recent-buffer clears
     happen in the owning bot process rather than in the dashboard process.
     """
+
+    if command.action in {"runtime.set", "runtime.reset"}:
+        if not isinstance(client.settings, RuntimeSettings):
+            raise ValueError("runtime settings are not hot-reloadable in this process")
+        key = str(command.payload.get("key") or command.target).strip()
+        if command.action == "runtime.set":
+            value = str(command.payload.get("value") or "")
+            parsed = client.settings.set_text(key, value)
+        else:
+            parsed = client.settings.reset(key)
+        apply_runtime_setting_side_effects(client, key)
+        return {
+            "key": key,
+            "value": format_runtime_value(parsed),
+            "source": client.settings.source(key),
+        }
 
     raise ValueError(f"unsupported admin action: {command.action}")
 
