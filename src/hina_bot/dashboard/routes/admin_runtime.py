@@ -57,6 +57,46 @@ def _collection_meta(spec) -> dict[str, object]:
     }
 
 
+def _scalar_editor_meta(spec) -> dict[str, object]:
+    if spec.kind == "bool":
+        return {
+            "editor_type": "select",
+            "editor_choices": ("off", "on"),
+            "editor_required": True,
+        }
+    if spec.choices:
+        return {
+            "editor_type": "select",
+            "editor_choices": spec.choices,
+            "editor_required": True,
+        }
+    if spec.kind == "int":
+        return {
+            "editor_type": "number",
+            "editor_min": spec.minimum,
+            "editor_max": spec.maximum,
+            "editor_step": "1",
+            "editor_required": True,
+        }
+    if spec.kind == "float":
+        return {
+            "editor_type": "number",
+            "editor_min": spec.minimum,
+            "editor_max": spec.maximum,
+            "editor_step": "any",
+            "editor_required": True,
+        }
+    return {
+        "editor_type": "text",
+        "editor_maxlength": (
+            int(spec.maximum)
+            if spec.kind == "string" and spec.maximum is not None
+            else None
+        ),
+        "editor_required": not spec.empty_allowed,
+    }
+
+
 def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
     overrides = {
         str(row["key"]): row
@@ -110,6 +150,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
             _collection_items(decoded_startup, spec.kind) if is_collection else []
         )
         collection_meta = _collection_meta(spec) if is_collection else {}
+        scalar_editor_meta = _scalar_editor_meta(spec) if not is_collection else {}
         preview_limit = 2
         rows.append(
             {
@@ -137,6 +178,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
                 "startup_preview": startup_items[:preview_limit],
                 "startup_extra": max(0, len(startup_items) - preview_limit),
                 **collection_meta,
+                **scalar_editor_meta,
             }
         )
     return rows
