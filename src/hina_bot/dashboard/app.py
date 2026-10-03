@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .admin_write import AdminCommandWriter
 from .config import DashboardSettings
 from .filterutils import applied_filters, remove_filter_url
 from .navigation import back_url, detail_url
@@ -27,6 +28,10 @@ from .timeutils import filter_input_time, filter_input_type, format_local_time, 
 def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     settings = settings or DashboardSettings.load()
     repository = AdminRepository(settings.database_path)
+    admin_writer = AdminCommandWriter.create(
+        settings.database_path,
+        enabled=settings.write_enabled,
+    )
     telemetry = TelemetryReader(settings.usage_log_path, settings.event_log_path)
     trace_service = TraceService(repository, telemetry, timezone=settings.timezone)
     memory_service = MemoryService(repository, timezone=settings.timezone)
@@ -50,11 +55,14 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     templates.env.globals["remove_filter_url"] = remove_filter_url
     templates.env.globals["dashboard_timezone"] = settings.timezone
     templates.env.globals["telemetry_freshness"] = telemetry_freshness
+    templates.env.globals["dashboard_write_enabled"] = settings.write_enabled
+    templates.env.globals["admin_csrf_token"] = admin_writer.csrf_token
 
     app = FastAPI(title="Hina Dashboard", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")
     app.state.repository = repository
     app.state.telemetry = telemetry
+    app.state.admin_writer = admin_writer
 
     def html_page_request(request: Request) -> bool:
         accept = request.headers.get("accept", "")
