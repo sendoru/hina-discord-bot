@@ -57,7 +57,6 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     templates.env.globals["telemetry_freshness"] = telemetry_freshness
     templates.env.globals["dashboard_write_enabled"] = settings.write_enabled
     templates.env.globals["admin_csrf_token"] = admin_writer.csrf_token
-    import secrets
     templates.env.globals["admin_form_nonce"] = lambda: secrets.token_hex(16)
 
     app = FastAPI(title="Hina Dashboard", docs_url=None, redoc_url=None)
