@@ -276,9 +276,9 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stored["error_type"], "ValueError")
         self.assertEqual(stored["turn_id"], failed["turn_id"])
 
-    async def test_memory_failure_is_partial_success_and_does_not_block_shared_summary(self):
-        secret = "private-memory-error-marker"
-        self.llm.summarize.side_effect = ValueError(secret)
+    async def test_shared_summary_failure_is_partial_success_and_does_not_block_structured(self):
+        secret = "shared-memory-error-marker"
+        self.llm.summarize_shared.side_effect = ValueError(secret)
 
         await self.bot.on_message(self.message())
 
@@ -291,14 +291,14 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(rows.index(delivered), rows.index(failed))
         self.assertEqual(delivered["turn_id"], completed["turn_id"])
         self.assertEqual(delivered["delivery_chunks"], 1)
-        self.assertEqual(failed["memory_kind"], "personal")
+        self.assertEqual(failed["memory_kind"], "shared")
         self.assertEqual(completed["status"], "partial_success")
         self.assertEqual(completed["memory_failures"], 1)
         self.assertTrue(completed["reply_delivered"])
         self.llm.extract_structured_memory.assert_awaited_once()
         self.llm.summarize_shared.assert_awaited_once()
 
-    async def test_structured_memory_failure_does_not_block_summaries(self):
+    async def test_structured_memory_failure_does_not_block_shared_summary(self):
         self.llm.extract_structured_memory.side_effect = RuntimeError("structured-failure")
 
         await self.bot.on_message(self.message())
@@ -308,7 +308,6 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         completed = next(row for row in rows if row["event"] == "turn.completed")
         self.assertEqual(failed["memory_kind"], "structured")
         self.assertEqual(completed["status"], "partial_success")
-        self.llm.summarize.assert_awaited_once()
         self.llm.summarize_shared.assert_awaited_once()
 
     async def test_stale_memory_sweep_uses_partial_extraction_for_writable_scope(self):
@@ -402,7 +401,6 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
             1,
         )
         self.llm.extract_structured_memory.assert_not_awaited()
-        self.llm.summarize.assert_not_awaited()
         self.llm.summarize_shared.assert_not_awaited()
 
     async def test_retired_text_command_syntax_is_normal_conversation(self):
@@ -476,7 +474,6 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
             "memory_writes_disabled",
         )
         self.llm.extract_structured_memory.assert_not_awaited()
-        self.llm.summarize.assert_not_awaited()
         self.llm.summarize_shared.assert_not_awaited()
 
     async def test_read_only_replies_without_persisting(self):
@@ -489,7 +486,6 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.store.seen(1))
         self.assertEqual(self.store.pending_shared(scope), [])
         self.llm.extract_structured_memory.assert_not_awaited()
-        self.llm.summarize.assert_not_awaited()
         self.llm.summarize_shared.assert_not_awaited()
 
     async def test_write_only_saves_without_response_context(self):
