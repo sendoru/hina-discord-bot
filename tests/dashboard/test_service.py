@@ -328,8 +328,8 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
 
 def test_trace_summary_separates_reply_and_total_latency(tmp_path):
     service = build_service(tmp_path)
-    assert service.telemetry.events_path is not None
-    with service.telemetry.events_path.open("a", encoding="utf-8") as handle:
+    assert service.telemetry.event_path is not None
+    with service.telemetry.event_path.open("a", encoding="utf-8") as handle:
         for row in (
             {
                 "at": "2026-09-21T00:00:00.100000+00:00",
