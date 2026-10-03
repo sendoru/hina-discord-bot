@@ -23,7 +23,7 @@ DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니�
 관리·설정 기능은 Discord 슬래시 명령으로만 사용합니다.
 
 자동 장기 기억
-`/memory show` — 현재 채널에서 자동으로 요약된 내 기억 확인
+`/memory show` — 현재 서버 또는 DM에서 형성된 내 구조화 장기 기억 확인
 `/memory clear` — 현재 서버 또는 DM에서 내 자동 대화 기억 삭제
 `/memory mode` / `status` / `overview` — 봇 관리자용 자동 기억 설정
 `/memory purge` — 봇 관리자용 범위별 자동 기억 초기화
@@ -129,18 +129,30 @@ def upgrade_memory_group(client):
 
     group.interaction_check = selective_check
 
-    @app_commands.command(name="show", description="현재 채널의 자동 장기 요약 확인")
+    @app_commands.command(name="show", description="현재 서버 또는 DM의 구조화 장기 기억 확인")
     async def show(interaction: discord.Interaction):
         try:
             scope = _scope(interaction)
         except ValueError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
-        summary, _ = client.store.summary(scope)
-        await interaction.response.send_message(
-            "이 채널에서 자동으로 요약된 기억:\n" + (summary or "아직 요약된 기억이 없어요."),
-            ephemeral=True,
+        items = client.store.memory_items(
+            scope.user_id,
+            origin_realm=scope.realm,
         )
+        if not items:
+            await interaction.response.send_message(
+                "이 서버 또는 DM에서 형성된 장기 기억이 아직 없어요.",
+                ephemeral=True,
+            )
+            return
+        lines = [f"이 서버 또는 DM에서 형성된 장기 기억 {len(items)}개"]
+        for item in items[-50:]:
+            lines.append(
+                f"• [{item.kind.value}] {item.content} "
+                f"(`{item.disclosure.value}`)"
+            )
+        await _send_ephemeral_pages(interaction, _text_pages(lines))
 
     @app_commands.command(name="clear", description="이 서버 또는 DM에서의 내 자동 장기 기억 삭제")
     @app_commands.describe(confirm="삭제를 확인하려면 true")
@@ -157,7 +169,7 @@ def upgrade_memory_group(client):
         async with client.channel_lock(scope):
             client.store.forget(scope)
         await interaction.response.send_message(
-            "이 서버 또는 DM에서 자동으로 쌓인 대화 기록과 요약을 삭제했어요. "
+            "이 서버 또는 DM에서 자동으로 쌓인 대화 기록과 구조화 기억을 삭제했어요. "
             "직접 저장한 /note 메모와 최근 채널 대화 문맥은 그대로 유지돼요.",
             ephemeral=True,
         )
