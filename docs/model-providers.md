@@ -193,12 +193,15 @@ hybrid에서는 `semantic_route_status`, `semantic_route_level`, `semantic_route
 분류기 호출은 `operation=model_route_classify`, shadow 비교 결과는 `operation=model_route_shadow`로
 남으며 요청 원문이나 자유 형식 설명은 기록하지 않습니다.
 
-## 장기 기억 요약 크기
+## 장기 기억 생성 예산
 
-- 개인 `conversation_memory`: 1800자 이내를 목표로 생성하고 저장 시 2000자에서 잘라냅니다.
-- 공개 `shared_summary`: 사용자·채널 scope별 공개 기억이며 1200자 이내를 목표로 하고 저장 상한은
-  1500자입니다.
-- 두 요약 모두 `MEMORY_MAX_OUTPUT_TOKENS`를 사용합니다. 기본값은 `4096`입니다.
+일반 답변의 persistent personal memory는 `memory_items` 기반 structured memory만 사용합니다.
+기존 개인 summary는 migration/cleanup 기간 동안 저장소에 남아 있을 수 있지만
+`conversation_memory`로 provider 요청에 전달되거나 model routing context에 포함되지 않습니다.
+
+공개 `shared_summary`는 아직 별도 legacy 경로로 유지되며 사용자·채널 scope별 공개 기억을
+1200자 이내로 생성하고 저장 시 1500자에서 잘라냅니다. 기억 생성 호출은
+`MEMORY_MAX_OUTPUT_TOKENS`를 사용하며 기본값은 `4096`입니다.
 
 문자 수 제한은 저장할 정보량을 제어하는 정책이고 token 제한은 provider 생성 상한입니다.
 
