@@ -181,7 +181,6 @@ class AdminRepository:
         for table in (
             "turns",
             "failed_turns",
-            "summaries",
             "shared_calls",
             "shared_summaries",
             "memory_extraction_cursors",
@@ -284,7 +283,7 @@ class AdminRepository:
                 key = (str(row["realm"]), str(row["user_id"]))
                 names.setdefault(key, str(row["user_name"])[:100])
 
-        for table in ("summaries", "shared_summaries"):
+        for table in ("shared_summaries",):
             columns = self._table_columns(table)
             if not {"realm", "user_id", "name"}.issubset(columns):
                 continue
@@ -1233,15 +1232,6 @@ class AdminRepository:
         with self._connection() as db:
             rows = db.execute(
                 "SELECT * FROM memory_reconciliation_proposals ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return self._dicts(rows)
-
-    def personal_summaries(self, *, limit: int = 100) -> list[dict[str, object]]:
-        limit = self._limit(limit)
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT * FROM summaries ORDER BY rowid DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         return self._dicts(rows)
