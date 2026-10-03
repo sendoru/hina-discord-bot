@@ -75,6 +75,18 @@ class AdminRepository:
             ).fetchall()
         return self._dicts(rows)
 
+    def admin_command_row(self, command_id: int) -> dict[str, object] | None:
+        if not self._table_exists("admin_commands"):
+            return None
+        with self._connection() as db:
+            row = db.execute(
+                """SELECT id,request_id,actor,action,target,status,result_json,
+                          error_type,error_message,created_at,started_at,finished_at
+                   FROM admin_commands WHERE id=?""",
+                (int(command_id),),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
     def admin_command_rows(
         self,
         *,
