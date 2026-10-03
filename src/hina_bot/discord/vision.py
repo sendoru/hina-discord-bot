@@ -204,7 +204,14 @@ async def collect_visual_inputs(
     def has_room(source: str) -> bool:
         return counts[source] < limits.for_source(source) and used < MAX_TOTAL_VISUAL_BYTES
 
-    async def add_bytes(data: bytes, source: str, name: str, metadata: dict[str, str]):
+    async def add_bytes(
+        data: bytes,
+        source: str,
+        name: str,
+        metadata: dict[str, str],
+        *,
+        uri: str = "",
+    ):
         nonlocal used
         if not has_room(source) or not data:
             return
@@ -218,6 +225,7 @@ async def collect_visual_inputs(
             mime_type=mime,
             source=source,
             name=name,
+            uri=uri,
             **metadata,
         ))
         counts[source] += 1
@@ -253,7 +261,13 @@ async def collect_visual_inputs(
             except Exception as exc:  # noqa: BLE001 - Discord failures are content-free in logs
                 log.warning("Visual attachment read failed (%s)", type(exc).__name__)
                 continue
-            await add_bytes(data, "attachment", filename, metadata)
+            await add_bytes(
+                data,
+                "attachment",
+                filename,
+                metadata,
+                uri=str(getattr(attachment, "url", "") or ""),
+            )
 
         remote = []
         if include_inline_emojis:
@@ -275,7 +289,7 @@ async def collect_visual_inputs(
             except Exception as exc:  # noqa: BLE001 - do not log Discord CDN URLs
                 log.warning("Visual asset read failed (%s)", type(exc).__name__)
                 continue
-            await add_bytes(data, source, name, metadata)
+            await add_bytes(data, source, name, metadata, uri=url)
         return len(result) - before
 
     await collect_message(
