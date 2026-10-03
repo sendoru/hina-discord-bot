@@ -46,18 +46,19 @@
           <th>Setting</th>
           <th>Source</th>
           <th>Current value</th>
+          <th class="runtime-config-action-header"><span class="sr-only">Actions</span></th>
           <th>Reset</th>
         </tr>
       </thead>
       <tbody>
       {% for row in rows %}
-        <tr>
+        <tr {% if not row.is_collection %}data-runtime-config-editor{% endif %}>
           <td class="runtime-config-setting">
             <strong>{{ row.env_name }}</strong>
             <small><code>{{ row.key }}</code> · {{ row.kind }}</small>
           </td>
           <td class="runtime-config-source">{{ row.source }}</td>
-          <td class="runtime-config-current" {% if not row.is_collection %}data-runtime-config-editor{% endif %}>
+          <td class="runtime-config-current">
             {% if row.is_collection %}
               <div class="runtime-config-current-view runtime-collection-current">
                 <span class="runtime-config-current-value">
@@ -79,12 +80,6 @@
                     <small class="runtime-config-value-note">override updated {{ row.updated_at | localtime }}</small>
                   {% endif %}
                 </span>
-                <button type="button"
-                        class="secondary runtime-config-edit-button"
-                        data-runtime-collection-manage="{{ row.key }}"
-                        aria-controls="runtime-collection-{{ row.key }}"
-                        aria-expanded="false"
-                        {% if not dashboard_write_enabled %}disabled{% endif %}>Manage</button>
               </div>
             {% else %}
               <div class="runtime-config-current-view" data-runtime-config-view>
@@ -107,14 +102,9 @@
                     <small class="runtime-config-value-note">override updated {{ row.updated_at | localtime }}</small>
                   {% endif %}
                 </span>
-                <button type="button"
-                        class="secondary runtime-config-edit-button"
-                        data-runtime-config-edit
-                        {% if not dashboard_write_enabled %}disabled{% endif %}>
-                  {{ "Edit" if row.has_override else "Set override" }}
-                </button>
               </div>
-              <form class="runtime-config-edit-form"
+              <form id="runtime-config-form-{{ row.key }}"
+                    class="runtime-config-edit-form"
                     data-runtime-config-form
                     method="post"
                     action="/admin/runtime/set"
@@ -131,12 +121,35 @@
                        aria-label="Override value for {{ row.env_name }}"
                        placeholder="new override value"
                        {% if not dashboard_write_enabled %}disabled{% endif %}>
-                <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Save</button>
+              </form>
+            {% endif %}
+          </td>
+          <td class="runtime-config-action">
+            {% if row.is_collection %}
+              <button type="button"
+                      class="secondary"
+                      data-runtime-collection-manage="{{ row.key }}"
+                      aria-controls="runtime-collection-{{ row.key }}"
+                      aria-expanded="false"
+                      {% if not dashboard_write_enabled %}disabled{% endif %}>Manage</button>
+            {% else %}
+              <div data-runtime-config-action-view>
+                <button type="button"
+                        class="secondary"
+                        data-runtime-config-edit
+                        {% if not dashboard_write_enabled %}disabled{% endif %}>
+                  {{ "Edit" if row.has_override else "Set override" }}
+                </button>
+              </div>
+              <div class="runtime-config-edit-actions" data-runtime-config-action-edit hidden>
+                <button type="submit"
+                        form="runtime-config-form-{{ row.key }}"
+                        {% if not dashboard_write_enabled %}disabled{% endif %}>Save</button>
                 <button type="button"
                         class="secondary"
                         data-runtime-config-cancel
                         {% if not dashboard_write_enabled %}disabled{% endif %}>Cancel</button>
-              </form>
+              </div>
             {% endif %}
           </td>
           <td class="runtime-config-reset">
@@ -153,7 +166,7 @@
             class="runtime-collection-editor-row"
             data-runtime-collection-row="{{ row.key }}"
             hidden>
-          <td colspan="4">
+          <td colspan="5">
             <form class="runtime-collection-editor"
                   method="post"
                   action="/admin/runtime/set"
@@ -163,88 +176,88 @@
                   data-max-items="{{ row.max_items }}"
                   data-empty-allowed="{{ 'true' if row.empty_allowed else 'false' }}"
                   data-ordered="{{ 'true' if row.ordered else 'false' }}">
-                <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
-                <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
-                <input type="hidden" name="key" value="{{ row.key }}">
-                <input type="hidden" name="value" value="{{ row.edit_value }}" data-runtime-collection-value>
+              <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
+              <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
+              <input type="hidden" name="key" value="{{ row.key }}">
+              <input type="hidden" name="value" value="{{ row.edit_value }}" data-runtime-collection-value>
 
-                <div class="runtime-collection-editor-head">
-                  <div>
-                    <strong>{{ row.env_name }} override</strong>
-                    <small>
-                      {% if row.kind == "prefixes" %}
-                        순서를 유지하는 목록 · 최대 {{ row.max_items }}개
-                      {% else %}
-                        순서 없는 Discord ID 집합 · 최대 {{ row.max_items }}개
-                      {% endif %}
-                    </small>
-                  </div>
-                  <span class="status-badge status-neutral" data-runtime-collection-count>{{ row.collection_items | length }} items</span>
+              <div class="runtime-collection-editor-head">
+                <div>
+                  <strong>{{ row.env_name }} override</strong>
+                  <small>
+                    {% if row.kind == "prefixes" %}
+                      순서를 유지하는 목록 · 최대 {{ row.max_items }}개
+                    {% else %}
+                      순서 없는 Discord ID 집합 · 최대 {{ row.max_items }}개
+                    {% endif %}
+                  </small>
                 </div>
+                <span class="status-badge status-neutral" data-runtime-collection-count>{{ row.collection_items | length }} items</span>
+              </div>
 
-                <div class="runtime-collection-draft" data-runtime-collection-list>
-                  {% for item in row.collection_items %}
-                  <span class="runtime-collection-chip runtime-collection-chip-editable"
-                        data-runtime-collection-item
-                        data-value="{{ item }}">
-                    <code>{{ item }}</code>
-                    <button type="button"
-                            class="runtime-collection-chip-remove"
-                            data-runtime-collection-remove
-                            aria-label="Remove {{ item }}">×</button>
-                  </span>
-                  {% endfor %}
-                </div>
+              <div class="runtime-collection-draft" data-runtime-collection-list>
+                {% for item in row.collection_items %}
+                <span class="runtime-collection-chip runtime-collection-chip-editable"
+                      data-runtime-collection-item
+                      data-value="{{ item }}">
+                  <code>{{ item }}</code>
+                  <button type="button"
+                          class="runtime-collection-chip-remove"
+                          data-runtime-collection-remove
+                          aria-label="Remove {{ item }}">×</button>
+                </span>
+                {% endfor %}
+              </div>
 
-                <div class="runtime-collection-add-row">
-                  <label class="sr-only" for="runtime-collection-add-{{ row.key }}">{{ row.item_label }}</label>
-                  <input id="runtime-collection-add-{{ row.key }}"
-                         type="text"
-                         data-runtime-collection-add-input
-                         placeholder="{{ row.item_placeholder }}"
-                         autocomplete="off"
-                         {% if not dashboard_write_enabled %}disabled{% endif %}>
-                  <button type="button"
-                          class="secondary"
-                          data-runtime-collection-add
-                          {% if not dashboard_write_enabled %}disabled{% endif %}>Add</button>
-                  {% if row.empty_allowed %}
-                  <button type="button"
-                          class="secondary"
-                          data-runtime-collection-clear
-                          {% if not dashboard_write_enabled %}disabled{% endif %}>Clear all</button>
+              <div class="runtime-collection-add-row">
+                <label class="sr-only" for="runtime-collection-add-{{ row.key }}">{{ row.item_label }}</label>
+                <input id="runtime-collection-add-{{ row.key }}"
+                       type="text"
+                       data-runtime-collection-add-input
+                       placeholder="{{ row.item_placeholder }}"
+                       autocomplete="off"
+                       {% if not dashboard_write_enabled %}disabled{% endif %}>
+                <button type="button"
+                        class="secondary"
+                        data-runtime-collection-add
+                        {% if not dashboard_write_enabled %}disabled{% endif %}>Add</button>
+                {% if row.empty_allowed %}
+                <button type="button"
+                        class="secondary"
+                        data-runtime-collection-clear
+                        {% if not dashboard_write_enabled %}disabled{% endif %}>Clear all</button>
+                {% endif %}
+              </div>
+              <p class="field-error runtime-collection-error" data-runtime-collection-error hidden></p>
+
+              <details class="runtime-collection-baseline">
+                <summary>
+                  Startup baseline
+                  {% if row.startup_available %}· {{ row.startup_items | length }} items{% else %}· unavailable{% endif %}
+                </summary>
+                <div class="runtime-collection-baseline-items">
+                  {% if row.startup_available %}
+                    {% for item in row.startup_items %}
+                      <code class="runtime-collection-chip">{{ item }}</code>
+                    {% else %}
+                      <span class="muted">(비움)</span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="muted">봇을 한 번 시작해 startup snapshot을 생성해야 합니다.</span>
                   {% endif %}
                 </div>
-                <p class="field-error runtime-collection-error" data-runtime-collection-error hidden></p>
+              </details>
 
-                <details class="runtime-collection-baseline">
-                  <summary>
-                    Startup baseline
-                    {% if row.startup_available %}· {{ row.startup_items | length }} items{% else %}· unavailable{% endif %}
-                  </summary>
-                  <div class="runtime-collection-baseline-items">
-                    {% if row.startup_available %}
-                      {% for item in row.startup_items %}
-                        <code class="runtime-collection-chip">{{ item }}</code>
-                      {% else %}
-                        <span class="muted">(비움)</span>
-                      {% endfor %}
-                    {% else %}
-                      <span class="muted">봇을 한 번 시작해 startup snapshot을 생성해야 합니다.</span>
-                    {% endif %}
-                  </div>
-                </details>
-
-                <div class="runtime-collection-actions">
-                  <button type="submit"
-                          data-runtime-collection-save
-                          disabled
-                          {% if not dashboard_write_enabled %}disabled{% endif %}>Save changes</button>
-                  <button type="button"
-                          class="secondary"
-                          data-runtime-collection-cancel
-                          {% if not dashboard_write_enabled %}disabled{% endif %}>Cancel</button>
-                </div>
+              <div class="runtime-collection-actions">
+                <button type="submit"
+                        data-runtime-collection-save
+                        disabled
+                        {% if not dashboard_write_enabled %}disabled{% endif %}>Save changes</button>
+                <button type="button"
+                        class="secondary"
+                        data-runtime-collection-cancel
+                        {% if not dashboard_write_enabled %}disabled{% endif %}>Cancel</button>
+              </div>
             </form>
           </td>
         </tr>
