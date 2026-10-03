@@ -3012,7 +3012,7 @@ pre {
 }
 
 .runtime-config-table {
-  min-width: 1160px;
+  min-width: 1000px;
   table-layout: auto;
 }
 
@@ -3043,34 +3043,39 @@ pre {
 }
 
 .runtime-config-current {
-  min-width: 300px;
+  min-width: 470px;
 }
 
-.runtime-config-current small {
-  margin-left: 6px;
-  white-space: nowrap;
-}
-
-.runtime-config-set {
-  min-width: 310px;
-}
-
-.runtime-config-set-form {
+.runtime-config-current-view,
+.runtime-config-edit-form {
   display: flex;
   gap: 8px;
   align-items: center;
   min-width: 0;
 }
 
-.runtime-config-set-form input[type="text"] {
-  width: 100%;
-  min-width: 180px;
+.runtime-config-current-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
 }
 
-.runtime-config-set-form button,
+.runtime-config-current-value small {
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.runtime-config-edit-button,
+.runtime-config-edit-form button,
 .runtime-config-reset button {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.runtime-config-edit-form input[type="text"] {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 240px;
 }
 
 .runtime-config-reset {
@@ -3079,6 +3084,6 @@ pre {
 
 @media (max-width: 720px) {
   .runtime-config-table {
-    min-width: 1080px;
+    min-width: 940px;
   }
 }
