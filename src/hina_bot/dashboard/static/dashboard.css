@@ -3042,7 +3042,7 @@ pre {
 }
 
 .runtime-config-table {
-  width: max(1080px, 100%);
+  width: max(1180px, 100%);
   table-layout: auto;
 }
 
@@ -3053,8 +3053,9 @@ pre {
 
 .runtime-config-table th:nth-child(1) { min-width: 330px; }
 .runtime-config-table th:nth-child(2) { min-width: 90px; }
-.runtime-config-table th:nth-child(3) { min-width: 520px; }
-.runtime-config-table th:nth-child(4) { min-width: 92px; }
+.runtime-config-table th:nth-child(3) { min-width: 460px; }
+.runtime-config-table th:nth-child(4) { min-width: 180px; }
+.runtime-config-table th:nth-child(5) { min-width: 92px; }
 
 .runtime-config-setting {
   min-width: 330px;
@@ -3079,6 +3080,7 @@ pre {
 
 .runtime-config-setting code,
 .runtime-config-source,
+.runtime-config-action,
 .runtime-config-reset {
   white-space: nowrap;
 }
@@ -3088,34 +3090,23 @@ pre {
 }
 
 .runtime-config-current {
-  min-width: 520px;
+  min-width: 460px;
 }
 
 .runtime-config-current-view[hidden],
-.runtime-config-edit-form[hidden] {
+.runtime-config-edit-form[hidden],
+.runtime-config-edit-actions[hidden],
+[data-runtime-config-action-view][hidden] {
   display: none;
 }
 
 .runtime-config-current-view {
-  display: grid;
-  grid-template-columns: minmax(max-content, 1fr) 140px;
-  gap: 12px;
-  align-items: start;
+  display: block;
   min-width: max-content;
-}
-
-.runtime-config-edit-form {
-  display: grid;
-  grid-template-columns: minmax(240px, 320px) auto auto;
-  gap: 8px;
-  align-items: center;
-  justify-content: start;
-  min-width: 0;
 }
 
 .runtime-config-current-value {
   display: block;
-  flex: 0 0 auto;
   min-width: max-content;
   line-height: 1.45;
 }
@@ -3127,7 +3118,6 @@ pre {
 
 .runtime-config-current-value small {
   display: block;
-  min-width: 0;
   margin: 4px 0 0;
 }
 
@@ -3136,23 +3126,41 @@ pre {
   font-size: 12px;
 }
 
-.runtime-config-edit-button,
-.runtime-config-edit-form button,
-.runtime-config-reset button {
-  white-space: nowrap;
-}
-
-.runtime-config-edit-button {
-  justify-self: start;
+.runtime-config-edit-form {
+  display: block;
+  width: 100%;
+  min-width: 320px;
 }
 
 .runtime-config-edit-form input[type="text"] {
   width: 100%;
-  min-width: 0;
+  min-width: 320px;
+}
+
+.runtime-config-action {
+  min-width: 180px;
+  vertical-align: middle;
+}
+
+.runtime-config-action > [data-runtime-config-action-view],
+.runtime-config-edit-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.runtime-config-action button,
+.runtime-config-reset button {
+  white-space: nowrap;
 }
 
 .runtime-config-reset {
   min-width: 92px;
+  vertical-align: middle;
+}
+
+.runtime-config-action-header {
+  min-width: 180px;
 }
 
 
