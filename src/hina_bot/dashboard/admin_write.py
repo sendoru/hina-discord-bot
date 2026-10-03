@@ -16,7 +16,7 @@ class AdminCommandWriter:
     csrf_token: str
 
     @classmethod
-    def create(cls, database_path: str, *, enabled: bool) -> "AdminCommandWriter":
+    def create(cls, database_path: str, *, enabled: bool) -> AdminCommandWriter:
         return cls(
             database_path=database_path,
             enabled=enabled,
