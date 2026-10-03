@@ -27,10 +27,16 @@ class RuntimeSettingSpec:
 
 
 RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
-    "call_prefixes": RuntimeSettingSpec("call_prefixes", "CALL_PREFIXES", "prefixes"),
+    "call_prefixes": RuntimeSettingSpec(
+        "call_prefixes", "CALL_PREFIXES", "prefixes", maximum=20
+    ),
     "dm_always_reply": RuntimeSettingSpec("dm_always_reply", "DM_ALWAYS_REPLY", "bool"),
     "always_reply_channel_ids": RuntimeSettingSpec(
-        "always_reply_channel_ids", "ALWAYS_REPLY_CHANNEL_IDS", "discord_ids"
+        "always_reply_channel_ids",
+        "ALWAYS_REPLY_CHANNEL_IDS",
+        "discord_ids",
+        maximum=100,
+        empty_allowed=True,
     ),
     "public_memory_in_dm": RuntimeSettingSpec(
         "public_memory_in_dm", "PUBLIC_SERVER_MEMORY_IN_DM", "bool"
