@@ -158,9 +158,12 @@ Structured memory enters the response path in four deliberately different forms:
   owner relationship evidence into the same sparse 1..4 axes used by the shared-space projection.
   This stabilizes the overall relationship/tone signal without replacing the concrete raw relationship
   memories already present in `structured_owner_memory`.
-- In a shared space, relationship items that already resolve to `full` may enter
-  `structured_relationship_memory` with raw content and evidence. This covers the same disclosure space
-  (and any relationship item explicitly marked `global`).
+- In a shared space, active non-relationship items that resolve to `full` enter
+  `structured_full_memory`. This covers facts/events/preferences/boundaries/tasks from the same
+  disclosure space and items explicitly marked `global`, without opening hidden or reference-gated
+  cross-space content.
+- Relationship items that already resolve to `full` enter `structured_relationship_memory` with raw
+  content and evidence. This keeps relationship evidence on its dedicated projection path.
 - Cross-space `implicit` relationship items never expose raw `content`. Only a bounded
   `cross_space_relationship` evidence vector reaches the response model.
 
