@@ -181,6 +181,7 @@ def test_structured_memory_provenance_matches_owner_and_relationship_projection(
         )
         assert {row["item_id"] for row in owner["items"]} == {
             fact_id,
+            full_fact_id,
             full_relationship_id,
             implicit_relationship_id,
         }
