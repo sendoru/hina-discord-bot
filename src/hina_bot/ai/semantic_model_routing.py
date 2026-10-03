@@ -47,7 +47,11 @@ Web need:
   forcing a search, or the need is genuinely ambiguous.
 - required: correctness depends on current/recent external state, current official status, a specific
   software/API/package version or support/deprecation status, availability/schedule/price/inventory,
-  or explicit external verification that cannot be satisfied from supplied context.
+  or explicit external verification that cannot be satisfied from supplied context. Also use
+  required when the user semantically asks for sources, citations, evidence, or source links for an
+  external factual claim and the supplied context does not already contain sufficient source material.
+Do not infer source intent from isolated words or substrings. Distinguish ordinary terms, game
+mechanics, product names, and similar phrases that merely happen to contain words such as "link".
 Do not mark required merely because the topic exists on the web. Prefer none for timeless conceptual
 questions even if they mention words such as today in a non-semantic way.
 
