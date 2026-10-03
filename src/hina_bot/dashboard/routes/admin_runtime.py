@@ -96,6 +96,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
                 override_error = type(exc).__name__
 
         override_valid = stored is not None and not override_error
+        startup_available = snapshot is not None and not startup_error
         effective_value = override_value if override_valid else startup_value
         effective_edit_value = (
             override_edit_value if override_valid else startup_edit_value
@@ -122,6 +123,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
                     snapshot.get("captured_at") if snapshot else None
                 ),
                 "startup_error": startup_error,
+                "startup_available": startup_available,
                 "has_override": stored is not None,
                 "override_value": override_value,
                 "override_error": override_error,
