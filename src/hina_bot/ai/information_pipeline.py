@@ -311,10 +311,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
 
         channel_rows = channel_context or ()
         CURRENT_MEMORY_CONTEXT.set(tuple(build_memory_context(channel_rows, scope.user_id)))
-        current_channel_only = self._current_channel_scope_only(
-            scope,
-            routing.routing_query,
-        )
         factual_recall_plan = plan_reference_gated_recall(
             assembly_store,
             scope,
