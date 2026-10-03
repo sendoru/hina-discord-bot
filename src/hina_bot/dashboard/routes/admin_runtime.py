@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
