@@ -504,7 +504,7 @@ async def test_dm_response_receives_all_owner_structured_memory_even_when_legacy
 
 
 @pytest.mark.asyncio
-async def test_answer_ignores_stored_legacy_summary_but_keeps_structured_memory():
+async def test_answer_uses_structured_memory_without_legacy_summary_field():
     calls = []
     client = _client(calls)
     llm = LLM(
@@ -518,7 +518,6 @@ async def test_answer_ignores_stored_legacy_summary_but_keeps_structured_memory(
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
     try:
-        store.save_summary(dm, "LEGACY_SUMMARY_MARKER", 0)
         store.add_memory_item(
             dm,
             "STRUCTURED_MEMORY_MARKER",
@@ -531,7 +530,6 @@ async def test_answer_ignores_stored_legacy_summary_but_keeps_structured_memory(
         reference = _reference(calls[-1])
         raw = json.dumps(reference, ensure_ascii=False)
         assert "conversation_memory" not in reference
-        assert "LEGACY_SUMMARY_MARKER" not in raw
         assert "STRUCTURED_MEMORY_MARKER" in raw
     finally:
         await llm.close()
