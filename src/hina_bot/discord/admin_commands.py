@@ -3,16 +3,15 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from hina_bot.core.runtime_config import RuntimeSettings, format_runtime_value
-
-from .config_commands import apply_runtime_setting_side_effects
-
 from hina_bot.core.admin_commands import (
     AdminCommand,
     claim_next_admin_command,
     finish_admin_command,
     mark_interrupted_admin_commands,
 )
+from hina_bot.core.runtime_config import RuntimeSettings, format_runtime_value
+
+from .config_commands import apply_runtime_setting_side_effects
 
 log = logging.getLogger("hina")
 
