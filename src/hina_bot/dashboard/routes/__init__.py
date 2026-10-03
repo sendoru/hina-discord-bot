@@ -49,7 +49,7 @@ def build_routers(
         conversations.build_router(trace_service, templates),
         memory.build_router(memory_service, templates),
         relationships.build_router(memory_service, templates),
-        state.build_router(context_state_service, templates),
+        state.build_router(context_state_service, admin_writer, templates),
         reconciliation.build_router(reconciliation_service, templates),
         summaries.build_router(memory_service, templates),
     )
