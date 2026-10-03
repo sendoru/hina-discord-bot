@@ -138,6 +138,26 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert "Edit" in response.text
     assert 'value="4300"' in response.text
     assert 'aria-label="Override value for CHANNEL_CONTEXT_CHARS"' in response.text
+    assert 'id="runtime-dm_always_reply"' in response.text
+    assert '<option value="off"' in response.text
+    assert '<option value="on"' in response.text
+    assert 'id="runtime-external_context_policy"' in response.text
+    assert '<option value="bot_interactions_only"' in response.text
+    assert '<option value="full"' in response.text
+    assert 'id="runtime-gemini_thinking_level"' in response.text
+    assert '<option value="minimal"' in response.text
+    assert '<option value="high"' in response.text
+    assert 'id="runtime-channel_context_chars"' in response.text
+    assert 'type="number"' in response.text
+    assert 'min="0"' in response.text
+    assert 'max="12000"' in response.text
+    assert 'step="1"' in response.text
+    assert 'id="runtime-model_routing_smart_threshold"' in response.text
+    assert 'min="0.1"' in response.text
+    assert 'max="10.0"' in response.text
+    assert 'step="any"' in response.text
+    assert 'id="runtime-model"' in response.text
+    assert 'maxlength="200"' in response.text
     assert "startup 6200" in response.text
     assert ">9876</code>" in response.text
     assert 'value="9876"' in response.text
