@@ -434,3 +434,17 @@ def test_runtime_setting_validation_rejects_invalid_values(key: str, value: str)
             settings.set_text(key, value)
     finally:
         store.close()
+
+
+
+def test_runtime_collection_specs_expose_editor_constraints():
+    prefixes = RUNTIME_SETTING_SPECS["call_prefixes"]
+    channels = RUNTIME_SETTING_SPECS["always_reply_channel_ids"]
+
+    assert prefixes.kind == "prefixes"
+    assert prefixes.maximum == 20
+    assert prefixes.empty_allowed is False
+
+    assert channels.kind == "discord_ids"
+    assert channels.maximum == 100
+    assert channels.empty_allowed is True
