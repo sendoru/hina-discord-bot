@@ -2,7 +2,7 @@ from hina_bot.core.memory_context import CURRENT_EGRESS_DECISION
 
 from .egress_policy import filter_channel_context, filter_public_context
 from .information_pipeline import InformationPipeline
-from .memory_summary import SHARED_SUMMARY_POLICY, SUMMARY_POLICY
+from .memory_summary import SHARED_SUMMARY_POLICY
 from .prompts import load_prompt
 from .providers import create_provider_client
 from .routing_plan import build_routing_plan
@@ -88,5 +88,4 @@ __all__ = [
     "GENERAL_RP_OUTPUT_POLICY",
     "LLM",
     "SHARED_SUMMARY_POLICY",
-    "SUMMARY_POLICY",
 ]

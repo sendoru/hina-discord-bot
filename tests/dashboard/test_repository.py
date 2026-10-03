@@ -231,7 +231,7 @@ def test_repository_memory_inspection_and_lifecycle_columns(tmp_path):
     assert repository.count_memory_items(status="superseded") == 0
 
 
-def test_repository_summary_and_extraction_cursor_status(tmp_path):
+def test_repository_shared_summary_and_extraction_cursor_status(tmp_path):
     path = tmp_path / "hina.sqlite3"
     store = Store(str(path))
     scope = Scope(None, 10, 100)
@@ -239,13 +239,11 @@ def test_repository_summary_and_extraction_cursor_status(tmp_path):
     first_id = int(store.db.execute(
         "SELECT id FROM turns WHERE message_id='1'"
     ).fetchone()["id"])
-    store.save_summary(scope, "legacy summary", first_id)
     store.add(scope, 2, "second", "reply")
     store.save_memory_extraction_cursor(scope, first_id)
 
     other = Scope(None, 20, 200)
     store.add(other, 3, "uninitialized", "reply")
-    store.save_summary(other, "baseline summary", 0)
 
     with store.db:
         store.db.execute(
@@ -269,10 +267,6 @@ def test_repository_summary_and_extraction_cursor_status(tmp_path):
     store.close()
 
     repository = AdminRepository(path)
-    personal = {row["scope"]: row for row in repository.personal_summary_status()}
-    assert personal[scope.conversation]["pending_turns"] == 1
-    assert personal[other.conversation]["pending_turns"] == 1
-
     shared = repository.shared_summary_status()
     assert len(shared) == 1
     assert shared[0]["pending_calls"] == 1
@@ -283,7 +277,6 @@ def test_repository_summary_and_extraction_cursor_status(tmp_path):
     assert cursors[other.conversation]["initialized"] == 0
     assert cursors[other.conversation]["effective_through_id"] == 0
     assert cursors[other.conversation]["pending_turns"] == 1
-
 
 def test_repository_reconciliation_review_filters_stats_and_source_sets(tmp_path):
     path = tmp_path / "hina.sqlite3"

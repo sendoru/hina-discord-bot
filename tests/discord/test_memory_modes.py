@@ -89,7 +89,14 @@ class PurgeTests(unittest.TestCase):
     def add_turn(store: Store, scope: Scope, message_id: int):
         store.add(scope, message_id, f"message-{message_id}", f"reply-{message_id}")
         row = store.history(scope)[-1]
-        store.save_summary(scope, f"summary-{message_id}", row["id"])
+        store.save_memory_extraction_cursor(scope, row["id"])
+        store.add_memory_item(
+            scope,
+            f"memory-{message_id}",
+            kind="fact",
+            disclosure="local",
+            source_message_ids=(str(message_id),),
+        )
 
     def test_channel_purge_removes_all_users_in_channel_only(self):
         store = Store(":memory:")

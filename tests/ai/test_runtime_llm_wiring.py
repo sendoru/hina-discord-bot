@@ -20,7 +20,7 @@ def test_base_llm_does_not_keep_shadowed_generation_paths():
     assert "summarize" not in BaseLLM.__dict__
     assert "summarize_shared" not in BaseLLM.__dict__
     assert "answer" in RequestAssembler.__dict__
-    assert "summarize" in MemorySummaryMixin.__dict__
+    assert "summarize" not in MemorySummaryMixin.__dict__
     assert "summarize_shared" in MemorySummaryMixin.__dict__
 
 

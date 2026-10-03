@@ -1,11 +1,5 @@
-import json
 import sqlite3
-from types import SimpleNamespace as NS
-from unittest.mock import AsyncMock, Mock
 
-import pytest
-
-from hina_bot.ai.memory_summary import SUMMARY_POLICY, MemorySummaryMixin
 from hina_bot.core.memory_context import (
     CURRENT_MEMORY_CONTEXT,
     build_memory_context,
@@ -86,7 +80,7 @@ def test_store_consumes_request_scoped_memory_context_once():
     try:
         store.add(scope, 1, "히나야 나도 이거 좋아해", "그렇구나")
         store.add(scope, 2, "히나야 그리고 이것도", "응")
-        rows = store.pending(scope)
+        rows = store.pending_memory_extraction(scope)
     finally:
         CURRENT_MEMORY_CONTEXT.reset(token)
         store.close()
@@ -117,76 +111,6 @@ def test_store_migrates_existing_turns_table_with_memory_context(tmp_path):
     finally:
         store.close()
 
-
-def _summary_mixin(output_text="갱신된 기억"):
-    mixin = object.__new__(MemorySummaryMixin)
-    mixin.settings = NS(
-        summary_every=1,
-        model="memory-model",
-        model_routing_mode="fixed",
-        memory_routing_smart_threshold=2.0,
-        memory_output_tokens=4096,
-        gemini_thinking_level="low",
-        provider="openai",
-    )
-    mixin.client = object()
-    mixin.usage = NS(
-        request=AsyncMock(return_value=NS(status="completed", output_text=output_text)),
-        routing_event=Mock(),
-    )
-    return mixin
-
-
-@pytest.mark.asyncio
-async def test_personal_summary_receives_causal_context_and_logs_size_telemetry():
-    store = Store(":memory:")
-    scope = Scope(1, 10, 100)
-    mixin = _summary_mixin()
-    context = [{
-        "kind": "replied_message",
-        "role": "user",
-        "ownership": "external",
-        "content": "난 매운 음식을 못 먹어",
-        "author_user_id": "200",
-        "provenance_class": "reference_material",
-    }]
-    try:
-        store.add(
-            scope,
-            1,
-            "히나야 나도 그래",
-            "그렇구나",
-            memory_context=context,
-        )
-        await mixin.summarize(store, scope)
-    finally:
-        store.close()
-
-    summary_call = next(
-        call for call in mixin.usage.request.await_args_list
-        if call.args[1] == "summarize"
-    )
-    request = summary_call.kwargs
-    payload = json.loads(request["input"])
-    assert payload["new_turns"] == [{
-        "at": payload["new_turns"][0]["at"],
-        "user": "히나야 나도 그래",
-        "context": context,
-    }]
-    assert "hina" not in payload["new_turns"][0]
-    assert "해석하기 위한 제한된 인과 문맥" in SUMMARY_POLICY
-
-    event = next(
-        call for call in mixin.usage.routing_event.call_args_list
-        if call.args == ("memory.summary_requested",)
-    )
-    assert event.kwargs["status"] == "requested"
-    assert event.kwargs["memory_kind"] == "personal"
-    assert event.kwargs["pending_turns"] == 1
-    assert event.kwargs["batch_turns"] == 1
-    assert event.kwargs["context_items"] == 1
-    assert event.kwargs["old_memory_chars"] == 0
-    assert event.kwargs["payload_chars"] == len(request["input"])
 
 def test_memory_context_prioritizes_inherited_reference_source_over_intermediate_assistant_source():
     rows = [

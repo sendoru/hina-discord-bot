@@ -17,7 +17,6 @@ from pathlib import Path
 RAW_TABLES = ("turns", "shared_calls", "failed_turns")
 PRESERVED_TABLES = (
     "memory_items",
-    "summaries",
     "shared_summaries",
     "memory_reconciliation_proposals",
     "memory_extraction_cursors",
@@ -85,33 +84,12 @@ def _pending_work(db: sqlite3.Connection) -> tuple[PendingWork, ...]:
     pending: list[PendingWork] = []
 
     if _table_exists(db, "turns"):
-        if _table_exists(db, "summaries"):
-            summary_cursor = "COALESCE(s.through_id,0)"
-            summary_join = "LEFT JOIN summaries s ON s.scope=t.scope"
-        else:
-            summary_cursor = "0"
-            summary_join = ""
-        row = db.execute(
-            f"""SELECT COUNT(DISTINCT t.scope),COUNT(*)
-                FROM turns t
-                {summary_join}
-                WHERE t.id>{summary_cursor}"""
-        ).fetchone()
-        pending.append(PendingWork("personal_summary", int(row[0]), int(row[1])))
-
         if _table_exists(db, "memory_extraction_cursors"):
-            extraction_cursor = "COALESCE(c.through_id,s.through_id,0)"
-            extraction_join = (
-                "LEFT JOIN memory_extraction_cursors c ON c.scope=t.scope "
-                "LEFT JOIN summaries s ON s.scope=t.scope"
-                if _table_exists(db, "summaries")
-                else "LEFT JOIN memory_extraction_cursors c ON c.scope=t.scope"
-            )
-            if not _table_exists(db, "summaries"):
-                extraction_cursor = "COALESCE(c.through_id,0)"
+            extraction_cursor = "COALESCE(c.through_id,0)"
+            extraction_join = "LEFT JOIN memory_extraction_cursors c ON c.scope=t.scope"
         else:
-            extraction_cursor = summary_cursor
-            extraction_join = summary_join
+            extraction_cursor = "0"
+            extraction_join = ""
         row = db.execute(
             f"""SELECT COUNT(DISTINCT t.scope),COUNT(*)
                 FROM turns t

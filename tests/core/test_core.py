@@ -188,27 +188,39 @@ class MemoryTests(unittest.TestCase):
         for scope in [self.other_user, self.other_server, self.dm]:
             self.assertEqual(self.store.note(scope.user_note), "")
 
-    def test_bounded_retention_and_summary_checkpoint(self):
+    def test_bounded_retention_and_structured_cursor_checkpoint(self):
         for i in range(1, 10):
             self.store.add(self.a, i, str(i), "응")
-        self.assertEqual([r["content"] for r in self.store.history(self.a)], ["6", "7", "8", "9"])
-        self.store.save_summary(self.a, "기억", 8)
-        self.assertEqual([r["content"] for r in self.store.pending(self.a)], ["9"])
+        history = self.store.history(self.a)
+        self.assertEqual([r["content"] for r in history], ["6", "7", "8", "9"])
+        through = next(r["id"] for r in history if r["message_id"] == "8")
+        self.store.save_memory_extraction_cursor(self.a, through)
+        self.assertEqual(
+            [r["content"] for r in self.store.pending_memory_extraction(self.a)],
+            ["9"],
+        )
 
     def test_forget_all_channels_only_same_user_and_realm(self):
         scopes = [self.a, self.other_channel, self.other_user, self.other_server, self.dm]
         for i, scope in enumerate(scopes, 1):
             self.store.add(scope, i, "test", "응")
-            self.store.save_summary(scope, "기억", i)
+            self.store.add_memory_item(
+                scope,
+                f"memory-{i}",
+                kind="fact",
+                disclosure="local",
+            )
             self.store.set_note(scope.user_note, "메모")
         self.store.set_note(self.a.realm, "공통")
         self.store.forget(self.a)
         for scope in [self.a, self.other_channel]:
             self.assertEqual(self.store.history(scope), [])
-            self.assertEqual(self.store.summary(scope), ("", 0))
             self.assertEqual(self.store.note(scope.user_note), "메모")
         for scope in [self.other_user, self.other_server, self.dm]:
             self.assertEqual(len(self.store.history(scope)), 1)
+        self.assertTrue(
+            all(item.origin_realm != self.a.realm for item in self.store.memory_items(100))
+        )
         self.assertEqual(self.store.note(self.a.realm), "공통")
 
     def test_public_to_dm_only_same_user(self):
@@ -221,36 +233,50 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(context[0]["recent_user_messages"], ["text1"])
         self.assertNotIn("text3", str(context))
 
-    def test_private_then_public_does_not_export_private_context(self):
+    def test_turn_capture_visibility_is_recorded_per_turn(self):
         private = Scope(1, 10, 100, False)
         self.store.add(private, 1, "비공개", "비공개 답변")
-        self.store.save_summary(private, "비밀 요약", 1)
-        self.store.add(self.a, 2, "이제 공개", "이전 비밀에 대한 답변")
-        self.assertEqual(self.store.public_candidates(100), [])
-        context = self.store.public_context([self.a])
-        self.assertEqual(context[0]["summary"], "")
-        self.assertEqual(context[0]["recent_user_messages"], [])
+        self.store.add(self.a, 2, "이제 공개", "공개 답변")
 
-    def test_public_then_private_only_exports_old_public_turn(self):
+        rows = self.store.history(self.a)
+        self.assertEqual(
+            [(row["message_id"], row["exportable"]) for row in rows],
+            [("1", 0), ("2", 1)],
+        )
+
+    def test_public_context_keeps_only_public_direct_calls(self):
         self.store.add(self.a, 1, "공개", "응")
         self.store.add_shared_call(self.a, 1, "speaker", "공개")
         private = Scope(1, 10, 100, False)
         self.store.add(private, 2, "비공개", "응")
-        self.store.save_summary(private, "섞인 요약", 2)
+        self.store.add_shared_call(private, 2, "speaker", "비공개")
         context = self.store.public_context([self.a])[0]
         self.assertEqual(context["summary"], "")
         self.assertEqual(context["recent_user_messages"], ["공개"])
 
-    def test_persistence_after_restart(self):
+    def test_structured_memory_persistence_after_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "memory.db")
             first = Store(path)
             first.add(self.a, 1, "취미", "응")
-            first.save_summary(self.a, "취미 기억", 1)
+            turn_id = first.history(self.a)[-1]["id"]
+            memory_id = first.add_memory_item(
+                self.a,
+                "사용자는 취미가 있다.",
+                kind="fact",
+                disclosure="local",
+                source_message_ids=("1",),
+            )
+            first.save_memory_extraction_cursor(self.a, turn_id)
             first.close()
+
             second = Store(path)
-            self.assertEqual(second.summary(self.a), ("취미 기억", 1))
             self.assertTrue(second.seen(1))
+            self.assertEqual(second.memory_extraction_cursor(self.a), turn_id)
+            self.assertEqual(
+                [item.id for item in second.memory_items(self.a.user_id)],
+                [memory_id],
+            )
             second.close()
 
 

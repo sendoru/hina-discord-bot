@@ -1,49 +1,32 @@
-import json
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
 import pytest
 
 from hina_bot.ai.information_pipeline import InformationPipeline
-from hina_bot.ai.memory_summary import SUMMARY_POLICY, MemorySummaryMixin
+from hina_bot.ai.memory_summary import SHARED_SUMMARY_POLICY, MemorySummaryMixin
 
 
-class FakeStore:
+class SharedStore:
     def __init__(self):
         self.saved = None
 
-    def pending(self, scope):
+    def pending_shared(self, scope):
         return [
             {
                 "id": index + 1,
                 "created_at": "2026-09-15 00:00:00",
-                "content": "새로운 중요한 정보 " * 80,
-                "reply": "확인했어 " * 20,
+                "name": "사용자",
+                "content": "공개 직접 호출의 중요한 정보 " * 80,
             }
             for index in range(8)
         ]
 
-    def summary(self, scope):
-        return "기존 장기 기억 " * 170, 0
+    def shared_summary(self, scope):
+        return "기존 공개 기억 " * 120, 0
 
-    def save_summary(self, scope, text, through):
-        self.saved = (text, through)
-
-
-class ReplyHeavyStore(FakeStore):
-    def pending(self, scope):
-        return [
-            {
-                "id": index + 1,
-                "created_at": "2026-09-15 00:00:00",
-                "content": "짧은 사용자 발화",
-                "reply": "긴 봇 답변 " * 100,
-            }
-            for index in range(8)
-        ]
-
-    def summary(self, scope):
-        return "기" * 1700, 0
+    def save_shared_summary(self, scope, name, text, through):
+        self.saved = (name, text[:1500], through)
 
 
 def _pipeline(output_text: str):
@@ -69,43 +52,25 @@ def _pipeline(output_text: str):
     return pipeline
 
 
-def test_information_pipeline_uses_shared_memory_summary_mixin():
-    assert InformationPipeline.summarize is MemorySummaryMixin.summarize
+def test_information_pipeline_keeps_only_shared_summary_generation():
+    assert "summarize" not in MemorySummaryMixin.__dict__
     assert InformationPipeline.summarize_shared is MemorySummaryMixin.summarize_shared
 
 
 @pytest.mark.asyncio
-async def test_information_pipeline_memory_summary_uses_adaptive_smart_route():
-    pipeline = _pipeline("z" * 2500)
-    store = FakeStore()
-    scope = NS(guild_id=None, user_id=100)
+async def test_shared_summary_uses_adaptive_memory_route():
+    pipeline = _pipeline("z" * 1800)
+    store = SharedStore()
+    scope = NS(guild_id=10, user_id=100)
 
-    await pipeline.summarize(store, scope)
+    await pipeline.summarize_shared(store, scope)
 
     request = pipeline.usage.request.await_args.kwargs
     metadata = request["route_metadata"]
     assert request["model"] == "smart-model"
-    assert request["instructions"] == SUMMARY_POLICY
+    assert request["instructions"] == SHARED_SUMMARY_POLICY
     assert request["max_output_tokens"] == 4096
     assert metadata["model_tier"] == "smart"
     assert metadata["model_route_policy"] == "memory-v2"
     assert set(metadata["model_route_components"]) <= {"capacity_load", "pending_load"}
-    assert store.saved == ("z" * 2000, 8)
-
-
-@pytest.mark.asyncio
-async def test_server_personal_summary_routes_only_on_fields_sent_to_provider():
-    pipeline = _pipeline("갱신된 기억")
-    store = ReplyHeavyStore()
-    scope = NS(guild_id=10, user_id=100)
-
-    await pipeline.summarize(store, scope)
-
-    request = pipeline.usage.request.await_args.kwargs
-    payload = json.loads(request["input"])
-    metadata = request["route_metadata"]
-    assert request["model"] == "fast-model"
-    assert metadata["model_route_policy"] == "memory-v2"
-    assert all("hina" not in turn for turn in payload["new_turns"])
-    # The large bot replies are absent from both the provider payload and the pending-load input.
-    assert metadata["model_route_components"].get("pending_load", 0.0) < 0.5
+    assert store.saved == ("사용자", "z" * 1500, 8)
