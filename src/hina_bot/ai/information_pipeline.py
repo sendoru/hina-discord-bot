@@ -244,7 +244,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             store,
             scope,
             use_memory=use_memory,
-            allow_cross_space=cross_channel_memory,
+            allow_cross_space=use_memory,
             authorized_factual_items=(
                 factual_recall_plan.selected
                 if factual_recall_plan is not None
@@ -320,7 +320,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             scope,
             routing.visible_content,
             use_memory=use_memory,
-            allow_cross_space=use_memory and not current_channel_only,
+            allow_cross_space=use_memory,
         )
         visual_inputs = CURRENT_VISUAL_INPUTS.get()
         context_chars, ambient_context_chars = self._routing_context_chars(
