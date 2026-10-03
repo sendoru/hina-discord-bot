@@ -128,7 +128,7 @@ def _classifier_input(payload: dict, visual_inputs) -> str | list[dict]:
         })
         content.append({
             "type": "input_image",
-            "image_url": visual.data_url(),
+            "image_url": visual.input_url(),
             "detail": "auto",
         })
     return [{"role": "user", "content": content}]
