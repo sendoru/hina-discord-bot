@@ -166,7 +166,7 @@ def build_shadow_turns(
     *,
     include_replies: bool,
 ) -> tuple[list[dict], set[str], int, dict[str, bool]]:
-    """Build extractor input from the exact pending-row batch selected by summarize()."""
+    """Build extractor input from one exact structured-memory pending batch."""
 
     turns: list[dict] = []
     source_ids: set[str] = set()
@@ -179,9 +179,8 @@ def build_shadow_turns(
             # than inventing an identifier when a test/legacy adapter does not provide one.
             continue
         context = decode_memory_context(_row_value(turn, "memory_context"))
-        # ``exportable`` is conservative: false may include a formerly-public turn behind a private
-        # summary boundary, but true never upgrades a private capture to public. That makes it safe
-        # to use as the shadow item's cross-space provenance until turns store the raw visibility bit.
+        # The retained ``exportable`` column now stores per-turn public-at-capture visibility.
+        # Older rows may still be conservatively false from the legacy summary era, which remains safe.
         public_at_capture = bool(_row_value(turn, "exportable", False))
         item = {
             "message_id": message_id,
