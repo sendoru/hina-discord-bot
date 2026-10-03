@@ -3046,6 +3046,11 @@ pre {
   min-width: 470px;
 }
 
+.runtime-config-current-view[hidden],
+.runtime-config-edit-form[hidden] {
+  display: none;
+}
+
 .runtime-config-current-view,
 .runtime-config-edit-form {
   display: flex;
