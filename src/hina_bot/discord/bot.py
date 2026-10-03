@@ -59,7 +59,12 @@ async def _timed_channel_lock(
 
 
 @asynccontextmanager
-async def _temporarily_released_channel_lock(channel_lock, timings: dict, *, clock=time.perf_counter):
+async def _temporarily_released_channel_lock(
+    channel_lock,
+    timings: dict,
+    *,
+    clock=time.perf_counter,
+):
     channel_lock.release()
     try:
         yield
@@ -649,7 +654,10 @@ class HinaClient(discord.Client):
                     )
                     exchange_stack.enter_context(exchange)
 
-                    async with _temporarily_released_channel_lock(channel_lock, timings):
+                    async with _temporarily_released_channel_lock(
+                        channel_lock,
+                        timings,
+                    ):
                         slot_started = time.perf_counter()
                         async with self.slots:
                             timings["slot_wait_ms"] = round(
