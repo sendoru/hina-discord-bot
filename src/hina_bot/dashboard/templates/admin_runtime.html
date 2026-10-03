@@ -111,15 +111,34 @@
                 <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
                 <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
                 <input type="hidden" name="key" value="{{ row.key }}">
+                {% if row.editor_type == "select" %}
+                <select id="runtime-{{ row.key }}"
+                        name="value"
+                        data-runtime-config-input
+                        data-original-value="{{ row.edit_value }}"
+                        aria-label="Override value for {{ row.env_name }}"
+                        {% if row.editor_required %}required{% endif %}
+                        {% if not dashboard_write_enabled %}disabled{% endif %}>
+                  {% for option in row.editor_choices %}
+                  <option value="{{ option }}" {% if option == row.edit_value %}selected{% endif %}>{{ option }}</option>
+                  {% endfor %}
+                </select>
+                {% else %}
                 <input id="runtime-{{ row.key }}"
                        name="value"
-                       type="text"
+                       type="{{ row.editor_type }}"
                        value="{{ row.edit_value }}"
                        data-runtime-config-input
                        data-original-value="{{ row.edit_value }}"
                        aria-label="Override value for {{ row.env_name }}"
                        placeholder="new override value"
+                       {% if row.editor_min is defined and row.editor_min is not none %}min="{{ row.editor_min }}"{% endif %}
+                       {% if row.editor_max is defined and row.editor_max is not none %}max="{{ row.editor_max }}"{% endif %}
+                       {% if row.editor_step is defined %}step="{{ row.editor_step }}"{% endif %}
+                       {% if row.editor_maxlength is defined and row.editor_maxlength is not none %}maxlength="{{ row.editor_maxlength }}"{% endif %}
+                       {% if row.editor_required %}required{% endif %}
                        {% if not dashboard_write_enabled %}disabled{% endif %}>
+                {% endif %}
               </form>
             {% endif %}
           </td>
