@@ -206,6 +206,89 @@ async def test_historical_visual_precedes_reply_context_and_current_request():
     assert messages[2] == {"role": "user", "content": "히나야 무슨 뜻이야?"}
 
 
+def test_visual_media_resolution_tracks_source_and_reference_strength():
+    assert VisualInput(
+        b"image", "image/png", "attachment",
+        reference_strength="current_message",
+    ).media_resolution() == "high"
+    assert VisualInput(
+        b"image", "image/png", "attachment",
+        reference_strength="explicit_reply",
+    ).media_resolution() == "high"
+    assert VisualInput(
+        b"image", "image/png", "attachment",
+        reference_strength="same_speaker",
+    ).media_resolution() == "medium"
+    assert VisualInput(
+        b"image", "image/png", "emoji",
+        reference_strength="current_message",
+    ).media_resolution() == "low"
+    assert VisualInput(
+        b"image", "image/png", "sticker",
+        reference_strength="explicit_reply",
+    ).media_resolution() == "low"
+
+
+@pytest.mark.asyncio
+async def test_gemini_3_vision_request_adds_per_image_resolution():
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(
+        responses=NS(create=create),
+        close=AsyncMock(),
+        provider_name="gemini",
+    )
+    client = VisionClient(raw)
+    visual = VisualInput(
+        b"GIF89a123",
+        "image/gif",
+        "emoji",
+        "hina_test",
+        uri="https://cdn.discordapp.com/emojis/123.gif",
+    )
+
+    visual_token = CURRENT_VISUAL_INPUTS.set((visual,))
+    active_token = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="gemini-3.8-flash",
+            instructions="base policy",
+            input=[{"role": "user", "content": "이 이모지 뭐야?"}],
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active_token)
+        CURRENT_VISUAL_INPUTS.reset(visual_token)
+
+    image = create.await_args.kwargs["input"][-1]["content"][2]
+    assert image["resolution"] == "low"
+
+
+@pytest.mark.asyncio
+async def test_non_gemini_3_vision_request_keeps_existing_image_shape():
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(
+        responses=NS(create=create),
+        close=AsyncMock(),
+        provider_name="openai",
+    )
+    client = VisionClient(raw)
+    visual = VisualInput(b"image", "image/png", "attachment")
+
+    visual_token = CURRENT_VISUAL_INPUTS.set((visual,))
+    active_token = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="gpt-5.6",
+            instructions="base policy",
+            input=[{"role": "user", "content": "이거 뭐야?"}],
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active_token)
+        CURRENT_VISUAL_INPUTS.reset(visual_token)
+
+    image = create.await_args.kwargs["input"][-1]["content"][2]
+    assert "resolution" not in image
+
+
 def test_gemini_input_preserves_inline_image_blocks():
     value = _gemini_input([{
         "role": "user",
@@ -225,4 +308,25 @@ def test_gemini_input_preserves_inline_image_blocks():
             {"type": "text", "text": "표정이 어때?"},
             {"type": "image", "data": "aGVsbG8=", "mime_type": "image/png"},
         ],
+    }]
+
+
+def test_gemini_input_forwards_image_resolution():
+    value = _gemini_input([{
+        "role": "user",
+        "content": [{
+            "type": "input_image",
+            "image_url": "https://cdn.discordapp.com/attachments/1/2/test.png",
+            "resolution": "medium",
+        }],
+    }])
+
+    assert value == [{
+        "type": "user_input",
+        "content": [{
+            "type": "image",
+            "uri": "https://cdn.discordapp.com/attachments/1/2/test.png",
+            "mime_type": "image/png",
+            "resolution": "medium",
+        }],
     }]
