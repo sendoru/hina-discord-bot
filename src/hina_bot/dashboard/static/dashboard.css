@@ -3070,6 +3070,11 @@ pre {
   white-space: nowrap;
 }
 
+.runtime-config-value-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .runtime-config-edit-button,
 .runtime-config-edit-form button,
 .runtime-config-reset button {
