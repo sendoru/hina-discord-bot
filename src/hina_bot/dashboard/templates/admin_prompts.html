@@ -20,8 +20,8 @@
 </section>
 {% endif %}
 {% if data.queued %}
-<section class="notice">
-  Admin command <strong>#{{ data.queued }}</strong>를 queue에 넣었습니다.
+<section class="notice" data-admin-command-watch="{{ data.queued }}">
+  Admin command <strong>#{{ data.queued }}</strong>를 적용 중입니다…
 </section>
 {% endif %}
 
@@ -71,11 +71,12 @@
     <div class="prompt-actions">
       <button type="submit" name="action" value="edit" {% if not dashboard_write_enabled %}disabled{% endif %}>Save</button>
       <button type="submit" name="action" value="{{ 'disable' if row.enabled else 'enable' }}" class="secondary" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ "Disable" if row.enabled else "Enable" }}</button>
-      <label>
-        <input type="checkbox" name="confirm" value="yes" {% if not dashboard_write_enabled %}disabled{% endif %}>
-        remove 확인
-      </label>
-      <button type="submit" name="action" value="remove" class="danger" {% if not dashboard_write_enabled %}disabled{% endif %}>Remove</button>
+      <button type="submit"
+              name="action"
+              value="remove"
+              class="danger"
+              data-confirm-remove="{{ row.id }}"
+              {% if not dashboard_write_enabled %}disabled{% endif %}>Remove</button>
     </div>
   </form>
   {% endfor %}
@@ -164,11 +165,12 @@
     <div class="prompt-actions">
       <button type="submit" name="action" value="edit" {% if not dashboard_write_enabled %}disabled{% endif %}>Save</button>
       <button type="submit" name="action" value="{{ 'disable' if row.enabled else 'enable' }}" class="secondary" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ "Disable" if row.enabled else "Enable" }}</button>
-      <label>
-        <input type="checkbox" name="confirm" value="yes" {% if not dashboard_write_enabled %}disabled{% endif %}>
-        remove 확인
-      </label>
-      <button type="submit" name="action" value="remove" class="danger" {% if not dashboard_write_enabled %}disabled{% endif %}>Remove</button>
+      <button type="submit"
+              name="action"
+              value="remove"
+              class="danger"
+              data-confirm-remove="{{ row.kind }}:{{ row.id }}"
+              {% if not dashboard_write_enabled %}disabled{% endif %}>Remove</button>
     </div>
   </form>
   {% endfor %}
