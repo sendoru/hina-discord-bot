@@ -58,7 +58,9 @@ async def test_runtime_admin_command_uses_runtime_settings_and_side_effects():
 
 def test_runtime_dashboard_post_only_enqueues_command(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    Store(str(database)).close()
+    store = Store(str(database))
+    RuntimeSettings(Settings(discord_token="test"), store)
+    store.close()
     settings = DashboardSettings(
         database_path=str(database),
         usage_log_path=str(tmp_path / "usage.jsonl"),
