@@ -434,3 +434,34 @@ def test_runtime_setting_validation_rejects_invalid_values(key: str, value: str)
             settings.set_text(key, value)
     finally:
         store.close()
+
+
+
+def test_runtime_collection_specs_expose_editor_constraints():
+    prefixes = RUNTIME_SETTING_SPECS["call_prefixes"]
+    channels = RUNTIME_SETTING_SPECS["always_reply_channel_ids"]
+
+    assert prefixes.kind == "prefixes"
+    assert prefixes.maximum == 20
+    assert prefixes.empty_allowed is False
+
+    assert channels.kind == "discord_ids"
+    assert channels.maximum == 100
+    assert channels.empty_allowed is True
+
+
+
+def test_runtime_scalar_specs_expose_editor_constraints():
+    external = RUNTIME_SETTING_SPECS["external_context_policy"]
+    thinking = RUNTIME_SETTING_SPECS["gemini_thinking_level"]
+    output_tokens = RUNTIME_SETTING_SPECS["output_tokens"]
+    threshold = RUNTIME_SETTING_SPECS["model_routing_smart_threshold"]
+    model = RUNTIME_SETTING_SPECS["model"]
+
+    assert set(external.choices) == {"full", "bot_interactions_only"}
+    assert set(thinking.choices) == {"minimal", "low", "medium", "high"}
+    assert output_tokens.minimum == 128
+    assert output_tokens.maximum == 65536
+    assert threshold.minimum == pytest.approx(0.1)
+    assert threshold.maximum == pytest.approx(10.0)
+    assert model.maximum == 200

@@ -28,6 +28,75 @@ def _runtime_edit_value(value: object) -> str:
     return str(value)
 
 
+COLLECTION_KINDS = {"prefixes", "discord_ids"}
+
+
+def _collection_items(value: object, kind: str) -> list[str]:
+    if kind == "prefixes" and isinstance(value, tuple):
+        return [str(item) for item in value]
+    if kind == "discord_ids" and isinstance(value, (set, frozenset)):
+        return [str(item) for item in sorted(value)]
+    return []
+
+
+def _collection_meta(spec) -> dict[str, object]:
+    if spec.kind == "prefixes":
+        item_label = "Prefix"
+        item_placeholder = "new prefix"
+    elif spec.kind == "discord_ids":
+        item_label = "Discord channel ID"
+        item_placeholder = "new channel ID"
+    else:
+        return {}
+    return {
+        "item_label": item_label,
+        "item_placeholder": item_placeholder,
+        "max_items": int(spec.maximum or 0),
+        "empty_allowed": bool(spec.empty_allowed),
+        "ordered": spec.kind == "prefixes",
+    }
+
+
+def _scalar_editor_meta(spec) -> dict[str, object]:
+    if spec.kind == "bool":
+        return {
+            "editor_type": "select",
+            "editor_choices": ("off", "on"),
+            "editor_required": True,
+        }
+    if spec.choices:
+        return {
+            "editor_type": "select",
+            "editor_choices": spec.choices,
+            "editor_required": True,
+        }
+    if spec.kind == "int":
+        return {
+            "editor_type": "number",
+            "editor_min": spec.minimum,
+            "editor_max": spec.maximum,
+            "editor_step": "1",
+            "editor_required": True,
+        }
+    if spec.kind == "float":
+        return {
+            "editor_type": "number",
+            "editor_min": spec.minimum,
+            "editor_max": spec.maximum,
+            "editor_step": "any",
+            "editor_required": True,
+        }
+    return {
+        "editor_type": "text",
+        "editor_maxlength": (
+            int(spec.maximum)
+            if spec.kind == "string" and spec.maximum is not None
+            else None
+        ),
+        "editor_required": not spec.empty_allowed,
+    }
+
+
 def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
     overrides = {
         str(row["key"]): row
@@ -42,6 +111,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
         stored = overrides.get(key)
         snapshot = startup.get(key)
 
+        decoded_startup = None
         startup_value = None
         startup_edit_value = ""
         startup_error = ""
@@ -53,6 +123,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 startup_error = type(exc).__name__
 
+        decoded_override = None
         override_value = None
         override_edit_value = ""
         override_error = ""
@@ -65,10 +136,22 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
                 override_error = type(exc).__name__
 
         override_valid = stored is not None and not override_error
+        startup_available = snapshot is not None and not startup_error
         effective_value = override_value if override_valid else startup_value
         effective_edit_value = (
             override_edit_value if override_valid else startup_edit_value
         )
+        effective_decoded = decoded_override if override_valid else decoded_startup
+        is_collection = spec.kind in COLLECTION_KINDS
+        collection_items = (
+            _collection_items(effective_decoded, spec.kind) if is_collection else []
+        )
+        startup_items = (
+            _collection_items(decoded_startup, spec.kind) if is_collection else []
+        )
+        collection_meta = _collection_meta(spec) if is_collection else {}
+        scalar_editor_meta = _scalar_editor_meta(spec) if not is_collection else {}
+        preview_limit = 2
         rows.append(
             {
                 "key": key,
@@ -82,10 +165,20 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
                     snapshot.get("captured_at") if snapshot else None
                 ),
                 "startup_error": startup_error,
+                "startup_available": startup_available,
                 "has_override": stored is not None,
                 "override_value": override_value,
                 "override_error": override_error,
                 "updated_at": stored.get("updated_at") if stored else None,
+                "is_collection": is_collection,
+                "collection_items": collection_items,
+                "collection_preview": collection_items[:preview_limit],
+                "collection_extra": max(0, len(collection_items) - preview_limit),
+                "startup_items": startup_items,
+                "startup_preview": startup_items[:preview_limit],
+                "startup_extra": max(0, len(startup_items) - preview_limit),
+                **collection_meta,
+                **scalar_editor_meta,
             }
         )
     return rows
