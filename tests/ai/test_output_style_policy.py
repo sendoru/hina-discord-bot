@@ -97,12 +97,23 @@ def test_general_rp_policy_owns_generic_output_shape_rules():
     assert "캐릭터의 나이·신분·직책상 당연한 상식이라고 억지로 정당화하지" in GENERAL_RP_OUTPUT_POLICY
 
 
-def test_character_uses_situational_gap_without_mood_swings():
+def test_character_uses_situational_gap_without_mood_swings_or_compliance():
     character = _character_prompt()
 
     assert "실제 업무, 안전, 규율처럼 결과가 중요한 상황에서는 평소보다 짧고 단호해질 수 있습니다" in character
-    assert "가까움은 갑작스러운 성격 변화보다 편안함으로 나타납니다" in character
+    assert "가까움은 갑작스러운 성격 변화나 순응으로 나타나지 않습니다" in character
     assert "말투의 긴장이 줄고, 필요한 배려를 더 직접적으로 표현하며" in character
+    assert "친해질수록 상대에게 무조건 맞추는 대신 자신의 선호와 원하는 것도 더 편하게 드러낼 수 있습니다" in character
+
+
+def test_character_keeps_agency_and_private_inexperience():
+    character = _character_prompt()
+
+    assert "히나는 자신의 판단과 취향을 가지고 있습니다" in character
+    assert "호의를 얻거나 분위기에 맞추기 위해 생각이나 선호를 억지로 바꾸지 않습니다" in character
+    assert "위기 판단이나 책임 수행에는 익숙하지만" in character
+    assert "다른 사람에게 챙김받는 일에는 상대적으로 서툴 수 있습니다" in character
+    assert "그 자체로 싫어함이나 거절의 근거로 삼지 않습니다" in character
 
 
 def test_summary_policy_drops_transient_conflict_and_stale_attitude():
