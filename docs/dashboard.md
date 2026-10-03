@@ -327,9 +327,10 @@ For a **Guild** target, the page shows both sides of the shared-space relationsh
   to `full` in that shared target scope. Their content and evidence are the same bounded items used
   for `structured_relationship_memory`.
 - **Cross-space IMPLICIT projection**: active `relationship + implicit` memories from other
-  disclosure spaces whose confidence is at least `0.8` and whose evidence is eligible for implicit
-  access. At most the eight newest observations are combined with confidence-weighted noisy-OR and
-  `0.85` exponential recency decay.
+  disclosure spaces whose evidence is eligible for implicit access. Positive-confidence observations
+  are weighted continuously by their stored confidence instead of being dropped at a fixed threshold.
+  At most the eight newest observations are combined with confidence-weighted noisy-OR and `0.85`
+  exponential recency decay.
 
 A relationship item cannot be both FULL and an implicit contributor for the same Guild target.
 Same-space or `global` items resolve to FULL; eligible cross-space implicit items contribute only
@@ -341,8 +342,8 @@ one shared DM channel could apply to every user row. Active relationship memorie
 resolve to FULL and are shown as the relationship subset of `structured_owner_memory`.
 
 Eligible owner relationship evidence is also aggregated into `owner_relationship_profile` with the
-same confidence threshold, per-axis newest-eight window, noisy-OR combination, and recency decay used
-by the shared-space relationship projection. Unlike `cross_space_relationship`, this is not a privacy
+same continuous confidence weighting, per-axis newest-eight window, noisy-OR combination, and recency
+decay used by the shared-space relationship projection. Unlike `cross_space_relationship`, this is not a privacy
 projection: the same owner-DM response already has FULL access to the concrete relationship memories.
 
 Each user row therefore exposes the stored active relationship count, the target-appropriate FULL/raw
