@@ -4,28 +4,13 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hina_bot.ai.memory_summary import normalize_memory_output
-from hina_bot.ai.runtime_llm import LLM, SHARED_SUMMARY_POLICY, SUMMARY_POLICY
+from hina_bot.ai.runtime_llm import LLM, SHARED_SUMMARY_POLICY
 from hina_bot.core.config import Settings
 
 
 class FakeStore:
     def __init__(self):
-        self.saved_summary = None
         self.saved_shared = None
-
-    def pending(self, scope):
-        return [{
-            "id": 1,
-            "created_at": "2026-09-15 00:00:00",
-            "content": "기억할 내용",
-            "reply": "응답",
-        }]
-
-    def summary(self, scope):
-        return "", 0
-
-    def save_summary(self, scope, text, through):
-        self.saved_summary = (text, through)
 
     def pending_shared(self, scope):
         return [{
@@ -61,32 +46,15 @@ def _summary_llm(output_text: str):
     return llm
 
 
-def test_memory_summary_policies_keep_personal_and_shared_limits_separate():
-    assert "개인 장기 기억을 한국어 1800자 이내" in SUMMARY_POLICY
+def test_shared_summary_policy_keeps_public_memory_limit():
     assert "장기 기억을 한국어 1200자 이내" in SHARED_SUMMARY_POLICY
     assert "공개 참고 문맥으로 사용될 수 있으므로" in SHARED_SUMMARY_POLICY
-    assert "같은 말투·역할극 요청이 여러 번 나와도" in SUMMARY_POLICY
-    assert "'앞으로', '항상', '평소에도'" in SUMMARY_POLICY
+    assert "같은 말투·역할극 요청이 여러 번 나와도" in SHARED_SUMMARY_POLICY
+    assert "'앞으로', '항상', '평소에도'" in SHARED_SUMMARY_POLICY
 
 
 @pytest.mark.asyncio
-async def test_personal_summary_uses_shared_fixed_model_and_memory_generation_budget():
-    llm = _summary_llm("x" * 2500)
-    store = FakeStore()
-    scope = NS(guild_id=None, user_id=100)
-
-    await llm.summarize(store, scope)
-
-    request = llm.usage.request.await_args.kwargs
-    assert request["model"] == "chat-model"
-    assert request["max_output_tokens"] == 4096
-    assert request["instructions"] == SUMMARY_POLICY
-    assert request["route_metadata"]["model_tier"] == "fixed"
-    assert store.saved_summary == ("x" * 2000, 1)
-
-
-@pytest.mark.asyncio
-async def test_shared_summary_uses_same_model_pool_and_shared_policy():
+async def test_shared_summary_uses_memory_generation_budget():
     llm = _summary_llm("y" * 1800)
     store = FakeStore()
     scope = NS(guild_id=1, user_id=100)
@@ -127,8 +95,16 @@ def test_structured_memory_cadence_defaults_to_four_and_can_be_overridden(
     assert _load_settings(monkeypatch, tmp_path, None).structured_memory_every == 3
 
 
-def test_structured_memory_cadence_cannot_exceed_summary_cadence(monkeypatch, tmp_path):
+def test_structured_memory_cadence_is_independent_from_shared_summary_cadence(
+    monkeypatch, tmp_path,
+):
     monkeypatch.setenv("STRUCTURED_MEMORY_EVERY", "9")
+    monkeypatch.setenv("SUMMARY_EVERY", "8")
+    assert _load_settings(monkeypatch, tmp_path, None).structured_memory_every == 9
+
+
+def test_structured_memory_cadence_cannot_exceed_history_retention(monkeypatch, tmp_path):
+    monkeypatch.setenv("STRUCTURED_MEMORY_EVERY", "13")
     with pytest.raises(ValueError):
         _load_settings(monkeypatch, tmp_path, None)
 
@@ -183,7 +159,6 @@ def test_removed_memory_provider_and_model_env_are_ignored(monkeypatch, tmp_path
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("shared", [False, True])
 @pytest.mark.parametrize("output,status,clears", [
     ("  <NO_MEMORY>\n", "completed", True),
     ("없음", "completed", True),
@@ -195,8 +170,8 @@ def test_removed_memory_provider_and_model_env_are_ignored(monkeypatch, tmp_path
     ("   ", "completed", False),
     ("<NO_MEMORY>", "incomplete", False),
 ])
-async def test_empty_memory_advances_cursor_only_for_explicit_completed_result(
-    shared, output, status, clears,
+async def test_shared_empty_memory_advances_cursor_only_for_explicit_completed_result(
+    output, status, clears,
 ):
     from hina_bot.core.routing import Scope
     from hina_bot.core.store import Store
@@ -204,20 +179,13 @@ async def test_empty_memory_advances_cursor_only_for_explicit_completed_result(
     llm = _summary_llm(output)
     llm.usage.request.return_value.status = status
     store = Store(":memory:")
-    scope = Scope(1 if shared else None, 2, 100, public_at_capture=shared)
+    scope = Scope(1, 2, 100, public_at_capture=True)
     try:
-        if shared:
-            store.add_shared_call(scope, 10, "A", "안녕")
-            store.save_shared_summary(scope, "A", "이전 기억", 0)
-            await llm.summarize_shared(store, scope)
-            saved = store.shared_summary(scope)
-            pending = store.pending_shared(scope)
-        else:
-            store.add(scope, 10, "안녕", "반가워")
-            store.save_summary(scope, "이전 기억", 0)
-            await llm.summarize(store, scope)
-            saved = store.summary(scope)
-            pending = store.pending(scope)
+        store.add_shared_call(scope, 10, "A", "안녕")
+        store.save_shared_summary(scope, "A", "이전 기억", 0)
+        await llm.summarize_shared(store, scope)
+        saved = store.shared_summary(scope)
+        pending = store.pending_shared(scope)
         assert saved == (("", 1) if clears else ("이전 기억", 0))
         assert len(pending) == (0 if clears else 1)
     finally:
@@ -225,12 +193,12 @@ async def test_empty_memory_advances_cursor_only_for_explicit_completed_result(
 
 
 @pytest.mark.asyncio
-async def test_marker_inside_real_memory_is_not_treated_as_empty():
+async def test_marker_inside_real_shared_memory_is_not_treated_as_empty():
     text = "사용자는 <NO_MEMORY>라는 문자열을 처리하는 프로그램을 개발 중이다."
     llm = _summary_llm(text)
     store = FakeStore()
-    await llm.summarize(store, NS(guild_id=None, user_id=100))
-    assert store.saved_summary == (text, 1)
+    await llm.summarize_shared(store, NS(guild_id=1, user_id=100))
+    assert store.saved_shared == ("사용자", text, 2)
 
 
 @pytest.mark.parametrize("text", [
