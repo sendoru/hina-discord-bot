@@ -9,6 +9,7 @@ from hina_bot.ai.structured_memory_context import (
     aggregate_owner_relationship_evidence,
     aggregate_relationship_evidence,
     full_relationship_memory,
+    full_shared_memory,
     owner_dm_memory,
 )
 from hina_bot.core.config import Settings
@@ -102,6 +103,55 @@ def test_owner_dm_memory_contains_every_owner_item_and_no_other_user_item():
     }
     assert "OTHER_USER_SECRET" not in json.dumps(projected, ensure_ascii=False)
     store.close()
+
+
+def test_shared_full_memory_contains_only_full_non_relationship_owner_items():
+    store = Store(":memory:")
+    current = Scope(1, 30, 100, True)
+    public_same_guild = Scope(1, 20, 100, True)
+    private_other_channel = Scope(1, 40, 100, False)
+    other_guild = Scope(2, 50, 100, True)
+    try:
+        store.add_memory_item(
+            public_same_guild,
+            "PUBLIC_SAME_GUILD_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            private_other_channel,
+            "PRIVATE_OTHER_CHANNEL_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            other_guild,
+            "GLOBAL_PREFERENCE",
+            kind=MemoryKind.PREFERENCE,
+            disclosure=MemoryDisclosure.GLOBAL,
+        )
+        store.add_memory_item(
+            other_guild,
+            "GATED_OTHER_GUILD_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.REFERENCE_GATED,
+        )
+        store.add_memory_item(
+            public_same_guild,
+            "SAME_SPACE_RELATIONSHIP",
+            kind=MemoryKind.RELATIONSHIP,
+            disclosure=MemoryDisclosure.IMPLICIT,
+            relationship_evidence={"familiarity": 2},
+        )
+
+        projected = full_shared_memory(store.memory_items(100), current)
+
+        assert {row["content"] for row in projected} == {
+            "PUBLIC_SAME_GUILD_FACT",
+            "GLOBAL_PREFERENCE",
+        }
+    finally:
+        store.close()
 
 
 def test_single_cross_space_observation_projects_numeric_profile_without_raw_text():
@@ -479,6 +529,63 @@ async def test_server_receives_numeric_implicit_profile_without_cross_space_raw_
         assert "RAW_FACT_SECRET" not in raw
         assert "구조화 사용자 기억" in payload["instructions"]
         assert "1~4" in payload["instructions"]
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_same_space_response_receives_full_non_relationship_memory():
+    calls = []
+    client = _client(calls)
+    llm = LLM(
+        Settings(
+            discord_token="test",
+            openai_api_key="test",
+            external_context_policy="full",
+        ),
+        client=client,
+    )
+    store = Store(":memory:")
+    public_source = Scope(1, 20, 100, True)
+    private_source = Scope(1, 40, 100, False)
+    same_guild = Scope(1, 30, 100, True)
+    other_guild = Scope(2, 50, 100, True)
+    try:
+        store.add_memory_item(
+            public_source,
+            "PUBLIC_SAME_GUILD_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            private_source,
+            "PRIVATE_OTHER_CHANNEL_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            other_guild,
+            "GLOBAL_BOUNDARY",
+            kind=MemoryKind.BOUNDARY,
+            disclosure=MemoryDisclosure.GLOBAL,
+        )
+
+        await llm.answer(store, same_guild, "사용자", "안녕", channel_context=[])
+
+        payload = calls[-1]
+        reference = _reference(payload)
+        projected = {
+            row["content"]
+            for row in reference["structured_full_memory"]
+        }
+        assert projected == {"PUBLIC_SAME_GUILD_FACT", "GLOBAL_BOUNDARY"}
+        assert "PRIVATE_OTHER_CHANNEL_FACT" not in json.dumps(
+            reference,
+            ensure_ascii=False,
+        )
+        assert reference["structured_relationship_memory"] == []
+        assert "구조화 사용자 기억" in payload["instructions"]
     finally:
         await llm.close()
         store.close()
