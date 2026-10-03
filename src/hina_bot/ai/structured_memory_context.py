@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from hina_bot.core.memory_items import (
     MemoryAccess,
     MemoryItem,
+    MemoryKind,
     memory_access,
 )
 from hina_bot.core.relationship_profile import (
@@ -47,6 +48,31 @@ def owner_dm_memory(items: Iterable[MemoryItem], scope: Scope) -> list[dict]:
         _serialize_memory_item(item)
         for item in _owned(items, scope)
         if memory_access(item, scope) == MemoryAccess.FULL
+    ]
+
+
+def _full_shared_items(
+    items: Iterable[MemoryItem],
+    scope: Scope,
+) -> list[MemoryItem]:
+    """Return owner non-relationship items with FULL access in a shared space."""
+
+    if scope.guild_id is None:
+        return []
+    return [
+        item
+        for item in _owned(items, scope)
+        if item.kind != MemoryKind.RELATIONSHIP
+        and memory_access(item, scope) == MemoryAccess.FULL
+    ]
+
+
+def full_shared_memory(items: Iterable[MemoryItem], scope: Scope) -> list[dict]:
+    """Serialize non-relationship memory that is FULL in the current shared space."""
+
+    return [
+        _serialize_memory_item(item)
+        for item in _full_shared_items(items, scope)
     ]
 
 
@@ -99,6 +125,17 @@ def structured_memory_provenance(
             })
         profile = aggregate_owner_relationship_evidence(items, scope)
         return {"items": selected, "relationship_axes": sorted(profile)}
+
+    for item in _full_shared_items(items, scope):
+        selected.append({
+            "item_id": item.id,
+            "projection": "shared_full",
+            "kind": item.kind.value,
+            "disclosure": item.disclosure.value,
+            "origin_realm": item.origin_realm,
+            "origin_channel_id": item.origin_channel_id,
+            "access": MemoryAccess.FULL.value,
+        })
 
     full_items = full_relationship_observations(items, scope)
     for item in full_items:
@@ -160,6 +197,7 @@ def structured_memory_context(
 
     empty = {
         "structured_owner_memory": [],
+        "structured_full_memory": [],
         "structured_relationship_memory": [],
         "owner_relationship_profile": {},
         "cross_space_relationship": {},
@@ -188,6 +226,7 @@ def structured_memory_context(
     ]
     return {
         "structured_owner_memory": owner_dm_memory(items, scope),
+        "structured_full_memory": full_shared_memory(items, scope),
         "structured_relationship_memory": full_relationship_memory(items, scope),
         "owner_relationship_profile": (
             aggregate_owner_relationship_evidence(items, scope)
@@ -210,6 +249,7 @@ __all__ = [
     "aggregate_owner_relationship_evidence",
     "aggregate_relationship_evidence",
     "full_relationship_memory",
+    "full_shared_memory",
     "owner_dm_memory",
     "structured_memory_context",
     "structured_memory_provenance",
