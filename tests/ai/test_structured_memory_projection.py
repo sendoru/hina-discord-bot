@@ -226,7 +226,11 @@ def test_owner_dm_profile_uses_all_eligible_owner_relationship_observations():
             dm,
         )
 
-        assert projection == {"familiarity": 2, "comfort": 3}
+        assert projection == {
+            "familiarity": 2,
+            "comfort": 3,
+            "casualness": 3,
+        }
     finally:
         store.close()
 
@@ -330,7 +334,7 @@ def test_missing_axis_is_not_interpreted_as_negative_evidence():
     store.close()
 
 
-def test_low_confidence_relationship_evidence_does_not_project():
+def test_relationship_evidence_below_old_threshold_is_weighted_not_dropped():
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
@@ -340,6 +344,26 @@ def test_low_confidence_relationship_evidence_does_not_project():
         kind=MemoryKind.RELATIONSHIP,
         disclosure=MemoryDisclosure.IMPLICIT,
         confidence=0.79,
+        relationship_evidence={"familiarity": 4},
+    )
+
+    assert aggregate_relationship_evidence(
+        store.memory_items(100),
+        server,
+    ) == {"familiarity": 3}
+    store.close()
+
+
+def test_zero_confidence_relationship_evidence_is_inert():
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    server = Scope(1, 20, 100, True)
+    store.add_memory_item(
+        dm,
+        "zero confidence relationship",
+        kind=MemoryKind.RELATIONSHIP,
+        disclosure=MemoryDisclosure.IMPLICIT,
+        confidence=0.0,
         relationship_evidence={"familiarity": 4},
     )
 
