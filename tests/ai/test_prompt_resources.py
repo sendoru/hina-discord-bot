@@ -50,3 +50,9 @@ def test_static_answer_policies_are_loaded_from_named_resources():
 
 def test_prompt_loader_caches_resource_text():
     assert load_prompt("base.md") is load_prompt("base.md")
+
+
+def test_code_execution_policy_rejects_large_bruteforce_loops():
+    assert "입력 크기" in CODE_EXECUTION_POLICY
+    assert "브루트포스" in CODE_EXECUTION_POLICY
+    assert "시간 초과" in CODE_EXECUTION_POLICY
