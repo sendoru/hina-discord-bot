@@ -292,6 +292,7 @@ class RequestAssembler(BaseLLM):
         search_mode = information_plan.search_mode
         provenance = information_plan.provenance
         cross_channel_memory = use_memory and not current_channel_only
+        structured_cross_space_memory = use_memory
         authorized_factual_items = (
             factual_recall_plan.selected
             if factual_recall_plan is not None
@@ -301,7 +302,7 @@ class RequestAssembler(BaseLLM):
             store,
             scope,
             use_memory=use_memory,
-            allow_cross_space=cross_channel_memory,
+            allow_cross_space=structured_cross_space_memory,
             authorized_factual_items=authorized_factual_items,
         )
         interaction = CURRENT_INTERACTION_CONTEXT.get() or {
@@ -385,7 +386,7 @@ class RequestAssembler(BaseLLM):
             store,
             scope,
             use_memory=use_memory,
-            allow_cross_space=cross_channel_memory,
+            allow_cross_space=structured_cross_space_memory,
             authorized_factual_items=authorized_factual_items,
         )
         context_provenance = build_context_provenance(
