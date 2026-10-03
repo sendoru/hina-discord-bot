@@ -3105,10 +3105,12 @@ pre {
 }
 
 .runtime-config-edit-form {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) auto auto;
   gap: 8px;
   align-items: center;
-  min-width: max-content;
+  justify-content: start;
+  min-width: 0;
 }
 
 .runtime-config-current-value {
@@ -3145,8 +3147,8 @@ pre {
 }
 
 .runtime-config-edit-form input[type="text"] {
-  width: 360px;
-  min-width: 360px;
+  width: 100%;
+  min-width: 0;
 }
 
 .runtime-config-reset {
