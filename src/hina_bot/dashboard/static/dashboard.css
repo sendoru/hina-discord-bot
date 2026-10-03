@@ -3042,7 +3042,8 @@ pre {
 }
 
 .runtime-config-table {
-  min-width: 860px;
+  width: 100%;
+  min-width: 1080px;
   table-layout: fixed;
 }
 
@@ -3051,10 +3052,10 @@ pre {
   word-break: normal;
 }
 
-.runtime-config-table th:nth-child(1) { width: 31%; }
-.runtime-config-table th:nth-child(2) { width: 76px; }
+.runtime-config-table th:nth-child(1) { width: 330px; }
+.runtime-config-table th:nth-child(2) { width: 90px; }
 .runtime-config-table th:nth-child(3) { width: auto; }
-.runtime-config-table th:nth-child(4) { width: 78px; }
+.runtime-config-table th:nth-child(4) { width: 92px; }
 
 .runtime-config-setting {
   min-width: 0;
@@ -3084,7 +3085,7 @@ pre {
 }
 
 .runtime-config-source {
-  width: 76px;
+  width: 90px;
 }
 
 .runtime-config-current {
@@ -3146,13 +3147,7 @@ pre {
 }
 
 .runtime-config-reset {
-  width: 78px;
-}
-
-@media (max-width: 720px) {
-  .runtime-config-table {
-    min-width: 820px;
-  }
+  width: 92px;
 }
 
 
