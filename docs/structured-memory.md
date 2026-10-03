@@ -182,9 +182,10 @@ reconstructing concrete past events, locations, names, or conversation content f
 
 - `reference_gated` factual content is still not opened in shared spaces, even when the current message
   looks like a reference. Explicit factual recall remains Phase 4.
-- Explicit current-channel-only requests suppress only the shared-space cross-space projection;
-  relationship memory already FULL in the current disclosure space remains available. Owner-DM profile
-  aggregation follows the same private aggregate-memory semantics as `structured_owner_memory`.
+- Explicit current-channel-only requests suppress structured memory originating outside the current
+  channel, including otherwise-FULL same-disclosure-space items and cross-space relationship projection.
+  Owner-DM profile aggregation follows the same private aggregate-memory semantics as
+  `structured_owner_memory`.
 - The structured-memory fields are included in routing context-size accounting so model routing sees the
   same dynamic context that request assembly will serialize.
 
