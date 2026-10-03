@@ -110,6 +110,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
             _collection_items(decoded_startup, spec.kind) if is_collection else []
         )
         collection_meta = _collection_meta(spec) if is_collection else {}
+        preview_limit = 2
         rows.append(
             {
                 "key": key,
@@ -130,11 +131,11 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
                 "updated_at": stored.get("updated_at") if stored else None,
                 "is_collection": is_collection,
                 "collection_items": collection_items,
-                "collection_preview": collection_items[:3],
-                "collection_extra": max(0, len(collection_items) - 3),
+                "collection_preview": collection_items[:preview_limit],
+                "collection_extra": max(0, len(collection_items) - preview_limit),
                 "startup_items": startup_items,
-                "startup_preview": startup_items[:3],
-                "startup_extra": max(0, len(startup_items) - 3),
+                "startup_preview": startup_items[:preview_limit],
+                "startup_extra": max(0, len(startup_items) - preview_limit),
                 **collection_meta,
             }
         )
