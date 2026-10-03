@@ -440,7 +440,7 @@ async def test_current_channel_scope_does_not_block_explicit_reference_gated_rec
             store,
             server,
             "사용자",
-            "이 채널에서 전에 말했던 삼성 면접 얘기만 봐줘",
+            "이 채널에서 쓰려고 하는데 내가 전에 말했던 삼성 면접 기억나?",
         )
 
         reference = _reference(calls[-1])
