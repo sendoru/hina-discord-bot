@@ -90,7 +90,7 @@
   <div class="table-wrap desktop-result-list" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table">
       <thead>
-        <tr><th>Time</th><th>Scope</th><th>Status</th><th>Tier</th><th>Models</th><th>Tokens</th><th>Latency</th><th>Search</th><th>Error</th><th>Stored</th></tr>
+        <tr><th>Time</th><th>Scope</th><th>Status</th><th>Tier</th><th>Models</th><th>Tokens</th><th>Reply latency</th><th>Turn total</th><th>Search</th><th>Error</th><th>Stored</th></tr>
       </thead>
       <tbody>
       {% for row in data.rows %}
@@ -101,7 +101,8 @@
           <td>{{ row.model_tier or "—" }}</td>
           <td>{{ row.models | join(", ") or "—" }}</td>
           <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "—" }}</td>
-          <td class="numeric">{{ row.elapsed_ms ~ " ms" if row.elapsed_ms is not none else "—" }}</td>
+          <td class="numeric">{{ row.reply_latency_ms ~ " ms" if row.reply_latency_ms is not none else "—" }}</td>
+          <td class="numeric">{{ row.turn_latency_ms ~ " ms" if row.turn_latency_ms is not none else "—" }}</td>
           <td>{{ row.web_search_calls if row.web_search else "—" }}</td>
           <td>{% if row.error %}<code>{{ row.error_fingerprint or "yes" }}</code>{% else %}—{% endif %}</td>
           <td>{{ "yes" if row.stored else "no" }}</td>

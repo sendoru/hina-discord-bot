@@ -683,6 +683,18 @@ class TraceService(ReadService):
             received = next((row for row in events if row.get("event") == "turn.received"), None)
             exchange = exchanges[-1] if exchanges else None
             answer_rows = [row for row in usage if row.get("operation") == "answer"]
+            preflight = next(
+                (row for row in reversed(events) if row.get("event") == "turn.preflight"),
+                None,
+            )
+            reply_delivered = next(
+                (
+                    row
+                    for row in reversed(events)
+                    if row.get("event") == "turn.reply_delivered"
+                ),
+                None,
+            )
 
             timestamps = [
                 value
@@ -735,12 +747,57 @@ class TraceService(ReadService):
                                 if type(row.get("total_tokens")) is int]
                 total_tokens = sum(known_tokens) if known_tokens else None
 
+            # Keep the legacy field intact for compatibility, but derive explicit
+            # latency views for the dashboard. Base turn elapsed_ms starts after the
+            # web adapter preflight, while reply_delivered stops at the user-visible
+            # Discord reply and terminal events may include post-reply memory work.
             if terminal and isinstance(terminal.get("elapsed_ms"), int):
                 elapsed_ms = terminal["elapsed_ms"]
             elif exchange and isinstance(exchange.get("elapsed_ms"), int):
                 elapsed_ms = exchange["elapsed_ms"]
             else:
                 elapsed_ms = None
+
+            preflight_ms = (
+                preflight["preflight_ms"]
+                if preflight and isinstance(preflight.get("preflight_ms"), int)
+                else 0
+            )
+            reply_base_ms = (
+                reply_delivered["elapsed_ms"]
+                if reply_delivered
+                and isinstance(reply_delivered.get("elapsed_ms"), int)
+                else None
+            )
+            terminal_base_ms = (
+                terminal["elapsed_ms"]
+                if terminal and isinstance(terminal.get("elapsed_ms"), int)
+                else None
+            )
+            reply_latency_ms = (
+                preflight_ms + reply_base_ms
+                if reply_base_ms is not None
+                else None
+            )
+            turn_latency_ms = (
+                preflight_ms + terminal_base_ms
+                if terminal_base_ms is not None
+                else None
+            )
+            post_reply_ms = (
+                terminal_base_ms - reply_base_ms
+                if (
+                    terminal_base_ms is not None
+                    and reply_base_ms is not None
+                    and terminal_base_ms >= reply_base_ms
+                )
+                else None
+            )
+            exchange_elapsed_ms = (
+                exchange["elapsed_ms"]
+                if exchange and isinstance(exchange.get("elapsed_ms"), int)
+                else None
+            )
 
             if exchange:
                 web_search_calls = _as_int(exchange.get("web_search_calls"))
@@ -775,6 +832,10 @@ class TraceService(ReadService):
                     "model_tier": model_tier,
                     "total_tokens": total_tokens,
                     "elapsed_ms": elapsed_ms,
+                    "reply_latency_ms": reply_latency_ms,
+                    "turn_latency_ms": turn_latency_ms,
+                    "post_reply_ms": post_reply_ms,
+                    "exchange_elapsed_ms": exchange_elapsed_ms,
                     "web_search": web_search_calls > 0,
                     "web_search_calls": web_search_calls,
                     "error": error_row is not None,
