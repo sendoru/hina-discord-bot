@@ -94,3 +94,27 @@ def test_runtime_dashboard_post_only_enqueues_command(tmp_path):
     )
     assert db.execute("SELECT COUNT(*) FROM runtime_config").fetchone()[0] == 0
     db.close()
+
+
+
+def test_runtime_dashboard_uses_compact_set_controls(tmp_path):
+    database = tmp_path / "hina.sqlite3"
+    store = Store(str(database))
+    RuntimeSettings(Settings(discord_token="test"), store)
+    store.close()
+    app = create_app(
+        DashboardSettings(
+            database_path=str(database),
+            usage_log_path=str(tmp_path / "usage.jsonl"),
+            event_log_path=str(tmp_path / "events.jsonl"),
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/admin/runtime")
+
+    assert response.status_code == 200
+    assert 'class="runtime-config-table"' in response.text
+    assert 'class="runtime-config-set-form"' in response.text
+    assert '<label class="sr-only" for="runtime-' not in response.text
+    assert 'aria-label="New value for CALL_PREFIXES"' in response.text
