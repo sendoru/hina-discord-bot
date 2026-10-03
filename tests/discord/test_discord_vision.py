@@ -112,6 +112,7 @@ async def test_collects_image_attachment_and_ignores_non_image_attachment():
         size=len(PNG),
         content_type="image/png",
         filename="screen.png",
+        url="https://cdn.discordapp.com/attachments/1/2/screen.png?ex=signed",
         read=AsyncMock(return_value=PNG),
     )
     text = NS(
@@ -128,6 +129,7 @@ async def test_collects_image_attachment_and_ignores_non_image_attachment():
     assert visuals[0].source == "attachment"
     assert visuals[0].name == "screen.png"
     assert visuals[0].mime_type == "image/png"
+    assert visuals[0].uri.startswith("https://cdn.discordapp.com/")
     assert visuals[0].context_kind == "current_message"
     assert visuals[0].reference_strength == "current_message"
     text.read.assert_not_awaited()
@@ -160,7 +162,9 @@ async def test_collects_custom_emoji_once_and_raster_sticker():
     ]
     assert len([url for url in urls if "/emojis/123." in url]) == 1
     assert visuals[0].mime_type == "image/gif"
+    assert visuals[0].uri == urls[0]
     assert visuals[1].mime_type == "image/png"
+    assert visuals[1].uri == "https://cdn.discordapp.com/stickers/456.png"
 
 
 
