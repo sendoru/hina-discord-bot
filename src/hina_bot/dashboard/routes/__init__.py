@@ -11,6 +11,7 @@ from ..services import (
 )
 from ..telemetry import TelemetryReader
 from . import (
+    admin_prompts,
     admin_runtime,
     analytics,
     conversations,
@@ -38,6 +39,7 @@ def build_routers(
 ) -> tuple[APIRouter, ...]:
     return (
         admin_runtime.build_router(repository, admin_writer, templates),
+        admin_prompts.build_router(repository, admin_writer, templates),
         overview.build_router(trace_service, templates),
         analytics.build_router(
             repository,

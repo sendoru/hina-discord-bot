@@ -140,6 +140,65 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
                     client.store.set_note(key, text)
             return {"target": note_target, "scope": key, "cleared": not bool(text)}
 
+    if command.action.startswith("instruction."):
+        registry = client.llm.instructions
+        identifier = str(command.payload.get("id") or command.target).strip()
+        if command.action == "instruction.add":
+            registry.add(identifier, str(command.payload.get("text") or ""))
+            return {"id": identifier, "action": "added"}
+        if command.action == "instruction.edit":
+            registry.edit(identifier, str(command.payload.get("text") or ""))
+            return {"id": identifier, "action": "edited"}
+        if command.action == "instruction.state":
+            enabled = command.payload.get("enabled")
+            if type(enabled) is not bool:
+                raise ValueError("instruction enabled must be boolean")
+            registry.set_enabled(identifier, enabled)
+            return {"id": identifier, "enabled": enabled}
+        if command.action == "instruction.remove":
+            registry.remove(identifier)
+            return {"id": identifier, "action": "removed"}
+
+    if command.action.startswith("knowledge."):
+        kind = str(command.payload.get("kind") or "")
+        if kind == "world_fact":
+            registry = client.llm.runtime_lore
+        elif kind == "interpretation":
+            registry = client.llm.story_context
+        else:
+            raise ValueError("invalid runtime knowledge kind")
+        identifier = str(command.payload.get("id") or command.target).strip()
+
+        if command.action == "knowledge.add":
+            registry.add(
+                identifier,
+                str(command.payload.get("content") or ""),
+                str(command.payload.get("keywords") or ""),
+                str(command.payload.get("subjects") or ""),
+                str(command.payload.get("awareness") or ""),
+                str(command.payload.get("timeline") or ""),
+            )
+            return {"id": identifier, "kind": kind, "action": "added"}
+        if command.action == "knowledge.edit":
+            registry.edit(
+                identifier,
+                content=str(command.payload.get("content") or ""),
+                keywords=str(command.payload.get("keywords") or ""),
+                subjects=str(command.payload.get("subjects") or ""),
+                awareness=str(command.payload.get("awareness") or ""),
+                timeline=str(command.payload.get("timeline") or ""),
+            )
+            return {"id": identifier, "kind": kind, "action": "edited"}
+        if command.action == "knowledge.state":
+            enabled = command.payload.get("enabled")
+            if type(enabled) is not bool:
+                raise ValueError("knowledge enabled must be boolean")
+            registry.set_enabled(identifier, enabled)
+            return {"id": identifier, "kind": kind, "enabled": enabled}
+        if command.action == "knowledge.remove":
+            registry.remove(identifier)
+            return {"id": identifier, "kind": kind, "action": "removed"}
+
     raise ValueError(f"unsupported admin action: {command.action}")
 
 

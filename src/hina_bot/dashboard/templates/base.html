@@ -46,6 +46,7 @@
         <div class="nav-group">
           <span class="nav-group-label">Admin</span>
           <a class="nav-link {% if request.url.path.startswith('/admin/runtime') %}active{% endif %}" {% if request.url.path.startswith('/admin/runtime') %}aria-current="page"{% endif %} href="/admin/runtime">Runtime Config</a>
+          <a class="nav-link {% if request.url.path.startswith('/admin/prompts') %}active{% endif %}" {% if request.url.path.startswith('/admin/prompts') %}aria-current="page"{% endif %} href="/admin/prompts">Prompt State</a>
         </div>
 
         <div class="nav-group">
@@ -69,6 +70,7 @@
             {% elif request.url.path == '/relationships' %}Relationships
             {% elif request.url.path == '/state' %}State
             {% elif request.url.path.startswith('/admin/runtime') %}Runtime Config
+            {% elif request.url.path.startswith('/admin/prompts') %}Prompt State
             {% elif request.url.path == '/summaries' %}Summaries
             {% elif request.url.path.startswith('/reconciliation') %}Reconciliation
             {% else %}Dashboard{% endif %}
@@ -95,6 +97,7 @@
           <div class="mobile-nav-group">
             <span class="mobile-nav-group-label">Admin</span>
             <a class="mobile-nav-link {% if request.url.path.startswith('/admin/runtime') %}active{% endif %}" {% if request.url.path.startswith('/admin/runtime') %}aria-current="page"{% endif %} href="/admin/runtime">Runtime Config</a>
+            <a class="mobile-nav-link {% if request.url.path.startswith('/admin/prompts') %}active{% endif %}" {% if request.url.path.startswith('/admin/prompts') %}aria-current="page"{% endif %} href="/admin/prompts">Prompt State</a>
           </div>
 
           <div class="mobile-nav-group">

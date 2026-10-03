@@ -51,6 +51,7 @@ The dashboard currently exposes the following read-only routes:
 - `/reconciliation`: shadow reconciliation proposal review
 - `/reconciliation/{id}`: old/new memory comparison and extraction context
 - `/admin/runtime`: queued runtime configuration set/reset + recent action audit
+- `/admin/prompts`: dynamic instruction/runtime knowledge list/edit/state/remove + recent action audit
 - `/healthz`: database/telemetry source health
 
 The HTML surface is intentionally desktop-oriented and server-rendered. It uses no client-side
@@ -82,6 +83,18 @@ automatic-memory purge. Scope IDs are reconstructed and validated server-side be
 Destructive memory purge requires an explicit confirmation checkbox. The bot process executes the
 action under the same channel/memory locks and uses the same Store/recent-buffer operations as the
 Discord commands.
+
+## Prompt-state editing
+
+`/admin/prompts` exposes the existing dynamic instruction and runtime knowledge registries. The
+dashboard reads their persisted rows through the read-only repository, while add/edit/enable/disable/
+remove operations are queued and executed by the bot process through `InstructionRegistry` and
+`RuntimeKnowledgeRegistry`.
+
+Registry validation remains authoritative, including instruction active-budget limits, ID/content
+limits, knowledge kind/awareness validation, and keyword/subject bounds. Remove operations require an
+explicit confirmation. Submitted instruction/knowledge bodies are scrubbed from the admin-command row
+after completion.
 
 ## Runtime configuration editing
 
