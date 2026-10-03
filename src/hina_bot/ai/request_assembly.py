@@ -434,6 +434,7 @@ class RequestAssembler(BaseLLM):
             ),
             context_current_channel_only=current_channel_only,
             context_cross_channel_memory=cross_channel_memory,
+            context_structured_cross_space_memory=structured_cross_space_memory,
             factual_recall_detected=bool(
                 factual_recall_plan and factual_recall_plan.detected
             ),
