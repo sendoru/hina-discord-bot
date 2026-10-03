@@ -44,8 +44,6 @@ def search_decision(request, references, *, enabled, default_location="") -> Sea
         InformationRoute.MEMORY, InformationRoute.CLOCK, InformationRoute.LOCAL_LORE,
     }:
         return SearchDecision("none", True, "local_only")
-    if request.explicit_source:
-        return SearchDecision("required", True, "explicit_source")
     if request.route == InformationRoute.WEB:
         if (request.freshness == FreshnessMode.REQUIRED
                 and needs_location_clarification(request.lore_query)
