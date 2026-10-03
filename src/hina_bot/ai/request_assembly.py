@@ -460,6 +460,7 @@ class RequestAssembler(BaseLLM):
                 key: context.get(key)
                 for key in (
                     "structured_owner_memory",
+                    "structured_full_memory",
                     "structured_relationship_memory",
                     "owner_relationship_profile",
                     "cross_space_relationship",
@@ -542,6 +543,7 @@ class RequestAssembler(BaseLLM):
         }
         if (
             structured_memory["structured_owner_memory"]
+            or structured_memory["structured_full_memory"]
             or structured_memory["structured_relationship_memory"]
             or structured_memory["owner_relationship_profile"]
             or structured_memory["cross_space_relationship"]
