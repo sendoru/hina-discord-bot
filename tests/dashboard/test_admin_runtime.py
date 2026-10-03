@@ -97,10 +97,11 @@ def test_runtime_dashboard_post_only_enqueues_command(tmp_path):
 
 
 
-def test_runtime_dashboard_uses_compact_set_controls(tmp_path):
+def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     database = tmp_path / "hina.sqlite3"
     store = Store(str(database))
-    RuntimeSettings(Settings(discord_token="test"), store)
+    settings = RuntimeSettings(Settings(discord_token="test"), store)
+    settings.set_text("channel_context_chars", "4300")
     store.close()
     app = create_app(
         DashboardSettings(
@@ -115,6 +116,11 @@ def test_runtime_dashboard_uses_compact_set_controls(tmp_path):
 
     assert response.status_code == 200
     assert 'class="runtime-config-table"' in response.text
-    assert 'class="runtime-config-set-form"' in response.text
-    assert '<label class="sr-only" for="runtime-' not in response.text
-    assert 'aria-label="New value for CALL_PREFIXES"' in response.text
+    assert "<th>Set</th>" not in response.text
+    assert "data-runtime-config-editor" in response.text
+    assert "data-runtime-config-form" in response.text
+    assert ">Set override<" in response.text
+    assert ">Edit<" in response.text
+    assert 'value="4300"' in response.text
+    assert 'aria-label="Override value for CHANNEL_CONTEXT_CHARS"' in response.text
+    assert "runtime-config.js" in response.text
