@@ -73,6 +73,16 @@ automatically.
 Existing raw-retention behavior is unchanged. The dashboard does not turn `turns` into a permanent
 conversation archive; it can only inspect rows that the normal bounded retention policy still keeps.
 
+## Memory, recent-context, and note controls
+
+`/state` remains the effective inheritance/notes inspector and, in local write mode, also exposes
+queued controls for memory mode, recent-context mode, user/server notes, recent-buffer clearing, and
+automatic-memory purge. Scope IDs are reconstructed and validated server-side before queueing.
+
+Destructive memory purge requires an explicit confirmation checkbox. The bot process executes the
+action under the same channel/memory locks and uses the same Store/recent-buffer operations as the
+Discord commands.
+
 ## Runtime configuration editing
 
 The runtime editor never updates `runtime_config` directly. POST actions append `runtime.set` or
