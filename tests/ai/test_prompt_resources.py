@@ -56,3 +56,9 @@ def test_code_execution_policy_rejects_large_bruteforce_loops():
     assert "입력 크기" in CODE_EXECUTION_POLICY
     assert "브루트포스" in CODE_EXECUTION_POLICY
     assert "시간 초과" in CODE_EXECUTION_POLICY
+
+
+def test_turn_response_policy_treats_problem_variables_as_general_inputs():
+    assert "코딩 문제·알고리즘 문제" in TURN_RESPONSE_POLICY
+    assert "일반 해법이 처리할 문제 조건" in TURN_RESPONSE_POLICY
+    assert "구체적인 입력값이 아직 없다는 이유로 되묻거나 풀이를 멈추지" in TURN_RESPONSE_POLICY

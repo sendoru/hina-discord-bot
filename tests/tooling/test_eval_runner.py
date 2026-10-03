@@ -446,6 +446,7 @@ def test_production_quality_cases_are_sanitized_and_cover_live_failure_shapes():
         "production_current_user_first_person_not_assistant_self",
         "production_ambiguous_deictic_does_not_invent",
         "production_visual_address_not_self_attribution",
+        "production_programming_statement_not_missing_input",
     }
     raw = Path("evals/production_quality_cases.jsonl").read_text(encoding="utf-8")
     assert "478976784881287178" not in raw
