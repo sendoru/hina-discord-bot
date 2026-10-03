@@ -16,6 +16,7 @@ class DashboardSettings:
     host: str = "127.0.0.1"
     port: int = 8765
     timezone: str = "Asia/Seoul"
+    write_enabled: bool = False
 
     @classmethod
     def load(cls) -> DashboardSettings:
@@ -46,6 +47,18 @@ class DashboardSettings:
         if not database_path:
             raise ValueError("DASHBOARD_DATABASE_PATH 또는 DATABASE_PATH를 설정해 주세요.")
 
+        write_raw = os.getenv("DASHBOARD_ENABLE_WRITES", "false").strip().lower()
+        if write_raw in {"1", "true", "yes", "on"}:
+            write_enabled = True
+        elif write_raw in {"0", "false", "no", "off", ""}:
+            write_enabled = False
+        else:
+            raise ValueError("DASHBOARD_ENABLE_WRITES는 on/off 또는 true/false여야 합니다.")
+        if write_enabled and host not in {"127.0.0.1", "::1", "localhost"}:
+            raise ValueError(
+                "Dashboard write mode는 인증이 추가되기 전까지 loopback host에서만 사용할 수 있습니다."
+            )
+
         timezone = (
             os.getenv("DASHBOARD_TIMEZONE", "").strip()
             or os.getenv("RUNTIME_TIMEZONE", "").strip()
@@ -63,4 +76,5 @@ class DashboardSettings:
             host=host,
             port=port,
             timezone=timezone,
+            write_enabled=write_enabled,
         )

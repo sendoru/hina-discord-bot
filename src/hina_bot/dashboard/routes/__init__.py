@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from fastapi.templating import Jinja2Templates
 
+from ..admin_write import AdminCommandWriter
 from ..repository import AdminRepository
 from ..services import (
     ContextStateService,
@@ -10,6 +11,8 @@ from ..services import (
 )
 from ..telemetry import TelemetryReader
 from . import (
+    admin_prompts,
+    admin_runtime,
     analytics,
     conversations,
     memory,
@@ -25,6 +28,7 @@ from . import (
 def build_routers(
     *,
     repository: AdminRepository,
+    admin_writer: AdminCommandWriter,
     telemetry: TelemetryReader,
     trace_service: TraceService,
     memory_service: MemoryService,
@@ -34,6 +38,8 @@ def build_routers(
     timezone: str,
 ) -> tuple[APIRouter, ...]:
     return (
+        admin_runtime.build_router(repository, admin_writer, templates),
+        admin_prompts.build_router(repository, admin_writer, templates),
         overview.build_router(trace_service, templates),
         analytics.build_router(
             repository,
@@ -45,7 +51,7 @@ def build_routers(
         conversations.build_router(trace_service, templates),
         memory.build_router(memory_service, templates),
         relationships.build_router(memory_service, templates),
-        state.build_router(context_state_service, templates),
+        state.build_router(context_state_service, admin_writer, templates),
         reconciliation.build_router(reconciliation_service, templates),
         summaries.build_router(memory_service, templates),
     )

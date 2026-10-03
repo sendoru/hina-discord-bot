@@ -240,15 +240,35 @@ class RuntimeSettings:
         object.__setattr__(self, "_base", base)
         object.__setattr__(self, "_store", store)
         object.__setattr__(self, "_overrides", {})
-        store.db.execute(
-            """CREATE TABLE IF NOT EXISTS runtime_config (
+        store.db.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS runtime_config (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )"""
+            );
+            CREATE TABLE IF NOT EXISTS runtime_config_startup (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            """
         )
-        store.db.commit()
+        self._capture_startup_snapshot()
         self.reload()
+
+    def _capture_startup_snapshot(self) -> None:
+        rows = [
+            (attr, encode_runtime_value(getattr(self._base, attr)))
+            for attr in RUNTIME_SETTING_SPECS
+        ]
+        with self._store.db:
+            self._store.db.execute("DELETE FROM runtime_config_startup")
+            self._store.db.executemany(
+                """INSERT INTO runtime_config_startup(key,value,captured_at)
+                   VALUES (?,?,CURRENT_TIMESTAMP)""",
+                rows,
+            )
 
     @property
     def base(self) -> Settings:

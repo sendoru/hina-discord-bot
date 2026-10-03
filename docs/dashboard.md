@@ -1,8 +1,8 @@
-# Read-only dashboard foundation
+# Dashboard observability and local admin foundation
 
-The dashboard is intentionally introduced as an observability surface before it becomes an
-administration surface. The first phase does not change memory, runtime configuration, knowledge,
-or Discord state.
+The dashboard started as a read-only observability surface. Local admin writes are now opt-in and
+flow through an audited command queue that is executed by the owning bot process; the existing
+read repository remains read-only.
 
 ## Install and run
 
@@ -29,11 +29,11 @@ DASHBOARD_USAGE_LOG_PATH=
 DASHBOARD_EVENT_LOG_PATH=
 DASHBOARD_HOST=127.0.0.1
 DASHBOARD_PORT=8765
+DASHBOARD_ENABLE_WRITES=false
 ```
 
-Keep `DASHBOARD_HOST=127.0.0.1` unless access is protected by a trusted tunnel or authenticated
-reverse proxy. This service is intended to expose private conversation/memory diagnostics in later
-phases and does not provide its own authentication yet.
+Keep `DASHBOARD_HOST=127.0.0.1`. The service still has no authentication. `DASHBOARD_ENABLE_WRITES`
+defaults to false and, until authentication is added, write mode refuses non-loopback hosts.
 
 The dashboard currently exposes the following read-only routes:
 
@@ -50,21 +50,62 @@ The dashboard currently exposes the following read-only routes:
 - `/memory/cursors`: structured extraction cursor/pending state
 - `/reconciliation`: shadow reconciliation proposal review
 - `/reconciliation/{id}`: old/new memory comparison and extraction context
+- `/admin/runtime`: queued runtime configuration set/reset + recent action audit
+- `/admin/prompts`: dynamic instruction/runtime knowledge list/edit/state/remove + recent action audit
 - `/healthz`: database/telemetry source health
 
 The HTML surface is intentionally desktop-oriented and server-rendered. It uses no client-side
 application state and does not add new content telemetry.
 
-## Read-only boundary
+## Read/write boundary
 
-`AdminRepository` opens SQLite with `mode=ro` and `PRAGMA query_only=ON`. It never constructs
-the production `Store`, so starting the dashboard cannot create tables, run migrations, or modify
-runtime data.
+`AdminRepository` still opens SQLite with `mode=ro` and `PRAGMA query_only=ON`. It never constructs
+the production `Store`, so normal inspection paths cannot migrate or mutate runtime data.
 
-The production bot remains the only owner of schema migration and writes.
+When local write mode is explicitly enabled, POST handlers may only append typed requests to the
+`admin_commands` queue through `AdminCommandWriter`. The production bot remains the schema owner and
+executes queued actions in its own process, so runtime-only side effects (for example recent-buffer
+clears or cached runtime settings) stay synchronized with persistent state.
+
+Completed command rows retain action/target/result/error audit metadata but scrub the original payload.
+A command that was `running` when the bot stopped is marked failed on restart rather than retried
+automatically.
 
 Existing raw-retention behavior is unchanged. The dashboard does not turn `turns` into a permanent
 conversation archive; it can only inspect rows that the normal bounded retention policy still keeps.
+
+## Memory, recent-context, and note controls
+
+`/state` remains the effective inheritance/notes inspector and, in local write mode, also exposes
+queued controls for memory mode, recent-context mode, user/server notes, recent-buffer clearing, and
+automatic-memory purge. Scope IDs are reconstructed and validated server-side before queueing.
+
+Destructive memory purge requires an explicit confirmation checkbox. The bot process executes the
+action under the same channel/memory locks and uses the same Store/recent-buffer operations as the
+Discord commands.
+
+## Prompt-state editing
+
+`/admin/prompts` exposes the existing dynamic instruction and runtime knowledge registries. The
+dashboard reads their persisted rows through the read-only repository, while add/edit/enable/disable/
+remove operations are queued and executed by the bot process through `InstructionRegistry` and
+`RuntimeKnowledgeRegistry`.
+
+Registry validation remains authoritative, including instruction active-budget limits, ID/content
+limits, knowledge kind/awareness validation, and keyword/subject bounds. Remove operations require an
+explicit confirmation. Submitted instruction/knowledge bodies are scrubbed from the admin-command row
+after completion.
+
+## Runtime configuration editing
+
+The runtime editor never updates `runtime_config` directly. POST actions append `runtime.set` or
+`runtime.reset` commands to the audited queue; the bot process executes them through
+`RuntimeSettings.set_text()` / `reset()` and applies the same recent-context side effects used by
+Discord `/config` commands.
+
+The page shows persisted DB overrides and whether a key currently falls back to startup configuration.
+It intentionally does not reconstruct the bot process's startup fallback value inside the dashboard
+process; a separate read-only effective-config surface can add that later.
 
 ## Turn correlation
 
@@ -404,9 +445,8 @@ not approve/reject proposals or mutate lifecycle state. Memory detail pages expo
 ## Next phase
 
 The reconciliation workbench remains the review surface for tuning the automatic threshold and deciding
-whether currently deferred relationship/conflict cases ever need stronger lifecycle semantics. Dashboard
-write actions remain out of scope until authentication/authorization and the audited write framework
-are introduced.
+whether currently deferred relationship/conflict cases ever need stronger lifecycle semantics. Dashboard domain write actions are added incrementally on top of the local audited queue. Remote access
+and authenticated authorization remain out of scope until the secure deployment/authentication phase.
 
 ## Internal module boundaries
 
