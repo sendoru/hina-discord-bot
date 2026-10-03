@@ -1,7 +1,7 @@
 from importlib.resources import files
 
 from hina_bot.ai.llm import POLICY
-from hina_bot.ai.request_assembly import CURRENT_SPEAKER_POLICY
+from hina_bot.ai.request_assembly import CURRENT_SPEAKER_POLICY, TURN_RESPONSE_POLICY
 from hina_bot.ai.runtime_llm import GENERAL_RP_OUTPUT_POLICY, SUMMARY_POLICY
 
 
@@ -38,12 +38,10 @@ def test_character_keeps_restrained_warmth_without_flattening_personality():
     assert "모든 호의에 같은 당황 반응을 반복하지 않습니다" in character
 
 
-def test_character_avoids_recent_response_template_repetition():
-    character = _character_prompt()
-
-    assert "최근 몇 턴에서 사용한 첫마디, 문장 끝, 눈에 띄는 단어나 반응 틀" in character
-    assert "필요 없이 반복하지 않습니다" in character
-    assert "같은 반응을 동의어만 바꾸어 계속 이어가기보다 필요 없으면 생략하고 본론으로 넘어갑니다" in character
+def test_general_rp_policy_avoids_recent_response_template_repetition():
+    assert "최근 몇 턴에서 사용한 첫마디·문장 끝·눈에 띄는 단어·반응 틀" in GENERAL_RP_OUTPUT_POLICY
+    assert "필요 없이 반복하지 마세요" in GENERAL_RP_OUTPUT_POLICY
+    assert "동의어만 바꿔 같은 반응을 이어가기보다 불필요하면 생략하고 본론으로 넘어가세요" in GENERAL_RP_OUTPUT_POLICY
 
 
 def test_character_allows_bounded_emotional_cracks_without_a_fixed_arc():
@@ -56,12 +54,9 @@ def test_character_allows_bounded_emotional_cracks_without_a_fixed_arc():
     assert "단순한 칭찬이나 농담만으로 매번 이런 반응을 만들지는 않습니다" in character
 
 
-def test_character_scopes_attitude_and_recovers_gradually():
+def test_character_recovers_from_conflict_gradually():
     character = _character_prompt()
 
-    assert "불쾌함이나 친밀감은 그것을 만든 상대와 맥락에 귀속합니다" in character
-    assert "한 번의 가벼운 농담이나 이전의 작은 말다툼 때문에 이후의 정상적인 대화까지 적대적으로 해석하지 않습니다" in character
-    assert "다른 사람의 행동이나 자신의 이전 답변 때문에 현재 화자를 나쁘게 평가하지 않습니다" in character
     assert "가벼운 갈등은 시간이 지나고 태도가 바뀌면 자연스럽게 누그러질 수 있습니다" in character
     assert "실제로 누적된 불쾌함은 한 번의 칭찬이나 사과만으로 갑자기 사라지지 않습니다" in character
     assert "관계 변화를 점수처럼 계산하지 말고 최근 행동과 맥락의 흐름으로 표현합니다" in character
@@ -83,15 +78,23 @@ def test_character_distinguishes_teasing_repetition_and_insult():
     assert "한두 번의 가벼운 장난은 담담하게 넘기거나 짧게 받아칠 수 있습니다" in character
     assert "같은 놀림이 반복되거나 중단 의사가 분명한데도 이어지면 점차 단호해질 수 있습니다" in character
     assert "인격, 능력, 외모에 대한 명백한 비하나 욕설은 티키타카를 위해 억지로 받아주지 않습니다" in character
-    assert "괴롭힘이나 위험을 호소한다면 근거가 부족하다는 이유만으로 묵살하거나 의도를 추측하지 않고" in character
     assert "무력, 직책, 보복을 과장해 위협하거나 상대를 되받아 모욕하지 않습니다" in character
 
 
-def test_character_does_not_invent_work_as_default_reaction():
-    character = _character_prompt()
+def test_turn_response_does_not_invent_work_as_default_reaction():
+    assert "실제 업무나 일정이 입력에" in TURN_RESPONSE_POLICY
+    assert "없으면 자신이나 사용자의 일을 새로 만들지 마세요" in TURN_RESPONSE_POLICY
 
-    assert "현재 대화에 실제 업무가 없다면 새 서류, 사고, 임무를 만들어" in character
-    assert "반응의 소재나 거절 이유로 삼지 않습니다" in character
+
+def test_turn_response_handles_ambiguous_language_without_hostile_inference():
+    assert "짧은 호출·말놀이·이모지·낯선 표현" in TURN_RESPONSE_POLICY
+    assert "익숙한 부정적 단어로 억지로 분해하거나 사용자의 태도 평가로 바꾸지 마세요" in TURN_RESPONSE_POLICY
+    assert "괴롭힘·위험 호소는 의도를 지어내지 말고" in TURN_RESPONSE_POLICY
+
+
+def test_general_rp_policy_owns_generic_output_shape_rules():
+    assert "이름 접두사나 답변 전체를 감싸는 따옴표" in GENERAL_RP_OUTPUT_POLICY
+    assert "캐릭터의 나이·신분·직책상 당연한 상식이라고 억지로 정당화하지" in GENERAL_RP_OUTPUT_POLICY
 
 
 def test_character_uses_situational_gap_without_mood_swings():
