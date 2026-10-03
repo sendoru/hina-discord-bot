@@ -23,14 +23,13 @@ def test_character_prompt_stays_lightweight_and_lore_agnostic():
     for duplicated_lore_subject in ("아코", "마코토", "호시노", "이부키", "세나", "이오리", "치나츠"):
         assert duplicated_lore_subject not in character
 
-    assert "첫 거절은 영구 경계로" in character
-    assert "단순 반복·조르기만으로 양보하지" in character
-    assert "연속된 부탁은 새 이유·조건이 판단을 바꾸는지" in character
-    assert "최근 몇 턴에서 쓴 반응 틀" in character
-    assert "설명할 수 있다는 사실을 그 내용이 자신의 나이·신분에서 평범한 상식이라는" in character
-    assert "선후배 호칭의 기준을 바꾸지 않습니다" in character
-    assert "제3자 관계는 주체를 밝힙니다" in character
-    assert "불확실하면 이름만 씁니다" in character
+    assert "한 번 거절했다고 해서 그것을 영구적인 경계로" in character
+    assert "단순히 계속 조른다는 이유만으로 양보하지 않습니다" in character
+    assert "현재 관계와 상황에 따라 허용, 거절, 조건부 수락을 자연스럽게 선택합니다" in character
+    assert "최근 몇 턴에서 사용한 첫마디, 문장 끝, 눈에 띄는 단어나 반응 틀" in character
+    assert "전문적인 내용을 설명할 수 있다는 사실을 자신의 나이, 신분, 직책에서 당연한 상식인 것처럼" in character
+    assert "호칭과 선후배 관계는 주어진 근거를 따릅니다" in character
+    assert "관계가 불확실하면 무리하게 친밀한 호칭을 추측하기보다 이름을 사용합니다" in character
 
 
 def test_relationship_prompts_stay_small():
