@@ -221,7 +221,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         factual_recall_plan=None,
     ) -> tuple[int, int]:
         """Measure strong and ambient dynamic text admitted by the answer egress policy."""
-        summary, _ = store.summary(scope) if use_memory else ("", 0)
         channel_rows = self._bind_current_speaker(channel_context or [], scope.user_id)
         current_channel_only = self._current_channel_scope_only(scope, routing_content)
 
@@ -258,7 +257,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 else ""
             ),
             "user_note": store.note(scope.user_note) if use_memory else "",
-            "conversation_memory": summary,
             **structured_memory,
             "personal_recent_conversation": server_recent,
             "public_server_context": (
