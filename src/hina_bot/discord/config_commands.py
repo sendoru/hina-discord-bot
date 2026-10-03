@@ -34,6 +34,16 @@ _PRIVACY_CHOICES = [
 ]
 
 
+
+def apply_runtime_setting_side_effects(client, key: str) -> None:
+    if key == "channel_context_chars":
+        client.recent.budget = client.settings.channel_context_chars
+    elif key in {"external_context_policy", "always_reply_channel_ids"}:
+        # Direct-trigger provenance changes when either the privacy policy or implicit guild
+        # trigger set changes. Do not let rows classified under the old policy survive.
+        client.recent.clear_all()
+
+
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 @app_commands.allowed_installs(guilds=True, users=True)
 class ConfigCommands(app_commands.Group):
@@ -63,12 +73,7 @@ class ConfigCommands(app_commands.Group):
             await interaction.response.send_message(text, ephemeral=True)
 
     def _apply_side_effects(self, key: str) -> None:
-        if key == "channel_context_chars":
-            self.client.recent.budget = self.client.settings.channel_context_chars
-        elif key in {"external_context_policy", "always_reply_channel_ids"}:
-            # Direct-trigger provenance changes when either the privacy policy or implicit guild
-            # trigger set changes. Do not let rows classified under the old policy survive.
-            self.client.recent.clear_all()
+        apply_runtime_setting_side_effects(self.client, key)
 
     @app_commands.command(name="status", description="현재 런타임 설정과 DB override 확인")
     async def status(self, interaction: discord.Interaction):

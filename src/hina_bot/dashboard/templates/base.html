@@ -44,6 +44,11 @@
         </div>
 
         <div class="nav-group">
+          <span class="nav-group-label">Admin</span>
+          <a class="nav-link {% if request.url.path.startswith('/admin/runtime') %}active{% endif %}" {% if request.url.path.startswith('/admin/runtime') %}aria-current="page"{% endif %} href="/admin/runtime">Runtime Config</a>
+        </div>
+
+        <div class="nav-group">
           <span class="nav-group-label">Memory ops</span>
           <a class="nav-link {% if request.url.path == '/summaries' %}active{% endif %}" {% if request.url.path == '/summaries' %}aria-current="page"{% endif %} href="/summaries">Summaries</a>
           <a class="nav-link {% if request.url.path == '/memory/cursors' %}active{% endif %}" {% if request.url.path == '/memory/cursors' %}aria-current="page"{% endif %} href="/memory/cursors">Cursors</a>
@@ -63,6 +68,7 @@
             {% elif request.url.path.startswith('/memory') %}Memory
             {% elif request.url.path == '/relationships' %}Relationships
             {% elif request.url.path == '/state' %}State
+            {% elif request.url.path.startswith('/admin/runtime') %}Runtime Config
             {% elif request.url.path == '/summaries' %}Summaries
             {% elif request.url.path.startswith('/reconciliation') %}Reconciliation
             {% else %}Dashboard{% endif %}
@@ -84,6 +90,11 @@
             <a class="mobile-nav-link {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}active{% endif %}" {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}aria-current="page"{% endif %} href="/memory">Memory</a>
             <a class="mobile-nav-link {% if request.url.path == '/relationships' %}active{% endif %}" {% if request.url.path == '/relationships' %}aria-current="page"{% endif %} href="/relationships">Relationships</a>
             <a class="mobile-nav-link {% if request.url.path == '/state' %}active{% endif %}" {% if request.url.path == '/state' %}aria-current="page"{% endif %} href="/state">State</a>
+          </div>
+
+          <div class="mobile-nav-group">
+            <span class="mobile-nav-group-label">Admin</span>
+            <a class="mobile-nav-link {% if request.url.path.startswith('/admin/runtime') %}active{% endif %}" {% if request.url.path.startswith('/admin/runtime') %}aria-current="page"{% endif %} href="/admin/runtime">Runtime Config</a>
           </div>
 
           <div class="mobile-nav-group">

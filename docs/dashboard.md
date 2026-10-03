@@ -50,6 +50,7 @@ The dashboard currently exposes the following read-only routes:
 - `/memory/cursors`: structured extraction cursor/pending state
 - `/reconciliation`: shadow reconciliation proposal review
 - `/reconciliation/{id}`: old/new memory comparison and extraction context
+- `/admin/runtime`: queued runtime configuration set/reset + recent action audit
 - `/healthz`: database/telemetry source health
 
 The HTML surface is intentionally desktop-oriented and server-rendered. It uses no client-side
@@ -71,6 +72,17 @@ automatically.
 
 Existing raw-retention behavior is unchanged. The dashboard does not turn `turns` into a permanent
 conversation archive; it can only inspect rows that the normal bounded retention policy still keeps.
+
+## Runtime configuration editing
+
+The runtime editor never updates `runtime_config` directly. POST actions append `runtime.set` or
+`runtime.reset` commands to the audited queue; the bot process executes them through
+`RuntimeSettings.set_text()` / `reset()` and applies the same recent-context side effects used by
+Discord `/config` commands.
+
+The page shows persisted DB overrides and whether a key currently falls back to startup configuration.
+It intentionally does not reconstruct the bot process's startup fallback value inside the dashboard
+process; a separate read-only effective-config surface can add that later.
 
 ## Turn correlation
 

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% from "_status_ui.html" import status_badge %}
+{% block title %}Runtime Config · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Runtime Config</h1>
+    <p class="muted">DB override를 봇 프로세스의 RuntimeSettings를 통해 적용합니다. override가 없는 startup 값은 이 화면에서 재해석하지 않습니다.</p>
+  </div>
+</section>
+
+{% if not dashboard_write_enabled %}
+<section class="notice warning">
+  Write mode is disabled. 로컬에서 <code>DASHBOARD_ENABLE_WRITES=true</code>로 명시적으로 켜야 수정할 수 있습니다.
+</section>
+{% endif %}
+{% if queued %}
+<section class="notice">
+  Admin command <strong>#{{ queued }}</strong>를 queue에 넣었습니다. 아래 audit 상태는 다음 새로고침에서 갱신됩니다.
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Settings</h2>
+      <p class="muted">DB 값은 현재 override입니다. <code>startup</code>은 봇 시작 시 읽은 설정을 사용한다는 뜻입니다.</p>
+    </div>
+  </div>
+  <div class="table-scroll" tabindex="0">
+    <table>
+      <thead>
+        <tr>
+          <th>Setting</th>
+          <th>Source</th>
+          <th>Current DB override</th>
+          <th>Set</th>
+          <th>Reset</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>
+            <strong>{{ row.env_name }}</strong>
+            <small><code>{{ row.key }}</code> · {{ row.kind }}</small>
+          </td>
+          <td>{{ row.source }}</td>
+          <td>
+            {% if row.error %}<span class="badge error">invalid stored value</span>
+            {% elif row.source == "db" %}<code>{{ row.value }}</code>
+            {% else %}<span class="muted">startup</span>{% endif %}
+            {% if row.updated_at %}<small>{{ row.updated_at | localtime }}</small>{% endif %}
+          </td>
+          <td>
+            <form method="post" action="/admin/runtime/set">
+              <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
+              <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
+              <input type="hidden" name="key" value="{{ row.key }}">
+              <label class="sr-only" for="runtime-{{ row.key }}">New {{ row.env_name }}</label>
+              <input id="runtime-{{ row.key }}" name="value" type="text"
+                     placeholder="new value" {% if not dashboard_write_enabled %}disabled{% endif %}>
+              <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Set</button>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="/admin/runtime/reset">
+              <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
+              <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
+              <input type="hidden" name="key" value="{{ row.key }}">
+              <button type="submit" {% if not dashboard_write_enabled or row.source != "db" %}disabled{% endif %}>Reset</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Recent runtime actions</h2>
+      <p class="muted">완료 후 원래 payload는 audit row에서 제거됩니다.</p>
+    </div>
+  </div>
+  {% if actions %}
+  <div class="table-scroll" tabindex="0">
+    <table>
+      <thead><tr><th>ID</th><th>Action</th><th>Target</th><th>Status</th><th>Result / error</th><th>Created</th></tr></thead>
+      <tbody>
+      {% for action in actions %}
+        <tr>
+          <td>#{{ action.id }}</td>
+          <td><code>{{ action.action }}</code></td>
+          <td><code>{{ action.target }}</code></td>
+          <td>{{ status_badge(action.status) }}</td>
+          <td>
+            {% if action.error_type %}
+              <strong>{{ action.error_type }}</strong><br><small>{{ action.error_message }}</small>
+            {% elif action.result_json and action.result_json != "{}" %}
+              <code>{{ action.result_json }}</code>
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ action.created_at | localtime }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">아직 runtime admin action이 없습니다.</p>
+  {% endif %}
+</section>
+{% endblock %}
