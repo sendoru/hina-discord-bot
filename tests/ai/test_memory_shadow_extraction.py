@@ -304,25 +304,53 @@ def test_persist_shadow_items_never_upgrades_private_source_visibility():
     store.close()
 
 
-def test_new_cursor_baselines_from_existing_legacy_summary():
-    store = Store(":memory:", history_turns=12)
+
+def test_legacy_summary_cursor_is_migrated_then_table_dropped(tmp_path):
+    path = tmp_path / "legacy-summary.sqlite3"
     scope = Scope(None, 10, 100)
+    store = Store(str(path), history_turns=12)
     _add_turns(store, scope, 101, 6)
     history = store.history(scope)
-    store.save_summary(scope, "기존 요약", history[3]["id"])
-
-    baseline = store.memory_extraction_cursor(scope)
-    assert baseline == history[3]["id"]
-    pending = store.pending_memory_extraction(scope)
-    assert [row["message_id"] for row in pending] == ["105", "106"]
-
-    store.save_summary(scope, "더 최신 요약", history[-1]["id"])
-    assert store.memory_extraction_cursor(scope) == baseline
+    baseline = history[3]["id"]
+    with store.db:
+        store.db.execute(
+            """CREATE TABLE summaries (
+                   scope TEXT PRIMARY KEY, realm TEXT NOT NULL, user_id TEXT NOT NULL,
+                   name TEXT NOT NULL DEFAULT '', text TEXT NOT NULL,
+                   through_id INTEGER NOT NULL, exportable INTEGER NOT NULL
+               )"""
+        )
+        store.db.execute(
+            """INSERT INTO summaries(
+                   scope,realm,user_id,name,text,through_id,exportable
+               ) VALUES (?,?,?,?,?,?,?)""",
+            (
+                scope.conversation,
+                scope.realm,
+                str(scope.user_id),
+                "User",
+                "기존 요약",
+                baseline,
+                1,
+            ),
+        )
     store.close()
 
+    migrated = Store(str(path), history_turns=12)
+    try:
+        assert migrated.memory_extraction_cursor(scope) == baseline
+        assert [
+            row["message_id"]
+            for row in migrated.pending_memory_extraction(scope)
+        ] == ["105", "106"]
+        assert migrated.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='summaries'"
+        ).fetchone() is None
+    finally:
+        migrated.close()
 
 @pytest.mark.asyncio
-async def test_structured_extraction_runs_at_four_turns_without_legacy_summary():
+async def test_structured_extraction_runs_at_four_turns():
     store = Store(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 4)
@@ -339,7 +367,6 @@ async def test_structured_extraction_runs_at_four_turns_without_legacy_summary()
 
     await harness.extract_structured_memory(store, scope)
 
-    assert store.summary(scope) == ("", 0)
     assert store.memory_extraction_cursor(scope) == store.history(scope)[-1]["id"]
     rows = store.memory_items(100)
     assert len(rows) == 1
@@ -393,12 +420,13 @@ def test_stale_extraction_scope_query_uses_age_and_pending_count():
     store.close()
 
 
-def test_stale_extraction_scope_query_respects_legacy_summary_baseline():
+
+def test_stale_extraction_scope_query_respects_structured_cursor():
     store = Store(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 4)
     history = store.history(scope)
-    store.save_summary(scope, "legacy", history[1]["id"])
+    store.save_memory_extraction_cursor(scope, history[1]["id"])
     with store.db:
         store.db.execute(
             "UPDATE turns SET created_at=datetime('now','-9 hours') WHERE scope=?",
@@ -413,7 +441,6 @@ def test_stale_extraction_scope_query_respects_legacy_summary_baseline():
     assert scopes == [scope]
     assert store.memory_extraction_cursor(scope) == history[1]["id"]
     store.close()
-
 
 @pytest.mark.asyncio
 async def test_stale_single_turn_can_be_extracted_with_explicit_minimum():
@@ -609,27 +636,7 @@ async def test_extractor_failure_does_not_advance_cursor():
 
 
 @pytest.mark.asyncio
-async def test_legacy_summary_and_structured_cursor_advance_independently():
-    store = Store(":memory:", history_turns=12)
-    scope = Scope(None, 10, 100)
-    _add_turns(store, scope, 101, 4)
-    harness = _harness(
-        _response('{"items":[]}'),
-        _response("사용자의 기존 장기 기억"),
-    )
-
-    await harness.extract_structured_memory(store, scope)
-    structured_through = store.memory_extraction_cursor(scope)
-    assert store.summary(scope) == ("", 0)
-
-    _add_turns(store, scope, 105, 4)
-    await harness.summarize(store, scope)
-
-    assert store.memory_extraction_cursor(scope) == structured_through
-    assert store.summary(scope)[0] == "사용자의 기존 장기 기억"
-    operations = [call.args[1] for call in harness.usage.request.await_args_list]
-    assert operations == ["extract_memory_items_shadow", "summarize"]
-    store.close()
+async 
 
 
 def test_server_reconciliation_candidates_follow_disclosure_space():
