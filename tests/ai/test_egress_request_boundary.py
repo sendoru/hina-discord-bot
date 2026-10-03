@@ -136,7 +136,7 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
         assert "OTHER-DIRECT" in serialized
         assert "HINA-TO-OTHER" in serialized
         assert "MY-NOTE" in serialized
-        assert "MY-SUMMARY" in serialized
+        assert "MY-SUMMARY" not in serialized
         assert "MY-PUBLIC-MEMORY" in serialized
         assert "TARGET-HISTORY" in serialized
         assert "[대상 사용자의 채널 발언]" in payload["instructions"]
