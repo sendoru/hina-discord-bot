@@ -12,7 +12,8 @@
     <dl class="metadata compact">
       <div><dt>Tier</dt><dd>{{ row.model_tier or "—" }}</dd></div>
       <div><dt>Tokens</dt><dd>{{ row.total_tokens if row.total_tokens is not none else "—" }}</dd></div>
-      <div><dt>Latency</dt><dd>{{ row.elapsed_ms ~ " ms" if row.elapsed_ms is not none else "—" }}</dd></div>
+      <div><dt>Reply latency</dt><dd>{{ row.reply_latency_ms ~ " ms" if row.reply_latency_ms is not none else "—" }}</dd></div>
+      <div><dt>Turn total</dt><dd>{{ row.turn_latency_ms ~ " ms" if row.turn_latency_ms is not none else "—" }}</dd></div>
       <div><dt>Search</dt><dd>{{ row.web_search_calls if row.web_search else "—" }}</dd></div>
       <div><dt>Error</dt><dd><code>{{ row.error_fingerprint or ("yes" if row.error else "—") }}</code></dd></div>
       <div><dt>Memory failures</dt><dd>{{ row.memory_failures }}</dd></div>

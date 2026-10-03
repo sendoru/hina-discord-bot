@@ -3,7 +3,7 @@
 import re
 from dataclasses import dataclass
 
-from .rp_output_policy import FACTUAL_CHALLENGE_QUERY, SOURCE_REQUEST_QUERY
+from .rp_output_policy import FACTUAL_CHALLENGE_QUERY
 
 _FOLLOWUP = re.compile(
     r"^\s*(?:그럼|그러면|그렇다면|그래서|근데|그런데|"
@@ -155,8 +155,7 @@ def find_prior_user_request(
 def build_query(content: str, anchor: str) -> str:
     if not anchor:
         return content
-    # A prior request for a citation should not make the new turn a citation request too.
-    topic = SOURCE_REQUEST_QUERY.sub(" ", anchor)
+    topic = anchor
     followup = _PREFIX.sub("", content.strip())
     followup = _TOPIC_PARTICLE.sub(r"\1", followup)
     suffix = "\n" + followup

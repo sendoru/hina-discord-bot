@@ -35,13 +35,9 @@ from .web_search_text import response_text
 
 
 def _transient_answer_failure(exc: BaseException) -> bool:
-    return (
-        isinstance(exc, httpx.TimeoutException)
-        or (
-            isinstance(exc, ProviderAPIError)
-            and exc.status_code == 503
-        )
-    )
+    # A request timeout already consumed the interactive latency budget. Replaying the
+    # whole provider/tool turn can double the stall and repeat expensive managed-tool work.
+    return isinstance(exc, ProviderAPIError) and exc.status_code == 503
 
 
 def _serialized_chars(value) -> int:

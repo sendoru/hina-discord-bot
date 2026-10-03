@@ -28,3 +28,36 @@ def test_response_text_sanitizes_even_when_citations_are_visible():
 def test_does_not_strip_normal_json_content():
     text = '{"name":"히나","role":"선도부장"}\n이건 일반 JSON이야.'
     assert strip_internal_control_prefix(text) == text
+
+
+def test_hidden_provider_citation_does_not_remove_model_authored_link():
+    provider_url = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/token"
+    text = "출처는 공식 위키야. (https://example.com/wiki)"
+    response = SimpleNamespace(
+        output_text=text + " (vertexaisearch.cloud.google.com/grounding-api-redirect/token)",
+        output=[
+            SimpleNamespace(
+                type="message",
+                content=[
+                    SimpleNamespace(
+                        type="output_text",
+                        text=text + " (vertexaisearch.cloud.google.com/grounding-api-redirect/token)",
+                        annotations=[
+                            SimpleNamespace(
+                                type="url_citation",
+                                start_index=len(text),
+                                end_index=len(text) + len(
+                                    " (vertexaisearch.cloud.google.com/grounding-api-redirect/token)"
+                                ),
+                                url=provider_url,
+                                title="source",
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+
+    assert response_text(response, hide_citations=True) == text
+
