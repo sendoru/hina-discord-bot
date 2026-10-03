@@ -2,7 +2,33 @@
 {% from "_scope_picker.html" import scope_picker %}
 {% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw, scope_metadata %}
 {% from "_status_ui.html" import status_badge %}
-{% block title %}State · Hina Dashboard<section class="panel">
+{% block title %}State · Hina Dashboard{% endblock %}
+{% block content %}
+{% macro admin_scope_fields() -%}
+<input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
+<input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
+<input type="hidden" name="target_scope_type" value="{{ data.filters.target_scope_type }}">
+<input type="hidden" name="target_guild_id" value="{{ data.filters.target_guild_id }}">
+<input type="hidden" name="target_channel_id" value="{{ data.filters.target_channel_id }}">
+<input type="hidden" name="target_dm_channel_id" value="{{ data.filters.target_dm_channel_id }}">
+<input type="hidden" name="target_user_id" value="{{ data.filters.target_user_id }}">
+{% if data.filters.q %}<input type="hidden" name="q" value="{{ data.filters.q }}">{% endif %}
+{%- endmacro %}
+{% macro chain_rows(chain, include_server=true) -%}
+<tr><td>global</td><td>{{ chain.global or "inherit / default" }}</td></tr>
+{% if include_server %}<tr><td>server</td><td>{{ chain.server or "inherit" }}</td></tr>{% endif %}
+<tr><td>channel</td><td>{{ chain.channel or "inherit" }}</td></tr>
+<tr><td><strong>effective</strong></td><td><strong>{{ chain.effective }}</strong> <span class="muted">from {{ chain.source }}</span></td></tr>
+{%- endmacro %}
+
+<section class="page-heading">
+  <div>
+    <h1>Memory &amp; Context State</h1>
+    <p>적용된 메모리·최근 대화 정책과 수동 메모를 확인하고, 로컬 write mode에서는 같은 화면에서 관리합니다.</p>
+  </div>
+</section>
+
+<section class="panel">
   <div class="panel-heading">
     <div>
       <h2>Recent state admin actions</h2>
@@ -34,32 +60,6 @@
   {% else %}
   <p class="muted">아직 state admin action이 없습니다.</p>
   {% endif %}
-</section>
-
-{% endblock %}
-{% block content %}
-{% macro admin_scope_fields() -%}
-<input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
-<input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
-<input type="hidden" name="target_scope_type" value="{{ data.filters.target_scope_type }}">
-<input type="hidden" name="target_guild_id" value="{{ data.filters.target_guild_id }}">
-<input type="hidden" name="target_channel_id" value="{{ data.filters.target_channel_id }}">
-<input type="hidden" name="target_dm_channel_id" value="{{ data.filters.target_dm_channel_id }}">
-<input type="hidden" name="target_user_id" value="{{ data.filters.target_user_id }}">
-{% if data.filters.q %}<input type="hidden" name="q" value="{{ data.filters.q }}">{% endif %}
-{%- endmacro %}
-{% macro chain_rows(chain, include_server=true) -%}
-<tr><td>global</td><td>{{ chain.global or "inherit / default" }}</td></tr>
-{% if include_server %}<tr><td>server</td><td>{{ chain.server or "inherit" }}</td></tr>{% endif %}
-<tr><td>channel</td><td>{{ chain.channel or "inherit" }}</td></tr>
-<tr><td><strong>effective</strong></td><td><strong>{{ chain.effective }}</strong> <span class="muted">from {{ chain.source }}</span></td></tr>
-{%- endmacro %}
-
-<section class="page-heading">
-  <div>
-    <h1>Memory &amp; Context State</h1>
-    <p>적용된 메모리·최근 대화 정책과 수동 메모를 확인하고, 로컬 write mode에서는 같은 화면에서 관리합니다.</p>
-  </div>
 </section>
 
 <section class="state-query-panel" aria-label="State lookup controls">
