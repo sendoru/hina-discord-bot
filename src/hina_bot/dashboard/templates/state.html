@@ -1,8 +1,53 @@
 {% extends "base.html" %}
 {% from "_scope_picker.html" import scope_picker %}
 {% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw, scope_metadata %}
-{% block title %}State · Hina Dashboard{% endblock %}
+{% from "_status_ui.html" import status_badge %}
+{% block title %}State · Hina Dashboard<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Recent state admin actions</h2>
+      <p class="muted">완료된 action은 제출 payload를 보존하지 않습니다.</p>
+    </div>
+  </div>
+  {% if data.admin_actions %}
+  <div class="table-wrap" tabindex="0" role="region" aria-label="state admin audit">
+    <table>
+      <thead><tr><th>ID</th><th>Action</th><th>Target</th><th>Status</th><th>Result / error</th><th>Created</th></tr></thead>
+      <tbody>
+      {% for action in data.admin_actions %}
+      <tr>
+        <td>#{{ action.id }}</td>
+        <td><code>{{ action.action }}</code></td>
+        <td><code>{{ action.target }}</code></td>
+        <td>{{ status_badge(action.status) }}</td>
+        <td>
+          {% if action.error_type %}<strong>{{ action.error_type }}</strong><br><small>{{ action.error_message }}</small>
+          {% elif action.result_json and action.result_json != "{}" %}<code>{{ action.result_json }}</code>
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ action.created_at | localtime }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">아직 state admin action이 없습니다.</p>
+  {% endif %}
+</section>
+
+{% endblock %}
 {% block content %}
+{% macro admin_scope_fields() -%}
+<input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
+<input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
+<input type="hidden" name="target_scope_type" value="{{ data.filters.target_scope_type }}">
+<input type="hidden" name="target_guild_id" value="{{ data.filters.target_guild_id }}">
+<input type="hidden" name="target_channel_id" value="{{ data.filters.target_channel_id }}">
+<input type="hidden" name="target_dm_channel_id" value="{{ data.filters.target_dm_channel_id }}">
+<input type="hidden" name="target_user_id" value="{{ data.filters.target_user_id }}">
+{% if data.filters.q %}<input type="hidden" name="q" value="{{ data.filters.q }}">{% endif %}
+{%- endmacro %}
 {% macro chain_rows(chain, include_server=true) -%}
 <tr><td>global</td><td>{{ chain.global or "inherit / default" }}</td></tr>
 {% if include_server %}<tr><td>server</td><td>{{ chain.server or "inherit" }}</td></tr>{% endif %}
@@ -13,7 +58,7 @@
 <section class="page-heading">
   <div>
     <h1>Memory &amp; Context State</h1>
-    <p>적용된 메모리·최근 대화 정책과 수동 메모를 읽기 전용으로 보여줍니다.</p>
+    <p>적용된 메모리·최근 대화 정책과 수동 메모를 확인하고, 로컬 write mode에서는 같은 화면에서 관리합니다.</p>
   </div>
 </section>
 
@@ -178,6 +223,122 @@
         </table>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Admin controls</h2>
+      <p class="muted">모든 변경은 bot process가 실행하는 audited command queue를 거칩니다.</p>
+    </div>
+  </div>
+  {% if not dashboard_write_enabled %}
+  <p class="notice warning">Write mode is disabled. <code>DASHBOARD_ENABLE_WRITES=true</code>가 필요합니다.</p>
+  {% endif %}
+  {% if data.queued %}
+  <p class="notice">Admin command <strong>#{{ data.queued }}</strong>를 queue에 넣었습니다.</p>
+  {% endif %}
+
+  <div class="grid-2">
+    <form method="post" action="/state/admin" class="panel">
+      {{ admin_scope_fields() }}
+      <input type="hidden" name="action" value="memory.mode">
+      <h3>Memory mode</h3>
+      <label>Target
+        <select name="target" {% if not dashboard_write_enabled %}disabled{% endif %}>
+          <option value="channel">channel</option>
+          {% if data.effective.scope.guild_id is not none %}<option value="server">server</option>{% endif %}
+          <option value="global">global</option>
+        </select>
+      </label>
+      <label>Mode
+        <select name="mode" {% if not dashboard_write_enabled %}disabled{% endif %}>
+          <option value="normal">normal</option>
+          <option value="read_only">read_only</option>
+          <option value="write_only">write_only</option>
+          <option value="off">off</option>
+          <option value="inherit">inherit</option>
+        </select>
+      </label>
+      <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Apply memory mode</button>
+    </form>
+
+    <form method="post" action="/state/admin" class="panel">
+      {{ admin_scope_fields() }}
+      <input type="hidden" name="action" value="chatlog.mode">
+      <h3>Recent context mode</h3>
+      <label>Target
+        <select name="target" {% if not dashboard_write_enabled %}disabled{% endif %}>
+          <option value="channel">channel</option>
+          {% if data.effective.scope.guild_id is not none %}<option value="server">server</option>{% endif %}
+          <option value="global">global</option>
+        </select>
+      </label>
+      <label>Mode
+        <select name="mode" {% if not dashboard_write_enabled %}disabled{% endif %}>
+          <option value="all">all</option>
+          <option value="direct">direct</option>
+          <option value="off">off</option>
+          <option value="inherit">inherit</option>
+        </select>
+      </label>
+      <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Apply recent mode</button>
+    </form>
+  </div>
+
+  <div class="grid-2">
+    <form method="post" action="/state/admin" class="panel">
+      {{ admin_scope_fields() }}
+      <input type="hidden" name="target" value="user">
+      <h3>User note</h3>
+      <textarea name="text" rows="5" maxlength="1500" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ data.effective.notes.user }}</textarea>
+      <div class="scope-target-actions">
+        <button type="submit" name="action" value="note.set" {% if not dashboard_write_enabled %}disabled{% endif %}>Save user note</button>
+        <button type="submit" name="action" value="note.clear" class="secondary" {% if not dashboard_write_enabled %}disabled{% endif %}>Clear</button>
+      </div>
+    </form>
+
+    {% if data.effective.scope.guild_id is not none %}
+    <form method="post" action="/state/admin" class="panel">
+      {{ admin_scope_fields() }}
+      <input type="hidden" name="target" value="server">
+      <h3>Server note</h3>
+      <textarea name="text" rows="5" maxlength="1500" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ data.effective.notes.server }}</textarea>
+      <div class="scope-target-actions">
+        <button type="submit" name="action" value="note.set" {% if not dashboard_write_enabled %}disabled{% endif %}>Save server note</button>
+        <button type="submit" name="action" value="note.clear" class="secondary" {% if not dashboard_write_enabled %}disabled{% endif %}>Clear</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="grid-2">
+    <form method="post" action="/state/admin" class="panel">
+      {{ admin_scope_fields() }}
+      <input type="hidden" name="action" value="chatlog.clear">
+      <h3>Clear recent buffer</h3>
+      <p class="muted">현재 선택한 채널의 메모리 내 recent buffer만 비웁니다. 장기기억은 유지됩니다.</p>
+      <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Clear recent buffer</button>
+    </form>
+
+    <form method="post" action="/state/admin" class="panel">
+      {{ admin_scope_fields() }}
+      <input type="hidden" name="action" value="memory.purge">
+      <h3>Purge automatic memory</h3>
+      <label>Target
+        <select name="target" {% if not dashboard_write_enabled %}disabled{% endif %}>
+          <option value="channel">channel</option>
+          {% if data.effective.scope.guild_id is not none %}<option value="server">server</option>{% endif %}
+          <option value="global">global</option>
+        </select>
+      </label>
+      <label>
+        <input type="checkbox" name="confirm" value="yes" {% if not dashboard_write_enabled %}disabled{% endif %}>
+        선택한 범위의 자동 장기기억 삭제를 확인합니다.
+      </label>
+      <button type="submit" class="danger" {% if not dashboard_write_enabled %}disabled{% endif %}>Purge memory</button>
+    </form>
   </div>
 </section>
 

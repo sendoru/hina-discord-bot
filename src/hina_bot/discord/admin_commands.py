@@ -9,9 +9,12 @@ from hina_bot.core.admin_commands import (
     finish_admin_command,
     mark_interrupted_admin_commands,
 )
+from hina_bot.core.routing import Scope
 from hina_bot.core.runtime_config import RuntimeSettings, format_runtime_value
 
+from .chatlog_commands import _set_mode_override
 from .config_commands import apply_runtime_setting_side_effects
+from .memory_commands import MemoryCommands
 
 log = logging.getLogger("hina")
 
@@ -39,6 +42,103 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
             "value": format_runtime_value(parsed),
             "source": client.settings.source(key),
         }
+
+    if command.action.startswith(("memory.", "chatlog.", "note.")):
+        payload = command.payload
+        guild_raw = payload.get("guild_id")
+        channel_raw = payload.get("channel_id")
+        user_raw = payload.get("user_id")
+        try:
+            guild_id = None if guild_raw in (None, "") else int(guild_raw)
+            channel_id = int(channel_raw)
+            user_id = int(user_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid admin scope") from exc
+        if channel_id <= 0 or user_id <= 0 or (guild_id is not None and guild_id <= 0):
+            raise ValueError("invalid admin scope")
+        scope = Scope(guild_id, channel_id, user_id)
+
+        if command.action == "memory.mode":
+            target = str(payload.get("target") or "channel")
+            mode = str(payload.get("mode") or "")
+            if mode not in {"normal", "read_only", "write_only", "off", "inherit"}:
+                raise ValueError("invalid memory mode")
+            key = MemoryCommands._target_key(scope, target)
+            if target == "global" and mode == "inherit":
+                raise ValueError("global memory mode cannot inherit")
+            async with client.channel_lock(scope):
+                client.store.set_memory_mode_override(
+                    key,
+                    None if mode == "inherit" else mode,
+                )
+            return {"target": target, "scope": key, "mode": mode}
+
+        if command.action == "memory.purge":
+            target = str(payload.get("target") or "channel")
+            async with client.channel_lock(scope):
+                if target == "channel":
+                    deleted = client.store.purge_channel_memory(scope)
+                elif target == "server":
+                    if scope.guild_id is None:
+                        raise ValueError("DM scope cannot purge a server")
+                    deleted = client.store.purge_realm_memory(scope)
+                elif target == "global":
+                    deleted = client.store.purge_all_memory()
+                else:
+                    raise ValueError("invalid memory purge target")
+            return {"target": target, "deleted": deleted}
+
+        if command.action == "chatlog.mode":
+            target = str(payload.get("target") or "channel")
+            mode = str(payload.get("mode") or "")
+            if mode not in {"all", "direct", "off", "inherit"}:
+                raise ValueError("invalid chatlog mode")
+            key = {
+                "global": "global",
+                "server": scope.realm,
+                "channel": scope.channel,
+            }.get(target)
+            if key is None or (target == "server" and scope.guild_id is None):
+                raise ValueError("invalid chatlog target")
+            if target == "global" and mode == "inherit":
+                raise ValueError("global chatlog mode cannot inherit")
+            async with client.channel_lock(scope):
+                _set_mode_override(
+                    client.store,
+                    key,
+                    None if mode == "inherit" else mode,
+                )
+                if target == "global":
+                    client.recent.clear_all()
+                elif target == "server":
+                    client.recent.forget(scope)
+                else:
+                    client.recent.clear_channel(scope)
+            return {"target": target, "scope": key, "mode": mode}
+
+        if command.action == "chatlog.clear":
+            async with client.channel_lock(scope):
+                client.recent.clear_channel(scope)
+            return {"scope": scope.channel, "cleared": True}
+
+        if command.action in {"note.set", "note.clear"}:
+            note_target = str(payload.get("target") or "user")
+            if note_target == "user":
+                key = scope.user_note
+            elif note_target == "server" and scope.guild_id is not None:
+                key = scope.realm
+            else:
+                raise ValueError("invalid note target")
+            text = "" if command.action == "note.clear" else str(payload.get("text") or "").strip()
+            if command.action == "note.set" and not 1 <= len(text) <= 1500:
+                raise ValueError("note must be 1..1500 characters")
+            async with client.channel_lock(scope):
+                if note_target == "user":
+                    async with client.memory_lock(scope):
+                        client.store.set_note(key, text)
+                else:
+                    client.store.set_note(key, text)
+            return {"target": note_target, "scope": key, "cleared": not bool(text)}
 
     raise ValueError(f"unsupported admin action: {command.action}")
 
