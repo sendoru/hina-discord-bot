@@ -127,6 +127,11 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert response.status_code == 200
     assert 'class="runtime-config-table"' in response.text
     assert "<th>Set</th>" not in response.text
+    assert 'class="runtime-config-action-header"' in response.text
+    assert "data-runtime-config-action-view" in response.text
+    assert "data-runtime-config-action-edit" in response.text
+    assert 'form="runtime-config-form-channel_context_chars"' in response.text
+    assert 'colspan="5"' in response.text
     assert "data-runtime-config-editor" in response.text
     assert "data-runtime-config-form" in response.text
     assert "Set override" in response.text
