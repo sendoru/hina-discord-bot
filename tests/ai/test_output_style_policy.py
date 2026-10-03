@@ -2,7 +2,7 @@ from importlib.resources import files
 
 from hina_bot.ai.llm import POLICY
 from hina_bot.ai.request_assembly import CURRENT_SPEAKER_POLICY, TURN_RESPONSE_POLICY
-from hina_bot.ai.runtime_llm import GENERAL_RP_OUTPUT_POLICY, SUMMARY_POLICY
+from hina_bot.ai.runtime_llm import GENERAL_RP_OUTPUT_POLICY, SHARED_SUMMARY_POLICY
 
 
 def _character_prompt() -> str:
@@ -116,11 +116,11 @@ def test_character_keeps_agency_and_private_inexperience():
     assert "그 자체로 싫어함이나 거절의 근거로 삼지 않습니다" in character
 
 
-def test_summary_policy_drops_transient_conflict_and_stale_attitude():
-    assert "일시적인 놀림, 티격태격, 말다툼" in SUMMARY_POLICY
-    assert "말투나 태도를 한두 번 지적한 사실도 장기 기억으로" in SUMMARY_POLICY
-    assert "새 요약에서 제거하세요" in SUMMARY_POLICY
-    assert "현재 사용자를 경계하거나 불쾌해할 근거로 요약하지 마세요" in SUMMARY_POLICY
+def test_shared_summary_policy_drops_transient_conflict_and_stale_attitude():
+    assert "일시적인 놀림, 티격태격, 말다툼" in SHARED_SUMMARY_POLICY
+    assert "말투나 태도를 한두 번 지적한 사실도 장기 기억으로" in SHARED_SUMMARY_POLICY
+    assert "새 요약에서 제거하세요" in SHARED_SUMMARY_POLICY
+    assert "현재 사용자를 경계하거나 불쾌해할 근거로 요약하지 마세요" in SHARED_SUMMARY_POLICY
 
 
 def test_speaker_policy_does_not_transfer_previous_speaker_attitude():
