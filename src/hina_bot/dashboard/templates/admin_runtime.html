@@ -107,8 +107,7 @@
                     class="runtime-config-edit-form"
                     data-runtime-config-form
                     method="post"
-                    action="/admin/runtime/set"
-                    hidden>
+                    action="/admin/runtime/set">
                 <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
                 <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
                 <input type="hidden" name="key" value="{{ row.key }}">
