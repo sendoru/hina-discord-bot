@@ -3097,10 +3097,10 @@ pre {
 }
 
 .runtime-config-current-view {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) 140px;
   gap: 12px;
-  align-items: flex-start;
-  justify-content: flex-start;
+  align-items: start;
   min-width: max-content;
 }
 
@@ -3138,6 +3138,10 @@ pre {
 .runtime-config-edit-form button,
 .runtime-config-reset button {
   white-space: nowrap;
+}
+
+.runtime-config-edit-button {
+  justify-self: start;
 }
 
 .runtime-config-edit-form input[type="text"] {
