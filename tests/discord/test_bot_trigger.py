@@ -824,6 +824,49 @@ async def test_same_channel_next_turn_can_generate_while_prior_generation_runs(b
 
 
 @pytest.mark.asyncio
+async def test_inflight_duplicate_is_dropped_while_generation_is_unlocked(base_client):
+    client, _, llm, channel, guild, event_path = base_client
+    author = NS(
+        id=100,
+        bot=False,
+        display_name="사용자",
+        guild_permissions=NS(manage_guild=False),
+    )
+    first_answer_started = asyncio.Event()
+    release_first_answer = asyncio.Event()
+
+    async def answer(*args, **kwargs):
+        first_answer_started.set()
+        await release_first_answer.wait()
+        return "응"
+
+    llm.answer.side_effect = answer
+    message = make_message(
+        channel,
+        guild,
+        message_id=190,
+        author=author,
+        text="<@99> 중복될 수 있는 질문",
+        mentions=(99,),
+    )
+
+    first = asyncio.create_task(client.on_message(message))
+    await asyncio.wait_for(first_answer_started.wait(), timeout=1.0)
+
+    await asyncio.wait_for(client.on_message(message), timeout=1.0)
+    assert llm.answer.await_count == 1
+
+    rows = [json.loads(line) for line in event_path.read_text().splitlines()]
+    assert any(
+        row.get("event") == "turn.dropped" and row.get("reason") == "duplicate"
+        for row in rows
+    )
+
+    release_first_answer.set()
+    await first
+
+
+@pytest.mark.asyncio
 async def test_same_channel_next_turn_can_generate_while_prior_memory_update_runs(base_client):
     client, _, llm, channel, guild, _ = base_client
     author = NS(
