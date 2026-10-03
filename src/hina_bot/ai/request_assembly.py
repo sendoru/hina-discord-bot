@@ -327,10 +327,10 @@ class RequestAssembler(BaseLLM):
             "space": "server" if scope.guild_id is not None else "DM",
             "server_note": (
                 store.note(scope.realm)
-                if cross_channel_memory and scope.guild_id is not None
+                if use_memory and scope.guild_id is not None
                 else ""
             ),
-            "user_note": store.note(scope.user_note) if cross_channel_memory else "",
+            "user_note": store.note(scope.user_note) if use_memory else "",
             "conversation_memory": summary,
             **structured_memory,
             "personal_recent_conversation": server_recent,
