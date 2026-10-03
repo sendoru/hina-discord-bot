@@ -504,6 +504,41 @@ async def test_dm_response_receives_all_owner_structured_memory_even_when_legacy
 
 
 @pytest.mark.asyncio
+async def test_answer_ignores_stored_legacy_summary_but_keeps_structured_memory():
+    calls = []
+    client = _client(calls)
+    llm = LLM(
+        Settings(
+            discord_token="test",
+            openai_api_key="test",
+            external_context_policy="full",
+        ),
+        client=client,
+    )
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    try:
+        store.save_summary(dm, "LEGACY_SUMMARY_MARKER", 0)
+        store.add_memory_item(
+            dm,
+            "STRUCTURED_MEMORY_MARKER",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+
+        await llm.answer(store, dm, "사용자", "안녕", channel_context=[])
+
+        reference = _reference(calls[-1])
+        raw = json.dumps(reference, ensure_ascii=False)
+        assert "conversation_memory" not in reference
+        assert "LEGACY_SUMMARY_MARKER" not in raw
+        assert "STRUCTURED_MEMORY_MARKER" in raw
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
 async def test_server_receives_numeric_implicit_profile_without_cross_space_raw_content():
     calls = []
     client = _client(calls)

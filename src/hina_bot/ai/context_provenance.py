@@ -167,7 +167,6 @@ def build_context_provenance(
     sections = [
         _section("server_note", context.get("server_note")),
         _section("user_note", context.get("user_note")),
-        _section("conversation_memory", context.get("conversation_memory")),
         _section("personal_recent_conversation", context.get("personal_recent_conversation", ())),
         _section("conversation_history", context.get("conversation_history", ())),
         _section(

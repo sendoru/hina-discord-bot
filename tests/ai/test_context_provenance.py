@@ -12,7 +12,6 @@ def test_context_provenance_distinguishes_reference_and_direct_sources_without_c
     context = {
         "server_note": "",
         "user_note": "present but not copied",
-        "conversation_memory": "present but not copied",
         "personal_recent_conversation": [],
         "conversation_history": [],
         "public_server_context": [{
@@ -84,13 +83,16 @@ def test_context_provenance_distinguishes_reference_and_direct_sources_without_c
     assert lore["reference_id"] == "canon.test"
     assert lore["kind"] == "world_fact"
 
+    assert "conversation_memory" not in {
+        row["name"] for row in result["sections"]
+    }
+
     serialized = repr(result)
     for secret in (
         "direct content",
         "quoted content",
         "must not be copied",
         "lore body must not be copied",
-        "present but not copied",
     ):
         assert secret not in serialized
 
