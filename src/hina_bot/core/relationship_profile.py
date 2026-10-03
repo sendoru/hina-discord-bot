@@ -14,7 +14,7 @@ from .memory_items import (
 )
 from .routing import Scope
 
-RELATIONSHIP_MIN_ITEM_CONFIDENCE = 0.8
+RELATIONSHIP_MIN_ITEM_CONFIDENCE = 0.0
 RELATIONSHIP_MAX_OBSERVATIONS = 8
 RELATIONSHIP_RECENCY_DECAY = 0.85
 
@@ -53,7 +53,7 @@ def _eligible_implicit_relationship_observations(
         if item.user_id == str(scope.user_id)
         and item.kind == MemoryKind.RELATIONSHIP
         and item.disclosure == MemoryDisclosure.IMPLICIT
-        and item.confidence >= min_confidence
+        and item.confidence > min_confidence
         and item.relationship_evidence
         and memory_access(item, scope) == MemoryAccess.IMPLICIT
     ]
@@ -74,7 +74,7 @@ def _eligible_owner_relationship_observations(
         for item in items
         if item.user_id == str(scope.user_id)
         and item.kind == MemoryKind.RELATIONSHIP
-        and item.confidence >= min_confidence
+        and item.confidence > min_confidence
         and item.relationship_evidence
         and memory_access(item, scope) == MemoryAccess.FULL
     ]
