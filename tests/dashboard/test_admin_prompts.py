@@ -117,6 +117,9 @@ def test_prompt_state_page_reads_existing_rows(tmp_path):
     assert 'class="prompt-field prompt-field-body"' in response.text
     assert 'class="prompt-actions"' in response.text
     assert 'class="scope-target-actions"' not in response.text
+    assert 'data-confirm-remove="existing.rule"' in response.text
+    assert 'name="confirm"' not in response.text
+    assert "prompt-state.js" in response.text
 
 
 def test_prompt_state_post_only_enqueues_and_remove_requires_confirmation(tmp_path):
@@ -167,3 +170,52 @@ def test_prompt_state_post_only_enqueues_and_remove_requires_confirmation(tmp_pa
     ).fetchone()
     assert row == ("instruction.edit", "existing.rule", "pending")
     db.close()
+
+
+
+def test_prompt_state_command_status_endpoint(tmp_path):
+    database = tmp_path / "hina.sqlite3"
+    _seed_dashboard_database(database)
+    app = create_app(
+        DashboardSettings(
+            database_path=str(database),
+            usage_log_path=str(tmp_path / "usage.jsonl"),
+            event_log_path=str(tmp_path / "events.jsonl"),
+            write_enabled=True,
+        )
+    )
+    csrf = app.state.admin_writer.csrf_token
+
+    with TestClient(app) as client:
+        queued = client.post(
+            "/admin/prompts/instruction",
+            data={
+                "_csrf": csrf,
+                "_request_id": "f" * 32,
+                "action": "edit",
+                "id": "existing.rule",
+                "text": "변경 지침",
+            },
+            follow_redirects=False,
+        )
+        assert queued.status_code == 303
+
+        db = sqlite3.connect(database)
+        command_id = db.execute(
+            "SELECT id FROM admin_commands ORDER BY id DESC LIMIT 1"
+        ).fetchone()[0]
+        db.close()
+
+        status = client.get(
+            f"/admin/commands/{command_id}",
+            headers={"accept": "application/json"},
+        )
+        script = client.get("/static/prompt-state.js")
+
+    assert status.status_code == 200
+    assert status.json()["status"] == "pending"
+    assert status.json()["action"] == "instruction.edit"
+    assert "payload_json" not in status.json()
+    assert script.status_code == 200
+    assert "window.confirm" in script.text
+    assert "/admin/commands/" in script.text
