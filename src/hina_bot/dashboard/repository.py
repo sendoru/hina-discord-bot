@@ -57,6 +57,87 @@ class AdminRepository:
             rows = db.execute(f"PRAGMA table_info({table})").fetchall()
         return any(str(row["name"]) == column for row in rows)
 
+    def runtime_config_startup_rows(self) -> list[dict[str, object]]:
+        if not self._table_exists("runtime_config_startup"):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT key,value,captured_at FROM runtime_config_startup ORDER BY key"
+            ).fetchall()
+        return self._dicts(rows)
+
+    def runtime_config_rows(self) -> list[dict[str, object]]:
+        if not self._table_exists("runtime_config"):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT key,value,updated_at FROM runtime_config ORDER BY key"
+            ).fetchall()
+        return self._dicts(rows)
+
+    def admin_command_row(self, command_id: int) -> dict[str, object] | None:
+        if not self._table_exists("admin_commands"):
+            return None
+        with self._connection() as db:
+            row = db.execute(
+                """SELECT id,request_id,actor,action,target,status,result_json,
+                          error_type,error_message,created_at,started_at,finished_at
+                   FROM admin_commands WHERE id=?""",
+                (int(command_id),),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def admin_command_rows(
+        self,
+        *,
+        action_prefix: str = "",
+        limit: int = 50,
+    ) -> list[dict[str, object]]:
+        if not self._table_exists("admin_commands"):
+            return []
+        limit = self._limit(limit, maximum=200)
+        with self._connection() as db:
+            if action_prefix:
+                rows = db.execute(
+                    """SELECT id,request_id,actor,action,target,status,result_json,
+                              error_type,error_message,created_at,started_at,finished_at
+                       FROM admin_commands
+                       WHERE action LIKE ?
+                       ORDER BY id DESC LIMIT ?""",
+                    (action_prefix + "%", limit),
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    """SELECT id,request_id,actor,action,target,status,result_json,
+                              error_type,error_message,created_at,started_at,finished_at
+                       FROM admin_commands
+                       ORDER BY id DESC LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+        return self._dicts(rows)
+
+    def instruction_rows(self) -> list[dict[str, object]]:
+        if not self._table_exists("instructions"):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT id,text,enabled,created_at,updated_at
+                   FROM instructions ORDER BY rowid"""
+            ).fetchall()
+        return self._dicts(rows)
+
+    def runtime_knowledge_rows(self) -> list[dict[str, object]]:
+        if not self._table_exists("runtime_knowledge"):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT id,kind,content,keywords,subjects,awareness,timeline,
+                          enabled,created_at,updated_at
+                   FROM runtime_knowledge
+                   ORDER BY kind,rowid"""
+            ).fetchall()
+        return self._dicts(rows)
+
     def observability_epochs(self) -> list[dict[str, object]]:
         if not self._table_exists("observability_epochs"):
             return []

@@ -24,3 +24,17 @@ def test_dashboard_settings_reject_invalid_port(monkeypatch):
     monkeypatch.setenv("DASHBOARD_PORT", "70000")
     with pytest.raises(ValueError):
         DashboardSettings.load()
+
+
+def test_dashboard_write_mode_requires_loopback(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_ENABLE_WRITES", "true")
+    monkeypatch.setenv("DASHBOARD_HOST", "0.0.0.0")
+    with pytest.raises(ValueError, match="loopback"):
+        DashboardSettings.load()
+
+
+def test_dashboard_write_mode_can_be_enabled_on_loopback(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_ENABLE_WRITES", "true")
+    monkeypatch.setenv("DASHBOARD_HOST", "127.0.0.1")
+    settings = DashboardSettings.load()
+    assert settings.write_enabled is True

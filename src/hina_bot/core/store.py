@@ -2,6 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+from .admin_commands import ensure_admin_command_schema
 from .memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_CONTEXT
 from .memory_items import (
     MemoryDisclosure,
@@ -155,6 +156,8 @@ class Store:
                 ON channel_metadata(guild_id, channel_id);
             CREATE TABLE IF NOT EXISTS notes (scope TEXT PRIMARY KEY, text TEXT NOT NULL);
         """)
+        ensure_admin_command_schema(self.db)
+        self.db.commit()
         columns = {row["name"] for row in self.db.execute("PRAGMA table_info(turns)")}
         if "memory_context" not in columns:
             with self.db:

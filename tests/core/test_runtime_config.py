@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from hina_bot.core.config import Settings
-from hina_bot.core.runtime_config import RuntimeSettings
+from hina_bot.core.runtime_config import RUNTIME_SETTING_SPECS, RuntimeSettings
 from hina_bot.core.store import Store
 
 
@@ -231,6 +231,51 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
     finally:
         store.close()
 
+
+
+def test_runtime_settings_persist_startup_snapshot_for_dashboard(tmp_path: Path):
+    db = tmp_path / "runtime.sqlite3"
+    store = Store(str(db))
+    try:
+        RuntimeSettings(
+            _base(
+                model="startup-model",
+                channel_context_chars=4321,
+                runtime_default_location="Seoul",
+            ),
+            store,
+        )
+        rows = {
+            row["key"]: row["value"]
+            for row in store.db.execute(
+                "SELECT key,value FROM runtime_config_startup"
+            ).fetchall()
+        }
+        assert set(rows) == set(RUNTIME_SETTING_SPECS)
+        assert rows["model"] == '"startup-model"'
+        assert rows["channel_context_chars"] == "4321"
+        assert rows["runtime_default_location"] == '"Seoul"'
+        assert "openai_api_key" not in rows
+        assert "discord_token" not in rows
+    finally:
+        store.close()
+
+
+def test_runtime_settings_refresh_startup_snapshot_on_restart(tmp_path: Path):
+    db = tmp_path / "runtime.sqlite3"
+    store = Store(str(db))
+    RuntimeSettings(_base(model="first-startup"), store)
+    store.close()
+
+    store = Store(str(db))
+    try:
+        RuntimeSettings(_base(model="second-startup"), store)
+        value = store.db.execute(
+            "SELECT value FROM runtime_config_startup WHERE key='model'"
+        ).fetchone()[0]
+        assert value == '"second-startup"'
+    finally:
+        store.close()
 
 def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
     db = tmp_path / "runtime.sqlite3"
