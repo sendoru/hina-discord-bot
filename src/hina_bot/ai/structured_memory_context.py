@@ -27,11 +27,27 @@ def _owned(items: Iterable[MemoryItem], scope: Scope) -> list[MemoryItem]:
     return [item for item in items if item.user_id == owner]
 
 
-def _serialize_memory_item(item: MemoryItem) -> dict:
+def _scope_relation(item: MemoryItem, scope: Scope) -> str:
+    if (
+        item.origin_realm == scope.realm
+        and item.origin_channel_id == str(scope.channel_id)
+    ):
+        return "current_channel"
+    if (
+        scope.guild_id is not None
+        and item.origin_realm == scope.realm
+        and item.origin_realm.startswith("guild:")
+    ):
+        return "same_server_other_channel"
+    return "cross_space"
+
+
+def _serialize_memory_item(item: MemoryItem, scope: Scope) -> dict:
     row = {
         "kind": item.kind.value,
         "content": item.content,
         "confidence": item.confidence,
+        "scope_relation": _scope_relation(item, scope),
     }
     evidence = item.relationship_evidence.as_dict()
     if evidence:
@@ -45,24 +61,15 @@ def owner_dm_memory(items: Iterable[MemoryItem], scope: Scope) -> list[dict]:
     if scope.guild_id is not None:
         return []
     return [
-        _serialize_memory_item(item)
+        _serialize_memory_item(item, scope)
         for item in _owned(items, scope)
         if memory_access(item, scope) == MemoryAccess.FULL
     ]
 
 
-def _originates_in_current_channel(item: MemoryItem, scope: Scope) -> bool:
-    return (
-        item.origin_realm == scope.realm
-        and item.origin_channel_id == str(scope.channel_id)
-    )
-
-
 def _full_shared_items(
     items: Iterable[MemoryItem],
     scope: Scope,
-    *,
-    allow_cross_space: bool = True,
 ) -> list[MemoryItem]:
     """Return owner non-relationship items with FULL access in a shared space."""
 
@@ -73,46 +80,27 @@ def _full_shared_items(
         for item in _owned(items, scope)
         if item.kind != MemoryKind.RELATIONSHIP
         and memory_access(item, scope) == MemoryAccess.FULL
-        and (allow_cross_space or _originates_in_current_channel(item, scope))
     ]
 
 
-def full_shared_memory(
-    items: Iterable[MemoryItem],
-    scope: Scope,
-    *,
-    allow_cross_space: bool = True,
-) -> list[dict]:
+def full_shared_memory(items: Iterable[MemoryItem], scope: Scope) -> list[dict]:
     """Serialize non-relationship memory that is FULL in the current shared space."""
 
     return [
-        _serialize_memory_item(item)
-        for item in _full_shared_items(
-            items,
-            scope,
-            allow_cross_space=allow_cross_space,
-        )
+        _serialize_memory_item(item, scope)
+        for item in _full_shared_items(items, scope)
     ]
 
 
-def full_relationship_memory(
-    items: Iterable[MemoryItem],
-    scope: Scope,
-    *,
-    allow_cross_space: bool = True,
-) -> list[dict]:
+def full_relationship_memory(items: Iterable[MemoryItem], scope: Scope) -> list[dict]:
     """Return bounded raw relationship items that are FULL in the current shared space."""
 
     if scope.guild_id is None:
         return []
-    full = full_relationship_observations(items, scope)
-    if not allow_cross_space:
-        full = [
-            item
-            for item in full
-            if _originates_in_current_channel(item, scope)
-        ]
-    return [_serialize_memory_item(item) for item in full]
+    return [
+        _serialize_memory_item(item, scope)
+        for item in full_relationship_observations(items, scope)
+    ]
 
 
 def structured_memory_provenance(
@@ -154,11 +142,7 @@ def structured_memory_provenance(
         profile = aggregate_owner_relationship_evidence(items, scope)
         return {"items": selected, "relationship_axes": sorted(profile)}
 
-    for item in _full_shared_items(
-        items,
-        scope,
-        allow_cross_space=allow_cross_space,
-    ):
+    for item in _full_shared_items(items, scope):
         selected.append({
             "item_id": item.id,
             "projection": "shared_full",
@@ -170,12 +154,6 @@ def structured_memory_provenance(
         })
 
     full_items = full_relationship_observations(items, scope)
-    if not allow_cross_space:
-        full_items = [
-            item
-            for item in full_items
-            if _originates_in_current_channel(item, scope)
-        ]
     for item in full_items:
         selected.append({
             "item_id": item.id,
@@ -256,7 +234,7 @@ def structured_memory_context(
     }
     authorized = [
         {
-            **_serialize_memory_item(item),
+            **_serialize_memory_item(item, scope),
             "authorization": "owner_explicit_reference",
         }
         for item in items
@@ -264,16 +242,8 @@ def structured_memory_context(
     ]
     return {
         "structured_owner_memory": owner_dm_memory(items, scope),
-        "structured_full_memory": full_shared_memory(
-            items,
-            scope,
-            allow_cross_space=allow_cross_space,
-        ),
-        "structured_relationship_memory": full_relationship_memory(
-            items,
-            scope,
-            allow_cross_space=allow_cross_space,
-        ),
+        "structured_full_memory": full_shared_memory(items, scope),
+        "structured_relationship_memory": full_relationship_memory(items, scope),
         "owner_relationship_profile": (
             aggregate_owner_relationship_evidence(items, scope)
             if scope.guild_id is None
