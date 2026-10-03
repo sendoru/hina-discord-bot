@@ -326,6 +326,40 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
     assert service.trace("missing") is None
 
 
+def test_trace_summary_separates_reply_and_total_latency(tmp_path):
+    service = build_service(tmp_path)
+    assert service.telemetry.events_path is not None
+    with service.telemetry.events_path.open("a", encoding="utf-8") as handle:
+        for row in (
+            {
+                "at": "2026-09-21T00:00:00.100000+00:00",
+                "turn_id": "trace-1",
+                "event": "turn.preflight",
+                "scope": "guild",
+                "preflight_ms": 100,
+            },
+            {
+                "at": "2026-09-21T00:00:01.500000+00:00",
+                "turn_id": "trace-1",
+                "event": "turn.reply_delivered",
+                "scope": "guild",
+                "elapsed_ms": 700,
+                "delivery_ms": 50,
+            },
+        ):
+            handle.write(json.dumps(row) + "\n")
+
+    data = service.trace("trace-1")
+
+    assert data is not None
+    summary = data["summary"]
+    assert summary["elapsed_ms"] == 1000
+    assert summary["reply_latency_ms"] == 800
+    assert summary["turn_latency_ms"] == 1100
+    assert summary["post_reply_ms"] == 300
+    assert summary["exchange_elapsed_ms"] == 900
+
+
 def test_failed_trace_keeps_content_free_context_telemetry(tmp_path):
     service = build_service(tmp_path)
 
