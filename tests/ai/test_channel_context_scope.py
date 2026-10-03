@@ -28,7 +28,7 @@ def _response():
 
 
 @pytest.mark.asyncio
-async def test_current_channel_query_excludes_cross_channel_memory():
+async def test_current_channel_query_keeps_manual_notes_but_excludes_public_context():
     calls = []
 
     def handler(request):
@@ -67,15 +67,18 @@ async def test_current_channel_query_excludes_cross_channel_memory():
 
         payload = calls[-1]
         reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
-        assert reference["server_note"] == ""
-        assert reference["user_note"] == ""
+        assert reference["server_note"] == "OTHER_CHANNEL_SERVER_NOTE"
+        assert reference["user_note"] == "OTHER_CHANNEL_USER_NOTE"
         assert reference["public_server_context"] == []
         assert reference["channel_recent_messages"][0]["content"] == "CURRENT_CHANNEL_RECENT"
         assert "CURRENT_CHANNEL_PERSONAL" in json.dumps(
             reference["personal_recent_conversation"], ensure_ascii=False
         )
         assert "현재 채널 범위" in payload["instructions"]
-        assert "OTHER_CHANNEL" not in json.dumps(reference, ensure_ascii=False)
+        assert "OTHER_CHANNEL_PUBLIC_CONTEXT" not in json.dumps(
+            reference,
+            ensure_ascii=False,
+        )
     finally:
         await llm.close()
         store.close()

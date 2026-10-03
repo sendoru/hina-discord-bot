@@ -244,7 +244,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             store,
             scope,
             use_memory=use_memory,
-            allow_cross_space=cross_channel_memory,
+            allow_cross_space=use_memory,
             authorized_factual_items=(
                 factual_recall_plan.selected
                 if factual_recall_plan is not None
@@ -254,10 +254,10 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         context = {
             "server_note": (
                 store.note(scope.realm)
-                if cross_channel_memory and scope.guild_id is not None
+                if use_memory and scope.guild_id is not None
                 else ""
             ),
-            "user_note": store.note(scope.user_note) if cross_channel_memory else "",
+            "user_note": store.note(scope.user_note) if use_memory else "",
             "conversation_memory": summary,
             **structured_memory,
             "personal_recent_conversation": server_recent,
@@ -311,16 +311,12 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
 
         channel_rows = channel_context or ()
         CURRENT_MEMORY_CONTEXT.set(tuple(build_memory_context(channel_rows, scope.user_id)))
-        current_channel_only = self._current_channel_scope_only(
-            scope,
-            routing.routing_query,
-        )
         factual_recall_plan = plan_reference_gated_recall(
             assembly_store,
             scope,
             routing.visible_content,
             use_memory=use_memory,
-            allow_cross_space=use_memory and not current_channel_only,
+            allow_cross_space=use_memory,
         )
         visual_inputs = CURRENT_VISUAL_INPUTS.get()
         context_chars, ambient_context_chars = self._routing_context_chars(

@@ -292,6 +292,7 @@ class RequestAssembler(BaseLLM):
         search_mode = information_plan.search_mode
         provenance = information_plan.provenance
         cross_channel_memory = use_memory and not current_channel_only
+        structured_cross_space_memory = use_memory
         authorized_factual_items = (
             factual_recall_plan.selected
             if factual_recall_plan is not None
@@ -301,7 +302,7 @@ class RequestAssembler(BaseLLM):
             store,
             scope,
             use_memory=use_memory,
-            allow_cross_space=cross_channel_memory,
+            allow_cross_space=structured_cross_space_memory,
             authorized_factual_items=authorized_factual_items,
         )
         interaction = CURRENT_INTERACTION_CONTEXT.get() or {
@@ -326,10 +327,10 @@ class RequestAssembler(BaseLLM):
             "space": "server" if scope.guild_id is not None else "DM",
             "server_note": (
                 store.note(scope.realm)
-                if cross_channel_memory and scope.guild_id is not None
+                if use_memory and scope.guild_id is not None
                 else ""
             ),
-            "user_note": store.note(scope.user_note) if cross_channel_memory else "",
+            "user_note": store.note(scope.user_note) if use_memory else "",
             "conversation_memory": summary,
             **structured_memory,
             "personal_recent_conversation": server_recent,
@@ -385,7 +386,7 @@ class RequestAssembler(BaseLLM):
             store,
             scope,
             use_memory=use_memory,
-            allow_cross_space=cross_channel_memory,
+            allow_cross_space=structured_cross_space_memory,
             authorized_factual_items=authorized_factual_items,
         )
         context_provenance = build_context_provenance(
@@ -397,6 +398,7 @@ class RequestAssembler(BaseLLM):
             use_memory=use_memory,
             current_channel_only=current_channel_only,
             cross_channel_memory=cross_channel_memory,
+            structured_cross_space_memory=structured_cross_space_memory,
             structured=structured_trace,
             factual_recall=(
                 factual_recall_plan.provenance()
@@ -432,6 +434,7 @@ class RequestAssembler(BaseLLM):
             ),
             context_current_channel_only=current_channel_only,
             context_cross_channel_memory=cross_channel_memory,
+            context_structured_cross_space_memory=structured_cross_space_memory,
             factual_recall_detected=bool(
                 factual_recall_plan and factual_recall_plan.detected
             ),
@@ -460,6 +463,7 @@ class RequestAssembler(BaseLLM):
                 key: context.get(key)
                 for key in (
                     "structured_owner_memory",
+                    "structured_full_memory",
                     "structured_relationship_memory",
                     "owner_relationship_profile",
                     "cross_space_relationship",
@@ -542,6 +546,7 @@ class RequestAssembler(BaseLLM):
         }
         if (
             structured_memory["structured_owner_memory"]
+            or structured_memory["structured_full_memory"]
             or structured_memory["structured_relationship_memory"]
             or structured_memory["owner_relationship_profile"]
             or structured_memory["cross_space_relationship"]

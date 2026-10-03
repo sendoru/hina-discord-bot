@@ -1,8 +1,8 @@
-"""Shadow structured-memory extraction helpers.
+"""Structured-memory extraction helpers.
 
-This module deliberately has no read-path integration. It turns one already-selected
-personal-memory batch into validated ``memory_items`` rows so the classifications can
-be inspected before structured memory is allowed to affect replies.
+This module turns one already-selected personal-memory batch into validated
+``memory_items`` rows. Response-time projection and privacy policy live separately in
+``structured_memory_context``.
 """
 
 from __future__ import annotations

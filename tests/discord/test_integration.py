@@ -335,13 +335,13 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         await self.bot._sweep_stale_structured_memory()
 
         self.store.stale_memory_extraction_scopes.assert_called_once_with(
-            min_pending=2,
+            min_pending=1,
             stale_after_seconds=8 * 60 * 60,
         )
         self.llm.extract_structured_memory.assert_awaited_once_with(
             self.store,
             scope,
-            min_turns=2,
+            min_turns=1,
         )
         rows = [json.loads(line) for line in self.event_path.read_text().splitlines()]
         self.assertTrue(any(row["event"] == "memory.stale_sweep_completed" for row in rows))

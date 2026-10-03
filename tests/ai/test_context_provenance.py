@@ -150,6 +150,12 @@ def test_structured_memory_provenance_matches_owner_and_relationship_projection(
             kind=MemoryKind.FACT,
             disclosure=MemoryDisclosure.REFERENCE_GATED,
         )
+        full_fact_id = store.add_memory_item(
+            guild,
+            "same-space fact",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
         full_relationship_id = store.add_memory_item(
             guild,
             "same-space relationship",
@@ -175,6 +181,7 @@ def test_structured_memory_provenance_matches_owner_and_relationship_projection(
         )
         assert {row["item_id"] for row in owner["items"]} == {
             fact_id,
+            full_fact_id,
             full_relationship_id,
             implicit_relationship_id,
         }
@@ -188,6 +195,8 @@ def test_structured_memory_provenance_matches_owner_and_relationship_projection(
             allow_cross_space=True,
         )
         by_id = {row["item_id"]: row for row in shared["items"]}
+        assert by_id[full_fact_id]["projection"] == "shared_full"
+        assert by_id[full_fact_id]["access"] == "full"
         assert by_id[full_relationship_id]["projection"] == "relationship_full"
         assert by_id[full_relationship_id]["access"] == "full"
         assert by_id[implicit_relationship_id]["projection"] == "relationship_evidence"

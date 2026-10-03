@@ -850,7 +850,7 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     row = data["rows"][0]
     assert row["user_id"] == "100"
     assert row["observation_count"] == 5
-    assert row["profile"] == {"familiarity": 3}
+    assert row["profile"] == {"familiarity": 3, "comfort": 3}
     assert row["full_relationship_count"] == 2
     assert [item["id"] for item in row["full_relationships"]] == [
         same_space_id,
@@ -862,14 +862,19 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     assert row["full_relationships"][0]["guild_name"] == "Profile Guild"
     assert row["full_relationships"][0]["channel_name"] == "profile"
     assert row["full_relationships"][1]["disclosure"] == "global"
-    assert row["used_observations"] == 2
-    assert [item["id"] for item in row["contributors"]] == [second_id, first_id]
-    assert all(item["evidence"] == {"familiarity": 2} for item in row["contributors"])
+    assert row["used_observations"] == 3
+    assert [item["id"] for item in row["contributors"]] == [
+        low_conf_id,
+        second_id,
+        first_id,
+    ]
     assert [item["projected_evidence"] for item in row["contributors"]] == [
+        {"comfort": 4},
         {"familiarity": 2},
         {"familiarity": 2},
     ]
     assert [item["axis_ages"] for item in row["contributors"]] == [
+        {"comfort": 0},
         {"familiarity": 0},
         {"familiarity": 1},
     ]
@@ -890,9 +895,16 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     assert dm_target["filters"]["target_guild_id"] == ""
     assert dm_target["filters"]["target_channel_id"] == ""
     dm_row = dm_target["rows"][0]
-    assert dm_row["profile"] == {"familiarity": 3, "casualness": 4}
-    assert dm_row["used_observations"] == 3
+    assert dm_row["profile"] == {
+        "familiarity": 3,
+        "comfort": 3,
+        "casualness": 4,
+        "support_openness": 1,
+    }
+    assert dm_row["used_observations"] == 5
     assert [item["id"] for item in dm_row["contributors"]] == [
+        global_full_id,
+        low_conf_id,
         same_space_id,
         second_id,
         first_id,

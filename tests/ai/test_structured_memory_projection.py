@@ -9,6 +9,7 @@ from hina_bot.ai.structured_memory_context import (
     aggregate_owner_relationship_evidence,
     aggregate_relationship_evidence,
     full_relationship_memory,
+    full_shared_memory,
     owner_dm_memory,
 )
 from hina_bot.core.config import Settings
@@ -104,6 +105,55 @@ def test_owner_dm_memory_contains_every_owner_item_and_no_other_user_item():
     store.close()
 
 
+def test_shared_full_memory_contains_only_full_non_relationship_owner_items():
+    store = Store(":memory:")
+    current = Scope(1, 30, 100, True)
+    public_same_guild = Scope(1, 20, 100, True)
+    private_other_channel = Scope(1, 40, 100, False)
+    other_guild = Scope(2, 50, 100, True)
+    try:
+        store.add_memory_item(
+            public_same_guild,
+            "PUBLIC_SAME_GUILD_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            private_other_channel,
+            "PRIVATE_OTHER_CHANNEL_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            other_guild,
+            "GLOBAL_PREFERENCE",
+            kind=MemoryKind.PREFERENCE,
+            disclosure=MemoryDisclosure.GLOBAL,
+        )
+        store.add_memory_item(
+            other_guild,
+            "GATED_OTHER_GUILD_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.REFERENCE_GATED,
+        )
+        store.add_memory_item(
+            public_same_guild,
+            "SAME_SPACE_RELATIONSHIP",
+            kind=MemoryKind.RELATIONSHIP,
+            disclosure=MemoryDisclosure.IMPLICIT,
+            relationship_evidence={"familiarity": 2},
+        )
+
+        projected = full_shared_memory(store.memory_items(100), current)
+
+        assert {row["content"] for row in projected} == {
+            "PUBLIC_SAME_GUILD_FACT",
+            "GLOBAL_PREFERENCE",
+        }
+    finally:
+        store.close()
+
+
 def test_single_cross_space_observation_projects_numeric_profile_without_raw_text():
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
@@ -176,7 +226,11 @@ def test_owner_dm_profile_uses_all_eligible_owner_relationship_observations():
             dm,
         )
 
-        assert projection == {"familiarity": 2, "comfort": 3}
+        assert projection == {
+            "familiarity": 2,
+            "comfort": 3,
+            "casualness": 3,
+        }
     finally:
         store.close()
 
@@ -280,7 +334,7 @@ def test_missing_axis_is_not_interpreted_as_negative_evidence():
     store.close()
 
 
-def test_low_confidence_relationship_evidence_does_not_project():
+def test_relationship_evidence_below_old_threshold_is_weighted_not_dropped():
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
@@ -290,6 +344,26 @@ def test_low_confidence_relationship_evidence_does_not_project():
         kind=MemoryKind.RELATIONSHIP,
         disclosure=MemoryDisclosure.IMPLICIT,
         confidence=0.79,
+        relationship_evidence={"familiarity": 4},
+    )
+
+    assert aggregate_relationship_evidence(
+        store.memory_items(100),
+        server,
+    ) == {"familiarity": 3}
+    store.close()
+
+
+def test_zero_confidence_relationship_evidence_is_inert():
+    store = Store(":memory:")
+    dm = Scope(None, 10, 100)
+    server = Scope(1, 20, 100, True)
+    store.add_memory_item(
+        dm,
+        "zero confidence relationship",
+        kind=MemoryKind.RELATIONSHIP,
+        disclosure=MemoryDisclosure.IMPLICIT,
+        confidence=0.0,
         relationship_evidence={"familiarity": 4},
     )
 
@@ -350,6 +424,7 @@ def test_same_disclosure_space_gets_raw_relationship_memory_not_cross_space_prof
         "kind": "relationship",
         "content": "SAME_SPACE_RELATIONSHIP",
         "confidence": 0.95,
+        "scope_relation": "same_server_other_channel",
         "relationship_evidence": {"familiarity": 3, "casualness": 3},
     }]
     assert implicit == {}
@@ -411,6 +486,7 @@ async def test_dm_response_receives_all_owner_structured_memory_even_when_legacy
             row for row in reference["structured_owner_memory"]
             if row["content"] == "OTHER_GUILD_RELATION_MARKER"
         )
+        assert relationship["scope_relation"] == "cross_space"
         assert relationship["relationship_evidence"] == {
             "familiarity": 3,
             "task_orientation": 2,
@@ -485,6 +561,66 @@ async def test_server_receives_numeric_implicit_profile_without_cross_space_raw_
 
 
 @pytest.mark.asyncio
+async def test_same_space_response_receives_full_non_relationship_memory():
+    calls = []
+    client = _client(calls)
+    llm = LLM(
+        Settings(
+            discord_token="test",
+            openai_api_key="test",
+            external_context_policy="full",
+        ),
+        client=client,
+    )
+    store = Store(":memory:")
+    public_source = Scope(1, 20, 100, True)
+    private_source = Scope(1, 40, 100, False)
+    same_guild = Scope(1, 30, 100, True)
+    other_guild = Scope(2, 50, 100, True)
+    try:
+        store.add_memory_item(
+            public_source,
+            "PUBLIC_SAME_GUILD_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            private_source,
+            "PRIVATE_OTHER_CHANNEL_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            other_guild,
+            "GLOBAL_BOUNDARY",
+            kind=MemoryKind.BOUNDARY,
+            disclosure=MemoryDisclosure.GLOBAL,
+        )
+
+        await llm.answer(store, same_guild, "사용자", "안녕", channel_context=[])
+
+        payload = calls[-1]
+        reference = _reference(payload)
+        projected = {
+            row["content"]: row["scope_relation"]
+            for row in reference["structured_full_memory"]
+        }
+        assert projected == {
+            "PUBLIC_SAME_GUILD_FACT": "same_server_other_channel",
+            "GLOBAL_BOUNDARY": "cross_space",
+        }
+        assert "PRIVATE_OTHER_CHANNEL_FACT" not in json.dumps(
+            reference,
+            ensure_ascii=False,
+        )
+        assert reference["structured_relationship_memory"] == []
+        assert "구조화 사용자 기억" in payload["instructions"]
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
 async def test_same_space_response_receives_raw_relationship_and_evidence():
     calls = []
     client = _client(calls)
@@ -507,6 +643,9 @@ async def test_same_space_response_receives_raw_relationship_and_evidence():
         reference = _reference(calls[-1])
         raw = json.dumps(reference, ensure_ascii=False)
         assert "SAME_SPACE_RELATIONSHIP" in raw
+        assert reference["structured_relationship_memory"][0]["scope_relation"] == (
+            "same_server_other_channel"
+        )
         assert reference["structured_relationship_memory"][0]["relationship_evidence"] == {
             "familiarity": 3,
             "casualness": 3,
@@ -518,13 +657,14 @@ async def test_same_space_response_receives_raw_relationship_and_evidence():
 
 
 @pytest.mark.asyncio
-async def test_current_channel_scope_suppresses_only_cross_space_profile():
+async def test_current_channel_scope_keeps_safe_memory_with_scope_metadata():
     calls = []
     client = _client(calls)
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
+    other_public_channel = Scope(1, 30, 100, True)
     try:
         store.add_memory_item(
             dm,
@@ -533,6 +673,34 @@ async def test_current_channel_scope_suppresses_only_cross_space_profile():
             disclosure=MemoryDisclosure.IMPLICIT,
             confidence=0.95,
             relationship_evidence={"familiarity": 4},
+        )
+        store.add_memory_item(
+            other_public_channel,
+            "OTHER_CHANNEL_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            other_public_channel,
+            "OTHER_CHANNEL_RELATIONSHIP",
+            kind=MemoryKind.RELATIONSHIP,
+            disclosure=MemoryDisclosure.IMPLICIT,
+            confidence=0.95,
+            relationship_evidence={"comfort": 3},
+        )
+        store.add_memory_item(
+            server,
+            "CURRENT_CHANNEL_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            server,
+            "CURRENT_CHANNEL_RELATIONSHIP",
+            kind=MemoryKind.RELATIONSHIP,
+            disclosure=MemoryDisclosure.IMPLICIT,
+            confidence=0.95,
+            relationship_evidence={"task_orientation": 3},
         )
 
         await llm.answer(
@@ -545,11 +713,26 @@ async def test_current_channel_scope_suppresses_only_cross_space_profile():
 
         payload = calls[-1]
         reference = _reference(payload)
+        raw = json.dumps(reference, ensure_ascii=False)
         assert reference["owner_relationship_profile"] == {}
-        assert reference["cross_space_relationship"] == {}
-        assert reference["structured_relationship_memory"] == []
-        assert "RAW_RELATIONSHIP_SECRET" not in json.dumps(reference, ensure_ascii=False)
-        assert "구조화 사용자 기억" not in payload["instructions"]
+        assert reference["cross_space_relationship"] == {"familiarity": 4}
+        assert {
+            row["content"]: row["scope_relation"]
+            for row in reference["structured_full_memory"]
+        } == {
+            "OTHER_CHANNEL_FACT": "same_server_other_channel",
+            "CURRENT_CHANNEL_FACT": "current_channel",
+        }
+        assert {
+            row["content"]: row["scope_relation"]
+            for row in reference["structured_relationship_memory"]
+        } == {
+            "OTHER_CHANNEL_RELATIONSHIP": "same_server_other_channel",
+            "CURRENT_CHANNEL_RELATIONSHIP": "current_channel",
+        }
+        assert "RAW_RELATIONSHIP_SECRET" not in raw
+        assert "scope_relation=current_channel" in payload["instructions"]
+        assert "구조화 사용자 기억" in payload["instructions"]
     finally:
         await llm.close()
         store.close()

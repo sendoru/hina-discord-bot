@@ -137,6 +137,7 @@ def build_context_provenance(
     use_memory: bool,
     current_channel_only: bool,
     cross_channel_memory: bool,
+    structured_cross_space_memory: bool | None = None,
     structured: dict | None = None,
     factual_recall: dict | None = None,
     visuals=None,
@@ -238,6 +239,11 @@ def build_context_provenance(
             "use_memory": bool(use_memory),
             "current_channel_only": bool(current_channel_only),
             "cross_channel_memory": bool(cross_channel_memory),
+            "structured_cross_space_memory": bool(
+                cross_channel_memory
+                if structured_cross_space_memory is None
+                else structured_cross_space_memory
+            ),
         },
         "egress": {
             "adapter": adapter,
