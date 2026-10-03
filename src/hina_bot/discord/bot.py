@@ -136,6 +136,7 @@ class HinaClient(discord.Client):
         self.slots = asyncio.Semaphore(settings.concurrency)
         self.pending_count = 0
         self.active_tasks = set()
+        self.inflight_message_ids = set()
         self.memory_sweep_task = None
         self.stopping = False
         self.events = EventLogger(getattr(settings, "event_log_path", ""))
@@ -489,6 +490,7 @@ class HinaClient(discord.Client):
         raw_turn_persistence_reason = ""
         answer = ""
         timings = {}
+        inflight_registered = False
 
         def raw_turn_persistence_fields() -> dict[str, str]:
             if raw_turn_persistence == "pending":
@@ -557,7 +559,10 @@ class HinaClient(discord.Client):
                         raw_turn_persistence = "skipped"
                         raw_turn_persistence_reason = "memory_writes_disabled"
                     use_chat_log = received_chat_log and self.store.chat_log_enabled(scope)
-                    if self.store.seen(message.id):
+                    if (
+                        self.store.seen(message.id)
+                        or message.id in self.inflight_message_ids
+                    ):
                         self.events.emit(
                             "turn.dropped",
                             scope=scope_kind,
@@ -566,6 +571,8 @@ class HinaClient(discord.Client):
                         )
                         terminal_emitted = True
                         return
+                    self.inflight_message_ids.add(message.id)
+                    inflight_registered = True
                     if len(text) > 4000:
                         stage = "delivery"
                         await self.send_text(
@@ -761,8 +768,8 @@ class HinaClient(discord.Client):
                                         capture_turn_provenance=True,
                                     )
 
-                    # Persist the delivered turn before releasing the channel lock so duplicate
-                    # suppression and the next same-channel turn see a consistent transcript.
+                    # Reacquire the channel lock before committing the completed turn. Later turns
+                    # may already be generating from their own arrival-time context snapshots.
                     # Expensive extraction/summarization runs after the channel lock is released.
                     if save_memory:
                         stage = "memory_persist"
@@ -945,6 +952,8 @@ class HinaClient(discord.Client):
                     elapsed_ms=round((time.perf_counter() - turn_started) * 1000),
                     **raw_turn_persistence_fields(),
                 )
+            if inflight_registered:
+                self.inflight_message_ids.discard(message.id)
             self.active_tasks.discard(task)
             self.pending_count -= 1
             CURRENT_TURN_ID.reset(turn_token)
