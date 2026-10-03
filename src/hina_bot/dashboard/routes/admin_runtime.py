@@ -28,6 +28,37 @@ def _runtime_edit_value(value: object) -> str:
     return str(value)
 
 
+COLLECTION_KINDS = {"prefixes", "discord_ids"}
+
+
+def _collection_items(value: object, kind: str) -> list[str]:
+    if kind == "prefixes" and isinstance(value, tuple):
+        return [str(item) for item in value]
+    if kind == "discord_ids" and isinstance(value, (set, frozenset)):
+        return [str(item) for item in sorted(value)]
+    return []
+
+
+def _collection_meta(kind: str) -> dict[str, object]:
+    if kind == "prefixes":
+        return {
+            "item_label": "Prefix",
+            "item_placeholder": "new prefix",
+            "max_items": 20,
+            "empty_allowed": False,
+            "ordered": True,
+        }
+    if kind == "discord_ids":
+        return {
+            "item_label": "Discord channel ID",
+            "item_placeholder": "new channel ID",
+            "max_items": 100,
+            "empty_allowed": True,
+            "ordered": False,
+        }
+    return {}
+
+
 def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
     overrides = {
         str(row["key"]): row
@@ -42,6 +73,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
         stored = overrides.get(key)
         snapshot = startup.get(key)
 
+        decoded_startup = None
         startup_value = None
         startup_edit_value = ""
         startup_error = ""
@@ -53,6 +85,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 startup_error = type(exc).__name__
 
+        decoded_override = None
         override_value = None
         override_edit_value = ""
         override_error = ""
@@ -69,6 +102,15 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
         effective_edit_value = (
             override_edit_value if override_valid else startup_edit_value
         )
+        effective_decoded = decoded_override if override_valid else decoded_startup
+        is_collection = spec.kind in COLLECTION_KINDS
+        collection_items = (
+            _collection_items(effective_decoded, spec.kind) if is_collection else []
+        )
+        startup_items = (
+            _collection_items(decoded_startup, spec.kind) if is_collection else []
+        )
+        collection_meta = _collection_meta(spec.kind) if is_collection else {}
         rows.append(
             {
                 "key": key,
@@ -86,6 +128,14 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
                 "override_value": override_value,
                 "override_error": override_error,
                 "updated_at": stored.get("updated_at") if stored else None,
+                "is_collection": is_collection,
+                "collection_items": collection_items,
+                "collection_preview": collection_items[:3],
+                "collection_extra": max(0, len(collection_items) - 3),
+                "startup_items": startup_items,
+                "startup_preview": startup_items[:3],
+                "startup_extra": max(0, len(startup_items) - 3),
+                **collection_meta,
             }
         )
     return rows
