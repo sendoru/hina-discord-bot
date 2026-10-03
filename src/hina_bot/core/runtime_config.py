@@ -8,6 +8,7 @@ from math import isfinite
 from typing import Any
 
 from .config import (
+    EXTERNAL_CONTEXT_POLICIES,
     GEMINI_THINKING_LEVELS,
     Settings,
     parse_call_prefixes,
@@ -24,6 +25,7 @@ class RuntimeSettingSpec:
     minimum: int | float | None = None
     maximum: int | float | None = None
     empty_allowed: bool = False
+    choices: tuple[str, ...] = ()
 
 
 RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
@@ -42,7 +44,10 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "public_memory_in_dm", "PUBLIC_SERVER_MEMORY_IN_DM", "bool"
     ),
     "external_context_policy": RuntimeSettingSpec(
-        "external_context_policy", "EXTERNAL_CONTEXT_POLICY", "string"
+        "external_context_policy",
+        "EXTERNAL_CONTEXT_POLICY",
+        "string",
+        choices=tuple(sorted(EXTERNAL_CONTEXT_POLICIES)),
     ),
     "chat_web_search": RuntimeSettingSpec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
     "community_lore": RuntimeSettingSpec("community_lore", "COMMUNITY_LORE", "bool"),
@@ -53,12 +58,16 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "output_tokens", "MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
     ),
     "gemini_thinking_level": RuntimeSettingSpec(
-        "gemini_thinking_level", "GEMINI_THINKING_LEVEL", "gemini_thinking_level"
+        "gemini_thinking_level",
+        "GEMINI_THINKING_LEVEL",
+        "gemini_thinking_level",
+        choices=tuple(sorted(GEMINI_THINKING_LEVELS)),
     ),
     "gemini_fast_thinking_level": RuntimeSettingSpec(
         "gemini_fast_thinking_level",
         "GEMINI_FAST_THINKING_LEVEL",
         "gemini_thinking_level",
+        choices=tuple(sorted(GEMINI_THINKING_LEVELS)),
     ),
     "gemini_smart_thinking_level": RuntimeSettingSpec(
         "gemini_smart_thinking_level",
