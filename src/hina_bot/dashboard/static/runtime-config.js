@@ -2,32 +2,26 @@
   const scalarEditors = document.querySelectorAll("[data-runtime-config-editor]");
 
   const closeScalarEditor = (editor, { restore = true } = {}) => {
-    const view = editor.querySelector("[data-runtime-config-view]");
-    const form = editor.querySelector("[data-runtime-config-form]");
     const input = editor.querySelector("[data-runtime-config-input]");
     const actionView = editor.querySelector("[data-runtime-config-action-view]");
     const actionEdit = editor.querySelector("[data-runtime-config-action-edit]");
-    if (!view || !form || !input || !actionView || !actionEdit) return;
+    if (!input || !actionView || !actionEdit) return;
     if (restore) input.value = input.dataset.originalValue || "";
-    form.hidden = true;
-    view.hidden = false;
+    editor.classList.remove("is-editing");
     actionEdit.hidden = true;
     actionView.hidden = false;
   };
 
   for (const editor of scalarEditors) {
-    const view = editor.querySelector("[data-runtime-config-view]");
-    const form = editor.querySelector("[data-runtime-config-form]");
     const input = editor.querySelector("[data-runtime-config-input]");
     const edit = editor.querySelector("[data-runtime-config-edit]");
     const cancel = editor.querySelector("[data-runtime-config-cancel]");
     const actionView = editor.querySelector("[data-runtime-config-action-view]");
     const actionEdit = editor.querySelector("[data-runtime-config-action-edit]");
-    if (!view || !form || !input || !edit || !cancel || !actionView || !actionEdit) continue;
+    if (!input || !edit || !cancel || !actionView || !actionEdit) continue;
 
     edit.addEventListener("click", () => {
-      view.hidden = true;
-      form.hidden = false;
+      editor.classList.add("is-editing");
       actionView.hidden = true;
       actionEdit.hidden = false;
       input.focus();
