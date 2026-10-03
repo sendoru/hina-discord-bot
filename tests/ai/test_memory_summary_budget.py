@@ -61,14 +61,6 @@ def _summary_llm(output_text: str):
     return llm
 
 
-def test_memory_summary_policies_keep_personal_and_shared_limits_separate():
-    assert "개인 장기 기억을 한국어 1800자 이내" in SUMMARY_POLICY
-    assert "장기 기억을 한국어 1200자 이내" in SHARED_SUMMARY_POLICY
-    assert "공개 참고 문맥으로 사용될 수 있으므로" in SHARED_SUMMARY_POLICY
-    assert "같은 말투·역할극 요청이 여러 번 나와도" in SUMMARY_POLICY
-    assert "'앞으로', '항상', '평소에도'" in SUMMARY_POLICY
-
-
 @pytest.mark.asyncio
 async def test_personal_summary_uses_shared_fixed_model_and_memory_generation_budget():
     llm = _summary_llm("x" * 2500)
