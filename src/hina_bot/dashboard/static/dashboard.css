@@ -879,7 +879,7 @@ summary:focus-visible {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -887,18 +887,31 @@ summary:focus-visible {
 }
 
 .nav-group {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin-top: 8px;
+  gap: 2px;
+  margin-top: 13px;
+}
+
+.nav-group::before {
+  position: absolute;
+  top: 31px;
+  bottom: 7px;
+  left: 10px;
+  width: 1px;
+  background: rgba(152, 164, 181, .14);
+  content: "";
+  pointer-events: none;
 }
 
 .nav-group-label {
-  padding: 9px 10px 5px;
+  padding: 3px 10px 6px;
   color: var(--muted-2);
-  font-size: 12px;
-  font-weight: 750;
-  letter-spacing: .09em;
+  font-size: 10px;
+  font-weight: 780;
+  letter-spacing: .12em;
+  line-height: 1.35;
   text-transform: uppercase;
 }
 
@@ -919,6 +932,21 @@ summary:focus-visible {
     background .15s ease,
     color .15s ease,
     transform .15s ease;
+}
+
+.nav-group > .nav-link {
+  width: calc(100% - 8px);
+  min-height: 35px;
+  margin-left: 8px;
+  padding: 7px 10px 7px 17px;
+  border-radius: 8px;
+}
+
+.nav-group > .nav-link.active::before {
+  top: 8px;
+  bottom: 8px;
+  left: 2px;
+  width: 2px;
 }
 
 .nav-link:hover {
@@ -946,7 +974,9 @@ summary:focus-visible {
 }
 
 .nav-home {
-  margin-bottom: 2px;
+  min-height: 40px;
+  margin-bottom: 3px;
+  font-weight: 650;
 }
 
 .sidebar-footer {
