@@ -3135,7 +3135,8 @@ pre {
   pointer-events: none;
 }
 
-.runtime-config-edit-form input[type="text"] {
+.runtime-config-edit-form input,
+.runtime-config-edit-form select {
   width: 100%;
   min-width: 0;
   max-width: 100%;
