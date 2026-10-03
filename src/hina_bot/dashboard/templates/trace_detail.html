@@ -86,7 +86,8 @@
   <div class="cards">
     <article class="card"><span>Egress policy</span><strong>{{ data.context_provenance.egress_policy or "—" }}</strong></article>
     <article class="card"><span>Current-channel only</span><strong>{{ "yes" if data.context_provenance.decisions.current_channel_only else "no" }}</strong></article>
-    <article class="card"><span>Cross-channel memory</span><strong>{{ "yes" if data.context_provenance.decisions.cross_channel_memory else "no" }}</strong></article>
+    <article class="card"><span>Cross-channel context</span><strong>{{ "yes" if data.context_provenance.decisions.cross_channel_memory else "no" }}</strong></article>
+    <article class="card"><span>Structured cross-space</span><strong>{{ "yes" if data.context_provenance.decisions.structured_cross_space_memory else "no" }}</strong></article>
     <article class="card"><span>Memory enabled</span><strong>{{ "yes" if data.context_provenance.decisions.use_memory else "no" }}</strong></article>
   </div>
 
