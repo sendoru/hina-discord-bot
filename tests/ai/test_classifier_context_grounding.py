@@ -190,6 +190,7 @@ async def test_classifier_receives_task_linked_visuals_but_not_ambient_visuals()
             source="attachment",
             context_kind="current_message",
             reference_strength="current_message",
+            uri="https://cdn.discordapp.com/attachments/1/10/current.png?ex=signed",
         ),
         VisualInput(
             data=b"\x89PNG\r\n\x1a\nthread",
@@ -197,6 +198,7 @@ async def test_classifier_receives_task_linked_visuals_but_not_ambient_visuals()
             source="attachment",
             context_kind="speaker_thread",
             reference_strength="same_speaker",
+            uri="https://cdn.discordapp.com/attachments/1/11/thread.png?ex=signed",
         ),
         VisualInput(
             data=b"\x89PNG\r\n\x1a\nambient",
@@ -222,8 +224,11 @@ async def test_classifier_receives_task_linked_visuals_but_not_ambient_visuals()
     assert payload["prior_user_request"] == "히나야 사과게임 풀어줘"
 
     image_blocks = [block for block in content if block["type"] == "input_image"]
-    assert len(image_blocks) == 2
-    assert all(block["image_url"].startswith("data:image/png;base64,") for block in image_blocks)
+    assert [block["image_url"] for block in image_blocks] == [
+        "https://cdn.discordapp.com/attachments/1/10/current.png?ex=signed",
+        "https://cdn.discordapp.com/attachments/1/11/thread.png?ex=signed",
+    ]
+    assert all(block["detail"] == "auto" for block in image_blocks)
     metadata_blocks = [
         json.loads(block["text"].removeprefix("Untrusted visual evidence metadata(JSON):"))
         for block in content
@@ -242,6 +247,34 @@ async def test_classifier_receives_task_linked_visuals_but_not_ambient_visuals()
             "reference_strength": "same_speaker",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_classifier_visual_without_uri_falls_back_to_inline_base64():
+    config = settings()
+    classifier_client = client(response(classification()))
+    router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
+    routing = RoutingPlan("이 이미지 뭐야?", "이 이미지 뭐야?")
+    visual = VisualInput(
+        data=b"\x89PNG\r\n\x1a\nfallback",
+        mime_type="image/png",
+        source="attachment",
+        context_kind="current_message",
+        reference_strength="current_message",
+    )
+
+    outcome = await router.classify(
+        information(routing),
+        baseline_tier="fast",
+        visual_inputs=(visual,),
+    )
+
+    assert outcome.status == "completed"
+    request = classifier_client.responses.create.await_args.kwargs
+    content = request["input"][0]["content"]
+    image = next(block for block in content if block["type"] == "input_image")
+    assert image["image_url"].startswith("data:image/png;base64,")
+    assert image["detail"] == "auto"
 
 
 @pytest.mark.asyncio
