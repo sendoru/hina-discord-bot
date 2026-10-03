@@ -440,34 +440,24 @@ async def test_runtime_smart_503_falls_back_to_fast_once():
 
 
 @pytest.mark.asyncio
-async def test_runtime_fast_timeout_retries_same_fast_model_once():
-    response = NS(status="completed", output_text="복구됨.", output=[], usage=None)
+async def test_runtime_fast_timeout_is_not_retried():
     raw = NS(
         provider_name="gemini",
-        responses=NS(
-            create=AsyncMock(
-                side_effect=[
-                    httpx.ReadTimeout("timed out"),
-                    response,
-                ]
-            )
-        ),
+        responses=NS(create=AsyncMock(side_effect=httpx.ReadTimeout("timed out"))),
         close=AsyncMock(),
     )
     llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
     llm.lore = LoreIndex([])
     store = Store(":memory:")
     try:
-        result = await llm.answer(
-            store,
-            Scope(None, 10, 100),
-            "사용자",
-            "안녕",
-        )
-        calls = [call.kwargs for call in raw.responses.create.await_args_list]
-        assert result == "복구됨."
-        assert [call["model"] for call in calls] == ["gemini-fast", "gemini-fast"]
-        assert len(calls) == 2
+        with pytest.raises(httpx.ReadTimeout):
+            await llm.answer(
+                store,
+                Scope(None, 10, 100),
+                "사용자",
+                "안녕",
+            )
+        assert raw.responses.create.await_count == 1
     finally:
         await llm.close()
         store.close()
