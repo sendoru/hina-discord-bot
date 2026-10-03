@@ -25,7 +25,9 @@
       actionView.hidden = true;
       actionEdit.hidden = false;
       input.focus();
-      input.select();
+      if (input instanceof HTMLInputElement && input.type === "text") {
+        input.select();
+      }
     });
 
     cancel.addEventListener("click", () => closeScalarEditor(editor));
