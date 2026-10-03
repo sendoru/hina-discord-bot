@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% from "_status_ui.html" import status_badge %}
+{% block title %}Prompt State · Hina Dashboard{% endblock %}
+{% block content %}
+{% macro command_fields() -%}
+<input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
+<input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
+{%- endmacro %}
+
+<section class="page-heading">
+  <div>
+    <h1>Instructions &amp; Runtime Knowledge</h1>
+    <p class="muted">동적 instruction과 runtime knowledge를 조회·편집합니다. 모든 변경은 bot process의 registry API를 통해 적용됩니다.</p>
+  </div>
+</section>
+
+{% if not dashboard_write_enabled %}
+<section class="notice warning">
+  Write mode is disabled. 로컬에서 <code>DASHBOARD_ENABLE_WRITES=true</code>로 명시적으로 켜야 수정할 수 있습니다.
+</section>
+{% endif %}
+{% if data.queued %}
+<section class="notice">
+  Admin command <strong>#{{ data.queued }}</strong>를 queue에 넣었습니다.
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Dynamic instructions</h2>
+      <p class="muted">캐릭터 보조 지침입니다. 활성 본문 합계 제한과 ID/본문 검증은 기존 InstructionRegistry가 그대로 적용합니다.</p>
+    </div>
+  </div>
+
+  <form method="post" action="/admin/prompts/instruction" class="panel">
+    {{ command_fields() }}
+    <input type="hidden" name="action" value="add">
+    <h3>Add instruction</h3>
+    <div class="grid-2">
+      <label>ID
+        <input name="id" type="text" maxlength="64" placeholder="example.instruction" {% if not dashboard_write_enabled %}disabled{% endif %}>
+      </label>
+      <label>Text
+        <textarea name="text" rows="4" maxlength="1200" placeholder="instruction text" {% if not dashboard_write_enabled %}disabled{% endif %}></textarea>
+      </label>
+    </div>
+    <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Add instruction</button>
+  </form>
+
+  {% if data.instructions %}
+  {% for row in data.instructions %}
+  <form method="post" action="/admin/prompts/instruction" class="panel">
+    {{ command_fields() }}
+    <input type="hidden" name="id" value="{{ row.id }}">
+    <div class="panel-heading">
+      <div>
+        <h3><code>{{ row.id }}</code></h3>
+        <p class="muted">
+          {{ "enabled" if row.enabled else "disabled" }}
+          {% if row.updated_at %} · updated {{ row.updated_at | localtime }}{% endif %}
+        </p>
+      </div>
+      <span class="status-badge status-{{ 'success' if row.enabled else 'neutral' }}">{{ "enabled" if row.enabled else "disabled" }}</span>
+    </div>
+    <label>Text
+      <textarea name="text" rows="5" maxlength="1200" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ row.text }}</textarea>
+    </label>
+    <div class="scope-target-actions">
+      <button type="submit" name="action" value="edit" {% if not dashboard_write_enabled %}disabled{% endif %}>Save</button>
+      <button type="submit" name="action" value="{{ 'disable' if row.enabled else 'enable' }}" class="secondary" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ "Disable" if row.enabled else "Enable" }}</button>
+      <label>
+        <input type="checkbox" name="confirm" value="yes" {% if not dashboard_write_enabled %}disabled{% endif %}>
+        remove 확인
+      </label>
+      <button type="submit" name="action" value="remove" class="danger" {% if not dashboard_write_enabled %}disabled{% endif %}>Remove</button>
+    </div>
+  </form>
+  {% endfor %}
+  {% else %}
+  <p class="muted">등록된 dynamic instruction이 없습니다.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Runtime knowledge</h2>
+      <p class="muted"><code>world_fact</code>와 <code>interpretation</code> 항목을 관리합니다. keywords/subjects는 쉼표 구분 입력입니다.</p>
+    </div>
+  </div>
+
+  <form method="post" action="/admin/prompts/knowledge" class="panel">
+    {{ command_fields() }}
+    <input type="hidden" name="action" value="add">
+    <h3>Add knowledge</h3>
+    <div class="grid-2">
+      <label>Kind
+        <select name="kind" {% if not dashboard_write_enabled %}disabled{% endif %}>
+          <option value="world_fact">world_fact</option>
+          <option value="interpretation">interpretation</option>
+        </select>
+      </label>
+      <label>ID
+        <input name="id" type="text" maxlength="64" placeholder="example.fact" {% if not dashboard_write_enabled %}disabled{% endif %}>
+      </label>
+      <label>Awareness
+        <select name="awareness" {% if not dashboard_write_enabled %}disabled{% endif %}>
+          {% for level in data.awareness_levels %}<option value="{{ level }}">{{ level }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Timeline
+        <input name="timeline" type="text" maxlength="120" placeholder="시점 미지정" {% if not dashboard_write_enabled %}disabled{% endif %}>
+      </label>
+      <label>Keywords
+        <input name="keywords" type="text" placeholder="comma, separated" {% if not dashboard_write_enabled %}disabled{% endif %}>
+      </label>
+      <label>Subjects
+        <input name="subjects" type="text" placeholder="comma, separated" {% if not dashboard_write_enabled %}disabled{% endif %}>
+      </label>
+    </div>
+    <label>Content
+      <textarea name="content" rows="5" maxlength="1800" {% if not dashboard_write_enabled %}disabled{% endif %}></textarea>
+    </label>
+    <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Add knowledge</button>
+  </form>
+
+  {% if data.knowledge %}
+  {% for row in data.knowledge %}
+  <form method="post" action="/admin/prompts/knowledge" class="panel">
+    {{ command_fields() }}
+    <input type="hidden" name="kind" value="{{ row.kind }}">
+    <input type="hidden" name="id" value="{{ row.id }}">
+    <div class="panel-heading">
+      <div>
+        <h3><code>{{ row.kind }}:{{ row.id }}</code></h3>
+        <p class="muted">{% if row.updated_at %}updated {{ row.updated_at | localtime }}{% else %}no update timestamp{% endif %}</p>
+      </div>
+      <span class="status-badge status-{{ 'success' if row.enabled else 'neutral' }}">{{ "enabled" if row.enabled else "disabled" }}</span>
+    </div>
+    <div class="grid-2">
+      <label>Awareness
+        <select name="awareness" {% if not dashboard_write_enabled %}disabled{% endif %}>
+          {% for level in data.awareness_levels %}<option value="{{ level }}" {% if level == row.awareness %}selected{% endif %}>{{ level }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Timeline
+        <input name="timeline" type="text" maxlength="120" value="{{ row.timeline }}" {% if not dashboard_write_enabled %}disabled{% endif %}>
+      </label>
+      <label>Keywords
+        <input name="keywords" type="text" value="{{ row.keywords_list | join(', ') }}" {% if not dashboard_write_enabled %}disabled{% endif %}>
+      </label>
+      <label>Subjects
+        <input name="subjects" type="text" value="{{ row.subjects_list | join(', ') }}" {% if not dashboard_write_enabled %}disabled{% endif %}>
+      </label>
+    </div>
+    <label>Content
+      <textarea name="content" rows="5" maxlength="1800" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ row.content }}</textarea>
+    </label>
+    <div class="scope-target-actions">
+      <button type="submit" name="action" value="edit" {% if not dashboard_write_enabled %}disabled{% endif %}>Save</button>
+      <button type="submit" name="action" value="{{ 'disable' if row.enabled else 'enable' }}" class="secondary" {% if not dashboard_write_enabled %}disabled{% endif %}>{{ "Disable" if row.enabled else "Enable" }}</button>
+      <label>
+        <input type="checkbox" name="confirm" value="yes" {% if not dashboard_write_enabled %}disabled{% endif %}>
+        remove 확인
+      </label>
+      <button type="submit" name="action" value="remove" class="danger" {% if not dashboard_write_enabled %}disabled{% endif %}>Remove</button>
+    </div>
+  </form>
+  {% endfor %}
+  {% else %}
+  <p class="muted">등록된 runtime knowledge가 없습니다.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Recent prompt-state actions</h2>
+      <p class="muted">instruction/knowledge 본문은 command 완료 후 audit payload에서 제거됩니다.</p>
+    </div>
+  </div>
+  {% if data.actions %}
+  <div class="table-wrap" tabindex="0" role="region" aria-label="prompt state admin audit">
+    <table>
+      <thead><tr><th>ID</th><th>Action</th><th>Target</th><th>Status</th><th>Result / error</th><th>Created</th></tr></thead>
+      <tbody>
+      {% for action in data.actions %}
+      <tr>
+        <td>#{{ action.id }}</td>
+        <td><code>{{ action.action }}</code></td>
+        <td><code>{{ action.target }}</code></td>
+        <td>{{ status_badge(action.status) }}</td>
+        <td>
+          {% if action.error_type %}<strong>{{ action.error_type }}</strong><br><small>{{ action.error_message }}</small>
+          {% elif action.result_json and action.result_json != "{}" %}<code>{{ action.result_json }}</code>
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ action.created_at | localtime }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">아직 prompt-state admin action이 없습니다.</p>
+  {% endif %}
+</section>
+{% endblock %}

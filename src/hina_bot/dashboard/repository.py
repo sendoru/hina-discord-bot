@@ -95,6 +95,28 @@ class AdminRepository:
                 ).fetchall()
         return self._dicts(rows)
 
+    def instruction_rows(self) -> list[dict[str, object]]:
+        if not self._table_exists("instructions"):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT id,text,enabled,created_at,updated_at
+                   FROM instructions ORDER BY rowid"""
+            ).fetchall()
+        return self._dicts(rows)
+
+    def runtime_knowledge_rows(self) -> list[dict[str, object]]:
+        if not self._table_exists("runtime_knowledge"):
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT id,kind,content,keywords,subjects,awareness,timeline,
+                          enabled,created_at,updated_at
+                   FROM runtime_knowledge
+                   ORDER BY kind,rowid"""
+            ).fetchall()
+        return self._dicts(rows)
+
     def observability_epochs(self) -> list[dict[str, object]]:
         if not self._table_exists("observability_epochs"):
             return []
