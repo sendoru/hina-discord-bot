@@ -3042,9 +3042,8 @@ pre {
 }
 
 .runtime-config-table {
-  width: 100%;
-  min-width: 1080px;
-  table-layout: fixed;
+  width: max(1080px, 100%);
+  table-layout: auto;
 }
 
 .runtime-config-table th,
@@ -3052,13 +3051,13 @@ pre {
   word-break: normal;
 }
 
-.runtime-config-table th:nth-child(1) { width: 330px; }
-.runtime-config-table th:nth-child(2) { width: 90px; }
-.runtime-config-table th:nth-child(3) { width: auto; }
-.runtime-config-table th:nth-child(4) { width: 92px; }
+.runtime-config-table th:nth-child(1) { min-width: 330px; }
+.runtime-config-table th:nth-child(2) { min-width: 90px; }
+.runtime-config-table th:nth-child(3) { min-width: 520px; }
+.runtime-config-table th:nth-child(4) { min-width: 92px; }
 
 .runtime-config-setting {
-  min-width: 0;
+  min-width: 330px;
 }
 
 .runtime-config-setting strong,
@@ -3085,11 +3084,11 @@ pre {
 }
 
 .runtime-config-source {
-  width: 90px;
+  min-width: 90px;
 }
 
 .runtime-config-current {
-  min-width: 0;
+  min-width: 520px;
 }
 
 .runtime-config-current-view[hidden],
@@ -3098,24 +3097,24 @@ pre {
 }
 
 .runtime-config-current-view {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 10px;
-  align-items: start;
-  min-width: 0;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-width: max-content;
 }
 
 .runtime-config-edit-form {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) auto auto;
+  display: flex;
   gap: 8px;
   align-items: center;
-  min-width: 0;
+  min-width: max-content;
 }
 
 .runtime-config-current-value {
   display: block;
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: max-content;
   line-height: 1.45;
 }
 
@@ -3142,12 +3141,12 @@ pre {
 }
 
 .runtime-config-edit-form input[type="text"] {
-  width: 100%;
-  min-width: 240px;
+  width: 360px;
+  min-width: 360px;
 }
 
 .runtime-config-reset {
-  width: 92px;
+  min-width: 92px;
 }
 
 
