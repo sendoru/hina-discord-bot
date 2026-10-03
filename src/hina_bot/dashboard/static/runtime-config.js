@@ -142,7 +142,17 @@
       showError(invalidEmpty ? "이 설정은 최소 한 개의 값이 필요합니다." : "");
     };
 
-    const normalizeNewItem = (raw) => raw.trim();
+    const normalizeNewItem = (raw) => {
+      const value = raw.trim();
+      if (kind === "discord_ids" && /^\d+$/.test(value)) {
+        try {
+          return BigInt(value).toString();
+        } catch (_) {
+          return value;
+        }
+      }
+      return value;
+    };
 
     const validateNewItem = (value) => {
       if (!value) return "값을 입력해 주세요.";
