@@ -113,6 +113,10 @@ def test_prompt_state_page_reads_existing_rows(tmp_path):
     assert "existing.fact" in response.text
     assert "기존 지침" in response.text
     assert "기존 사실" in response.text
+    assert 'class="prompt-form-grid prompt-instruction-grid"' in response.text
+    assert 'class="prompt-field prompt-field-body"' in response.text
+    assert 'class="prompt-actions"' in response.text
+    assert 'class="scope-target-actions"' not in response.text
 
 
 def test_prompt_state_post_only_enqueues_and_remove_requires_confirmation(tmp_path):
