@@ -34,7 +34,6 @@
           <th>Setting</th>
           <th>Source</th>
           <th>Current DB override</th>
-          <th>Set</th>
           <th>Reset</th>
         </tr>
       </thead>
@@ -46,21 +45,43 @@
             <small><code>{{ row.key }}</code> · {{ row.kind }}</small>
           </td>
           <td class="runtime-config-source">{{ row.source }}</td>
-          <td class="runtime-config-current">
-            {% if row.error %}<span class="badge error">invalid stored value</span>
-            {% elif row.source == "db" %}<code>{{ row.value }}</code>
-            {% else %}<span class="muted">startup</span>{% endif %}
-            {% if row.updated_at %}<small>{{ row.updated_at | localtime }}</small>{% endif %}
-          </td>
-          <td class="runtime-config-set">
-            <form class="runtime-config-set-form" method="post" action="/admin/runtime/set">
+          <td class="runtime-config-current" data-runtime-config-editor>
+            <div class="runtime-config-current-view" data-runtime-config-view>
+              <span class="runtime-config-current-value">
+                {% if row.error %}<span class="badge error">invalid stored value</span>
+                {% elif row.source == "db" %}<code>{{ row.value }}</code>
+                {% else %}<span class="muted">startup</span>{% endif %}
+                {% if row.updated_at %}<small>{{ row.updated_at | localtime }}</small>{% endif %}
+              </span>
+              <button type="button"
+                      class="secondary runtime-config-edit-button"
+                      data-runtime-config-edit
+                      {% if not dashboard_write_enabled %}disabled{% endif %}>
+                {{ "Edit" if row.source == "db" else "Set override" }}
+              </button>
+            </div>
+            <form class="runtime-config-edit-form"
+                  data-runtime-config-form
+                  method="post"
+                  action="/admin/runtime/set"
+                  hidden>
               <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
               <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
               <input type="hidden" name="key" value="{{ row.key }}">
-              <input id="runtime-{{ row.key }}" name="value" type="text"
-                     aria-label="New value for {{ row.env_name }}"
-                     placeholder="new value" {% if not dashboard_write_enabled %}disabled{% endif %}>
-              <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Set</button>
+              <input id="runtime-{{ row.key }}"
+                     name="value"
+                     type="text"
+                     value="{{ row.value if row.source == 'db' and not row.error else '' }}"
+                     data-runtime-config-input
+                     data-original-value="{{ row.value if row.source == 'db' and not row.error else '' }}"
+                     aria-label="Override value for {{ row.env_name }}"
+                     placeholder="new override value"
+                     {% if not dashboard_write_enabled %}disabled{% endif %}>
+              <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Save</button>
+              <button type="button"
+                      class="secondary"
+                      data-runtime-config-cancel
+                      {% if not dashboard_write_enabled %}disabled{% endif %}>Cancel</button>
             </form>
           </td>
           <td class="runtime-config-reset">
