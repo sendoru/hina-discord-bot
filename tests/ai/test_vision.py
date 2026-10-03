@@ -107,6 +107,40 @@ async def test_vision_client_adds_images_only_for_active_answer():
 
 
 @pytest.mark.asyncio
+async def test_vision_client_prefers_validated_remote_uri_over_inline_base64():
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(
+        responses=NS(create=create),
+        close=AsyncMock(),
+        provider_name="gemini",
+    )
+    client = VisionClient(raw)
+    visual = VisualInput(
+        b"\x89PNG\r\n\x1a\nabc",
+        "image/png",
+        "attachment",
+        "test.png",
+        uri="https://cdn.discordapp.com/attachments/1/2/test.png?ex=signed",
+    )
+
+    visual_token = CURRENT_VISUAL_INPUTS.set((visual,))
+    active_token = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="test",
+            instructions="base policy",
+            input=[{"role": "user", "content": "이거 뭐야?"}],
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active_token)
+        CURRENT_VISUAL_INPUTS.reset(visual_token)
+
+    content = create.await_args.kwargs["input"][-1]["content"]
+    assert content[2]["image_url"].startswith("https://cdn.discordapp.com/")
+    assert "base64" not in content[2]["image_url"]
+
+
+@pytest.mark.asyncio
 async def test_vision_client_does_not_modify_summary_requests():
     create = AsyncMock(return_value=NS(status="completed"))
     raw = NS(responses=NS(create=create), close=AsyncMock())
