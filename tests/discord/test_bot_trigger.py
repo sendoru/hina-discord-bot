@@ -763,6 +763,67 @@ async def test_cooldown_uses_turn_arrival_time_after_channel_lock_backlog(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_same_channel_next_turn_can_generate_while_prior_generation_runs(base_client):
+    client, _, llm, channel, guild, _ = base_client
+    author = NS(
+        id=100,
+        bot=False,
+        display_name="사용자",
+        guild_permissions=NS(manage_guild=False),
+    )
+    first_answer_started = asyncio.Event()
+    release_first_answer = asyncio.Event()
+    second_answer_started = asyncio.Event()
+    answer_calls = 0
+
+    async def answer(*args, **kwargs):
+        nonlocal answer_calls
+        answer_calls += 1
+        if answer_calls == 1:
+            first_answer_started.set()
+            await release_first_answer.wait()
+        else:
+            second_answer_started.set()
+        return "응"
+
+    llm.answer.side_effect = answer
+
+    first = asyncio.create_task(
+        client.on_message(
+            make_message(
+                channel,
+                guild,
+                message_id=180,
+                author=author,
+                text="<@99> 오래 걸리는 첫 질문",
+                mentions=(99,),
+            )
+        )
+    )
+    await asyncio.wait_for(first_answer_started.wait(), timeout=1.0)
+
+    second = asyncio.create_task(
+        client.on_message(
+            make_message(
+                channel,
+                guild,
+                message_id=181,
+                author=author,
+                text="<@99> 두 번째 질문",
+                mentions=(99,),
+            )
+        )
+    )
+    await asyncio.wait_for(second_answer_started.wait(), timeout=1.0)
+
+    assert not first.done()
+    assert llm.answer.await_count == 2
+
+    release_first_answer.set()
+    await asyncio.gather(first, second)
+
+
+@pytest.mark.asyncio
 async def test_same_channel_next_turn_can_generate_while_prior_memory_update_runs(base_client):
     client, _, llm, channel, guild, _ = base_client
     author = NS(
