@@ -23,10 +23,14 @@ class VisualInput:
     author_user_id: str = ""
     message_content: str = ""
     at: str = ""
+    uri: str = ""
 
     def data_url(self) -> str:
         encoded = base64.b64encode(self.data).decode("ascii")
         return f"data:{self.mime_type};base64,{encoded}"
+
+    def input_url(self) -> str:
+        return self.uri if self.uri.startswith("https://") else self.data_url()
 
     def label(self, index: int) -> str:
         source = {
@@ -71,7 +75,7 @@ def _visual_blocks(visuals: list[VisualInput]) -> list[dict]:
         blocks.append({"type": "input_text", "text": visual.label(index)})
         blocks.append({
             "type": "input_image",
-            "image_url": visual.data_url(),
+            "image_url": visual.input_url(),
             "detail": "auto",
         })
     return blocks
