@@ -355,6 +355,7 @@ async def test_explicit_owner_reference_injects_only_related_authorized_memory()
             "kind": "event",
             "content": "다음 주 삼성 면접이 있다",
             "confidence": 1.0,
+            "scope_relation": "cross_space",
             "authorization": "owner_explicit_reference",
         }]
         assert "고양이 이름은 하루다" not in json.dumps(reference, ensure_ascii=False)
@@ -413,7 +414,7 @@ async def test_topic_without_explicit_reference_does_not_inject_cross_space_fact
 
 
 @pytest.mark.asyncio
-async def test_current_channel_only_request_suppresses_reference_gated_recall():
+async def test_current_channel_scope_does_not_block_explicit_reference_gated_recall():
     calls = []
     llm = LLM(
         Settings(discord_token="test", openai_api_key="test",
@@ -428,7 +429,7 @@ async def test_current_channel_only_request_suppresses_reference_gated_recall():
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:
-        store.add_memory_item(
+        item_id = store.add_memory_item(
             dm,
             "다음 주 삼성 면접이 있다",
             kind=MemoryKind.EVENT,
@@ -443,11 +444,17 @@ async def test_current_channel_only_request_suppresses_reference_gated_recall():
         )
 
         reference = _reference(calls[-1])
-        assert reference["authorized_factual_memory"] == []
-        assert "다음 주 삼성 면접이 있다" not in json.dumps(reference, ensure_ascii=False)
-        assert CURRENT_CONTEXT_PROVENANCE.get()["factual_recall"]["status"] == (
-            "current_channel_only"
-        )
+        assert reference["authorized_factual_memory"] == [{
+            "kind": "event",
+            "content": "다음 주 삼성 면접이 있다",
+            "confidence": 1.0,
+            "scope_relation": "cross_space",
+            "authorization": "owner_explicit_reference",
+        }]
+        provenance = CURRENT_CONTEXT_PROVENANCE.get()["factual_recall"]
+        assert provenance["status"] == "authorized"
+        assert provenance["selected_item_ids"] == [item_id]
+        assert "scope_relation=current_channel" in calls[-1]["instructions"]
     finally:
         CURRENT_CONTEXT_PROVENANCE.set(None)
         await llm.close()
