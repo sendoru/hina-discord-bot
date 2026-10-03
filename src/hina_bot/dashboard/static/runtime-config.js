@@ -36,6 +36,7 @@
     });
   }
 
+  const tableWrap = document.querySelector(".runtime-config-table-wrap");
   const collectionRows = Array.from(
     document.querySelectorAll("[data-runtime-collection-row]"),
   );
@@ -48,6 +49,17 @@
 
   const buttonForKey = (key) =>
     manageButtons.find((button) => button.dataset.runtimeCollectionManage === key);
+
+  const sizeCollectionEditor = (row) => {
+    if (!(tableWrap instanceof HTMLElement)) return;
+    const editor = row.querySelector("[data-runtime-collection-editor]");
+    if (!(editor instanceof HTMLElement)) return;
+    const available = Math.max(0, tableWrap.clientWidth - 24);
+    editor.style.setProperty(
+      "--runtime-collection-editor-width",
+      `${available}px`,
+    );
+  };
 
   const hideCollectionRow = (row, { restore = true } = {}) => {
     const editor = row.querySelector("[data-runtime-collection-editor]");
@@ -90,7 +102,9 @@
     const editor = row.querySelector("[data-runtime-collection-editor]");
     if (!(editor instanceof HTMLElement)) continue;
 
-    const form = editor.querySelector("[data-runtime-collection-form]");
+    const form = editor.matches("[data-runtime-collection-form]")
+      ? editor
+      : editor.querySelector("[data-runtime-collection-form]");
     const list = editor.querySelector("[data-runtime-collection-list]");
     const hiddenValue = editor.querySelector("[data-runtime-collection-value]");
     const addInput = editor.querySelector("[data-runtime-collection-add-input]");
@@ -266,9 +280,25 @@
 
       closeOtherCollectionRows(row);
       row.hidden = false;
+      sizeCollectionEditor(row);
       button.setAttribute("aria-expanded", "true");
       const addInput = row.querySelector("[data-runtime-collection-add-input]");
       if (addInput instanceof HTMLInputElement) addInput.focus();
+    });
+  }
+
+  if (tableWrap instanceof HTMLElement && "ResizeObserver" in window) {
+    const observer = new ResizeObserver(() => {
+      for (const row of collectionRows) {
+        if (!row.hidden) sizeCollectionEditor(row);
+      }
+    });
+    observer.observe(tableWrap);
+  } else {
+    window.addEventListener("resize", () => {
+      for (const row of collectionRows) {
+        if (!row.hidden) sizeCollectionEditor(row);
+      }
     });
   }
 
