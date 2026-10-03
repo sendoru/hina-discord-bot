@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from hina_bot.core.config import Settings
-from hina_bot.core.runtime_config import RuntimeSettings
+from hina_bot.core.runtime_config import RUNTIME_SETTING_SPECS, RuntimeSettings
 from hina_bot.core.store import Store
 
 
@@ -251,10 +251,7 @@ def test_runtime_settings_persist_startup_snapshot_for_dashboard(tmp_path: Path)
                 "SELECT key,value FROM runtime_config_startup"
             ).fetchall()
         }
-        assert set(rows) == set(__import__(
-            "hina_bot.core.runtime_config",
-            fromlist=["RUNTIME_SETTING_SPECS"],
-        ).RUNTIME_SETTING_SPECS)
+        assert set(rows) == set(RUNTIME_SETTING_SPECS)
         assert rows["model"] == '"startup-model"'
         assert rows["channel_context_chars"] == "4321"
         assert rows["runtime_default_location"] == '"Seoul"'
