@@ -83,7 +83,12 @@ def test_combined_classifier_parser_accepts_bounded_web_schema():
 def test_search_decision_locks_high_confidence_rules_but_opens_general_queries():
     source = classify_information_request("출처 알려줘")
     assert search_decision(source, [], enabled=True) == SearchDecision(
-        "required", True, "explicit_source"
+        "none", False, "semantic_open"
+    )
+
+    link_skill = classify_information_request("일리움 링크스킬")
+    assert search_decision(link_skill, [], enabled=True) == SearchDecision(
+        "none", False, "semantic_open"
     )
 
     clock = classify_information_request("지금 몇 시야?")
@@ -103,6 +108,33 @@ def test_search_decision_locks_high_confidence_rules_but_opens_general_queries()
     assert search_decision(temporal, [], enabled=True) == SearchDecision(
         "auto", False, "semantic_temporal"
     )
+
+
+@pytest.mark.asyncio
+async def test_active_classifier_decides_explicit_source_request_needs_web():
+    primary = client(response("출처를 확인했어."))
+    classifier_client = client(response(classification(
+        web_need="required",
+        web_code="external_verification",
+    )))
+    llm = LLM(settings(), client=primary, classifier_client=classifier_client)
+    llm.lore = LoreIndex([])
+    store = Store(":memory:")
+    try:
+        result = await llm.answer(
+            store,
+            Scope(None, 10, 100),
+            "사용자",
+            "그거 출처 어디야?",
+        )
+        assert result == "출처를 확인했어."
+        request = primary.responses.create.await_args.kwargs
+        assert request["tool_choice"] == "required"
+        assert request["tools"][0]["type"] == "web_search"
+        assert classifier_client.responses.create.await_count == 1
+    finally:
+        await llm.close()
+        store.close()
 
 
 @pytest.mark.asyncio
