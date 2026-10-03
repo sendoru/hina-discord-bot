@@ -61,7 +61,11 @@
             {% if row.is_collection %}
               <div class="runtime-config-current-view runtime-collection-current">
                 <span class="runtime-config-current-value">
-                  {{ collection_preview(row.collection_preview, row.collection_extra) }}
+                  {% if row.source == "startup" and not row.startup_available %}
+                    <span class="muted">startup snapshot unavailable</span>
+                  {% else %}
+                    {{ collection_preview(row.collection_preview, row.collection_extra) }}
+                  {% endif %}
                   {% if row.override_error %}
                     <small class="runtime-config-value-note">invalid DB override · using startup</small>
                   {% elif row.source == "db" %}
@@ -212,13 +216,20 @@
                 <p class="field-error runtime-collection-error" data-runtime-collection-error hidden></p>
 
                 <details class="runtime-collection-baseline">
-                  <summary>Startup baseline · {{ row.startup_items | length }} items</summary>
+                  <summary>
+                    Startup baseline
+                    {% if row.startup_available %}· {{ row.startup_items | length }} items{% else %}· unavailable{% endif %}
+                  </summary>
                   <div class="runtime-collection-baseline-items">
-                    {% for item in row.startup_items %}
-                      <code class="runtime-collection-chip">{{ item }}</code>
+                    {% if row.startup_available %}
+                      {% for item in row.startup_items %}
+                        <code class="runtime-collection-chip">{{ item }}</code>
+                      {% else %}
+                        <span class="muted">(비움)</span>
+                      {% endfor %}
                     {% else %}
-                      <span class="muted">(비움)</span>
-                    {% endfor %}
+                      <span class="muted">봇을 한 번 시작해 startup snapshot을 생성해야 합니다.</span>
+                    {% endif %}
                   </div>
                 </details>
 
