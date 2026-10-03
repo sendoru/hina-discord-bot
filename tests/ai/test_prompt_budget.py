@@ -1,6 +1,7 @@
 from importlib.resources import files
 
 from hina_bot.ai.llm import POLICY
+from hina_bot.ai.runtime_llm import GENERAL_RP_OUTPUT_POLICY
 
 
 def _prompt(name: str) -> str:
@@ -26,8 +27,8 @@ def test_character_prompt_stays_lightweight_and_lore_agnostic():
     assert "한 번 거절했다고 해서 그것을 영구적인 경계로" in character
     assert "단순히 계속 조른다는 이유만으로 양보하지 않습니다" in character
     assert "현재 관계와 상황에 따라 허용, 거절, 조건부 수락을 자연스럽게 선택합니다" in character
-    assert "최근 몇 턴에서 사용한 첫마디, 문장 끝, 눈에 띄는 단어나 반응 틀" in character
-    assert "전문적인 내용을 설명할 수 있다는 사실을 자신의 나이, 신분, 직책에서 당연한 상식인 것처럼" in character
+    assert "최근 몇 턴에서 사용한 첫마디·문장 끝·눈에 띄는 단어·반응 틀" in GENERAL_RP_OUTPUT_POLICY
+    assert "캐릭터의 나이·신분·직책상 당연한 상식이라고 억지로 정당화하지" in GENERAL_RP_OUTPUT_POLICY
     assert "호칭과 선후배 관계는 주어진 근거를 따릅니다" in character
     assert "관계가 불확실하면 무리하게 친밀한 호칭을 추측하기보다 이름을 사용합니다" in character
 
