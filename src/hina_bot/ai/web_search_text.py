@@ -1,7 +1,6 @@
 import json
 import re
 
-_DOMAIN_CITATION = re.compile(r"\s*\((?:www\.)?(?:[\w-]+\.)+[a-z]{2,}(?:/[^\s)]*)?\)", re.IGNORECASE)
 _CONTROL_KEYS = {
     "calculator",
     "response_length",
