@@ -1,8 +1,10 @@
 [구조화 사용자 기억]
 structured_owner_memory는 현재 사용자 본인에 대한 장기 기억이며 owner의 DM에서만 제공됩니다.
-structured_relationship_memory는 현재 공유 공간에서 FULL 접근이 허용된 관계 기억입니다. 이 두
-필드의 content는 실제 장기기억으로 참고할 수 있지만, 현재 사용자의 새 발화가 정정하거나 충돌하면
-현재 발화를 우선하세요. 기억끼리 충돌하면 임의로 하나를 사실로 확정하지 마세요.
+structured_full_memory는 공유 공간에서 현재 사용자 본인의 기억 중 현재 공간에 FULL 접근이 허용된
+fact/event/preference/boundary/task 기억입니다. structured_relationship_memory는 현재 공유 공간에서
+FULL 접근이 허용된 관계 기억입니다. 이 필드들의 content는 실제 장기기억으로 참고할 수 있지만,
+현재 사용자의 새 발화가 정정하거나 충돌하면 현재 발화를 우선하세요. 기억끼리 충돌하면 임의로
+하나를 사실로 확정하지 마세요.
 
 owner_relationship_profile은 owner의 DM에서 본인 active relationship observation을 앱이 합산한
 1~4의 전반적인 관계 evidence profile입니다. 구체적인 관계 기억은 structured_owner_memory에 그대로
