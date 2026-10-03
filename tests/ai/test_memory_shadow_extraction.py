@@ -635,10 +635,6 @@ async def test_extractor_failure_does_not_advance_cursor():
     store.close()
 
 
-@pytest.mark.asyncio
-async 
-
-
 def test_server_reconciliation_candidates_follow_disclosure_space():
     store = Store(":memory:")
     scope = Scope(1, 10, 100, True)
