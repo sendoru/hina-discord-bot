@@ -625,13 +625,14 @@ async def test_same_space_response_receives_raw_relationship_and_evidence():
 
 
 @pytest.mark.asyncio
-async def test_current_channel_scope_suppresses_only_cross_space_profile():
+async def test_current_channel_scope_suppresses_other_channel_structured_memory():
     calls = []
     client = _client(calls)
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
     store = Store(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
+    other_public_channel = Scope(1, 30, 100, True)
     try:
         store.add_memory_item(
             dm,
@@ -640,6 +641,34 @@ async def test_current_channel_scope_suppresses_only_cross_space_profile():
             disclosure=MemoryDisclosure.IMPLICIT,
             confidence=0.95,
             relationship_evidence={"familiarity": 4},
+        )
+        store.add_memory_item(
+            other_public_channel,
+            "OTHER_CHANNEL_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            other_public_channel,
+            "OTHER_CHANNEL_RELATIONSHIP",
+            kind=MemoryKind.RELATIONSHIP,
+            disclosure=MemoryDisclosure.IMPLICIT,
+            confidence=0.95,
+            relationship_evidence={"comfort": 3},
+        )
+        store.add_memory_item(
+            server,
+            "CURRENT_CHANNEL_FACT",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.add_memory_item(
+            server,
+            "CURRENT_CHANNEL_RELATIONSHIP",
+            kind=MemoryKind.RELATIONSHIP,
+            disclosure=MemoryDisclosure.IMPLICIT,
+            confidence=0.95,
+            relationship_evidence={"task_orientation": 3},
         )
 
         await llm.answer(
@@ -652,11 +681,21 @@ async def test_current_channel_scope_suppresses_only_cross_space_profile():
 
         payload = calls[-1]
         reference = _reference(payload)
+        raw = json.dumps(reference, ensure_ascii=False)
         assert reference["owner_relationship_profile"] == {}
         assert reference["cross_space_relationship"] == {}
-        assert reference["structured_relationship_memory"] == []
-        assert "RAW_RELATIONSHIP_SECRET" not in json.dumps(reference, ensure_ascii=False)
-        assert "구조화 사용자 기억" not in payload["instructions"]
+        assert {
+            row["content"]
+            for row in reference["structured_full_memory"]
+        } == {"CURRENT_CHANNEL_FACT"}
+        assert {
+            row["content"]
+            for row in reference["structured_relationship_memory"]
+        } == {"CURRENT_CHANNEL_RELATIONSHIP"}
+        assert "RAW_RELATIONSHIP_SECRET" not in raw
+        assert "OTHER_CHANNEL_FACT" not in raw
+        assert "OTHER_CHANNEL_RELATIONSHIP" not in raw
+        assert "구조화 사용자 기억" in payload["instructions"]
     finally:
         await llm.close()
         store.close()
