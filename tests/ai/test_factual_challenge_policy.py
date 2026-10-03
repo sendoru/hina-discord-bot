@@ -40,12 +40,13 @@ def test_general_factual_challenge_offers_optional_verification():
     assert _pipeline()._web_search_decision("그거 맞아?", []).mode == "auto"
 
 
-def test_explicit_pisyeol_request_requires_search_and_shows_source():
+def test_source_request_is_not_keyword_routed():
     request = classify_information_request("17은 어디 피셜이지?")
-    assert request.route == InformationRoute.WEB
-    assert request.explicit_source
-    assert _pipeline()._web_search_decision("17은 어디 피셜이지?", []).mode == "required"
-    assert provenance_mode("17은 어디 피셜이지?", web_search=True) == ProvenanceMode.EXPLICIT_SOURCE
+    assert request.route == InformationRoute.GENERAL
+    decision = _pipeline()._web_search_decision("17은 어디 피셜이지?", [])
+    assert decision.mode == "none"
+    assert decision.locked is False
+    assert provenance_mode("17은 어디 피셜이지?", web_search=False) == ProvenanceMode.SILENT
 
 
 def test_web_disabled_still_keeps_challenge_local():
