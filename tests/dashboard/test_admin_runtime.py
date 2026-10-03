@@ -100,7 +100,14 @@ def test_runtime_dashboard_post_only_enqueues_command(tmp_path):
 def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     database = tmp_path / "hina.sqlite3"
     store = Store(str(database))
-    settings = RuntimeSettings(Settings(discord_token="test"), store)
+    settings = RuntimeSettings(
+        Settings(
+            discord_token="test",
+            channel_context_chars=6200,
+            history_max_chars=9876,
+        ),
+        store,
+    )
     settings.set_text("channel_context_chars", "4300")
     store.close()
     app = create_app(
@@ -123,4 +130,7 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert "Edit" in response.text
     assert 'value="4300"' in response.text
     assert 'aria-label="Override value for CHANNEL_CONTEXT_CHARS"' in response.text
+    assert "startup 6200" in response.text
+    assert ">9876</code>" in response.text
+    assert 'value="9876"' in response.text
     assert "runtime-config.js" in response.text
