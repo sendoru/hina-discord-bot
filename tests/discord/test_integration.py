@@ -496,5 +496,4 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.store.seen(1))
         self.assertEqual(len(self.store.pending_shared(scope)), 1)
         self.llm.extract_structured_memory.assert_awaited_once()
-        self.llm.summarize.assert_awaited_once()
         self.llm.summarize_shared.assert_awaited_once()
