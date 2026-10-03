@@ -3172,6 +3172,10 @@ pre {
   white-space: normal;
 }
 
+.runtime-collection-current .runtime-config-value-note {
+  white-space: normal;
+}
+
 .runtime-collection-chip {
   display: inline-flex;
   gap: 4px;
