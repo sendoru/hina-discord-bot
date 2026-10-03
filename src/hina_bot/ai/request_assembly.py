@@ -398,6 +398,7 @@ class RequestAssembler(BaseLLM):
             use_memory=use_memory,
             current_channel_only=current_channel_only,
             cross_channel_memory=cross_channel_memory,
+            structured_cross_space_memory=structured_cross_space_memory,
             structured=structured_trace,
             factual_recall=(
                 factual_recall_plan.provenance()
