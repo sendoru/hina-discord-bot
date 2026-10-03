@@ -1,4 +1,5 @@
 import sqlite3
+
 from hina_bot.core.memory_context import (
     CURRENT_MEMORY_CONTEXT,
     build_memory_context,
