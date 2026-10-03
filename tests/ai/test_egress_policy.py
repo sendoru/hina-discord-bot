@@ -59,7 +59,6 @@ def test_bot_interactions_only_filters_complete_serialized_context():
     context = {
         "server_note": "서버 공통 메모",
         "user_note": "현재 사용자가 직접 저장한 메모",
-        "conversation_memory": "현재 사용자의 자동 기억",
         "personal_recent_conversation": [{"user": "직접 호출", "hina": "답변"}],
         "public_server_context": [
             {"user_id": "100", "summary": "현재 사용자의 다른 채널 직접 호출 기억"},
@@ -82,7 +81,6 @@ def test_bot_interactions_only_filters_complete_serialized_context():
 
     assert filtered["server_note"] == ""
     assert filtered["user_note"] == "현재 사용자가 직접 저장한 메모"
-    assert filtered["conversation_memory"] == "현재 사용자의 자동 기억"
     assert filtered["personal_recent_conversation"] == context["personal_recent_conversation"]
     assert [row["user_id"] for row in filtered["public_server_context"]] == ["100"]
     assert [row["content"] for row in filtered["channel_recent_messages"]] == [

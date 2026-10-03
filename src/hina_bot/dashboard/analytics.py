@@ -520,7 +520,6 @@ def build_analytics(
     ]
     context_fields = (
         "context_chars_total",
-        "context_summary_chars",
         "context_structured_memory_chars",
         "context_recent_chars",
         "context_public_chars",

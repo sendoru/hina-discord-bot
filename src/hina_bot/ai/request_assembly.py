@@ -267,7 +267,6 @@ class RequestAssembler(BaseLLM):
         visible_content = routing.visible_content
         routing_content = routing.routing_query
 
-        summary, _ = store.summary(scope) if use_memory else ("", 0)
         channel_context = self._bind_current_speaker(channel_context or [], scope.user_id)
         current_channel_only = self._current_channel_scope_only(scope, routing_content)
         history, history_message_ids = (
@@ -331,7 +330,6 @@ class RequestAssembler(BaseLLM):
                 else ""
             ),
             "user_note": store.note(scope.user_note) if use_memory else "",
-            "conversation_memory": summary,
             **structured_memory,
             "personal_recent_conversation": server_recent,
             "public_server_context": (
@@ -456,9 +454,6 @@ class RequestAssembler(BaseLLM):
         )
         context_size_metrics = {
             "context_chars_total": _serialized_chars(context),
-            "context_summary_chars": _serialized_chars(
-                context.get("conversation_memory", "")
-            ),
             "context_structured_memory_chars": _serialized_chars({
                 key: context.get(key)
                 for key in (
