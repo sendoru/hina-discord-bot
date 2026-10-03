@@ -21,6 +21,7 @@ from hina_bot.core.recent import RecentMessages
 from hina_bot.core.routing import Scope, chunks, trigger_text
 from hina_bot.core.store import Store
 
+from .admin_commands import initialize_admin_commands, run_admin_command_once
 from .emoji_commands import EmojiRegistry
 from .memory_commands import MemoryCommands, MemoryMode
 from .output_safety import neutralize_mentions
@@ -120,6 +121,7 @@ class HinaClient(discord.Client):
         self.pending_count = 0
         self.active_tasks = set()
         self.memory_sweep_task = None
+        self.admin_command_task = None
         self.stopping = False
         self.events = EventLogger(getattr(settings, "event_log_path", ""))
 
@@ -170,6 +172,12 @@ class HinaClient(discord.Client):
         start_background_tasks = getattr(self.llm, "start_background_tasks", None)
         if start_background_tasks is not None:
             await start_background_tasks()
+        initialize_admin_commands(self)
+        if self.admin_command_task is None:
+            self.admin_command_task = asyncio.create_task(
+                self._admin_command_loop(),
+                name="dashboard-admin-commands",
+            )
         interval = self.settings.structured_memory_sweep_interval_seconds
         if interval > 0 and self.memory_sweep_task is None:
             self.memory_sweep_task = asyncio.create_task(
@@ -199,6 +207,11 @@ class HinaClient(discord.Client):
 
     async def close(self):
         self.stopping = True
+        admin_task = self.admin_command_task
+        self.admin_command_task = None
+        if admin_task is not None:
+            admin_task.cancel()
+            await asyncio.gather(admin_task, return_exceptions=True)
         sweep_task = self.memory_sweep_task
         self.memory_sweep_task = None
         if sweep_task is not None:
@@ -215,6 +228,19 @@ class HinaClient(discord.Client):
             self.store.close()
             self.events.close()
             await super().close()
+
+    async def _admin_command_loop(self):
+        while not self.stopping:
+            try:
+                processed = 0
+                while processed < 10 and await run_admin_command_once(self):
+                    processed += 1
+                await asyncio.sleep(0.25 if processed else 1.0)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - keep admin polling isolated
+                log.warning("Dashboard admin command poll failed (%s)", type(exc).__name__)
+                await asyncio.sleep(1.0)
 
     async def _memory_sweep_loop(self):
         interval = self.settings.structured_memory_sweep_interval_seconds

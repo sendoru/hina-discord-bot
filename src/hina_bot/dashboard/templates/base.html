@@ -21,7 +21,7 @@
             <small>Dashboard</small>
           </span>
         </a>
-        <span class="badge">read-only</span>
+        <span class="badge">{{ "admin-write" if dashboard_write_enabled else "read-only" }}</span>
       </div>
 
       <nav class="sidebar-nav" aria-label="Dashboard sections">

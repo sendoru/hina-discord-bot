@@ -1,8 +1,8 @@
-# Read-only dashboard foundation
+# Dashboard observability and local admin foundation
 
-The dashboard is intentionally introduced as an observability surface before it becomes an
-administration surface. The first phase does not change memory, runtime configuration, knowledge,
-or Discord state.
+The dashboard started as a read-only observability surface. Local admin writes are now opt-in and
+flow through an audited command queue that is executed by the owning bot process; the existing
+read repository remains read-only.
 
 ## Install and run
 
@@ -29,11 +29,11 @@ DASHBOARD_USAGE_LOG_PATH=
 DASHBOARD_EVENT_LOG_PATH=
 DASHBOARD_HOST=127.0.0.1
 DASHBOARD_PORT=8765
+DASHBOARD_ENABLE_WRITES=false
 ```
 
-Keep `DASHBOARD_HOST=127.0.0.1` unless access is protected by a trusted tunnel or authenticated
-reverse proxy. This service is intended to expose private conversation/memory diagnostics in later
-phases and does not provide its own authentication yet.
+Keep `DASHBOARD_HOST=127.0.0.1`. The service still has no authentication. `DASHBOARD_ENABLE_WRITES`
+defaults to false and, until authentication is added, write mode refuses non-loopback hosts.
 
 The dashboard currently exposes the following read-only routes:
 
@@ -55,13 +55,19 @@ The dashboard currently exposes the following read-only routes:
 The HTML surface is intentionally desktop-oriented and server-rendered. It uses no client-side
 application state and does not add new content telemetry.
 
-## Read-only boundary
+## Read/write boundary
 
-`AdminRepository` opens SQLite with `mode=ro` and `PRAGMA query_only=ON`. It never constructs
-the production `Store`, so starting the dashboard cannot create tables, run migrations, or modify
-runtime data.
+`AdminRepository` still opens SQLite with `mode=ro` and `PRAGMA query_only=ON`. It never constructs
+the production `Store`, so normal inspection paths cannot migrate or mutate runtime data.
 
-The production bot remains the only owner of schema migration and writes.
+When local write mode is explicitly enabled, POST handlers may only append typed requests to the
+`admin_commands` queue through `AdminCommandWriter`. The production bot remains the schema owner and
+executes queued actions in its own process, so runtime-only side effects (for example recent-buffer
+clears or cached runtime settings) stay synchronized with persistent state.
+
+Completed command rows retain action/target/result/error audit metadata but scrub the original payload.
+A command that was `running` when the bot stopped is marked failed on restart rather than retried
+automatically.
 
 Existing raw-retention behavior is unchanged. The dashboard does not turn `turns` into a permanent
 conversation archive; it can only inspect rows that the normal bounded retention policy still keeps.
@@ -404,9 +410,8 @@ not approve/reject proposals or mutate lifecycle state. Memory detail pages expo
 ## Next phase
 
 The reconciliation workbench remains the review surface for tuning the automatic threshold and deciding
-whether currently deferred relationship/conflict cases ever need stronger lifecycle semantics. Dashboard
-write actions remain out of scope until authentication/authorization and the audited write framework
-are introduced.
+whether currently deferred relationship/conflict cases ever need stronger lifecycle semantics. Dashboard domain write actions are added incrementally on top of the local audited queue. Remote access
+and authenticated authorization remain out of scope until the secure deployment/authentication phase.
 
 ## Internal module boundaries
 
