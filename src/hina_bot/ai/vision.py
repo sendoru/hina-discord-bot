@@ -32,6 +32,17 @@ class VisualInput:
     def input_url(self) -> str:
         return self.uri if self.uri.startswith("https://") else self.data_url()
 
+    def media_resolution(self) -> str:
+        if self.source in {"emoji", "sticker"}:
+            return "low"
+        if self.reference_strength in {
+            "current_message",
+            "explicit_reply",
+            "prior_explicit_reply",
+        }:
+            return "high"
+        return "medium"
+
     def label(self, index: int) -> str:
         source = {
             "attachment": "첨부 이미지",
@@ -69,15 +80,22 @@ CURRENT_VISUAL_INPUTS: ContextVar[tuple[VisualInput, ...]] = ContextVar(
 VISION_REQUEST_ACTIVE: ContextVar[bool] = ContextVar("vision_request_active", default=False)
 
 
-def _visual_blocks(visuals: list[VisualInput]) -> list[dict]:
+def _visual_blocks(
+    visuals: list[VisualInput],
+    *,
+    include_media_resolution: bool = False,
+) -> list[dict]:
     blocks = []
     for index, visual in enumerate(visuals, 1):
         blocks.append({"type": "input_text", "text": visual.label(index)})
-        blocks.append({
+        image = {
             "type": "input_image",
             "image_url": visual.input_url(),
             "detail": "auto",
-        })
+        }
+        if include_media_resolution:
+            image["resolution"] = visual.media_resolution()
+        blocks.append(image)
     return blocks
 
 
@@ -88,7 +106,11 @@ def _message_order(message_id: str) -> tuple[int, int | str]:
         return 1, message_id
 
 
-def _historical_visual_messages(visuals: list[VisualInput]) -> list[dict]:
+def _historical_visual_messages(
+    visuals: list[VisualInput],
+    *,
+    include_media_resolution: bool = False,
+) -> list[dict]:
     grouped: dict[str, list[VisualInput]] = {}
     for index, visual in enumerate(visuals):
         key = visual.message_id or f"missing:{index}"
@@ -116,12 +138,19 @@ def _historical_visual_messages(visuals: list[VisualInput]) -> list[dict]:
                 + json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
             ),
         }]
-        content.extend(_visual_blocks(group))
+        content.extend(
+            _visual_blocks(group, include_media_resolution=include_media_resolution)
+        )
         messages.append({"role": "user", "content": content})
     return messages
 
 
-def _augment_input(input_value, visuals: tuple[VisualInput, ...]):
+def _augment_input(
+    input_value,
+    visuals: tuple[VisualInput, ...],
+    *,
+    include_media_resolution: bool = False,
+):
     if not isinstance(input_value, list):
         return input_value
 
@@ -139,7 +168,10 @@ def _augment_input(input_value, visuals: tuple[VisualInput, ...]):
     historical = [visual for visual in visuals if visual.context_kind != "current_message"]
 
     if historical:
-        historical_messages = _historical_visual_messages(historical)
+        historical_messages = _historical_visual_messages(
+            historical,
+            include_media_resolution=include_media_resolution,
+        )
         insertion = target
         for index, candidate in enumerate(items[:target]):
             if (
@@ -167,15 +199,18 @@ def _augment_input(input_value, visuals: tuple[VisualInput, ...]):
     else:
         content = [{"type": "input_text", "text": str(original)}]
 
-    content.extend(_visual_blocks(current))
+    content.extend(
+        _visual_blocks(current, include_media_resolution=include_media_resolution)
+    )
     item["content"] = content
     items[target] = item
     return items
 
 
 class _VisionResponses:
-    def __init__(self, responses):
+    def __init__(self, responses, *, provider_name: str):
         self._responses = responses
+        self._provider_name = provider_name
 
     async def create(self, **kwargs):
         visuals = CURRENT_VISUAL_INPUTS.get()
@@ -183,7 +218,15 @@ class _VisionResponses:
             return await self._responses.create(**kwargs)
 
         request = dict(kwargs)
-        request["input"] = _augment_input(request.get("input"), visuals)
+        model = str(request.get("model") or "").lower()
+        include_media_resolution = (
+            self._provider_name == "gemini" and model.startswith("gemini-3")
+        )
+        request["input"] = _augment_input(
+            request.get("input"),
+            visuals,
+            include_media_resolution=include_media_resolution,
+        )
         request["instructions"] = (
             (request.get("instructions") or "").rstrip() + "\n\n" + VISION_INPUT_POLICY
         ).strip()
@@ -195,8 +238,11 @@ class VisionClient:
 
     def __init__(self, client):
         self._client = client
-        self.responses = _VisionResponses(client.responses)
         self.provider_name = getattr(client, "provider_name", "openai")
+        self.responses = _VisionResponses(
+            client.responses,
+            provider_name=self.provider_name,
+        )
 
     async def close(self):
         await self._client.close()
