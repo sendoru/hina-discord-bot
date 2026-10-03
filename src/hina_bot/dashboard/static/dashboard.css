@@ -3042,38 +3042,58 @@ pre {
 }
 
 .runtime-config-table {
-  min-width: 1000px;
-  table-layout: auto;
+  min-width: 720px;
+  table-layout: fixed;
 }
 
 .runtime-config-table th,
 .runtime-config-table td {
-  overflow-wrap: normal;
   word-break: normal;
 }
 
-.runtime-config-setting,
+.runtime-config-table th:nth-child(1) { width: 30%; }
+.runtime-config-table th:nth-child(2) { width: 76px; }
+.runtime-config-table th:nth-child(3) { width: auto; }
+.runtime-config-table th:nth-child(4) { width: 78px; }
+
+.runtime-config-setting {
+  min-width: 0;
+}
+
+.runtime-config-setting strong,
+.runtime-config-setting small {
+  display: block;
+  min-width: 0;
+}
+
+.runtime-config-setting strong {
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.runtime-config-setting small {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.runtime-config-setting code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .runtime-config-source,
-.runtime-config-current,
 .runtime-config-reset {
   white-space: nowrap;
 }
 
-.runtime-config-setting {
-  min-width: 300px;
-}
-
-.runtime-config-setting small {
-  display: inline;
-  margin-left: 6px;
-}
-
 .runtime-config-source {
-  width: 90px;
+  width: 76px;
 }
 
 .runtime-config-current {
-  min-width: 470px;
+  min-width: 0;
 }
 
 .runtime-config-current-view[hidden],
@@ -3081,23 +3101,41 @@ pre {
   display: none;
 }
 
-.runtime-config-current-view,
+.runtime-config-current-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 10px;
+  align-items: start;
+  min-width: 0;
+}
+
 .runtime-config-edit-form {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
   min-width: 0;
 }
 
 .runtime-config-current-value {
-  flex: 1 1 auto;
+  display: block;
   min-width: 0;
-  white-space: nowrap;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.runtime-config-current-value > code {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .runtime-config-current-value small {
-  margin-left: 6px;
-  white-space: nowrap;
+  display: block;
+  min-width: 0;
+  margin: 4px 0 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .runtime-config-value-note {
@@ -3108,23 +3146,45 @@ pre {
 .runtime-config-edit-button,
 .runtime-config-edit-form button,
 .runtime-config-reset button {
-  flex: 0 0 auto;
   white-space: nowrap;
 }
 
 .runtime-config-edit-form input[type="text"] {
-  flex: 1 1 auto;
   width: 100%;
-  min-width: 240px;
+  min-width: 0;
 }
 
 .runtime-config-reset {
   width: 78px;
 }
 
+@media (max-width: 900px) {
+  .runtime-config-table {
+    min-width: 650px;
+  }
+
+  .runtime-config-table th:nth-child(1) { width: 34%; }
+
+  .runtime-config-edit-form {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .runtime-config-edit-form input[type="text"] {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 720px) {
   .runtime-config-table {
-    min-width: 940px;
+    min-width: 600px;
+  }
+
+  .runtime-config-current-view {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .runtime-config-edit-button {
+    justify-self: start;
   }
 }
 
