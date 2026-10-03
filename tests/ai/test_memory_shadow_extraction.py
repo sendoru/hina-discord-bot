@@ -385,11 +385,11 @@ def test_stale_extraction_scope_query_uses_age_and_pending_count():
         )
 
     scopes = store.stale_memory_extraction_scopes(
-        min_pending=2,
+        min_pending=1,
         stale_after_seconds=8 * 60 * 60,
     )
 
-    assert scopes == [stale]
+    assert set(scopes) == {stale, single}
     store.close()
 
 
@@ -412,6 +412,21 @@ def test_stale_extraction_scope_query_respects_legacy_summary_baseline():
 
     assert scopes == [scope]
     assert store.memory_extraction_cursor(scope) == history[1]["id"]
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_stale_single_turn_can_be_extracted_with_explicit_minimum():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 1)
+    harness = _harness(_response('{"items":[]}'))
+
+    committed = await harness.extract_structured_memory(store, scope, min_turns=1)
+
+    assert committed is True
+    harness.usage.request.assert_awaited_once()
+    assert store.pending_memory_extraction(scope) == []
     store.close()
 
 
