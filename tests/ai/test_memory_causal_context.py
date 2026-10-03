@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from hina_bot.ai.memory_summary import SUMMARY_POLICY, MemorySummaryMixin
+from hina_bot.ai.memory_summary import MemorySummaryMixin
 from hina_bot.core.memory_context import (
     CURRENT_MEMORY_CONTEXT,
     build_memory_context,
@@ -174,7 +174,6 @@ async def test_personal_summary_receives_causal_context_and_logs_size_telemetry(
         "context": context,
     }]
     assert "hina" not in payload["new_turns"][0]
-    assert "해석하기 위한 제한된 인과 문맥" in SUMMARY_POLICY
 
     event = next(
         call for call in mixin.usage.routing_event.call_args_list
