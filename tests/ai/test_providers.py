@@ -460,6 +460,67 @@ async def test_gemini_translates_local_function_tool_and_call_output():
 
 
 @pytest.mark.asyncio
+async def test_gemini_generate_content_strips_additional_properties_from_function_schema():
+    seen = {}
+
+    async def handler(request: httpx.Request):
+        seen["json"] = __import__("json").loads(request.content)
+        return httpx.Response(200, json={
+            "candidates": [{
+                "finishReason": "STOP",
+                "content": {"role": "model", "parts": [{"text": "done"}]},
+            }],
+            "usageMetadata": {},
+        })
+
+    tool = {
+        "type": "function",
+        "name": "lookup",
+        "description": "Lookup.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filters": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "additionalProperties": False,
+                },
+            },
+            "additionalProperties": False,
+        },
+    }
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        await _GeminiResponses(http).create(
+            model="gemini-test",
+            input="search",
+            tools=[
+                {"type": "web_search"},
+                tool,
+            ],
+            tool_choice="auto",
+        )
+    finally:
+        await http.aclose()
+
+    parameters = (
+        seen["json"]["tools"][1]["function_declarations"][0]["parameters"]
+    )
+    assert parameters == {
+        "type": "object",
+        "properties": {
+            "filters": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+            },
+        },
+    }
+    assert tool["parameters"]["additionalProperties"] is False
+    assert tool["parameters"]["properties"]["filters"]["additionalProperties"] is False
+
+
+@pytest.mark.asyncio
 async def test_gemini_generate_content_restores_function_response_name_from_call_id():
     seen = {}
 
