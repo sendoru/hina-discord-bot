@@ -39,24 +39,22 @@ def _collection_items(value: object, kind: str) -> list[str]:
     return []
 
 
-def _collection_meta(kind: str) -> dict[str, object]:
-    if kind == "prefixes":
-        return {
-            "item_label": "Prefix",
-            "item_placeholder": "new prefix",
-            "max_items": 20,
-            "empty_allowed": False,
-            "ordered": True,
-        }
-    if kind == "discord_ids":
-        return {
-            "item_label": "Discord channel ID",
-            "item_placeholder": "new channel ID",
-            "max_items": 100,
-            "empty_allowed": True,
-            "ordered": False,
-        }
-    return {}
+def _collection_meta(spec) -> dict[str, object]:
+    if spec.kind == "prefixes":
+        item_label = "Prefix"
+        item_placeholder = "new prefix"
+    elif spec.kind == "discord_ids":
+        item_label = "Discord channel ID"
+        item_placeholder = "new channel ID"
+    else:
+        return {}
+    return {
+        "item_label": item_label,
+        "item_placeholder": item_placeholder,
+        "max_items": int(spec.maximum or 0),
+        "empty_allowed": bool(spec.empty_allowed),
+        "ordered": spec.kind == "prefixes",
+    }
 
 
 def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
@@ -110,7 +108,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
         startup_items = (
             _collection_items(decoded_startup, spec.kind) if is_collection else []
         )
-        collection_meta = _collection_meta(spec.kind) if is_collection else {}
+        collection_meta = _collection_meta(spec) if is_collection else {}
         rows.append(
             {
                 "key": key,
