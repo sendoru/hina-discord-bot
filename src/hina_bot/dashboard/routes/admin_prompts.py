@@ -67,6 +67,21 @@ def build_router(
 ) -> APIRouter:
     router = APIRouter()
 
+    @router.get("/admin/commands/{command_id}")
+    def admin_command_status(command_id: int):
+        row = repository.admin_command_row(command_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="admin command not found")
+        return {
+            "id": row["id"],
+            "status": row["status"],
+            "action": row["action"],
+            "target": row["target"],
+            "error_type": row["error_type"],
+            "error_message": row["error_message"],
+            "finished_at": row["finished_at"],
+        }
+
     @router.get("/admin/prompts", response_class=HTMLResponse)
     def prompt_state(request: Request, queued: int | None = None):
         data = _read_model(repository)
