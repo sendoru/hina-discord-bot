@@ -3188,21 +3188,19 @@ pre {
 }
 
 .runtime-collection-editor-row td {
-  padding: 0 12px 14px;
+  padding: 12px 12px 18px;
   background: rgba(145, 175, 255, .025);
 }
 
 .runtime-collection-editor {
-  margin-top: 2px;
-  padding: 15px;
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  background: rgba(13, 16, 22, .56);
-}
-
-.runtime-collection-editor form {
+  position: sticky;
+  left: 12px;
   display: grid;
+  width: var(--runtime-collection-editor-width, calc(100% - 24px));
+  max-width: var(--runtime-collection-editor-width, calc(100% - 24px));
+  min-width: 0;
   gap: 13px;
+  padding: 2px 0 0;
 }
 
 .runtime-collection-editor-head {
@@ -3237,10 +3235,7 @@ pre {
 }
 
 .runtime-collection-draft {
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
+  padding: 2px 0;
 }
 
 .runtime-collection-chip-editable {
@@ -3276,14 +3271,15 @@ pre {
 
 .runtime-collection-add-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
 
 .runtime-collection-add-row input {
-  flex: 1 1 auto;
-  width: min(520px, 100%);
-  min-width: 260px;
+  flex: 1 1 320px;
+  width: auto;
+  min-width: 0;
 }
 
 .runtime-collection-add-row button {
