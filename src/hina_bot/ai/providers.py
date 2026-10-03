@@ -301,6 +301,19 @@ def _gemini_generate_content_contents(value):
     return contents
 
 
+def _gemini_generate_content_schema(value):
+    """Translate JSON Schema to the subset accepted by generateContent tools."""
+    if isinstance(value, dict):
+        return {
+            key: _gemini_generate_content_schema(item)
+            for key, item in value.items()
+            if key != "additionalProperties"
+        }
+    if isinstance(value, list):
+        return [_gemini_generate_content_schema(item) for item in value]
+    return value
+
+
 def _gemini_dict_field(value: dict, *names: str, default=None):
     for name in names:
         if name in value:
@@ -695,7 +708,7 @@ class _GeminiResponses:
                 "function_declarations": [{
                     "name": tool["name"],
                     "description": tool.get("description", ""),
-                    "parameters": (
+                    "parameters": _gemini_generate_content_schema(
                         tool.get("parameters")
                         or {"type": "object", "properties": {}}
                     ),
