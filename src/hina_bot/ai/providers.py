@@ -66,17 +66,22 @@ def _gemini_http_error(response: httpx.Response) -> ProviderAPIError:
     return ProviderAPIError("gemini", response.status_code, code=code, message=message)
 
 
-def _gemini_image_block(image_url: str):
+def _gemini_image_block(image_url: str, resolution: str = ""):
     if image_url.startswith("data:") and ";base64," in image_url:
         header, data = image_url.split(",", 1)
         mime_type = header[5:].split(";", 1)[0]
-        if mime_type.startswith("image/") and data:
-            return {"type": "image", "data": data, "mime_type": mime_type}
-        return None
-    mime_type = mimetypes.guess_type(urlsplit(image_url).path)[0] or "image/png"
-    if not mime_type.startswith("image/"):
-        mime_type = "image/png"
-    return {"type": "image", "uri": image_url, "mime_type": mime_type}
+        if not mime_type.startswith("image/") or not data:
+            return None
+        image = {"type": "image", "data": data, "mime_type": mime_type}
+    else:
+        mime_type = mimetypes.guess_type(urlsplit(image_url).path)[0] or "image/png"
+        if not mime_type.startswith("image/"):
+            mime_type = "image/png"
+        image = {"type": "image", "uri": image_url, "mime_type": mime_type}
+
+    if resolution in {"low", "medium", "high", "ultra_high"}:
+        image["resolution"] = resolution
+    return image
 
 
 def _gemini_content(value):
@@ -103,7 +108,10 @@ def _gemini_content(value):
         if block_type == "input_image":
             image_url = item.get("image_url")
             if isinstance(image_url, str) and image_url:
-                image = _gemini_image_block(image_url)
+                image = _gemini_image_block(
+                    image_url,
+                    str(item.get("resolution") or ""),
+                )
                 if image is not None:
                     blocks.append(image)
             continue
