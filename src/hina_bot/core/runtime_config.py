@@ -73,6 +73,7 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "gemini_smart_thinking_level",
         "GEMINI_SMART_THINKING_LEVEL",
         "gemini_thinking_level",
+        choices=tuple(sorted(GEMINI_THINKING_LEVELS)),
     ),
     "gemini_store_interactions": RuntimeSettingSpec(
         "gemini_store_interactions", "GEMINI_STORE_INTERACTIONS", "bool"
