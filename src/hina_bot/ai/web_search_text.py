@@ -82,7 +82,6 @@ def response_text(response, *, hide_citations: bool = False) -> str:
 
     text = "".join(pieces).strip() if pieces else fallback
     text = strip_internal_control_prefix(text)
-    text = _DOMAIN_CITATION.sub("", text)
     text = re.sub(r"[ \t]+([,.!?])", r"\1", text)
     text = re.sub(r"[ \t]{2,}", " ", text)
     return text.strip()
