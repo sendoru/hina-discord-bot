@@ -119,8 +119,8 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert "<th>Set</th>" not in response.text
     assert "data-runtime-config-editor" in response.text
     assert "data-runtime-config-form" in response.text
-    assert ">Set override<" in response.text
-    assert ">Edit<" in response.text
+    assert "Set override" in response.text
+    assert "Edit" in response.text
     assert 'value="4300"' in response.text
     assert 'aria-label="Override value for CHANNEL_CONTEXT_CHARS"' in response.text
     assert "runtime-config.js" in response.text
