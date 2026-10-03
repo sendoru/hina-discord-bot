@@ -3004,3 +3004,81 @@ pre {
     padding-right: 52px;
   }
 }
+
+
+/* Runtime config editor layout */
+.runtime-config-table-wrap {
+  overflow-x: auto;
+}
+
+.runtime-config-table {
+  min-width: 1160px;
+  table-layout: auto;
+}
+
+.runtime-config-table th,
+.runtime-config-table td {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.runtime-config-setting,
+.runtime-config-source,
+.runtime-config-current,
+.runtime-config-reset {
+  white-space: nowrap;
+}
+
+.runtime-config-setting {
+  min-width: 300px;
+}
+
+.runtime-config-setting small {
+  display: inline;
+  margin-left: 6px;
+}
+
+.runtime-config-source {
+  width: 90px;
+}
+
+.runtime-config-current {
+  min-width: 300px;
+}
+
+.runtime-config-current small {
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.runtime-config-set {
+  min-width: 310px;
+}
+
+.runtime-config-set-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.runtime-config-set-form input[type="text"] {
+  width: 100%;
+  min-width: 180px;
+}
+
+.runtime-config-set-form button,
+.runtime-config-reset button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.runtime-config-reset {
+  width: 78px;
+}
+
+@media (max-width: 720px) {
+  .runtime-config-table {
+    min-width: 1080px;
+  }
+}
