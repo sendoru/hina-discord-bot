@@ -59,6 +59,18 @@ async def _timed_channel_lock(
 
 
 @asynccontextmanager
+async def _temporarily_released_channel_lock(channel_lock, timings: dict, *, clock=time.perf_counter):
+    channel_lock.release()
+    try:
+        yield
+    finally:
+        wait_started = clock()
+        await channel_lock.acquire()
+        acquired = clock()
+        timings["channel_commit_lock_wait_ms"] = round((acquired - wait_started) * 1000)
+
+
+@asynccontextmanager
 async def _timed_memory_lock(
     memory_lock,
     timings: dict,
@@ -637,108 +649,109 @@ class HinaClient(discord.Client):
                     )
                     exchange_stack.enter_context(exchange)
 
-                    slot_started = time.perf_counter()
-                    async with self.slots:
-                        timings["slot_wait_ms"] = round(
-                            (time.perf_counter() - slot_started) * 1000
-                        )
-                        async with message.channel.typing():
-                            stage = "context"
-                            context_started = time.perf_counter()
-                            sources = (
-                                await self.public_sources(scope.user_id, guild_id)
-                                if use_memory
-                                else []
+                    async with _temporarily_released_channel_lock(channel_lock, timings):
+                        slot_started = time.perf_counter()
+                        async with self.slots:
+                            timings["slot_wait_ms"] = round(
+                                (time.perf_counter() - slot_started) * 1000
                             )
-                            context = self.store.public_context(sources) if use_memory else []
-                            emoji_catalog = await self.emoji_registry.catalog(message.channel)
-                            timings["context_ms"] = round(
-                                (time.perf_counter() - context_started) * 1000
-                            )
-
-                            stage = "generation"
-                            generation_started = time.perf_counter()
-                            answer = await self.llm.answer(
-                                self.store,
-                                scope,
-                                message.author.display_name,
-                                text,
-                                public_context=context,
-                                channel_context=(
-                                    (
-                                        list(CURRENT_CHANNEL_CONTEXT.get())
-                                        if CURRENT_CHANNEL_CONTEXT.get() is not None
-                                        else self.recent.context(scope, message.id)
-                                    )
-                                    if guild_id is not None and use_chat_log
+                            async with message.channel.typing():
+                                stage = "context"
+                                context_started = time.perf_counter()
+                                sources = (
+                                    await self.public_sources(scope.user_id, guild_id)
+                                    if use_memory
                                     else []
-                                ),
-                                use_memory=use_memory,
-                                emoji_catalog=emoji_catalog,
-                            )
-                            timings["generation_ms"] = round(
-                                (time.perf_counter() - generation_started) * 1000
-                            )
-                            current = {
-                                e["id"]
-                                for e in await self.emoji_registry.catalog(message.channel)
-                            }
-                            answer = render_emojis(
-                                answer,
-                                [e for e in emoji_catalog if e["id"] in current],
-                            )
-                            answer = neutralize_mentions(answer)
-                            if not answer:
-                                answer = self.settings.empty_response_reply
-                            parts = list(chunks(answer))
+                                )
+                                context = self.store.public_context(sources) if use_memory else []
+                                emoji_catalog = await self.emoji_registry.catalog(message.channel)
+                                timings["context_ms"] = round(
+                                    (time.perf_counter() - context_started) * 1000
+                                )
 
-                            stage = "delivery"
-                            delivery_started = time.perf_counter()
-                            sent = await message.channel.send(
-                                parts[0],
-                                allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
-                            )
-                            for part in parts[1:]:
-                                await message.channel.send(
-                                    part,
+                                stage = "generation"
+                                generation_started = time.perf_counter()
+                                answer = await self.llm.answer(
+                                    self.store,
+                                    scope,
+                                    message.author.display_name,
+                                    text,
+                                    public_context=context,
+                                    channel_context=(
+                                        (
+                                            list(CURRENT_CHANNEL_CONTEXT.get())
+                                            if CURRENT_CHANNEL_CONTEXT.get() is not None
+                                            else self.recent.context(scope, message.id)
+                                        )
+                                        if guild_id is not None and use_chat_log
+                                        else []
+                                    ),
+                                    use_memory=use_memory,
+                                    emoji_catalog=emoji_catalog,
+                                )
+                                timings["generation_ms"] = round(
+                                    (time.perf_counter() - generation_started) * 1000
+                                )
+                                current = {
+                                    e["id"]
+                                    for e in await self.emoji_registry.catalog(message.channel)
+                                }
+                                answer = render_emojis(
+                                    answer,
+                                    [e for e in emoji_catalog if e["id"] in current],
+                                )
+                                answer = neutralize_mentions(answer)
+                                if not answer:
+                                    answer = self.settings.empty_response_reply
+                                parts = list(chunks(answer))
+
+                                stage = "delivery"
+                                delivery_started = time.perf_counter()
+                                sent = await message.channel.send(
+                                    parts[0],
                                     allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
                                 )
-                            reply_delivered = True
-                            timings["delivery_ms"] = round(
-                                (time.perf_counter() - delivery_started) * 1000
-                            )
-                            self.events.emit(
-                                "turn.reply_delivered",
-                                scope=scope_kind,
-                                elapsed_ms=round(
-                                    (time.perf_counter() - turn_started) * 1000
-                                ),
-                                delivery_ms=timings["delivery_ms"],
-                                delivery_chunks=len(parts),
-                            )
-                            if guild_id is not None and use_chat_log:
-                                assistant_name = getattr(
-                                    self.user,
-                                    "display_name",
-                                    "assistant",
-                                )[:100]
-                                sent_at = getattr(sent, "created_at", None)
-                                self.recent.add(
-                                    scope,
-                                    sent.id,
-                                    assistant_name,
-                                    answer,
-                                    role="assistant",
-                                    unix_time=(
-                                        sent_at.timestamp()
-                                        if sent_at is not None
-                                        else None
-                                    ),
-                                    author_user_id=self.user.id,
-                                    reply_target_user_id=scope.user_id,
-                                    direct_trigger=None,
-                                    capture_turn_provenance=True,
+                                for part in parts[1:]:
+                                    await message.channel.send(
+                                        part,
+                                        allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
+                                    )
+                                reply_delivered = True
+                                timings["delivery_ms"] = round(
+                                    (time.perf_counter() - delivery_started) * 1000
                                 )
+                                self.events.emit(
+                                    "turn.reply_delivered",
+                                    scope=scope_kind,
+                                    elapsed_ms=round(
+                                        (time.perf_counter() - turn_started) * 1000
+                                    ),
+                                    delivery_ms=timings["delivery_ms"],
+                                    delivery_chunks=len(parts),
+                                )
+                                if guild_id is not None and use_chat_log:
+                                    assistant_name = getattr(
+                                        self.user,
+                                        "display_name",
+                                        "assistant",
+                                    )[:100]
+                                    sent_at = getattr(sent, "created_at", None)
+                                    self.recent.add(
+                                        scope,
+                                        sent.id,
+                                        assistant_name,
+                                        answer,
+                                        role="assistant",
+                                        unix_time=(
+                                            sent_at.timestamp()
+                                            if sent_at is not None
+                                            else None
+                                        ),
+                                        author_user_id=self.user.id,
+                                        reply_target_user_id=scope.user_id,
+                                        direct_trigger=None,
+                                        capture_turn_provenance=True,
+                                    )
 
                     # Persist the delivered turn before releasing the channel lock so duplicate
                     # suppression and the next same-channel turn see a consistent transcript.
