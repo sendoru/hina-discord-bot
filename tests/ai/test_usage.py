@@ -396,7 +396,6 @@ def test_context_size_event_keeps_only_numeric_attribution(tmp_path):
             "context.size",
             status="completed",
             context_chars_total=1200,
-            context_summary_chars=100,
             context_structured_memory_chars=200,
             context_recent_chars=150,
             context_public_chars=50,
