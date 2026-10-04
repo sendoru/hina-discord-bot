@@ -17,6 +17,7 @@ from pathlib import Path
 RAW_TABLES = ("turns", "shared_calls", "failed_turns")
 PRESERVED_TABLES = (
     "memory_items",
+    "memory_item_edit_history",
     "shared_summaries",
     "memory_reconciliation_proposals",
     "memory_extraction_cursors",
