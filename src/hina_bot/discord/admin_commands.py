@@ -19,6 +19,35 @@ from .memory_commands import MemoryCommands
 log = logging.getLogger("hina")
 
 
+def _memory_item_scope(item) -> Scope:
+    try:
+        user_id = int(item.user_id)
+        channel_id = int(item.origin_channel_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("stored memory item has invalid scope") from exc
+    if user_id <= 0 or channel_id <= 0:
+        raise ValueError("stored memory item has invalid scope")
+
+    realm = str(item.origin_realm)
+    if realm == f"dm:{user_id}":
+        guild_id = None
+    elif realm.startswith("guild:"):
+        try:
+            guild_id = int(realm.removeprefix("guild:"))
+        except ValueError as exc:
+            raise ValueError("stored memory item has invalid scope") from exc
+        if guild_id <= 0:
+            raise ValueError("stored memory item has invalid scope")
+    else:
+        raise ValueError("stored memory item has invalid scope")
+    return Scope(
+        guild_id,
+        channel_id,
+        user_id,
+        public_at_capture=bool(item.origin_public_at_capture),
+    )
+
+
 async def execute_admin_command(client, command: AdminCommand) -> dict[str, object]:
     """Dispatch one typed dashboard command.
 
@@ -41,6 +70,37 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
             "key": key,
             "value": format_runtime_value(parsed),
             "source": client.settings.source(key),
+        }
+
+    if command.action == "memory.item.edit":
+        payload = command.payload
+        try:
+            item_id = int(payload["item_id"])
+            expected_revision = int(payload["expected_revision"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("invalid memory item edit target") from exc
+        if item_id <= 0 or expected_revision < 0:
+            raise ValueError("invalid memory item edit target")
+
+        item = client.store.memory_item(item_id)
+        if item is None:
+            raise ValueError("Memory item not found")
+        scope = _memory_item_scope(item)
+        async with client.memory_lock(scope):
+            revised = client.store.revise_memory_item(
+                item_id,
+                expected_revision=expected_revision,
+                content=payload.get("content"),
+                kind=payload.get("kind"),
+                disclosure=payload.get("disclosure"),
+                confidence=payload.get("confidence"),
+                relationship_evidence=payload.get("relationship_evidence", {}),
+                admin_command_id=command.id,
+            )
+        return {
+            "item_id": item_id,
+            "revision": revised.revision,
+            "changed": revised.revision != expected_revision,
         }
 
     if command.action.startswith(("memory.", "chatlog.", "note.")):
