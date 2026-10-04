@@ -113,3 +113,52 @@ async def test_memory_item_edit_rejects_stale_revision():
             ),
         )
     store.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_item_retract_uses_stored_scope_and_memory_lock_only():
+    store = Store(":memory:")
+    scope = Scope(1, 10, 100, True)
+    item_id = store.add_memory_item(
+        scope,
+        "retract me",
+        kind="fact",
+        disclosure="local",
+    )
+    acquired = []
+    lock = asyncio.Lock()
+
+    class TrackingLock:
+        async def __aenter__(self):
+            acquired.append(("guild:1", 10, 100))
+            await lock.acquire()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            lock.release()
+
+    client = NS(store=store, memory_lock=lambda _: TrackingLock())
+    result = await execute_admin_command(
+        client,
+        AdminCommand(
+            id=9,
+            request_id="c" * 32,
+            actor="local-dashboard",
+            action="memory.item.retract",
+            target=str(item_id),
+            payload={
+                "item_id": item_id,
+                "expected_revision": 0,
+                "guild_id": 999,
+                "channel_id": 999,
+                "user_id": 999,
+            },
+        ),
+    )
+
+    assert result == {"item_id": item_id, "revision": 1, "status": "retracted"}
+    assert acquired == [("guild:1", 10, 100)]
+    retracted = store.memory_item(item_id)
+    assert retracted is not None
+    assert retracted.status.value == "retracted"
+    assert retracted.revision == 1
+    store.close()
