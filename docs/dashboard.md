@@ -316,6 +316,16 @@ queries the full table so operators can inspect superseded history and follow re
 The repository still detects these columns dynamically so older/pre-migration read-only database copies
 remain viewable without dashboard-side schema writes.
 
+When dashboard write mode is enabled, an active memory detail page can revise only the semantic fields
+`content`, `kind`, `disclosure`, `confidence`, and `relationship_evidence`. The dashboard
+queues a `memory.item.edit` command containing the item ID and expected revision; it never supplies
+authoritative owner/origin scope. The bot reloads the stored item, reconstructs that scope, acquires the
+memory lock, and updates the row in place. Each successful change stores the previous editable snapshot
+in `memory_item_edit_history` and increments `memory_items.revision`; stale revisions are rejected.
+This preserves item IDs, creation/source provenance, relationship-recency ordering, and reconciliation
+references. Superseded items remain read-only, and add/remove/undo/pinning are intentionally separate
+lifecycle features.
+
 ### Effective relationship profiles
 
 `/relationships` uses the shared Guild/DM target-scope picker. The selected scope is evaluated with

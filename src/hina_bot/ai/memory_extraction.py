@@ -13,10 +13,15 @@ import re
 from dataclasses import dataclass, field, replace
 
 from hina_bot.core.memory_context import decode_memory_context
-from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, RelationshipEvidence
+from hina_bot.core.memory_items import (
+    MEMORY_CONTENT_MAX_CHARS,
+    MemoryDisclosure,
+    MemoryKind,
+    RelationshipEvidence,
+)
 
 _MAX_ITEMS_PER_BATCH = 24
-_MAX_CONTENT_CHARS = 600
+_MAX_CONTENT_CHARS = MEMORY_CONTENT_MAX_CHARS
 _RECONCILIATION_RELATIONS = frozenset({"duplicate", "corrects", "conflicts"})
 AUTO_RECONCILIATION_MIN_CONFIDENCE = 0.95
 _CODE_FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.IGNORECASE | re.DOTALL)

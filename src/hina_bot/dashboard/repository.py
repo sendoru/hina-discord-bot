@@ -776,6 +776,8 @@ class AdminRepository:
             "columns": tuple(sorted(columns)),
             "has_lifecycle": "status" in columns,
             "has_superseded_by": "superseded_by" in columns,
+            "has_revision": "revision" in columns,
+            "has_edit_history": self._table_exists("memory_item_edit_history"),
         }
 
     def count_memory_items(self, **filters) -> int:
@@ -811,6 +813,23 @@ class AdminRepository:
                 "SELECT * FROM memory_items WHERE id=?", (int(item_id),)
             ).fetchone()
         return dict(row) if row is not None else None
+
+    def memory_item_edit_history(
+        self, item_id: int, *, limit: int = 50
+    ) -> list[dict[str, object]]:
+        if not self._table_exists("memory_item_edit_history"):
+            return []
+        limit = self._limit(limit, maximum=200)
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT id,memory_item_id,revision,content,kind,disclosure,confidence,
+                          relationship_evidence,edited_at,admin_command_id
+                   FROM memory_item_edit_history
+                   WHERE memory_item_id=?
+                   ORDER BY revision DESC,id DESC LIMIT ?""",
+                (int(item_id), limit),
+            ).fetchall()
+        return self._dicts(rows)
 
     def neighboring_memory_items(
         self, item: dict[str, object], *, limit: int = 8

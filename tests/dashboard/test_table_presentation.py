@@ -27,7 +27,7 @@ def test_shared_summary_cursor_and_origin_components_preserve_stored_data(tmp_pa
         "SELECT id FROM shared_calls WHERE message_id='3'"
     ).fetchone()["id"])
     store.save_shared_summary(guild, "User 1", "Shared summary", shared_id)
-    long_text = ("사용자는 히나에게 직접적인 애정과 호감을 표현합니다. " * 40).strip()
+    long_text = ("사용자는 히나에게 직접적인 애정과 호감을 표현합니다. " * 15).strip()
     old = store.add_memory_item(guild, long_text, kind="relationship", disclosure="implicit")
     new = store.add_memory_item(guild, long_text, kind="relationship", disclosure="implicit")
     store.add_memory_reconciliation_proposal(

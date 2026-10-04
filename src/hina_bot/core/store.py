@@ -10,6 +10,7 @@ from .memory_items import (
     MemoryKind,
     MemoryStatus,
     RelationshipEvidence,
+    validate_memory_item_fields,
 )
 from .observability import current_turn_id
 from .routing import Scope
@@ -92,6 +93,7 @@ class Store:
                 status TEXT NOT NULL DEFAULT 'active'
                     CHECK(status IN ('active','superseded')),
                 superseded_by INTEGER,
+                revision INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 CHECK(superseded_by IS NULL OR superseded_by != id)
@@ -99,6 +101,24 @@ class Store:
             CREATE INDEX IF NOT EXISTS memory_items_owner ON memory_items(user_id, id);
             CREATE INDEX IF NOT EXISTS memory_items_origin
                 ON memory_items(origin_realm, origin_channel_id, user_id);
+            CREATE TABLE IF NOT EXISTS memory_item_edit_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                memory_item_id INTEGER NOT NULL,
+                revision INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN (
+                    'fact','event','preference','relationship','boundary','task'
+                )),
+                disclosure TEXT NOT NULL CHECK(disclosure IN (
+                    'local','implicit','reference_gated','global'
+                )),
+                confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+                relationship_evidence TEXT NOT NULL DEFAULT '{}',
+                edited_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                admin_command_id INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS memory_item_edit_history_item
+                ON memory_item_edit_history(memory_item_id, revision, id);
             CREATE TABLE IF NOT EXISTS memory_extraction_cursors (
                 scope TEXT PRIMARY KEY,
                 realm TEXT NOT NULL,
@@ -209,6 +229,11 @@ class Store:
         if "superseded_by" not in memory_columns:
             with self.db:
                 self.db.execute("ALTER TABLE memory_items ADD COLUMN superseded_by INTEGER")
+        if "revision" not in memory_columns:
+            with self.db:
+                self.db.execute(
+                    "ALTER TABLE memory_items ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
+                )
         with self.db:
             self.db.execute(
                 "CREATE INDEX IF NOT EXISTS memory_items_owner_status "
@@ -511,6 +536,7 @@ class Store:
             confidence=float(row["confidence"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
+            revision=int(row["revision"]),
             relationship_evidence=relationship_evidence,
             status=MemoryStatus(row["status"]),
             superseded_by=(
@@ -532,20 +558,18 @@ class Store:
         relationship_evidence: RelationshipEvidence | dict | None = None,
         user_name: str | None = None,
     ) -> int:
-        text = content.strip()
-        if not text:
-            raise ValueError("Memory item content must not be empty")
-        kind = MemoryKind(kind)
-        disclosure = MemoryDisclosure(disclosure)
-        confidence = float(confidence)
-        if not 0 <= confidence <= 1:
-            raise ValueError("Memory item confidence must be between 0 and 1")
-        if isinstance(relationship_evidence, RelationshipEvidence):
-            evidence = relationship_evidence
-        else:
-            evidence = RelationshipEvidence.from_mapping(relationship_evidence)
-        if kind != MemoryKind.RELATIONSHIP and evidence:
-            raise ValueError("relationship_evidence is valid only for relationship memory")
+        fields = validate_memory_item_fields(
+            content,
+            kind=kind,
+            disclosure=disclosure,
+            confidence=confidence,
+            relationship_evidence=relationship_evidence,
+        )
+        text = fields.content
+        kind = fields.kind
+        disclosure = fields.disclosure
+        confidence = fields.confidence
+        evidence = fields.relationship_evidence
         source_ids = tuple(dict.fromkeys(str(value) for value in source_message_ids))
         encoded_sources = json.dumps(source_ids, ensure_ascii=False, separators=(",", ":"))
         encoded_evidence = json.dumps(
@@ -592,6 +616,120 @@ class Store:
             tuple(params),
         ).fetchall()
         return [self._decode_memory_item(row) for row in rows]
+
+    def memory_item(self, item_id: int) -> MemoryItem | None:
+        row = self.db.execute(
+            "SELECT * FROM memory_items WHERE id=?",
+            (int(item_id),),
+        ).fetchone()
+        return self._decode_memory_item(row) if row is not None else None
+
+    def memory_item_edit_history(self, item_id: int):
+        return self.db.execute(
+            """SELECT * FROM memory_item_edit_history
+               WHERE memory_item_id=? ORDER BY revision DESC,id DESC""",
+            (int(item_id),),
+        ).fetchall()
+
+    def revise_memory_item(
+        self,
+        item_id: int,
+        *,
+        expected_revision: int,
+        content: str,
+        kind: MemoryKind | str,
+        disclosure: MemoryDisclosure | str,
+        confidence: float,
+        relationship_evidence: RelationshipEvidence | dict | None = None,
+        admin_command_id: int | None = None,
+    ) -> MemoryItem:
+        """Edit one active item in place while preserving its provenance and row identity."""
+
+        item_id = int(item_id)
+        expected_revision = int(expected_revision)
+        if item_id <= 0:
+            raise ValueError("Memory item id must be positive")
+        if expected_revision < 0:
+            raise ValueError("Memory item revision must not be negative")
+        fields = validate_memory_item_fields(
+            content,
+            kind=kind,
+            disclosure=disclosure,
+            confidence=confidence,
+            relationship_evidence=relationship_evidence,
+        )
+        encoded_evidence = json.dumps(
+            fields.relationship_evidence.as_dict(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+        with self.db:
+            row = self.db.execute(
+                "SELECT * FROM memory_items WHERE id=?",
+                (item_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("Memory item not found")
+            if str(row["status"]) != MemoryStatus.ACTIVE.value:
+                raise ValueError("Only active memory items can be edited")
+            current_revision = int(row["revision"])
+            if current_revision != expected_revision:
+                raise ValueError("Memory item has changed; reload before editing")
+
+            current_evidence = RelationshipEvidence.from_mapping(
+                json.loads(row["relationship_evidence"] or "{}")
+            )
+            changed = (
+                str(row["content"]) != fields.content
+                or str(row["kind"]) != fields.kind.value
+                or str(row["disclosure"]) != fields.disclosure.value
+                or float(row["confidence"]) != fields.confidence
+                or current_evidence != fields.relationship_evidence
+            )
+            if not changed:
+                return self._decode_memory_item(row)
+
+            self.db.execute(
+                """INSERT INTO memory_item_edit_history(
+                       memory_item_id,revision,content,kind,disclosure,confidence,
+                       relationship_evidence,admin_command_id
+                   ) VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    item_id,
+                    current_revision,
+                    str(row["content"]),
+                    str(row["kind"]),
+                    str(row["disclosure"]),
+                    float(row["confidence"]),
+                    str(row["relationship_evidence"] or "{}"),
+                    int(admin_command_id) if admin_command_id is not None else None,
+                ),
+            )
+            cursor = self.db.execute(
+                """UPDATE memory_items
+                   SET content=?,kind=?,disclosure=?,confidence=?,relationship_evidence=?,
+                       revision=revision+1,updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status='active' AND revision=?""",
+                (
+                    fields.content,
+                    fields.kind.value,
+                    fields.disclosure.value,
+                    fields.confidence,
+                    encoded_evidence,
+                    item_id,
+                    current_revision,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Memory item has changed; reload before editing")
+            updated = self.db.execute(
+                "SELECT * FROM memory_items WHERE id=?",
+                (item_id,),
+            ).fetchone()
+            if updated is None:
+                raise RuntimeError("Memory item disappeared during edit")
+            return self._decode_memory_item(updated)
 
     def reference_gated_memory_candidates(self, scope: Scope, *, limit: int = 24):
         """Return recent active owner memories whose cross-space access is reference-gated."""
@@ -840,6 +978,13 @@ class Store:
                 self.db.execute(f"DELETE FROM {table} WHERE realm=? AND user_id=?",
                                 (scope.realm, str(scope.user_id)))
             self.db.execute(
+                """DELETE FROM memory_item_edit_history
+                   WHERE memory_item_id IN (
+                       SELECT id FROM memory_items WHERE origin_realm=? AND user_id=?
+                   )""",
+                (scope.realm, str(scope.user_id)),
+            )
+            self.db.execute(
                 "DELETE FROM memory_items WHERE origin_realm=? AND user_id=?",
                 (scope.realm, str(scope.user_id)),
             )
@@ -865,6 +1010,14 @@ class Store:
             ):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE scope LIKE ?", (prefix,))
                 deleted += self._rowcount(cursor)
+            self.db.execute(
+                """DELETE FROM memory_item_edit_history
+                   WHERE memory_item_id IN (
+                       SELECT id FROM memory_items
+                       WHERE origin_realm=? AND origin_channel_id=?
+                   )""",
+                (scope.realm, str(scope.channel_id)),
+            )
             cursor = self.db.execute(
                 "DELETE FROM memory_items WHERE origin_realm=? AND origin_channel_id=?",
                 (scope.realm, str(scope.channel_id)),
@@ -890,6 +1043,13 @@ class Store:
             ):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE realm=?", (scope.realm,))
                 deleted += self._rowcount(cursor)
+            self.db.execute(
+                """DELETE FROM memory_item_edit_history
+                   WHERE memory_item_id IN (
+                       SELECT id FROM memory_items WHERE origin_realm=?
+                   )""",
+                (scope.realm,),
+            )
             cursor = self.db.execute(
                 "DELETE FROM memory_items WHERE origin_realm=?",
                 (scope.realm,),
@@ -906,6 +1066,7 @@ class Store:
         """Delete all automatic persistent memory while preserving notes and configuration."""
         deleted = 0
         with self.db:
+            self.db.execute("DELETE FROM memory_item_edit_history")
             for table in (
                 "turns",
                 "shared_calls",
