@@ -978,6 +978,13 @@ class Store:
                 self.db.execute(f"DELETE FROM {table} WHERE realm=? AND user_id=?",
                                 (scope.realm, str(scope.user_id)))
             self.db.execute(
+                """DELETE FROM memory_item_edit_history
+                   WHERE memory_item_id IN (
+                       SELECT id FROM memory_items WHERE origin_realm=? AND user_id=?
+                   )""",
+                (scope.realm, str(scope.user_id)),
+            )
+            self.db.execute(
                 "DELETE FROM memory_items WHERE origin_realm=? AND user_id=?",
                 (scope.realm, str(scope.user_id)),
             )
@@ -1003,6 +1010,14 @@ class Store:
             ):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE scope LIKE ?", (prefix,))
                 deleted += self._rowcount(cursor)
+            self.db.execute(
+                """DELETE FROM memory_item_edit_history
+                   WHERE memory_item_id IN (
+                       SELECT id FROM memory_items
+                       WHERE origin_realm=? AND origin_channel_id=?
+                   )""",
+                (scope.realm, str(scope.channel_id)),
+            )
             cursor = self.db.execute(
                 "DELETE FROM memory_items WHERE origin_realm=? AND origin_channel_id=?",
                 (scope.realm, str(scope.channel_id)),
@@ -1028,6 +1043,13 @@ class Store:
             ):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE realm=?", (scope.realm,))
                 deleted += self._rowcount(cursor)
+            self.db.execute(
+                """DELETE FROM memory_item_edit_history
+                   WHERE memory_item_id IN (
+                       SELECT id FROM memory_items WHERE origin_realm=?
+                   )""",
+                (scope.realm,),
+            )
             cursor = self.db.execute(
                 "DELETE FROM memory_items WHERE origin_realm=?",
                 (scope.realm,),
@@ -1044,6 +1066,7 @@ class Store:
         """Delete all automatic persistent memory while preserving notes and configuration."""
         deleted = 0
         with self.db:
+            self.db.execute("DELETE FROM memory_item_edit_history")
             for table in (
                 "turns",
                 "shared_calls",
