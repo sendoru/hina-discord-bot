@@ -53,7 +53,7 @@
 
         <div class="nav-group">
           <span class="nav-group-label">Memory ops</span>
-          <a class="nav-link {% if request.url.path == '/summaries' %}active{% endif %}" {% if request.url.path == '/summaries' %}aria-current="page"{% endif %} href="/summaries">Summaries</a>
+          <a class="nav-link {% if request.url.path == '/summaries' %}active{% endif %}" {% if request.url.path == '/summaries' %}aria-current="page"{% endif %} href="/summaries">Shared summaries</a>
           <a class="nav-link {% if request.url.path == '/memory/cursors' %}active{% endif %}" {% if request.url.path == '/memory/cursors' %}aria-current="page"{% endif %} href="/memory/cursors">Cursors</a>
           <a class="nav-link {% if request.url.path.startswith('/reconciliation') %}active{% endif %}" {% if request.url.path.startswith('/reconciliation') %}aria-current="page"{% endif %} href="/reconciliation">Reconciliation</a>
         </div>
@@ -73,7 +73,7 @@
             {% elif request.url.path == '/state' %}State
             {% elif request.url.path.startswith('/admin/runtime') %}Runtime Config
             {% elif request.url.path.startswith('/admin/prompts') %}Prompt State
-            {% elif request.url.path == '/summaries' %}Summaries
+            {% elif request.url.path == '/summaries' %}Shared summaries
             {% elif request.url.path.startswith('/reconciliation') %}Reconciliation
             {% else %}Dashboard{% endif %}
           </strong>
@@ -104,7 +104,7 @@
 
           <div class="mobile-nav-group">
             <span class="mobile-nav-group-label">Memory ops</span>
-            <a class="mobile-nav-link {% if request.url.path == '/summaries' %}active{% endif %}" {% if request.url.path == '/summaries' %}aria-current="page"{% endif %} href="/summaries">Summaries</a>
+            <a class="mobile-nav-link {% if request.url.path == '/summaries' %}active{% endif %}" {% if request.url.path == '/summaries' %}aria-current="page"{% endif %} href="/summaries">Shared summaries</a>
             <a class="mobile-nav-link {% if request.url.path == '/memory/cursors' %}active{% endif %}" {% if request.url.path == '/memory/cursors' %}aria-current="page"{% endif %} href="/memory/cursors">Cursors</a>
             <a class="mobile-nav-link {% if request.url.path.startswith('/reconciliation') %}active{% endif %}" {% if request.url.path.startswith('/reconciliation') %}aria-current="page"{% endif %} href="/reconciliation">Reconciliation</a>
           </div>

@@ -390,8 +390,8 @@ On narrow screens, manual-note rows place Realm/User side by side and content be
 note text remain readable without squeezing four columns together.
 
 For DM lookup, the operator normally enters only the user ID. The dashboard discovers retained DM
-channel IDs from conversation/summarization rows, structured-memory origins, reconciliation rows, and
-channel-level override keys. A single known channel is selected automatically; multiple known channels
+channel IDs from conversation rows, shared-summary rows, structured-memory origins, reconciliation rows,
+and channel-level override keys. A single known channel is selected automatically; multiple known channels
 are offered as a selector because a shared test database may contain DM channels from more than one bot.
 If no channel can be recovered, the UI exposes a manual channel-ID fallback so channel-level overrides
 can still be inspected. Legacy URLs that pass `target_channel_id` for a DM remain accepted.
@@ -400,23 +400,19 @@ The `notes` table also stores internal configuration markers such as chat-log ca
 Those rows are excluded from the manual-note list and represented through their relevant configuration
 view instead, so internal state is not mistaken for prompt-visible user/server notes.
 
-Manual notes shown for a target are configuration-eligible when memory reads are enabled, but the page
-does not claim that every request receives them. Per-request context routing may still choose a
-current-channel-only request and suppress cross-channel memory.
+Manual notes shown for a target are configuration-eligible when memory reads are enabled. Current-channel
+relevance hints do not remove these explicit notes; they remain separate from cross-channel conversation
+history.
 
-## Legacy summary and extraction state
+## Shared summary and extraction state
 
-`/summaries` reports:
+`/summaries` reports only the remaining shared/public summary path: its `through_id`, latest retained
+shared call, and pending shared calls. Personal persistent memory is inspected through `/memory`.
 
-- personal summary `through_id`, latest retained turn, and pending retained turns,
-- shared summary `through_id`, latest retained shared call, and pending shared calls,
-- per-owner structured-memory item count,
-- the corresponding structured extraction cursor when available.
-
-`/memory/cursors` mirrors Store migration semantics. If a scope has no persisted extraction cursor,
-the legacy personal summary `through_id` is shown as the effective baseline, but the dashboard
-does **not** initialize or write that cursor. Pending counts are computed against currently retained
-turns only.
+`/memory/cursors` reports the standalone structured extraction cursor, latest retained turn, and pending
+turn count. A scope without a persisted cursor has an effective baseline of 0. Legacy personal-summary
+cursor migration happens in the runtime Store before the obsolete table is dropped; the read-only
+dashboard does not perform migrations.
 
 ## Reconciliation review
 

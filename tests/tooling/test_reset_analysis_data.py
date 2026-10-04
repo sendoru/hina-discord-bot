@@ -19,7 +19,6 @@ def _seed_safe_database(path):
 
     store.add(dm, 1, "remember this", "okay", name="User")
     turn_id = int(store.history(dm)[-1]["id"])
-    store.save_summary(dm, "persistent summary", turn_id)
     store.save_memory_extraction_cursor(dm, turn_id)
     store.add_memory_item(
         dm,
@@ -152,7 +151,6 @@ def test_reset_deletes_only_raw_analysis_data_and_records_epoch(tmp_path):
 
         preserved = {
             "memory_items": 1,
-            "summaries": 1,
             "shared_summaries": 1,
             "memory_extraction_cursors": 1,
             "memory_modes": 1,
@@ -190,7 +188,6 @@ def test_pending_persistent_memory_blocks_destructive_reset(tmp_path):
     )
     pending = {item.kind: item.turns for item in plan.pending}
     assert not plan.safe
-    assert pending["personal_summary"] == 1
     assert pending["structured_memory"] == 1
 
     with pytest.raises(UnsafeAnalysisReset):

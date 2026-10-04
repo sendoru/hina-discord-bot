@@ -796,7 +796,7 @@ class HinaClient(discord.Client):
 
                     # Reacquire the channel lock before committing the completed turn. Later turns
                     # may already be generating from their own arrival-time context snapshots.
-                    # Expensive extraction/summarization runs after the channel lock is released.
+                    # Expensive persistent-memory updates run after the channel lock is released.
                     if save_memory:
                         stage = "memory_persist"
                         self.store.add(
@@ -826,7 +826,6 @@ class HinaClient(discord.Client):
                                 self.llm.extract_structured_memory,
                                 "memory.extraction_failed",
                             ),
-                            ("personal", self.llm.summarize, "memory.summary_failed"),
                             ("shared", self.llm.summarize_shared, "memory.summary_failed"),
                         ):
                             try:

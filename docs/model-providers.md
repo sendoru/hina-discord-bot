@@ -146,21 +146,18 @@ provider에도 전달됩니다. physical load score, ambient 채널 대화 전�
 
 ### 장기 기억 `memory-v2`
 
-장기 기억 routing은 semantic classifier나 한국어 의미 regex를 사용하지 않고 **압축 부하**만 봅니다.
+장기 기억 routing은 semantic classifier나 한국어 의미 regex를 사용하지 않고 실제 memory 작업의
+payload 크기를 봅니다.
 
-- `capacity_load`: 기존 summary가 목표 길이의 45%를 넘으면 증가하기 시작해 목표 길이에서 `2.0`에
-  도달합니다. 개인 기억 목표는 1800자, shared memory 목표는 1200자입니다.
-- `pending_load`: 실제 summarizer에 전달할 pending list를 compact JSON으로 직렬화한 문자 수를 기준으로
-  800자까지는 0, 5000자에서 `2.0`에 도달합니다.
+- structured extraction은 기존 summary가 없으므로 `pending_load`가 주된 신호입니다. 실제 extractor
+  payload를 compact JSON으로 직렬화한 문자 수가 800자까지는 0이고 5000자에서 `2.0`에 도달합니다.
+- 남아 있는 shared-summary 경로는 기존 shared summary 길이에서 `capacity_load`를 계산하고 같은
+  `pending_load`를 더합니다. shared summary 목표 길이는 1200자입니다.
 
-최종 memory score는 두 값의 단순 합입니다. 따라서 기존 summary 하나가 거의 가득 찼거나 pending
-payload 하나가 매우 큰 경우에도 smart가 될 수 있고, 두 부하가 중간 수준으로 겹쳐도 threshold를
-넘을 수 있습니다. 별도 `memory_update_signal`, `compaction_pressure`, `extra_pending_turns`,
-`shared_scope_discount`는 사용하지 않습니다.
-
-DM 개인 기억은 실제 payload에 사용자 발화와 히나 답변이 모두 들어가므로 둘 다 pending load에
-반영됩니다. 서버 개인 기억과 shared memory는 히나 답변을 payload에 넣지 않으므로 그 길이가 routing
-score에도 들어가지 않습니다. shared 차이는 더 작은 target size와 실제 payload 구조 자체로 표현합니다.
+최종 memory score는 관측된 load의 합입니다. 별도 `memory_update_signal`,
+`compaction_pressure`, `extra_pending_turns`, `shared_scope_discount`는 사용하지 않습니다.
+DM structured extraction은 사용자 발화와 히나 답변을 모두 payload에 넣고, 공개 서버 extraction과
+shared summary는 공개 경계에 맞는 입력만 사용합니다.
 
 `MEMORY_ROUTING_SMART_THRESHOLD` 기본값은 `2.0`, 허용 범위는 `0.1`~`10.0`입니다. 채팅 score와 기억
 score의 의미가 다르므로 threshold는 계속 분리합니다.
@@ -196,8 +193,8 @@ hybrid에서는 `semantic_route_status`, `semantic_route_level`, `semantic_route
 ## 장기 기억 생성 예산
 
 일반 답변의 persistent personal memory는 `memory_items` 기반 structured memory만 사용합니다.
-기존 개인 summary는 migration/cleanup 기간 동안 저장소에 남아 있을 수 있지만
-`conversation_memory`로 provider 요청에 전달되거나 model routing context에 포함되지 않습니다.
+기존 개인 summary table이 남아 있는 DB는 Store 시작 시 structured extraction cursor baseline만
+이전한 뒤 해당 table을 제거합니다.
 
 공개 `shared_summary`는 아직 별도 legacy 경로로 유지되며 사용자·채널 scope별 공개 기억을
 1200자 이내로 생성하고 저장 시 1500자에서 잘라냅니다. 기억 생성 호출은

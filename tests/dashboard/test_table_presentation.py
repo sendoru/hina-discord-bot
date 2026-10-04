@@ -14,16 +14,19 @@ from hina_bot.dashboard.services import MemoryService, ReconciliationService
 from hina_bot.dashboard.telemetry import TelemetryReader
 
 
-def test_summary_cursor_and_origin_components_preserve_stored_data(tmp_path):
+def test_shared_summary_cursor_and_origin_components_preserve_stored_data(tmp_path):
     database = tmp_path / "tables.sqlite3"
     store = Store(str(database))
     guild = Scope(1489432315523502251, 1554321651473195059, 221977862859653120, True)
     dm = Scope(None, 456789012345678901, 221977862859653125)
     for index, scope in enumerate((guild, dm), 1):
         store.add(scope, index, "question", "reply", name=f"User {index}")
-        store.save_summary(scope, f"Summary {index}", index)
+        store.save_memory_extraction_cursor(scope, store.history(scope)[-1]["id"])
     store.add_shared_call(guild, 3, "User 1", "shared question")
-    store.save_shared_summary(guild, "User 1", "Shared summary", 1)
+    shared_id = int(store.db.execute(
+        "SELECT id FROM shared_calls WHERE message_id='3'"
+    ).fetchone()["id"])
+    store.save_shared_summary(guild, "User 1", "Shared summary", shared_id)
     long_text = ("사용자는 히나에게 직접적인 애정과 호감을 표현합니다. " * 40).strip()
     old = store.add_memory_item(guild, long_text, kind="relationship", disclosure="implicit")
     new = store.add_memory_item(guild, long_text, kind="relationship", disclosure="implicit")
@@ -31,33 +34,20 @@ def test_summary_cursor_and_origin_components_preserve_stored_data(tmp_path):
         guild, new_memory_item_id=new, target_memory_item_id=old,
         relation="duplicate", confidence=0.9, source_message_ids=("1",),
     )
-    with store.db:
-        store.db.execute(
-            "INSERT INTO summaries(scope,realm,user_id,name,text,through_id,exportable) "
-            "VALUES (?,?,?,?,?,?,?)",
-            ("legacy:<scope>", guild.realm, str(guild.user_id), "User 1", "Legacy summary", 17, 0),
-        )
     store.close()
     before = database.read_bytes()
+
     repository = AdminRepository(database)
     memory = MemoryService(repository)
     summaries = memory.summaries()
-    assert len(summaries["personal"]) == 3
-    legacy = next(row for row in summaries["personal"] if row["scope"] == "legacy:<scope>")
-    assert legacy["scope_display"].level == "unknown"
-    assert legacy["realm_display"].raw == guild.realm
-    assert legacy["through_id"] == 17
+    assert len(summaries["shared"]) == 1
     assert summaries["shared"][0]["scope_display"].raw == guild.conversation
-    assert summaries["shared"][0]["through_id"] == 1
-    dm_row = next(row for row in summaries["personal"] if row["scope"] == dm.conversation)
-    assert dm_row["scope_display"].realm_id == str(dm.user_id)
-    assert dm_row["scope_display"].channel_id == str(dm.channel_id)
-    assert dm_row["scope_display"].user_id == dm_row["user_id"]
-    assert dm_row["through_id"] == 2
-    assert memory.summaries(query=dm.conversation)["personal"] == [dm_row]
+    assert summaries["shared"][0]["through_id"] == shared_id
+
     cursors = memory.extraction_cursors()
     assert {row["scope_display"].raw for row in cursors["rows"]} == {
-        guild.conversation, dm.conversation, "legacy:<scope>",
+        guild.conversation,
+        dm.conversation,
     }
     usage_path = str(tmp_path / "missing-usage.jsonl")
     event_path = str(tmp_path / "missing-events.jsonl")
@@ -75,24 +65,23 @@ def test_summary_cursor_and_origin_components_preserve_stored_data(tmp_path):
         tables = [ElementTree.fromstring(table) for table in re.findall(
             r'<table class="wide-table summary-table">.*?</table>', response.text, re.DOTALL,
         )]
-        assert len(tables) == 2
-        for table, column_count in zip(tables, (9, 6), strict=True):
-            assert [th.text for th in table.findall("thead/tr/th")][:3] == [
-                "Realm", "Channel", "User",
-            ]
-            assert len(table.findall("thead/tr/th")) == column_count
-            for row in table.findall("tbody/tr"):
-                if row.get("class") == "content-row":
-                    assert row.find("td").get("colspan") == str(column_count)
-                else:
-                    assert len(row.findall("td")) == column_count
-        assert "legacy:&lt;scope&gt;" in response.text
-        assert guild.conversation not in response.text
-        assert dm.conversation not in response.text
+        assert len(tables) == 1
+        table = tables[0]
+        assert [th.text for th in table.findall("thead/tr/th")][:3] == [
+            "Realm", "Channel", "User",
+        ]
+        assert len(table.findall("thead/tr/th")) == 6
+        for row in table.findall("tbody/tr"):
+            if row.get("class") == "content-row":
+                assert row.find("td").get("colspan") == "6"
+            else:
+                assert len(row.findall("td")) == 6
+        assert "Shared summary" in response.text
+        assert "Personal summaries" not in response.text
 
         cursor_response = client.get("/memory/cursors")
         assert "<th>Realm</th><th>Channel</th><th>User</th>" in cursor_response.text
-        assert "legacy:&lt;scope&gt;" in cursor_response.text
+        assert "Summary through" not in cursor_response.text
         assert guild.conversation not in cursor_response.text
         assert dm.conversation not in cursor_response.text
 

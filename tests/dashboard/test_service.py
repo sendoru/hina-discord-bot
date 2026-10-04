@@ -469,10 +469,6 @@ def build_memory_service(tmp_path):
         store.add(scope, 700, "source for memory", "reply", name="Memory User")
     finally:
         CURRENT_TURN_ID.reset(token)
-    source_turn_id = int(store.db.execute(
-        "SELECT id FROM turns WHERE message_id='700'"
-    ).fetchone()["id"])
-    store.save_summary(scope, "legacy personal summary", source_turn_id)
     item_id = store.add_memory_item(
         scope,
         "remembered fact",
@@ -582,24 +578,19 @@ def test_memory_scope_picker_filters_guild_and_dm_without_raw_realms(tmp_path):
     assert legacy["filters"]["origin_channel_id"] == "20"
 
 
-def test_summary_and_cursor_service_show_rollout_state(tmp_path):
+def test_cursor_service_shows_structured_extraction_state(tmp_path):
     service, _, scope = build_memory_service(tmp_path)
 
     summaries = service.summaries(user_id="100")
-    assert len(summaries["personal"]) == 1
-    assert summaries["personal"][0]["structured_memory_count"] == 1
-    assert summaries["personal"][0]["user_name"] == "Memory User"
-    assert summaries["personal"][0]["scope_display"].raw == scope.conversation
-    assert summaries["personal"][0]["scope_display"].channel_id == str(scope.channel_id)
+    assert summaries["shared"] == []
 
     cursors = service.extraction_cursors(user_id="100")
     row = next(row for row in cursors["rows"] if row["scope"] == scope.conversation)
     assert row["user_name"] == "Memory User"
     assert row["scope_display"].raw == scope.conversation
     assert row["initialized"] == 0
-    assert row["effective_through_id"] == row["summary_through_id"]
-    assert row["cursor_delta"] is None
-
+    assert row["effective_through_id"] == 0
+    assert row["pending_turns"] == 1
 
 def build_reconciliation_service(tmp_path):
     database = tmp_path / "reconciliation.sqlite3"

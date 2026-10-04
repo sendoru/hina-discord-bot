@@ -37,7 +37,7 @@ def test_dm_recent_history_preserves_timestamp_on_both_sides():
         store.close()
 
 
-def test_server_exact_recent_tail_survives_summary_advancement():
+def test_server_exact_recent_tail_survives_cursor_advancement():
     scope = Scope(1, 10, 100, True)
     store = Store(":memory:")
     try:
@@ -50,7 +50,7 @@ def test_server_exact_recent_tail_survives_summary_advancement():
                 name="A",
             )
         turns = store.history(scope)
-        store.save_summary(scope, "이미 이 턴들까지 요약됨", turns[-1]["id"])
+        store.save_memory_extraction_cursor(scope, turns[-1]["id"])
 
         recent = RequestAssembler._server_recent_conversation(store, scope, [])
 

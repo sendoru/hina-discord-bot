@@ -39,13 +39,13 @@ def test_dedup_does_not_backfill_older_turns():
         store.close()
 
 
-def test_saved_summary_does_not_remove_exact_recent_tail():
+def test_advanced_cursor_does_not_remove_exact_recent_tail():
     store = Store(":memory:")
     scope = Scope(1, 10, 100, True)
     try:
         store.add(scope, 11, "before", "before reply")
         through = store.history(scope)[-1]["id"]
-        store.save_summary(scope, "saved", through)
+        store.save_memory_extraction_cursor(scope, through)
         store.add(scope, 12, "after", "after reply")
         rows = LLM._server_recent_conversation(store, scope, [])
         assert [row["user"] for row in rows] == ["before", "after"]

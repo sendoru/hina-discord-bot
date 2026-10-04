@@ -13,15 +13,6 @@ def test_persistent_user_metadata_keeps_readable_name():
         assert turn["user_id"] == "100"
         assert turn["name"] == "Sendol"
 
-        store.save_summary(scope, "summary", turn["id"])
-        summary = store.db.execute(
-            "SELECT user_id,name,text FROM summaries WHERE scope=?",
-            (scope.conversation,),
-        ).fetchone()
-        assert summary["user_id"] == "100"
-        assert summary["name"] == "Sendol"
-        assert summary["text"] == "summary"
-
         item_id = store.add_memory_item(
             scope,
             "사용자는 커피를 좋아한다.",

@@ -60,11 +60,6 @@ class Store:
             CREATE INDEX IF NOT EXISTS failed_turns_scope ON failed_turns(scope, id);
             CREATE INDEX IF NOT EXISTS failed_turns_turn_id ON failed_turns(turn_id);
             CREATE INDEX IF NOT EXISTS failed_turns_message_id ON failed_turns(message_id);
-            CREATE TABLE IF NOT EXISTS summaries (
-                scope TEXT PRIMARY KEY, realm TEXT NOT NULL, user_id TEXT NOT NULL,
-                name TEXT NOT NULL DEFAULT '',
-                text TEXT NOT NULL, through_id INTEGER NOT NULL, exportable INTEGER NOT NULL
-            );
             CREATE TABLE IF NOT EXISTS shared_calls (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL,
                 realm TEXT NOT NULL, user_id TEXT NOT NULL, message_id TEXT UNIQUE NOT NULL,
@@ -177,14 +172,20 @@ class Store:
                 self.db.execute("ALTER TABLE turns ADD COLUMN name TEXT NOT NULL DEFAULT ''")
         with self.db:
             self.db.execute("CREATE INDEX IF NOT EXISTS turns_turn_id ON turns(turn_id)")
-        summary_columns = {
-            row["name"] for row in self.db.execute("PRAGMA table_info(summaries)")
-        }
-        if "name" not in summary_columns:
+        legacy_summary_table = self.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='summaries'"
+        ).fetchone()
+        if legacy_summary_table is not None:
+            # Preserve the one migration-relevant field before removing the obsolete
+            # personal-summary store. Existing structured cursors always win.
             with self.db:
                 self.db.execute(
-                    "ALTER TABLE summaries ADD COLUMN name TEXT NOT NULL DEFAULT ''"
+                    """INSERT OR IGNORE INTO memory_extraction_cursors(
+                           scope,realm,user_id,through_id
+                       )
+                       SELECT scope,realm,user_id,through_id FROM summaries"""
                 )
+                self.db.execute("DROP TABLE summaries")
         memory_columns = {
             row["name"] for row in self.db.execute("PRAGMA table_info(memory_items)")
         }
@@ -233,11 +234,6 @@ class Store:
                 self.db.execute("INSERT OR REPLACE INTO notes VALUES (?,?)", (key, text[:1500]))
             else:
                 self.db.execute("DELETE FROM notes WHERE scope=?", (key,))
-
-    def summary(self, scope: Scope):
-        row = self.db.execute("SELECT text, through_id FROM summaries WHERE scope=?",
-                              (scope.conversation,)).fetchone()
-        return (row[0], row[1]) if row else ("", 0)
 
     def user_name(self, scope: Scope) -> str:
         """Return the latest observed human-readable name for this scoped user."""
@@ -290,11 +286,6 @@ class Store:
             "SELECT * FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?",
             (scope.conversation, self.history_turns)).fetchall()))
 
-    def pending(self, scope: Scope):
-        _, through = self.summary(scope)
-        return self.db.execute("SELECT * FROM turns WHERE scope=? AND id>? ORDER BY id",
-                               (scope.conversation, through)).fetchall()
-
     def memory_extraction_cursor(self, scope: Scope) -> int:
         row = self.db.execute(
             "SELECT through_id FROM memory_extraction_cursors WHERE scope=?",
@@ -302,17 +293,14 @@ class Store:
         ).fetchone()
         if row is not None:
             return int(row["through_id"])
-        # #72 extracted structured items only when the legacy summary committed. Freeze that
-        # migration baseline now so a later summary update cannot skip a failed shadow batch.
-        baseline = int(self.summary(scope)[1])
         with self.db:
             self.db.execute(
                 """INSERT OR IGNORE INTO memory_extraction_cursors(
                        scope,realm,user_id,through_id
-                   ) VALUES (?,?,?,?)""",
-                (scope.conversation, scope.realm, str(scope.user_id), baseline),
+                   ) VALUES (?,?,?,0)""",
+                (scope.conversation, scope.realm, str(scope.user_id)),
             )
-        return baseline
+        return 0
 
     def pending_memory_extraction(self, scope: Scope, *, limit: int | None = None):
         through = self.memory_extraction_cursor(scope)
@@ -341,8 +329,7 @@ class Store:
                       MIN(t.created_at) AS oldest_created_at
                FROM turns t
                LEFT JOIN memory_extraction_cursors c ON c.scope=t.scope
-               LEFT JOIN summaries s ON s.scope=t.scope
-               WHERE t.id > COALESCE(c.through_id,s.through_id,0)
+               WHERE t.id > COALESCE(c.through_id,0)
                GROUP BY t.scope,t.realm,t.user_id
                HAVING COUNT(*) >= ?
                   AND MIN(t.created_at) <= datetime('now', ?)
@@ -415,8 +402,10 @@ class Store:
         memory_context=None,
         context_provenance=None,
     ):
-        exportable = scope.public_at_capture and self.summary_exportable(scope)
-        exportable = exportable and all(row["exportable"] for row in self.history(scope))
+        # Legacy code chained this bit through the personal summary to prevent a mixed
+        # summary from becoming public. Structured extraction tracks provenance per turn,
+        # so the retained column can now represent capture visibility directly.
+        exportable = scope.public_at_capture
         if memory_context is None:
             memory_context = CURRENT_MEMORY_CONTEXT.get()
             CURRENT_MEMORY_CONTEXT.set(())
@@ -451,7 +440,7 @@ class Store:
                     encoded_provenance,
                 ),
             )
-            # Bound raw retention even if the summary API keeps failing.
+            # Bound raw retention independently of persistent-memory extraction.
             self.db.execute("DELETE FROM turns WHERE scope=? AND id NOT IN "
                             "(SELECT id FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?)",
                             (scope.conversation, scope.conversation, self.history_turns))
@@ -501,30 +490,6 @@ class Store:
                    )""",
                 (scope.conversation, scope.conversation, self.history_turns),
             )
-
-    def save_summary(self, scope: Scope, text: str, through: int):
-        exportable = self.summary_exportable(scope) and all(
-            row["exportable"] for row in self.pending(scope) if row["id"] <= through)
-        with self.db:
-            self.db.execute(
-                "INSERT OR REPLACE INTO summaries("
-                "scope,realm,user_id,name,text,through_id,exportable"
-                ") VALUES (?,?,?,?,?,?,?)",
-                (
-                    scope.conversation,
-                    scope.realm,
-                    str(scope.user_id),
-                    self.user_name(scope),
-                    text,
-                    through,
-                    int(exportable),
-                ),
-            )
-
-    def summary_exportable(self, scope: Scope):
-        row = self.db.execute("SELECT exportable FROM summaries WHERE scope=?",
-                              (scope.conversation,)).fetchone()
-        return row is None or bool(row[0])
 
     @staticmethod
     def _decode_memory_item(row) -> MemoryItem:
@@ -868,7 +833,6 @@ class Store:
         with self.db:
             for table in (
                 "turns",
-                "summaries",
                 "shared_calls",
                 "shared_summaries",
                 "memory_extraction_cursors",
@@ -895,7 +859,6 @@ class Store:
         with self.db:
             for table in (
                 "turns",
-                "summaries",
                 "shared_calls",
                 "shared_summaries",
                 "memory_extraction_cursors",
@@ -921,7 +884,6 @@ class Store:
         with self.db:
             for table in (
                 "turns",
-                "summaries",
                 "shared_calls",
                 "shared_summaries",
                 "memory_extraction_cursors",
@@ -946,7 +908,6 @@ class Store:
         with self.db:
             for table in (
                 "turns",
-                "summaries",
                 "shared_calls",
                 "shared_summaries",
                 "memory_items",
