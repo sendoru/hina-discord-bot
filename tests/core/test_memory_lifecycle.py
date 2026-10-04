@@ -207,3 +207,118 @@ def test_reconciliation_application_is_idempotent():
         assert store.apply_memory_reconciliation_proposal(proposal_id) == "already_applied"
     finally:
         store.close()
+
+
+def test_existing_active_superseded_constraint_migrates_for_retraction(tmp_path):
+    path = tmp_path / "pre-retract.sqlite3"
+    db = sqlite3.connect(path)
+    db.executescript(
+        """
+        CREATE TABLE memory_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            user_name TEXT NOT NULL DEFAULT '',
+            content TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK(kind IN (
+                'fact','event','preference','relationship','boundary','task'
+            )),
+            origin_realm TEXT NOT NULL,
+            origin_channel_id TEXT NOT NULL,
+            origin_public_at_capture INTEGER NOT NULL CHECK(origin_public_at_capture IN (0,1)),
+            disclosure TEXT NOT NULL CHECK(disclosure IN (
+                'local','implicit','reference_gated','global'
+            )),
+            source_message_ids TEXT NOT NULL DEFAULT '[]',
+            confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0 AND confidence <= 1),
+            relationship_evidence TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','superseded')),
+            superseded_by INTEGER,
+            revision INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO memory_items(
+            user_id,user_name,content,kind,origin_realm,origin_channel_id,
+            origin_public_at_capture,disclosure,status
+        ) VALUES (
+            '100','Sendol','pre retract','fact','dm:100','10',0,'local','active'
+        );
+        """
+    )
+    db.commit()
+    db.close()
+
+    store = Store(str(path))
+    try:
+        item = store.memory_items(100)[0]
+        retracted = store.retract_memory_item(item.id, expected_revision=0)
+        assert retracted.status == MemoryStatus.RETRACTED
+        assert retracted.revision == 1
+    finally:
+        store.close()
+
+
+def test_retracted_item_is_excluded_from_runtime_and_retry_history():
+    store = Store(":memory:")
+    scope = Scope(None, 10, 100)
+    try:
+        item_id = store.add_memory_item(
+            scope,
+            "memory to retract",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+            source_message_ids=("1",),
+        )
+
+        retracted = store.retract_memory_item(item_id, expected_revision=0)
+
+        assert retracted.status == MemoryStatus.RETRACTED
+        assert retracted.revision == 1
+        assert retracted.superseded_by is None
+        assert store.memory_items(100) == []
+        assert store.memory_items(100, include_superseded=True) == []
+        assert store.memory_reconciliation_candidates(scope) == []
+        stored = store.memory_item(item_id)
+        assert stored is not None
+        assert stored.status == MemoryStatus.RETRACTED
+    finally:
+        store.close()
+
+
+def test_retraction_rejects_stale_or_non_active_item():
+    store = Store(":memory:")
+    scope = Scope(None, 10, 100)
+    try:
+        item_id = store.add_memory_item(
+            scope,
+            "active memory",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        store.revise_memory_item(
+            item_id,
+            expected_revision=0,
+            content="edited memory",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+            confidence=1,
+        )
+
+        try:
+            store.retract_memory_item(item_id, expected_revision=0)
+        except ValueError as exc:
+            assert "changed" in str(exc)
+        else:
+            raise AssertionError("stale retract should fail")
+
+        retracted = store.retract_memory_item(item_id, expected_revision=1)
+        assert retracted.status == MemoryStatus.RETRACTED
+
+        try:
+            store.retract_memory_item(item_id, expected_revision=2)
+        except ValueError as exc:
+            assert "active" in str(exc)
+        else:
+            raise AssertionError("retracting a non-active item should fail")
+    finally:
+        store.close()
