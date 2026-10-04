@@ -91,7 +91,7 @@ class Store:
                 confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0 AND confidence <= 1),
                 relationship_evidence TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL DEFAULT 'active'
-                    CHECK(status IN ('active','superseded')),
+                    CHECK(status IN ('active','superseded','retracted')),
                 superseded_by INTEGER,
                 revision INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -224,7 +224,7 @@ class Store:
             with self.db:
                 self.db.execute(
                     "ALTER TABLE memory_items ADD COLUMN status TEXT NOT NULL DEFAULT 'active' "
-                    "CHECK(status IN ('active','superseded'))"
+                    "CHECK(status IN ('active','superseded','retracted'))"
                 )
         if "superseded_by" not in memory_columns:
             with self.db:
@@ -233,6 +233,65 @@ class Store:
             with self.db:
                 self.db.execute(
                     "ALTER TABLE memory_items ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"
+                )
+
+        memory_schema = self.db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='memory_items'"
+        ).fetchone()
+        memory_schema_sql = str(memory_schema["sql"] or "") if memory_schema is not None else ""
+        if "'retracted'" not in memory_schema_sql:
+            # SQLite cannot widen an existing CHECK constraint in place. Rebuild only this
+            # table after all legacy columns above have been added, preserving IDs/provenance.
+            with self.db:
+                self.db.execute("ALTER TABLE memory_items RENAME TO memory_items_pre_retract")
+                self.db.execute(
+                    """CREATE TABLE memory_items (
+                           id INTEGER PRIMARY KEY AUTOINCREMENT,
+                           user_id TEXT NOT NULL,
+                           user_name TEXT NOT NULL DEFAULT '',
+                           content TEXT NOT NULL,
+                           kind TEXT NOT NULL CHECK(kind IN (
+                               'fact','event','preference','relationship','boundary','task'
+                           )),
+                           origin_realm TEXT NOT NULL,
+                           origin_channel_id TEXT NOT NULL,
+                           origin_public_at_capture INTEGER NOT NULL
+                               CHECK(origin_public_at_capture IN (0,1)),
+                           disclosure TEXT NOT NULL CHECK(disclosure IN (
+                               'local','implicit','reference_gated','global'
+                           )),
+                           source_message_ids TEXT NOT NULL DEFAULT '[]',
+                           confidence REAL NOT NULL DEFAULT 1.0
+                               CHECK(confidence >= 0 AND confidence <= 1),
+                           relationship_evidence TEXT NOT NULL DEFAULT '{}',
+                           status TEXT NOT NULL DEFAULT 'active'
+                               CHECK(status IN ('active','superseded','retracted')),
+                           superseded_by INTEGER,
+                           revision INTEGER NOT NULL DEFAULT 0,
+                           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                           updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                           CHECK(superseded_by IS NULL OR superseded_by != id)
+                       )"""
+                )
+                self.db.execute(
+                    """INSERT INTO memory_items(
+                           id,user_id,user_name,content,kind,origin_realm,origin_channel_id,
+                           origin_public_at_capture,disclosure,source_message_ids,confidence,
+                           relationship_evidence,status,superseded_by,revision,created_at,updated_at
+                       )
+                       SELECT
+                           id,user_id,user_name,content,kind,origin_realm,origin_channel_id,
+                           origin_public_at_capture,disclosure,source_message_ids,confidence,
+                           relationship_evidence,status,superseded_by,revision,created_at,updated_at
+                       FROM memory_items_pre_retract"""
+                )
+                self.db.execute("DROP TABLE memory_items_pre_retract")
+                self.db.execute(
+                    "CREATE INDEX memory_items_owner ON memory_items(user_id,id)"
+                )
+                self.db.execute(
+                    """CREATE INDEX memory_items_origin
+                       ON memory_items(origin_realm,origin_channel_id,user_id)"""
                 )
         with self.db:
             self.db.execute(
@@ -606,7 +665,11 @@ class Store:
     ):
         params: list[str] = [str(user_id)]
         where = "user_id=?"
-        if not include_superseded:
+        if include_superseded:
+            # Retry deduplication intentionally includes superseded history, but a manual
+            # retraction must not suppress a future re-observation of the same fact.
+            where += " AND status IN ('active','superseded')"
+        else:
             where += " AND status='active'"
         if origin_realm is not None:
             where += " AND origin_realm=?"
@@ -729,6 +792,49 @@ class Store:
             ).fetchone()
             if updated is None:
                 raise RuntimeError("Memory item disappeared during edit")
+            return self._decode_memory_item(updated)
+
+    def retract_memory_item(
+        self,
+        item_id: int,
+        *,
+        expected_revision: int,
+    ) -> MemoryItem:
+        """Retract one active item without deleting its provenance or edit history."""
+
+        item_id = int(item_id)
+        expected_revision = int(expected_revision)
+        if item_id <= 0:
+            raise ValueError("Memory item id must be positive")
+        if expected_revision < 0:
+            raise ValueError("Memory item revision must not be negative")
+
+        with self.db:
+            row = self.db.execute(
+                "SELECT * FROM memory_items WHERE id=?",
+                (item_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("Memory item not found")
+            if str(row["status"]) != MemoryStatus.ACTIVE.value:
+                raise ValueError("Only active memory items can be retracted")
+            if int(row["revision"]) != expected_revision:
+                raise ValueError("Memory item has changed; reload before retracting")
+            cursor = self.db.execute(
+                """UPDATE memory_items
+                   SET status='retracted',superseded_by=NULL,revision=revision+1,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status='active' AND revision=?""",
+                (item_id, expected_revision),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Memory item has changed; reload before retracting")
+            updated = self.db.execute(
+                "SELECT * FROM memory_items WHERE id=?",
+                (item_id,),
+            ).fetchone()
+            if updated is None:
+                raise RuntimeError("Memory item disappeared during retraction")
             return self._decode_memory_item(updated)
 
     def reference_gated_memory_candidates(self, scope: Scope, *, limit: int = 24):
