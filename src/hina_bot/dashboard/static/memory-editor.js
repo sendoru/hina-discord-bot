@@ -6,10 +6,11 @@
     const syncEvidence = () => {
       if (!(kind instanceof HTMLSelectElement) || !(evidence instanceof HTMLElement)) return;
       const active = kind.value === "relationship";
+      const writeEnabled = form.dataset.writeEnabled === "true";
       evidence.hidden = !active;
       evidence.querySelectorAll("input").forEach((input) => {
         if (!(input instanceof HTMLInputElement)) return;
-        input.disabled = !active || input.dataset.writeDisabled === "true";
+        input.disabled = !active || !writeEnabled;
       });
     };
     syncEvidence();
