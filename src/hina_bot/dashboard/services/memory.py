@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hina_bot.core.memory_items import (
+    MEMORY_CONTENT_MAX_CHARS,
     MemoryDisclosure,
     MemoryItem,
     MemoryKind,
@@ -72,6 +73,7 @@ class MemoryService(ReadService):
             confidence=float(row.get("confidence") or 0.0),
             created_at=str(row.get("created_at") or ""),
             updated_at=str(row.get("updated_at") or ""),
+            revision=int(row.get("revision") or 0),
             relationship_evidence=RelationshipEvidence.from_mapping(
                 evidence if isinstance(evidence, dict) else {}
             ),
@@ -403,11 +405,59 @@ class MemoryService(ReadService):
                 channel_key="origin_channel_id",
             )
             neighbors.append(value)
+
+        current_state = {
+            "content": str(item.get("content") or ""),
+            "kind": str(item.get("kind") or ""),
+            "disclosure": str(item.get("disclosure") or ""),
+            "confidence": float(item.get("confidence") or 0.0),
+            "relationship_evidence": dict(item["relationship_evidence_decoded"]),
+        }
+        newer_state = current_state
+        history = []
+        labels = {
+            "content": "content",
+            "kind": "kind",
+            "disclosure": "disclosure",
+            "confidence": "confidence",
+            "relationship_evidence": "relationship evidence",
+        }
+        for row in self.repository.memory_item_edit_history(item_id):
+            evidence = _decode_json(row.get("relationship_evidence"), {})
+            old_state = {
+                "content": str(row.get("content") or ""),
+                "kind": str(row.get("kind") or ""),
+                "disclosure": str(row.get("disclosure") or ""),
+                "confidence": float(row.get("confidence") or 0.0),
+                "relationship_evidence": evidence if isinstance(evidence, dict) else {},
+            }
+            changed_fields = [
+                labels[key]
+                for key in labels
+                if old_state[key] != newer_state[key]
+            ]
+            history.append(
+                {
+                    **dict(row),
+                    "relationship_evidence_decoded": old_state["relationship_evidence"],
+                    "changed_fields": changed_fields,
+                    "to_revision": int(row["revision"]) + 1,
+                }
+            )
+            newer_state = old_state
+
         return {
             "item": item,
             "sources": sources,
             "neighbors": neighbors,
+            "history": history,
             "schema": self.repository.memory_schema(),
+            "editor": {
+                "kinds": tuple(kind.value for kind in MemoryKind),
+                "disclosures": tuple(value.value for value in MemoryDisclosure),
+                "relationship_axes": RELATIONSHIP_EVIDENCE_AXES,
+                "content_max_chars": MEMORY_CONTENT_MAX_CHARS,
+            },
         }
 
     def summaries(
