@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+import math
 
 from .routing import Scope
 
@@ -31,6 +32,9 @@ class MemoryAccess(StrEnum):
 class MemoryStatus(StrEnum):
     ACTIVE = "active"
     SUPERSEDED = "superseded"
+
+
+MEMORY_CONTENT_MAX_CHARS = 600
 
 
 RELATIONSHIP_EVIDENCE_AXES = (
@@ -91,6 +95,54 @@ class RelationshipEvidence:
 
 
 @dataclass(frozen=True)
+class ValidatedMemoryFields:
+    content: str
+    kind: MemoryKind
+    disclosure: MemoryDisclosure
+    confidence: float
+    relationship_evidence: RelationshipEvidence
+
+
+def validate_memory_item_fields(
+    content: str,
+    *,
+    kind: MemoryKind | str,
+    disclosure: MemoryDisclosure | str,
+    confidence: float,
+    relationship_evidence: RelationshipEvidence | dict | None = None,
+) -> ValidatedMemoryFields:
+    """Validate and normalize the editable structured-memory fields."""
+
+    if not isinstance(content, str):
+        raise TypeError("Memory item content must be text")
+    text = content.strip()
+    if not text:
+        raise ValueError("Memory item content must not be empty")
+    if len(text) > MEMORY_CONTENT_MAX_CHARS:
+        raise ValueError(
+            f"Memory item content must be at most {MEMORY_CONTENT_MAX_CHARS} characters"
+        )
+    memory_kind = MemoryKind(kind)
+    memory_disclosure = MemoryDisclosure(disclosure)
+    memory_confidence = float(confidence)
+    if not math.isfinite(memory_confidence) or not 0 <= memory_confidence <= 1:
+        raise ValueError("Memory item confidence must be between 0 and 1")
+    if isinstance(relationship_evidence, RelationshipEvidence):
+        evidence = relationship_evidence
+    else:
+        evidence = RelationshipEvidence.from_mapping(relationship_evidence)
+    if memory_kind != MemoryKind.RELATIONSHIP and evidence:
+        raise ValueError("relationship_evidence is valid only for relationship memory")
+    return ValidatedMemoryFields(
+        content=text,
+        kind=memory_kind,
+        disclosure=memory_disclosure,
+        confidence=memory_confidence,
+        relationship_evidence=evidence,
+    )
+
+
+@dataclass(frozen=True)
 class MemoryItem:
     id: int
     user_id: str
@@ -104,6 +156,7 @@ class MemoryItem:
     confidence: float
     created_at: str
     updated_at: str
+    revision: int = 0
     relationship_evidence: RelationshipEvidence = field(default_factory=RelationshipEvidence)
     user_name: str = ""
     status: MemoryStatus = MemoryStatus.ACTIVE
@@ -157,11 +210,14 @@ def memory_access(
 
 
 __all__ = [
+    "MEMORY_CONTENT_MAX_CHARS",
     "RELATIONSHIP_EVIDENCE_AXES",
     "MemoryAccess",
     "MemoryDisclosure",
     "MemoryItem",
     "MemoryKind",
     "RelationshipEvidence",
+    "ValidatedMemoryFields",
+    "validate_memory_item_fields",
     "memory_access",
 ]
