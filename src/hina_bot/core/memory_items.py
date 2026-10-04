@@ -218,6 +218,6 @@ __all__ = [
     "MemoryKind",
     "RelationshipEvidence",
     "ValidatedMemoryFields",
-    "validate_memory_item_fields",
     "memory_access",
+    "validate_memory_item_fields",
 ]
