@@ -68,13 +68,6 @@ _BROAD_SERVER_MEMORY_QUERY = re.compile(
 )
 
 
-def _augment_empty_call(content: str, text: str | None, has_visuals: bool) -> str | None:
-    """Only add image intent when a bare trigger has strong visual context."""
-    if text is None or text or not has_visuals:
-        return None
-    return (content + " 이 이미지나 스티커를 봐줘.").strip()
-
-
 def _public_context_request(
     scope: Scope,
     text: str,
@@ -441,18 +434,9 @@ class HinaClient(BaseHinaClient):
             else None
         )
         public_token = CURRENT_PUBLIC_CONTEXT_REQUEST.set(public_request)
-        # A text-only bare call stays a bare call and uses the base client's relationship-aware
-        # fixed reply. Current-message or explicit-reply visuals are strong enough to infer an
-        # image request; passive recent images alone must not turn a bare call into one.
-        original_content = None
-        strong_visuals = any(
-            visual.reference_strength in {"current_message", "explicit_reply"}
-            for visual in visuals
-        )
-        augmented_content = _augment_empty_call(message.content, text, strong_visuals)
-        if augmented_content is not None:
-            original_content = message.content
-            message.content = augmented_content
+        # Keep the user's text untouched. The base client uses request-scoped visual
+        # provenance to let current-message / explicit-reply visual-only turns reach the LLM,
+        # while a plain bare call still takes the configured fixed-reply path.
         correlation_token = (
             CURRENT_TURN_ID.set(preflight_turn_id)
             if preflight_turn_id is not None
@@ -466,8 +450,6 @@ class HinaClient(BaseHinaClient):
         finally:
             if correlation_token is not None:
                 CURRENT_TURN_ID.reset(correlation_token)
-            if original_content is not None:
-                message.content = original_content
             CURRENT_LOCAL_TOOLS.reset(local_tools_token)
             CURRENT_PUBLIC_CONTEXT_REQUEST.reset(public_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)

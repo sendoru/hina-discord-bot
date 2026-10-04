@@ -43,6 +43,36 @@ async def test_vision_client_adds_images_only_for_active_answer():
 
 
 @pytest.mark.asyncio
+async def test_vision_client_keeps_visual_only_turn_textless():
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="openai")
+    client = VisionClient(raw)
+    visual = VisualInput(b"image", "image/png", "sticker", "hina")
+
+    visual_token = CURRENT_VISUAL_INPUTS.set((visual,))
+    active_token = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="test",
+            instructions="base policy",
+            input=[{"role": "user", "content": ""}],
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active_token)
+        CURRENT_VISUAL_INPUTS.reset(visual_token)
+
+    content = create.await_args.kwargs["input"][-1]["content"]
+    assert content[0]["type"] == "input_text"
+    assert "스티커" in content[0]["text"]
+    assert content[1]["type"] == "input_image"
+    assert all(
+        block.get("text") != "이 이미지를 봐줘."
+        for block in content
+        if block.get("type") == "input_text"
+    )
+
+
+@pytest.mark.asyncio
 async def test_vision_client_prefers_validated_remote_uri_over_inline_base64():
     create = AsyncMock(return_value=NS(status="completed"))
     raw = NS(

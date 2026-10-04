@@ -8,6 +8,7 @@ from datetime import timedelta
 
 import discord
 
+from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
 from hina_bot.core.observability import (
@@ -107,6 +108,14 @@ def _bare_call_reply(
     if special_dm and special_dm_empty_call_reply:
         return special_dm_empty_call_reply
     return empty_call_reply
+
+
+def _has_strong_visual_context(visuals) -> bool:
+    """Return whether visuals explicitly belong to the active user turn."""
+    return any(
+        visual.reference_strength in {"current_message", "explicit_reply"}
+        for visual in visuals
+    )
 
 
 class HinaClient(discord.Client):
@@ -634,7 +643,7 @@ class HinaClient(discord.Client):
                         return
                     self.cooldowns[key] = cooldown_received_at
 
-                    if not text:
+                    if not text and not _has_strong_visual_context(CURRENT_VISUAL_INPUTS.get()):
                         raw_turn_persistence = "skipped"
                         raw_turn_persistence_reason = "fixed_reply_no_raw_turn"
                         stage = "delivery"

@@ -191,11 +191,9 @@ def _augment_input(
     item = dict(items[target])
     original = item.get("content", "")
     if isinstance(original, str):
-        content = [{"type": "input_text", "text": original or "이 이미지를 봐줘."}]
+        content = ([{"type": "input_text", "text": original}] if original else [])
     elif isinstance(original, list):
         content = list(original)
-        if not content:
-            content.append({"type": "input_text", "text": "이 이미지를 봐줘."})
     else:
         content = [{"type": "input_text", "text": str(original)}]
 
