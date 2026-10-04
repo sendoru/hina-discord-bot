@@ -1,13 +1,14 @@
-# Structured memory rollout
+# Structured memory
 
-Structured long-term memory is being introduced incrementally so storage/privacy behavior can be inspected
-before it affects normal replies. Existing `summaries` / `shared_summaries` remain the active read path.
+Structured long-term memory is the persistent personal-memory system used by normal replies.
+Legacy personal `summaries` are removed on Store startup after their cursor baseline is migrated.
+`shared_summaries` remains a separate public-context path for direct guild interactions.
 
 ## Why this exists
 
-The current summaries are scoped strings. They cannot express the difference between remembering a
-fact, carrying relationship familiarity across spaces, and deciding whether a fact may be mentioned
-in another Discord space. Structured items separate memory content from disclosure policy.
+Structured items separate remembered content from disclosure policy, provenance, lifecycle state,
+and relationship evidence. This avoids maintaining a second scoped-string personal-memory source and
+lets normal replies, reconciliation, inspection, and future editing operate on the same persistent data.
 
 A public Discord guild channel contributes to a guild-level disclosure space. A private guild channel
 is narrower: memories formed there are automatically full only in that same channel. This preserves
@@ -73,17 +74,15 @@ tests. It does not change any response context.
 
 ## Phase 2: shadow extraction
 
-Structured extraction now has its own persisted cursor and cadence. By default it processes four
-turns at a time (`STRUCTURED_MEMORY_EVERY=4`) while the legacy text summary remains on its independent
-eight-turn cadence. This is intentionally a shadow path:
+Structured extraction has its own persisted cursor and cadence. By default it processes four turns at
+a time (`STRUCTURED_MEMORY_EVERY=4`).
 
-- legacy `summaries` / `shared_summaries` still serve every normal response,
-- extracted rows are written to `memory_items` only for inspection and tuning,
+- extracted rows are written to `memory_items` and are the persistent personal-memory source,
 - the extractor receives its own fixed-size pending batch, bounded causal `context`, and DM Hina replies
   used to interpret short follow-ups; public-server extraction still omits Hina replies,
-- existing databases seed the new extraction cursor from the current legacy summary cursor so #72-era
-  turns are not replayed; that baseline is persisted immediately so later summary updates cannot skip a
-  failed structured batch,
+- when an existing database still has the removed personal `summaries` table, Store startup copies each
+  missing cursor baseline from `summaries.through_id` with `INSERT OR IGNORE` and then drops that table,
+  so already-initialized structured cursors remain authoritative and retained history is not replayed,
 - every extracted item must cite one or more actual `message_id` values from that batch,
 - `origin_public_at_capture` is derived conservatively from the cited source rows rather than the
   channel's visibility at extraction time; a private/non-exportable source is never upgraded to public,

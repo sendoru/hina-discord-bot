@@ -6,11 +6,10 @@
 <section class="page-heading">
   <div>
     <h1>Memory Extraction Cursors</h1>
-    <p>현재 보존된 대화를 기준으로 구조화 메모리 추출 진행 상태를 보여줍니다.</p>
+    <p>현재 보존된 대화를 기준으로 structured-memory 추출 진행 상태를 보여줍니다.</p>
   </div>
 </section>
 
-{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters filter-layout filter-layout-compact" method="get">
   <fieldset class="filter-cluster filter-cluster-4">
     <legend>Match</legend>
@@ -33,7 +32,7 @@
 </form>
 
 <section class="notice info">
-  초기화되지 않은 cursor는 기존 요약의 <code>through_id</code>를 기준선으로 사용합니다. Store의 마이그레이션 의미를 유지하며 이 화면에서 초기화하지 않습니다.
+  초기화되지 않은 cursor는 0에서 시작합니다. 기존 legacy personal-summary DB가 있으면 Store 시작 시 그 through 값을 cursor로 한 번 이전한 뒤 summary table을 제거합니다.
 </section>
 
 <section class="panel flush">
@@ -41,7 +40,7 @@
   <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table cursor-table">
       <thead>
-        <tr><th>Realm</th><th>Channel</th><th>User</th><th>Initialized</th><th>Extraction through</th><th>Summary through</th><th>Δ</th><th>Effective through</th><th>Latest retained</th><th>Pending</th><th>Updated</th></tr>
+        <tr><th>Realm</th><th>Channel</th><th>User</th><th>Initialized</th><th>Extraction through</th><th>Latest retained</th><th>Pending</th><th>Updated</th></tr>
       </thead>
       <tbody>
       {% for row in data.rows %}
@@ -51,9 +50,6 @@
         <td>{{ scope_user(row.user_id, row.user_name) }}</td>
         <td>{{ "yes" if row.initialized else "no" }}</td>
         <td class="numeric">{{ row.extraction_through_id if row.extraction_through_id is not none else "—" }}</td>
-        <td class="numeric">{{ row.summary_through_id if row.summary_through_id is not none else "—" }}</td>
-        <td class="numeric">{{ row.cursor_delta if row.cursor_delta is not none else "—" }}</td>
-        <td class="numeric">{{ row.effective_through_id }}</td>
         <td class="numeric">{{ row.latest_turn_id or "—" }}</td>
         <td class="numeric">{{ row.pending_turns }}</td>
         <td>{{ row.extraction_updated_at | localtime if row.extraction_updated_at else "—" }}</td>

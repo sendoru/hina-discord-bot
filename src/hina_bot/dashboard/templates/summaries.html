@@ -1,16 +1,15 @@
 {% extends "base.html" %}
 {% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw %}
 {% from "_filter_ui.html" import active_filter_chips %}
-{% block title %}Summaries · Hina Dashboard{% endblock %}
+{% block title %}Shared Summaries · Hina Dashboard{% endblock %}
 {% block content %}
 <section class="page-heading">
   <div>
-    <h1>Legacy Summaries</h1>
-    <p>구조화 메모리 도입과 함께 유지되는 기존 요약 상태입니다.</p>
+    <h1>Shared Summaries</h1>
+    <p>공개 서버 직접 호출에서 유지되는 legacy shared-summary 상태입니다. 개인 장기 기억은 structured memory만 사용합니다.</p>
   </div>
 </section>
 
-{% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters filter-layout filter-layout-compact" method="get">
   <fieldset class="filter-cluster filter-cluster-3">
     <legend>Match</legend>
@@ -28,38 +27,6 @@
 </form>
 
 <section class="panel">
-  <h2>Personal summaries</h2>
-  {% if data.personal %}
-  <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
-    <table class="wide-table summary-table">
-      <thead><tr><th>Realm</th><th>Channel</th><th>User</th><th>Through</th><th>Latest retained</th><th>Pending</th><th>Exportable</th><th>Structured items</th><th>Extraction cursor</th></tr></thead>
-      <tbody>
-      {% for row in data.personal %}
-      <tr>
-        <td>{{ scope_realm(row.realm_display, row.guild_name) }}{{ scope_raw(row.scope_display) }}</td>
-        <td>{{ scope_channel(row.scope_display, row.channel_name) }}</td>
-        <td>{{ scope_user(row.user_id, row.user_name) }}</td>
-        <td class="numeric">{{ row.through_id }}</td>
-        <td class="numeric">{{ row.latest_turn_id or "—" }}</td>
-        <td class="numeric">{{ row.pending_turns }}</td>
-        <td>{{ "yes" if row.exportable else "no" }}</td>
-        <td class="numeric">{{ row.structured_memory_count }}</td>
-        <td>
-          {% if row.extraction_cursor %}
-            {{ row.extraction_cursor.extraction_through_id if row.extraction_cursor.extraction_through_id is not none else "not initialized" }}
-          {% else %}—{% endif %}
-        </td>
-      </tr>
-      <tr class="content-row"><td colspan="9"><details><summary>Summary text</summary><div class="message">{{ row.text }}</div></details></td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}<p class="muted">조건에 맞는 개인 요약이 없습니다.</p>{% endif %}
-</section>
-
-<section class="panel">
-  <h2>Shared summaries</h2>
   {% if data.shared %}
   <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table summary-table">

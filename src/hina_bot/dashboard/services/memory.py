@@ -420,11 +420,8 @@ class MemoryService(ReadService):
         user_id = user_id.strip()
         realm = realm.strip()
         query = query.strip().lower()
-        counts = self.repository.memory_counts_by_user()
         names = self.repository.latest_user_names()
         metadata = self.repository.discord_scope_metadata()
-        cursor_rows = self.repository.extraction_cursor_status()
-        cursor_by_scope = {str(row["scope"]): row for row in cursor_rows}
 
         def keep(row: dict[str, object]) -> bool:
             if user_id and str(row.get("user_id", "")) != user_id:
@@ -444,25 +441,6 @@ class MemoryService(ReadService):
                     return False
             return True
 
-        personal = []
-        for row in self.repository.personal_summary_status():
-            if not keep(row):
-                continue
-            value = dict(row)
-            value["user_name"] = str(
-                row.get("name")
-                or names.get(
-                    (str(row.get("realm") or ""), str(row.get("user_id") or "")),
-                    "",
-                )
-            )
-            self._decorate_scope_names(value, metadata)
-            value["structured_memory_count"] = counts.get(str(row["user_id"]), 0)
-            value["scope_display"] = parse_scope_key(str(row["scope"]))
-            value["realm_display"] = parse_scope_key(str(row.get("realm") or ""))
-            value["extraction_cursor"] = cursor_by_scope.get(str(row["scope"]))
-            personal.append(value)
-
         shared = []
         for row in self.repository.shared_summary_status():
             if not keep(row):
@@ -480,7 +458,6 @@ class MemoryService(ReadService):
             value["realm_display"] = parse_scope_key(str(row.get("realm") or ""))
             shared.append(value)
         return {
-            "personal": personal,
             "shared": shared,
             "filters": {"user_id": user_id, "realm": realm, "q": query},
         }
@@ -509,11 +486,6 @@ class MemoryService(ReadService):
                 "",
             )
             self._decorate_scope_names(row, metadata)
-            row["cursor_delta"] = None
-            extraction = row.get("extraction_through_id")
-            summary = row.get("summary_through_id")
-            if isinstance(extraction, int) and isinstance(summary, int):
-                row["cursor_delta"] = extraction - summary
             row["has_pending"] = int(row.get("pending_turns") or 0) > 0
             if user_id and str(row.get("user_id", "")) != user_id:
                 continue

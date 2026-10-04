@@ -74,10 +74,6 @@ def dashboard_client(tmp_path):
     finally:
         CURRENT_TURN_ID.reset(failed_token)
 
-    through = int(store.db.execute(
-        "SELECT id FROM turns WHERE message_id='55'"
-    ).fetchone()["id"])
-    store.save_summary(scope, "legacy dashboard summary", through)
     target_id = store.add_memory_item(
         scope,
         "dashboard memory",
@@ -115,6 +111,16 @@ def dashboard_client(tmp_path):
     guild_scope = Scope(1, 20, 100, True)
     store.observe_guild_channel(1, "Dashboard Guild", 10, "general")
     store.observe_guild_channel(1, "Dashboard Guild", 20, "relationships")
+    store.add_shared_call(guild_scope, 57, "Dashboard User", "public dashboard call")
+    shared_through = int(store.db.execute(
+        "SELECT id FROM shared_calls WHERE message_id='57'"
+    ).fetchone()["id"])
+    store.save_shared_summary(
+        guild_scope,
+        "Dashboard User",
+        "shared dashboard summary",
+        shared_through,
+    )
     store.add_memory_item(
         guild_scope,
         "same guild raw relationship",
@@ -435,7 +441,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "read_only" in state.text
     assert "direct" in state.text
     assert 'class="wide-table"' not in state.text
-    assert "legacy dashboard summary" in summaries.text
+    assert "shared dashboard summary" in summaries.text
     assert '<code class="scope-id" data-copy-text="100">100</code>' in summaries.text
     assert "Dashboard User" in summaries.text
     assert "<th>Realm</th><th>Channel</th><th>User</th>" in summaries.text

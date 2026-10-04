@@ -58,7 +58,7 @@ Telemetry:
 다음 persistent state는 보존합니다.
 
 - `memory_items`
-- `summaries`, `shared_summaries`
+- `shared_summaries`
 - `memory_reconciliation_proposals`
 - `memory_extraction_cursors`
 - `memory_modes`, `chat_log_modes`
@@ -76,7 +76,6 @@ Telemetry:
 
 삭제 직전에 다음 cursor 뒤에 남아 있는 raw row가 있는지 확인합니다.
 
-- personal legacy summary
 - structured-memory extraction
 - shared/public summary
 
