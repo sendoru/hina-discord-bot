@@ -48,7 +48,7 @@
 <details class="panel" data-memory-editor>
   <summary><strong>Edit memory</strong></summary>
   <p class="muted">내용과 의미 필드만 수정합니다. owner, origin, source message, lifecycle 상태는 그대로 유지됩니다.</p>
-  <form method="post" action="/memory/{{ data.item.id }}/edit" class="prompt-editor-card" data-memory-edit-form>
+  <form method="post" action="/memory/{{ data.item.id }}/edit" class="prompt-editor-card" data-memory-edit-form data-write-enabled="{{ 'true' if dashboard_write_enabled else 'false' }}">
     <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
     <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
     <input type="hidden" name="expected_revision" value="{{ data.item.revision }}">
