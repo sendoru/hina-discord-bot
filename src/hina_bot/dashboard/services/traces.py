@@ -15,6 +15,33 @@ from .base import Page, ReadService, _as_int, _parse_time, _timestamp, _turn_id
 _TERMINAL_EVENTS = {"turn.completed", "turn.failed", "turn.dropped"}
 
 
+def _group_trace_issues(candidates: list[dict[str, object]]) -> tuple[dict[str, object], ...]:
+    grouped: dict[tuple[object, ...], dict[str, object]] = {}
+    order: list[tuple[object, ...]] = []
+    for candidate in candidates:
+        fingerprint = str(candidate.get("fingerprint") or "")
+        if fingerprint:
+            key: tuple[object, ...] = ("fingerprint", fingerprint)
+        else:
+            key = (
+                str(candidate.get("kind") or ""),
+                str(candidate.get("source") or ""),
+                str(candidate.get("operation") or ""),
+                str(candidate.get("event") or ""),
+                str(candidate.get("error_type") or ""),
+                str(candidate.get("label") or ""),
+            )
+        count = max(1, _as_int(candidate.get("count")))
+        if key in grouped:
+            grouped[key]["count"] = _as_int(grouped[key].get("count")) + count
+            continue
+        row = dict(candidate)
+        row["count"] = count
+        grouped[key] = row
+        order.append(key)
+    return tuple(grouped[key] for key in order)
+
+
 def _conversation_scope_fields(value: object) -> dict[str, str | None]:
     parts = str(value or "").split(":")
     fields = {
@@ -346,6 +373,21 @@ class TraceService(ReadService):
             if before_dt and (row_dt is None or row_dt > before_dt):
                 return False
             if query:
+                issue_terms = " ".join(
+                    " ".join(
+                        (
+                            str(item.get("kind", "")),
+                            str(item.get("source", "")),
+                            str(item.get("operation", "")),
+                            str(item.get("event", "")),
+                            str(item.get("error_type", "")),
+                            str(item.get("fingerprint", "")),
+                            str(item.get("label", "")),
+                        )
+                    )
+                    for item in row.get("issues", ())
+                    if isinstance(item, dict)
+                )
                 haystack = " ".join(
                     (
                         str(row.get("turn_id", "")),
@@ -355,9 +397,7 @@ class TraceService(ReadService):
                         " ".join(models),
                         " ".join(operations),
                         str(row.get("error_fingerprint", "")),
-                        str(row.get("issue_fingerprint", "")),
-                        str(row.get("issue_operation", "")),
-                        str(row.get("issue_error_type", "")),
+                        issue_terms,
                     )
                 ).lower()
                 if query not in haystack:
@@ -841,38 +881,56 @@ class TraceService(ReadService):
                 for event in events
                 if event.get("event") == "turn.completed"
             )
-            issue_rows = [
-                row
-                for row in (*events, *usage)
-                if (
-                    row is not terminal
-                    and (
-                        row.get("error_fingerprint")
-                        or row.get("status") == "error"
-                    )
-                )
-            ]
-            exchange_failed_calls = (
-                _as_int(exchange.get("failed_calls")) if exchange else 0
-            )
-            exchange_has_issue = bool(
-                exchange
-                and (
-                    exchange_failed_calls > 0
-                    or exchange.get("status") in {"completed_with_api_errors", "error"}
-                )
-            )
-            issue = bool(
-                final_failure
-                or issue_rows
-                or exchange_has_issue
-                or memory_failures > 0
-            )
-            completed_like = (
-                terminal_event == "turn.completed"
-                or normalized_status in {"completed", "completed_with_api_errors"}
-            )
-            degraded = bool(completed_like and not final_failure and issue)
+
+            issue_candidates: list[dict[str, object]] = []
+            usage_issue_count = 0
+            detailed_fingerprints: set[str] = set()
+            answer_error_seen = False
+
+            for row in usage:
+                if not (row.get("error_fingerprint") or row.get("status") == "error"):
+                    continue
+                operation = str(row.get("operation") or "")
+                error_type = str(row.get("error_type") or "")
+                fingerprint = str(row.get("error_fingerprint") or "")
+                if fingerprint:
+                    detailed_fingerprints.add(fingerprint)
+                if operation == "answer":
+                    answer_error_seen = True
+                label = " · ".join(value for value in (operation, error_type) if value)
+                issue_candidates.append({
+                    "kind": "api_error",
+                    "source": "usage",
+                    "operation": operation,
+                    "event": "",
+                    "error_type": error_type,
+                    "fingerprint": fingerprint,
+                    "label": label or "API error",
+                    "count": 1,
+                })
+                usage_issue_count += 1
+
+            for row in events:
+                if row is terminal or not (
+                    row.get("error_fingerprint") or row.get("status") == "error"
+                ):
+                    continue
+                event_name = str(row.get("event") or "")
+                error_type = str(row.get("error_type") or "")
+                fingerprint = str(row.get("error_fingerprint") or "")
+                if fingerprint:
+                    detailed_fingerprints.add(fingerprint)
+                label = " · ".join(value for value in (event_name, error_type) if value)
+                issue_candidates.append({
+                    "kind": "event_error",
+                    "source": "event",
+                    "operation": "",
+                    "event": event_name,
+                    "error_type": error_type,
+                    "fingerprint": fingerprint,
+                    "label": label or "event error",
+                    "count": 1,
+                })
 
             terminal_error_row = (
                 terminal
@@ -882,60 +940,105 @@ class TraceService(ReadService):
                 )
                 else None
             )
-            issue_row = next(
-                (
-                    row
-                    for row in reversed(issue_rows)
-                    if row.get("error_fingerprint")
-                    or row.get("error_type")
-                    or row.get("operation")
-                ),
-                None,
-            )
             terminal_error_fingerprint = (
                 str(terminal_error_row.get("error_fingerprint") or "")
                 if terminal_error_row
                 else ""
             )
-            issue_fingerprint = (
+            terminal_stage = (
+                str(terminal_error_row.get("stage") or "")
+                if terminal_error_row
+                else ""
+            )
+            terminal_represented = bool(
                 terminal_error_fingerprint
-                if final_failure and terminal_error_fingerprint
-                else (
-                    str(issue_row.get("error_fingerprint") or "")
-                    if issue_row
+                and terminal_error_fingerprint in detailed_fingerprints
+            ) or bool(
+                final_failure
+                and terminal_stage == "generation"
+                and answer_error_seen
+            )
+            if final_failure and not terminal_represented:
+                terminal_error_type = (
+                    str(terminal_error_row.get("error_type") or "")
+                    if terminal_error_row
                     else ""
                 )
-            )
-            issue_operation = (
-                str(issue_row.get("operation") or "")
-                if issue_row
-                else ""
-            )
-            issue_error_type = (
-                str(issue_row.get("error_type") or "")
-                if issue_row
-                else ""
-            )
-            if issue_fingerprint:
-                issue_label = issue_fingerprint
-            elif issue_operation and issue_error_type:
-                issue_label = f"{issue_operation} · {issue_error_type}"
-            elif issue_operation:
-                issue_label = issue_operation
-            elif memory_failures:
-                issue_label = f"memory ×{memory_failures}"
-            elif exchange_failed_calls:
-                issue_label = f"API failures ×{exchange_failed_calls}"
-            elif final_failure:
-                issue_label = str(
-                    (terminal_error_row or {}).get("error_type")
-                    or (terminal_error_row or {}).get("stage")
-                    or "turn failed"
+                terminal_label = " · ".join(
+                    value
+                    for value in (
+                        terminal_stage or str(status_value or "turn failed"),
+                        terminal_error_type,
+                    )
+                    if value
                 )
-            elif issue:
-                issue_label = "yes"
-            else:
-                issue_label = ""
+                issue_candidates.append({
+                    "kind": "turn_failure",
+                    "source": "event" if terminal else "exchange",
+                    "operation": "",
+                    "event": terminal_event,
+                    "error_type": terminal_error_type,
+                    "fingerprint": terminal_error_fingerprint,
+                    "label": terminal_label or "turn failed",
+                    "count": 1,
+                })
+
+            if memory_failures > 0:
+                issue_candidates.append({
+                    "kind": "memory_failure",
+                    "source": "event",
+                    "operation": "",
+                    "event": "turn.completed",
+                    "error_type": "",
+                    "fingerprint": "",
+                    "label": "memory post-processing failure",
+                    "count": memory_failures,
+                })
+
+            exchange_failed_calls = (
+                _as_int(exchange.get("failed_calls")) if exchange else 0
+            )
+            missing_api_issue_count = max(
+                0,
+                exchange_failed_calls - usage_issue_count,
+            )
+            if missing_api_issue_count > 0:
+                issue_candidates.append({
+                    "kind": "api_error_aggregate",
+                    "source": "exchange",
+                    "operation": "",
+                    "event": "",
+                    "error_type": "",
+                    "fingerprint": "",
+                    "label": "API failure (aggregate)",
+                    "count": missing_api_issue_count,
+                })
+            elif (
+                exchange
+                and exchange.get("status") == "completed_with_api_errors"
+                and usage_issue_count == 0
+                and exchange_failed_calls == 0
+            ):
+                # Older or partial telemetry may retain only the aggregate status.
+                issue_candidates.append({
+                    "kind": "api_error_aggregate",
+                    "source": "exchange",
+                    "operation": "",
+                    "event": "",
+                    "error_type": "",
+                    "fingerprint": "",
+                    "label": "API failure (aggregate)",
+                    "count": 1,
+                })
+
+            issues = _group_trace_issues(issue_candidates)
+            issue_count = sum(_as_int(item.get("count")) for item in issues)
+            issue = issue_count > 0
+            completed_like = (
+                terminal_event == "turn.completed"
+                or normalized_status in {"completed", "completed_with_api_errors"}
+            )
+            degraded = bool(completed_like and not final_failure and issue)
 
             status_label = (
                 f"{status_value} · degraded"
@@ -975,10 +1078,8 @@ class TraceService(ReadService):
                         else ""
                     ),
                     "issue": issue,
-                    "issue_label": issue_label,
-                    "issue_fingerprint": issue_fingerprint,
-                    "issue_operation": issue_operation,
-                    "issue_error_type": issue_error_type,
+                    "issues": issues,
+                    "issue_count": issue_count,
                     "memory_failures": memory_failures,
                     "stored": trace_id in stored_by_trace,
                 }
