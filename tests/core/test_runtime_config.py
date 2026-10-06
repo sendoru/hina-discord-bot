@@ -544,6 +544,11 @@ def test_runtime_setting_validation_rejects_invalid_values(key: str, value: str)
 
 
 
+def test_runtime_setting_specs_have_operator_descriptions():
+    assert RUNTIME_SETTING_SPECS
+    assert all(spec.description.strip() for spec in RUNTIME_SETTING_SPECS.values())
+
+
 def test_runtime_collection_specs_expose_editor_constraints():
     prefixes = RUNTIME_SETTING_SPECS["call_prefixes"]
     channels = RUNTIME_SETTING_SPECS["always_reply_channel_ids"]
