@@ -101,7 +101,7 @@
         <tr>
           <td><a href="/traces/{{ row.turn_id }}">{{ row.at | localtime }}</a></td>
           <td>{{ row.scope or "—" }}</td>
-          <td>{{ status_badge(row.status) }}</td>
+          <td><span class="trace-status">{{ status_badge(row.status, row.degraded, row.issue_count) }}</span></td>
           <td>{{ row.model_tier or "—" }}</td>
           <td>{{ row.models | join(", ") or "—" }}</td>
           <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "—" }}</td>
