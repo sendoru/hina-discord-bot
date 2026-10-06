@@ -97,6 +97,45 @@ def _scalar_editor_meta(spec) -> dict[str, object]:
     }
 
 
+def _runtime_help_meta(spec) -> dict[str, object]:
+    type_labels = {
+        "bool": "boolean",
+        "int": "integer",
+        "float": "number",
+        "string": "string",
+        "gemini_thinking_level": "enum",
+        "prefixes": "ordered list",
+        "discord_ids": "Discord ID set",
+    }
+    constraints: list[str] = []
+
+    if spec.kind == "bool":
+        constraints.append("on / off")
+    elif spec.choices:
+        constraints.append("choices: " + " / ".join(spec.choices))
+
+    if spec.kind in {"int", "float"}:
+        if spec.minimum is not None and spec.maximum is not None:
+            constraints.append(f"range: {spec.minimum}–{spec.maximum}")
+        elif spec.minimum is not None:
+            constraints.append(f"minimum: {spec.minimum}")
+        elif spec.maximum is not None:
+            constraints.append(f"maximum: {spec.maximum}")
+    elif spec.kind == "string" and spec.maximum is not None:
+        constraints.append(f"max {int(spec.maximum)} chars")
+    elif spec.kind in COLLECTION_KINDS and spec.maximum is not None:
+        constraints.append(f"max {int(spec.maximum)} items")
+
+    if spec.empty_allowed:
+        constraints.append("none / null / off / - clears the value")
+
+    return {
+        "help_description": spec.description,
+        "help_type": type_labels.get(spec.kind, spec.kind),
+        "help_constraints": tuple(constraints),
+    }
+
+
 def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
     overrides = {
         str(row["key"]): row
@@ -158,6 +197,7 @@ def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
                 "env_name": spec.env_name,
                 "kind": spec.kind,
                 "source": "db" if override_valid else "startup",
+                **_runtime_help_meta(spec),
                 "value": effective_value,
                 "edit_value": effective_edit_value,
                 "startup_value": startup_value,
