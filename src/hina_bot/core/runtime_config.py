@@ -78,6 +78,11 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "gemini_store_interactions": RuntimeSettingSpec(
         "gemini_store_interactions", "GEMINI_STORE_INTERACTIONS", "bool"
     ),
+    "gemini_store_classifier_interactions": RuntimeSettingSpec(
+        "gemini_store_classifier_interactions",
+        "GEMINI_STORE_CLASSIFIER_INTERACTIONS",
+        "bool",
+    ),
     "model_routing_smart_threshold": RuntimeSettingSpec(
         "model_routing_smart_threshold",
         "MODEL_ROUTING_SMART_THRESHOLD",

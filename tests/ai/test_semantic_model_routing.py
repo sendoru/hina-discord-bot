@@ -179,6 +179,23 @@ async def test_classifier_input_contains_semantic_context_but_no_objective_load(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_classifier_store_is_separate_gemini_opt_in(enabled):
+    config = settings(
+        gemini_store_interactions=True,
+        gemini_store_classifier_interactions=enabled,
+    )
+    classifier_client = client(response(classification()))
+    router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
+
+    outcome = await router.classify(information("안녕"), baseline_tier="fast")
+
+    assert outcome.status == "completed"
+    request = classifier_client.responses.create.await_args.kwargs
+    assert request["store"] is enabled
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("provider", "enabled", "expected"),
     [
