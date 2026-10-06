@@ -303,21 +303,49 @@ def test_trace_filters_and_pagination_are_server_side(tmp_path):
     assert data["rows"][0]["error"] is False
     assert data["rows"][0]["issue"] is True
     assert data["rows"][0]["degraded"] is True
-    assert data["rows"][0]["issue_label"] == "memory ×1"
+    assert data["rows"][0]["issue_count"] == 1
+    assert data["rows"][0]["issues"] == ({
+        "kind": "memory_failure",
+        "source": "event",
+        "operation": "",
+        "event": "turn.completed",
+        "error_type": "",
+        "fingerprint": "",
+        "label": "memory post-processing failure",
+        "count": 1,
+    },)
 
 
-def test_completed_trace_with_classifier_error_is_degraded_not_failed(tmp_path):
+def test_completed_trace_groups_multiple_classifier_errors_without_exchange_duplication(
+    tmp_path,
+):
     service = build_service(tmp_path)
     assert service.telemetry.usage_path is not None
     with service.telemetry.usage_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({
-            "at": "2026-09-21T00:00:01.200000+00:00",
-            "turn_id": "trace-1",
-            "operation": "model_route_classify",
-            "status": "error",
-            "error_type": "CancelledError",
-            "elapsed_ms": 4001,
-        }) + "\n")
+        for at in (
+            "2026-09-21T00:00:01.200000+00:00",
+            "2026-09-21T00:00:01.300000+00:00",
+        ):
+            handle.write(json.dumps({
+                "at": at,
+                "turn_id": "trace-1",
+                "operation": "model_route_classify",
+                "status": "error",
+                "error_type": "CancelledError",
+                "elapsed_ms": 4001,
+            }) + "\n")
+
+    exchange_path = tmp_path / "logs" / "discord-usage.jsonl"
+    exchange_rows = [
+        json.loads(line)
+        for line in exchange_path.read_text(encoding="utf-8").splitlines()
+    ]
+    for row in exchange_rows:
+        if row["turn_id"] == "trace-1":
+            row["status"] = "completed_with_api_errors"
+            row["calls"] = 3
+            row["failed_calls"] = 2
+    write_rows(exchange_path, exchange_rows)
 
     detail = service.trace("trace-1")
 
@@ -327,12 +355,24 @@ def test_completed_trace_with_classifier_error_is_degraded_not_failed(tmp_path):
     assert summary["error"] is False
     assert summary["issue"] is True
     assert summary["degraded"] is True
-    assert summary["issue_operation"] == "model_route_classify"
-    assert summary["issue_error_type"] == "CancelledError"
-    assert summary["issue_label"] == "model_route_classify · CancelledError"
+    assert summary["issue_count"] == 3
+    assert len(summary["issues"]) == 2
+    classifier_issue = next(
+        issue for issue in summary["issues"]
+        if issue["kind"] == "api_error"
+    )
+    assert classifier_issue["operation"] == "model_route_classify"
+    assert classifier_issue["error_type"] == "CancelledError"
+    assert classifier_issue["label"] == "model_route_classify · CancelledError"
+    assert classifier_issue["count"] == 2
+    assert not any(
+        issue["kind"] == "api_error_aggregate"
+        for issue in summary["issues"]
+    )
 
     degraded = service.traces(error="no", issue="yes")
     assert "trace-1" in [row["turn_id"] for row in degraded["rows"]]
+    assert service.traces(query="CancelledError")["page"].total == 1
     failed = service.traces(error="yes")
     assert [row["turn_id"] for row in failed["rows"]] == ["trace-2"]
 
