@@ -126,8 +126,10 @@ def _runtime_help_meta(spec) -> dict[str, object]:
     elif spec.kind in COLLECTION_KINDS and spec.maximum is not None:
         constraints.append(f"max {int(spec.maximum)} items")
 
-    if spec.empty_allowed:
+    if spec.empty_allowed and spec.kind == "string":
         constraints.append("none / null / off / - clears the value")
+    elif spec.empty_allowed and spec.kind in COLLECTION_KINDS:
+        constraints.append("may be empty")
 
     return {
         "help_description": spec.description,
