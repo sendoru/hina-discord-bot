@@ -54,7 +54,15 @@
       {% for row in rows %}
         <tr {% if not row.is_collection %}data-runtime-config-editor{% endif %}>
           <td class="runtime-config-setting">
-            <strong>{{ row.env_name }}</strong>
+            <div class="runtime-config-setting-title">
+              <strong>{{ row.env_name }}</strong>
+              <button type="button"
+                      class="runtime-config-help-toggle"
+                      data-runtime-config-help-toggle="{{ row.key }}"
+                      aria-controls="runtime-config-help-{{ row.key }}"
+                      aria-expanded="false"
+                      aria-label="Show help for {{ row.env_name }}">ⓘ</button>
+            </div>
             <small><code>{{ row.key }}</code> · {{ row.kind }}</small>
           </td>
           <td class="runtime-config-source">{{ row.source }}</td>
@@ -177,6 +185,22 @@
               <input type="hidden" name="key" value="{{ row.key }}">
               <button type="submit" {% if not dashboard_write_enabled or not row.has_override %}disabled{% endif %}>Reset</button>
             </form>
+          </td>
+        </tr>
+        <tr id="runtime-config-help-{{ row.key }}"
+            class="runtime-config-help-row"
+            data-runtime-config-help-row="{{ row.key }}"
+            hidden>
+          <td colspan="5">
+            <div class="runtime-config-help">
+              <p>{{ row.help_description }}</p>
+              <div class="runtime-config-help-meta">
+                <span><strong>Type</strong> <code>{{ row.help_type }}</code></span>
+                {% for constraint in row.help_constraints %}
+                <span>{{ constraint }}</span>
+                {% endfor %}
+              </div>
+            </div>
           </td>
         </tr>
         {% if row.is_collection %}
