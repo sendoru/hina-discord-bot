@@ -890,10 +890,19 @@ class TraceService(ReadService):
                 ),
                 None,
             )
-            issue_fingerprint = (
-                str(issue_row.get("error_fingerprint") or "")
-                if issue_row
+            terminal_error_fingerprint = (
+                str(terminal_error_row.get("error_fingerprint") or "")
+                if terminal_error_row
                 else ""
+            )
+            issue_fingerprint = (
+                terminal_error_fingerprint
+                if final_failure and terminal_error_fingerprint
+                else (
+                    str(issue_row.get("error_fingerprint") or "")
+                    if issue_row
+                    else ""
+                )
             )
             issue_operation = (
                 str(issue_row.get("operation") or "")
