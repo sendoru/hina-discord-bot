@@ -6,7 +6,7 @@ import pytest
 from hina_bot.core.config import Settings
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
-from hina_bot.discord.config_commands import ConfigCommands
+from hina_bot.discord.config_commands import ConfigCommands, _setting_key_choices
 
 
 @pytest.mark.asyncio
@@ -31,12 +31,20 @@ async def test_privacy_command_sets_and_resets_external_context_policy():
         store.close()
 
 
-def test_generic_config_choices_hide_external_context_policy():
-    group = ConfigCommands(NS(settings=NS(), recent=NS(), emoji_admin_ids={100}))
-    set_command = group.get_command("set")
-    reset_command = group.get_command("reset")
+def test_generic_config_key_autocomplete_scales_past_discord_choice_limit():
+    all_choices = _setting_key_choices("")
+    output_choices = _setting_key_choices("output")
 
-    set_keys = {choice.value for choice in set_command._params["key"].choices}
-    reset_keys = {choice.value for choice in reset_command._params["key"].choices}
-    assert "external_context_policy" not in set_keys
-    assert "external_context_policy" not in reset_keys
+    assert len(all_choices) <= 25
+    assert "external_context_policy" not in {choice.value for choice in all_choices}
+    assert {choice.value for choice in output_choices} >= {
+        "output_tokens",
+        "fast_output_tokens",
+        "smart_output_tokens",
+        "memory_output_tokens",
+        "routing_classifier_max_output_tokens",
+    }
+
+    group = ConfigCommands(NS(settings=NS(), recent=NS(), emoji_admin_ids={100}))
+    assert group.get_command("set")._params["key"].autocomplete is not None
+    assert group.get_command("reset")._params["key"].autocomplete is not None
