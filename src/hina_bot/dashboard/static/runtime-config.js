@@ -94,7 +94,12 @@
   };
 
   const closeOtherCollectionRows = (except) => {
-    const helpRowForKey = (key) =>
+    for (const row of collectionRows) {
+      if (row !== except && !row.hidden) hideCollectionRow(row);
+    }
+  };
+
+  const helpRowForKey = (key) =>
     helpRows.find((row) => row.dataset.runtimeConfigHelpRow === key);
 
   for (const button of helpButtons) {
@@ -110,11 +115,6 @@
       if (opening) sizeHelpRow(row);
     });
   }
-
-  for (const row of collectionRows) {
-      if (row !== except && !row.hidden) hideCollectionRow(row);
-    }
-  };
 
   const createEditableChip = (value) => {
     const chip = document.createElement("span");
