@@ -309,7 +309,10 @@ class SemanticModelRouter:
             "instructions": _CLASSIFIER_POLICY,
             "input": _classifier_input(payload, visual_inputs),
             "max_output_tokens": self.settings.routing_classifier_max_output_tokens,
-            "store": False,
+            "store": (
+                self.settings.routing_classifier_provider == "gemini"
+                and self.settings.gemini_store_classifier_interactions
+            ),
         }
         if self.settings.routing_classifier_provider == "gemini":
             request["thinking_level"] = "minimal"
