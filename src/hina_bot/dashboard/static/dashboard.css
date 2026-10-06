@@ -3176,6 +3176,41 @@ pre {
   white-space: nowrap;
 }
 
+.runtime-config-setting-title {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.runtime-config-setting-title strong {
+  min-width: 0;
+}
+
+.runtime-config-help-toggle {
+  display: inline-flex;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.runtime-config-help-toggle:hover,
+.runtime-config-help-toggle:focus-visible,
+.runtime-config-help-toggle[aria-expanded="true"] {
+  border-color: var(--border-strong);
+  background: rgba(145, 175, 255, .08);
+  color: var(--accent-strong);
+}
+
 .runtime-config-setting strong {
   line-height: 1.35;
 }
@@ -3271,6 +3306,51 @@ pre {
   min-width: 156px;
 }
 
+
+.runtime-config-help-row td {
+  padding: 0 12px 12px;
+  background: rgba(145, 175, 255, .018);
+}
+
+.runtime-config-help {
+  position: sticky;
+  left: 12px;
+  display: grid;
+  width: var(--runtime-config-help-width, calc(100% - 24px));
+  max-width: var(--runtime-config-help-width, calc(100% - 24px));
+  min-width: 0;
+  gap: 9px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.runtime-config-help p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.runtime-config-help-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.runtime-config-help-meta > span {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .018);
+  white-space: nowrap;
+}
 
 .runtime-collection-preview {
   display: inline-flex;
