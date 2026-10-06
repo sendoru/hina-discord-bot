@@ -350,6 +350,89 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         store.close()
 
 
+def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path: Path):
+    db = tmp_path / "runtime-expanded.sqlite3"
+    base = _base(
+        model_routing_mode="fixed",
+        fast_output_tokens=4096,
+        smart_output_tokens=8192,
+        memory_output_tokens=4096,
+        routing_classifier_max_output_tokens=256,
+        cooldown=5,
+        summary_every=8,
+        structured_memory_every=4,
+        structured_memory_stale_after_seconds=28800,
+        runtime_timezone="Asia/Seoul",
+        runtime_locale="ko-KR",
+        empty_call_reply="응?",
+        special_dm_empty_call_reply="선생님?",
+        empty_response_reply="응.",
+    )
+
+    store = Store(str(db))
+    settings = RuntimeSettings(base, store)
+    assert settings.set_text("MODEL_ROUTING_MODE", "adaptive") == "adaptive"
+    assert settings.set_text("FAST_MAX_OUTPUT_TOKENS", "6000") == 6000
+    assert settings.set_text("SMART_MAX_OUTPUT_TOKENS", "9000") == 9000
+    assert settings.set_text("MEMORY_MAX_OUTPUT_TOKENS", "5000") == 5000
+    assert settings.set_text("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "384") == 384
+    assert settings.set_text("COOLDOWN_SECONDS", "1.5") == pytest.approx(1.5)
+    assert settings.set_text("SUMMARY_EVERY", "6") == 6
+    assert settings.set_text("STRUCTURED_MEMORY_EVERY", "3") == 3
+    assert settings.set_text("STRUCTURED_MEMORY_STALE_AFTER_SECONDS", "7200") == 7200
+    assert settings.set_text("RUNTIME_TIMEZONE", "UTC") == "UTC"
+    assert settings.set_text("RUNTIME_LOCALE", "en-US") == "en-US"
+    assert settings.set_text("EMPTY_CALL_REPLY", "hey") == "hey"
+    assert settings.set_text("SPECIAL_DM_EMPTY_CALL_REPLY", "none") == ""
+    assert settings.set_text("EMPTY_RESPONSE_REPLY", "fallback") == "fallback"
+    store.close()
+
+    store = Store(str(db))
+    try:
+        reloaded = RuntimeSettings(base, store)
+        assert reloaded.model_routing_mode == "adaptive"
+        assert reloaded.fast_output_tokens == 6000
+        assert reloaded.smart_output_tokens == 9000
+        assert reloaded.memory_output_tokens == 5000
+        assert reloaded.routing_classifier_max_output_tokens == 384
+        assert reloaded.cooldown == pytest.approx(1.5)
+        assert reloaded.summary_every == 6
+        assert reloaded.structured_memory_every == 3
+        assert reloaded.structured_memory_stale_after_seconds == 7200
+        assert reloaded.runtime_timezone == "UTC"
+        assert reloaded.runtime_locale == "en-US"
+        assert reloaded.empty_call_reply == "hey"
+        assert reloaded.special_dm_empty_call_reply == ""
+        assert reloaded.empty_response_reply == "fallback"
+        assert reloaded.source("FAST_MAX_OUTPUT_TOKENS") == "db"
+        assert reloaded.source("RUNTIME_TIMEZONE") == "db"
+    finally:
+        store.close()
+
+
+def test_runtime_cross_field_constraints_match_startup_invariants():
+    store = Store(":memory:")
+    try:
+        settings = RuntimeSettings(
+            _base(
+                fast_output_tokens=4096,
+                smart_output_tokens=8192,
+                history_turns=12,
+            ),
+            store,
+        )
+        with pytest.raises(ValueError, match="FAST_MAX_OUTPUT_TOKENS"):
+            settings.set_text("FAST_MAX_OUTPUT_TOKENS", "9000")
+        with pytest.raises(ValueError, match="SMART_MAX_OUTPUT_TOKENS"):
+            settings.set_text("SMART_MAX_OUTPUT_TOKENS", "4000")
+        with pytest.raises(ValueError, match="HISTORY_TURNS"):
+            settings.set_text("SUMMARY_EVERY", "13")
+        with pytest.raises(ValueError, match="HISTORY_TURNS"):
+            settings.set_text("STRUCTURED_MEMORY_EVERY", "13")
+    finally:
+        store.close()
+
+
 def test_reset_removes_db_override_and_restores_startup_value():
     store = Store(":memory:")
     try:
@@ -413,6 +496,20 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
         ("LLM_MODEL", "x" * 201),
         ("MAX_OUTPUT_TOKENS", "127"),
         ("MAX_OUTPUT_TOKENS", "65537"),
+        ("MODEL_ROUTING_MODE", "dynamic"),
+        ("FAST_MAX_OUTPUT_TOKENS", "127"),
+        ("SMART_MAX_OUTPUT_TOKENS", "65537"),
+        ("MEMORY_MAX_OUTPUT_TOKENS", "127"),
+        ("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "31"),
+        ("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "1025"),
+        ("COOLDOWN_SECONDS", "-1"),
+        ("SUMMARY_EVERY", "1"),
+        ("STRUCTURED_MEMORY_EVERY", "31"),
+        ("STRUCTURED_MEMORY_STALE_AFTER_SECONDS", "59"),
+        ("RUNTIME_TIMEZONE", "Mars/Olympus"),
+        ("RUNTIME_LOCALE", "x" * 33),
+        ("EMPTY_CALL_REPLY", ""),
+        ("EMPTY_RESPONSE_REPLY", ""),
         ("MODEL_ROUTING_SMART_THRESHOLD", "0"),
         ("MODEL_ROUTING_SMART_THRESHOLD", "10.1"),
         ("MODEL_ROUTING_SMART_THRESHOLD", "nan"),
@@ -467,6 +564,9 @@ def test_runtime_scalar_specs_expose_editor_constraints():
     output_tokens = RUNTIME_SETTING_SPECS["output_tokens"]
     threshold = RUNTIME_SETTING_SPECS["model_routing_smart_threshold"]
     model = RUNTIME_SETTING_SPECS["model"]
+    routing_mode = RUNTIME_SETTING_SPECS["model_routing_mode"]
+    classifier_budget = RUNTIME_SETTING_SPECS["routing_classifier_max_output_tokens"]
+    stale = RUNTIME_SETTING_SPECS["structured_memory_stale_after_seconds"]
 
     assert set(external.choices) == {"full", "bot_interactions_only"}
     assert set(thinking.choices) == {"minimal", "low", "medium", "high"}
@@ -475,3 +575,8 @@ def test_runtime_scalar_specs_expose_editor_constraints():
     assert threshold.minimum == pytest.approx(0.1)
     assert threshold.maximum == pytest.approx(10.0)
     assert model.maximum == 200
+    assert set(routing_mode.choices) == {"fixed", "adaptive"}
+    assert classifier_budget.minimum == 32
+    assert classifier_budget.maximum == 1024
+    assert stale.minimum == 60
+    assert stale.maximum == 7 * 24 * 60 * 60
