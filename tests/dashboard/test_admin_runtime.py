@@ -126,6 +126,13 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
 
     assert response.status_code == 200
     assert 'class="runtime-config-table"' in response.text
+    assert 'data-runtime-config-help-toggle="channel_context_chars"' in response.text
+    assert 'id="runtime-config-help-channel_context_chars"' in response.text
+    assert 'data-runtime-config-help-row="channel_context_chars"' in response.text
+    assert "최근 서버 채널 문맥에서 외부 모델 요청에 사용할 본문 문자 수 상한" in response.text
+    assert "<strong>Type</strong> <code>integer</code>" in response.text
+    assert "range: 0–12000" in response.text
+    assert "none / null / off / - clears the value" in response.text
     assert "<th>Set</th>" not in response.text
     assert 'class="runtime-config-action-header"' in response.text
     assert "data-runtime-config-action-view" in response.text
@@ -174,6 +181,7 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert "1554321651473195059" in response.text
     assert "Startup baseline" in response.text
     assert "runtime-config.js" in response.text
+    assert "runtime-config-help-toggle" in response.text
 
 
 
