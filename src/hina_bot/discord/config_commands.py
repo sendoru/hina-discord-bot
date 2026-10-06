@@ -13,11 +13,30 @@ from hina_bot.core.runtime_config import (
 
 log = logging.getLogger("hina")
 
-_KEY_CHOICES = [
-    app_commands.Choice(name=spec.env_name, value=attr)
-    for attr, spec in RUNTIME_SETTING_SPECS.items()
-    if attr != "external_context_policy"
-]
+def _setting_key_choices(current: str) -> list[app_commands.Choice[str]]:
+    needle = current.strip().lower()
+    matches = [
+        app_commands.Choice(name=spec.env_name, value=attr)
+        for attr, spec in RUNTIME_SETTING_SPECS.items()
+        if (
+            attr != "external_context_policy"
+            and (
+                not needle
+                or needle in attr.lower()
+                or needle in spec.env_name.lower()
+            )
+        )
+    ]
+    return matches[:25]
+
+
+async def _setting_key_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    del interaction
+    return _setting_key_choices(current)
+
 _PRIVACY_CHOICES = [
     app_commands.Choice(
         name="bot_interactions_only — 현재 채널의 히나 참여 대화만 외부 전송",
@@ -128,7 +147,7 @@ class ConfigCommands(app_commands.Group):
         key="변경할 설정",
         value="새 값. bool=on/off, 접두어/채널 ID=쉼표 구분, 추론=minimal/low/medium/high, 위치=none",
     )
-    @app_commands.choices(key=_KEY_CHOICES)
+    @app_commands.autocomplete(key=_setting_key_autocomplete)
     async def set_config(self, interaction: discord.Interaction, key: str, value: str):
         if key == "external_context_policy":
             await interaction.response.send_message(
@@ -150,7 +169,7 @@ class ConfigCommands(app_commands.Group):
 
     @app_commands.command(name="reset", description="DB override를 삭제하고 시작 시 기본값으로 복귀")
     @app_commands.describe(key="초기화할 설정")
-    @app_commands.choices(key=_KEY_CHOICES)
+    @app_commands.autocomplete(key=_setting_key_autocomplete)
     async def reset(self, interaction: discord.Interaction, key: str):
         if key == "external_context_policy":
             await interaction.response.send_message(

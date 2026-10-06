@@ -41,6 +41,12 @@
   }
 
   const tableWrap = document.querySelector(".runtime-config-table-wrap");
+  const helpRows = Array.from(
+    document.querySelectorAll("[data-runtime-config-help-row]"),
+  );
+  const helpButtons = Array.from(
+    document.querySelectorAll("[data-runtime-config-help-toggle]"),
+  );
   const collectionRows = Array.from(
     document.querySelectorAll("[data-runtime-collection-row]"),
   );
@@ -54,11 +60,22 @@
   const buttonForKey = (key) =>
     manageButtons.find((button) => button.dataset.runtimeCollectionManage === key);
 
+  const availableExpandedRowWidth = () =>
+    tableWrap instanceof HTMLElement ? Math.max(0, tableWrap.clientWidth - 24) : 0;
+
+  const sizeHelpRow = (row) => {
+    const help = row.querySelector(".runtime-config-help");
+    if (!(help instanceof HTMLElement)) return;
+    const available = availableExpandedRowWidth();
+    if (available > 0) {
+      help.style.setProperty("--runtime-config-help-width", `${available}px`);
+    }
+  };
+
   const sizeCollectionEditor = (row) => {
-    if (!(tableWrap instanceof HTMLElement)) return;
     const editor = row.querySelector("[data-runtime-collection-editor]");
     if (!(editor instanceof HTMLElement)) return;
-    const available = Math.max(0, tableWrap.clientWidth - 24);
+    const available = availableExpandedRowWidth();
     editor.style.setProperty(
       "--runtime-collection-editor-width",
       `${available}px`,
@@ -81,6 +98,23 @@
       if (row !== except && !row.hidden) hideCollectionRow(row);
     }
   };
+
+  const helpRowForKey = (key) =>
+    helpRows.find((row) => row.dataset.runtimeConfigHelpRow === key);
+
+  for (const button of helpButtons) {
+    button.addEventListener("click", () => {
+      const key = button.dataset.runtimeConfigHelpToggle;
+      if (!key) return;
+      const row = helpRowForKey(key);
+      if (!(row instanceof HTMLTableRowElement)) return;
+
+      const opening = row.hidden;
+      row.hidden = !opening;
+      button.setAttribute("aria-expanded", opening ? "true" : "false");
+      if (opening) sizeHelpRow(row);
+    });
+  }
 
   const createEditableChip = (value) => {
     const chip = document.createElement("span");
@@ -293,6 +327,9 @@
 
   if (tableWrap instanceof HTMLElement && "ResizeObserver" in window) {
     const observer = new ResizeObserver(() => {
+      for (const row of helpRows) {
+        if (!row.hidden) sizeHelpRow(row);
+      }
       for (const row of collectionRows) {
         if (!row.hidden) sizeCollectionEditor(row);
       }
@@ -300,6 +337,9 @@
     observer.observe(tableWrap);
   } else {
     window.addEventListener("resize", () => {
+      for (const row of helpRows) {
+        if (!row.hidden) sizeHelpRow(row);
+      }
       for (const row of collectionRows) {
         if (!row.hidden) sizeCollectionEditor(row);
       }
