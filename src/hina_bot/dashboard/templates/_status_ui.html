@@ -1,7 +1,10 @@
-{% macro status_badge(value) -%}
-{% set label = "Unknown" if not value or value | lower == "unknown" else value %}
+{% macro status_badge(value, degraded=false) -%}
+{% set base_label = "Unknown" if not value or value | lower == "unknown" else value %}
+{% set label = base_label ~ " · degraded" if degraded else base_label %}
 {% set normalized = label | lower %}
-{% if normalized in ["completed", "active", "resolved", "available", "ok", "success"] %}
+{% if degraded or "degraded" in normalized %}
+  {% set tone = "warning" %}
+{% elif normalized in ["completed", "active", "resolved", "available", "ok", "success"] %}
   {% set tone = "success" %}
 {% elif "fail" in normalized or "error" in normalized or normalized == "blocked" %}
   {% set tone = "danger" %}
