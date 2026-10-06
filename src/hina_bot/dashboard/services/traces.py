@@ -355,7 +355,9 @@ class TraceService(ReadService):
                         " ".join(models),
                         " ".join(operations),
                         str(row.get("error_fingerprint", "")),
-                        str(row.get("issue_label", "")),
+                        str(row.get("issue_fingerprint", "")),
+                        str(row.get("issue_operation", "")),
+                        str(row.get("issue_error_type", "")),
                     )
                 ).lower()
                 if query not in haystack:
