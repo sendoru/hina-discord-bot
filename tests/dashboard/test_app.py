@@ -330,8 +330,11 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Advanced filters" in traces.text
     assert "Final failure" in traces.text
     assert "Issue" in traces.text
-    assert "model_route_classify · CancelledError" in traces.text
+    assert "<th>Issue</th>" not in traces.text
+    assert "model_route_classify · CancelledError" not in traces.text
     assert 'class="status-badge status-warning">completed · degraded</span>' in traces.text
+    assert 'class="issue-count-badge"' in traces.text
+    assert "⚠ 1" in traces.text
     assert 'class="wide-table"' in traces.text
     assert 'aria-label="Applied filters"' in traces.text
     assert analytics.status_code == 200
@@ -354,7 +357,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Context &amp; provenance" in detail.text
     assert "Egress policy" in detail.text
     assert "degraded completion" in detail.text
+    assert 'id="trace-issues"' in detail.text
     assert "model_route_classify · CancelledError" in detail.text
+    assert "api_error" in detail.text
     assert failed_detail.status_code == 200
     assert "Failed conversation record" in failed_detail.text
     assert "failed dashboard request" in failed_detail.text
@@ -500,6 +505,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert ".notice.warning" in static.text
     assert ".mobile-nav-panel" in static.text
     assert ".wide-table" in static.text
+    assert ".issue-count-badge" in static.text
+    assert ".trace-issue-list" in static.text
     assert ".relationship-mobile-card" in static.text
     assert ".relationship-desktop" in static.text
     assert ".scope-picker" in static.text
