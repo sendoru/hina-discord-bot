@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>{% block title %}Hina Dashboard{% endblock %}</title>
-  <link rel="icon" type="image/webp" href="{{ url_for('static', path='hina-dashboard-icon.webp') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=20261006-trace-issues">
-  <script defer src="{{ url_for('static', path='scope-picker.js') }}"></script>
-  <script defer src="{{ url_for('static', path='clipboard.js') }}"></script>
-  {% if request.url.path.startswith('/admin/runtime') %}<script defer src="{{ url_for('static', path='runtime-config.js') }}?v=20261003-typed-runtime"></script>{% endif %}
-  {% if request.url.path.startswith('/admin/prompts') %}<script defer src="{{ url_for('static', path='prompt-state.js') }}"></script>{% endif %}
-  {% if request.url.path.startswith('/memory/') and request.url.path != '/memory/cursors' %}<script defer src="{{ url_for('static', path='memory-editor.js') }}"></script>{% endif %}
+  <link rel="icon" type="image/webp" href="{{ static_asset('hina-dashboard-icon.webp') }}">
+  <link rel="stylesheet" href="{{ static_asset('dashboard.css') }}">
+  <script defer src="{{ static_asset('scope-picker.js') }}"></script>
+  <script defer src="{{ static_asset('clipboard.js') }}"></script>
+  {% if request.url.path.startswith('/admin/runtime') %}<script defer src="{{ static_asset('runtime-config.js') }}"></script>{% endif %}
+  {% if request.url.path.startswith('/admin/prompts') %}<script defer src="{{ static_asset('prompt-state.js') }}"></script>{% endif %}
+  {% if request.url.path.startswith('/memory/') and request.url.path != '/memory/cursors' %}<script defer src="{{ static_asset('memory-editor.js') }}"></script>{% endif %}
 </head>
 <body>
   <a class="skip-link" href="#main-content">본문 바로가기</a>
@@ -18,7 +18,7 @@
     <aside class="sidebar">
       <div class="sidebar-branding">
         <a class="brand" href="/">
-          <img class="brand-mark" src="{{ url_for('static', path='hina-dashboard-icon.webp') }}" alt="">
+          <img class="brand-mark" src="{{ static_asset('hina-dashboard-icon.webp') }}" alt="">
           <span class="brand-copy">
             <strong>Hina</strong>
             <small>Dashboard</small>
