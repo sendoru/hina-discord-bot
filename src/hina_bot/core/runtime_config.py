@@ -6,10 +6,12 @@ import json
 from dataclasses import dataclass
 from math import isfinite
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config import (
     EXTERNAL_CONTEXT_POLICIES,
     GEMINI_THINKING_LEVELS,
+    MODEL_ROUTING_MODES,
     Settings,
     parse_call_prefixes,
     parse_discord_id_set,
@@ -51,11 +53,33 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     ),
     "chat_web_search": RuntimeSettingSpec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
     "community_lore": RuntimeSettingSpec("community_lore", "COMMUNITY_LORE", "bool"),
+    "model_routing_mode": RuntimeSettingSpec(
+        "model_routing_mode",
+        "MODEL_ROUTING_MODE",
+        "string",
+        choices=tuple(sorted(MODEL_ROUTING_MODES)),
+    ),
     "model": RuntimeSettingSpec("model", "LLM_MODEL", "string", maximum=200),
     "fast_model": RuntimeSettingSpec("fast_model", "LLM_FAST_MODEL", "string", maximum=200),
     "smart_model": RuntimeSettingSpec("smart_model", "LLM_SMART_MODEL", "string", maximum=200),
     "output_tokens": RuntimeSettingSpec(
         "output_tokens", "MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
+    ),
+    "fast_output_tokens": RuntimeSettingSpec(
+        "fast_output_tokens", "FAST_MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
+    ),
+    "smart_output_tokens": RuntimeSettingSpec(
+        "smart_output_tokens", "SMART_MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
+    ),
+    "memory_output_tokens": RuntimeSettingSpec(
+        "memory_output_tokens", "MEMORY_MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
+    ),
+    "routing_classifier_max_output_tokens": RuntimeSettingSpec(
+        "routing_classifier_max_output_tokens",
+        "ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS",
+        "int",
+        minimum=32,
+        maximum=1024,
     ),
     "gemini_thinking_level": RuntimeSettingSpec(
         "gemini_thinking_level",
@@ -103,11 +127,33 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "history_max_chars": RuntimeSettingSpec(
         "history_max_chars", "HISTORY_MAX_CHARS", "int", minimum=0, maximum=120000
     ),
+    "cooldown": RuntimeSettingSpec(
+        "cooldown", "COOLDOWN_SECONDS", "float", minimum=0.0, maximum=3600.0
+    ),
+    "summary_every": RuntimeSettingSpec(
+        "summary_every", "SUMMARY_EVERY", "int", minimum=2, maximum=30
+    ),
+    "structured_memory_every": RuntimeSettingSpec(
+        "structured_memory_every", "STRUCTURED_MEMORY_EVERY", "int", minimum=2, maximum=30
+    ),
+    "structured_memory_stale_after_seconds": RuntimeSettingSpec(
+        "structured_memory_stale_after_seconds",
+        "STRUCTURED_MEMORY_STALE_AFTER_SECONDS",
+        "int",
+        minimum=60,
+        maximum=7 * 24 * 60 * 60,
+    ),
     "lore_max_items": RuntimeSettingSpec(
         "lore_max_items", "LORE_MAX_ITEMS", "int", minimum=0, maximum=20
     ),
     "lore_max_chars": RuntimeSettingSpec(
         "lore_max_chars", "LORE_MAX_CHARS", "int", minimum=0, maximum=12000
+    ),
+    "runtime_timezone": RuntimeSettingSpec(
+        "runtime_timezone", "RUNTIME_TIMEZONE", "string", maximum=100
+    ),
+    "runtime_locale": RuntimeSettingSpec(
+        "runtime_locale", "RUNTIME_LOCALE", "string", maximum=32
     ),
     "runtime_default_location": RuntimeSettingSpec(
         "runtime_default_location",
@@ -115,6 +161,19 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "string",
         maximum=100,
         empty_allowed=True,
+    ),
+    "empty_call_reply": RuntimeSettingSpec(
+        "empty_call_reply", "EMPTY_CALL_REPLY", "string", maximum=200
+    ),
+    "special_dm_empty_call_reply": RuntimeSettingSpec(
+        "special_dm_empty_call_reply",
+        "SPECIAL_DM_EMPTY_CALL_REPLY",
+        "string",
+        maximum=200,
+        empty_allowed=True,
+    ),
+    "empty_response_reply": RuntimeSettingSpec(
+        "empty_response_reply", "EMPTY_RESPONSE_REPLY", "string", maximum=200
     ),
 }
 
@@ -192,6 +251,14 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             raise ValueError(f"{spec.env_name}는 {spec.maximum}자 이하여야 해요.")
         if any(char in text for char in "\r\n\0"):
             raise ValueError("줄바꿈이나 NUL 문자는 사용할 수 없어요.")
+        if spec.choices and text not in spec.choices:
+            allowed = ", ".join(spec.choices)
+            raise ValueError(f"{spec.env_name}는 {allowed} 중 하나여야 해요.")
+        if spec.attr == "runtime_timezone":
+            try:
+                ZoneInfo(text)
+            except ZoneInfoNotFoundError as exc:
+                raise ValueError(f"알 수 없는 RUNTIME_TIMEZONE이에요: {text}") from exc
         return text
 
     raise ValueError(f"지원하지 않는 설정 형식이에요: {spec.kind}")
@@ -248,6 +315,24 @@ def format_runtime_value(value: Any) -> str:
     if value == "":
         return "(비움)"
     return str(value)
+
+
+def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
+    effective = {
+        "fast_output_tokens": value if attr == "fast_output_tokens" else settings.fast_output_tokens,
+        "smart_output_tokens": value if attr == "smart_output_tokens" else settings.smart_output_tokens,
+        "summary_every": value if attr == "summary_every" else settings.summary_every,
+        "structured_memory_every": (
+            value if attr == "structured_memory_every" else settings.structured_memory_every
+        ),
+    }
+    if effective["fast_output_tokens"] > effective["smart_output_tokens"]:
+        raise ValueError("FAST_MAX_OUTPUT_TOKENS는 SMART_MAX_OUTPUT_TOKENS 이하여야 해요.")
+    history_turns = settings.history_turns
+    if effective["summary_every"] > history_turns:
+        raise ValueError("SUMMARY_EVERY는 HISTORY_TURNS 이하여야 해요.")
+    if effective["structured_memory_every"] > history_turns:
+        raise ValueError("STRUCTURED_MEMORY_EVERY는 HISTORY_TURNS 이하여야 해요.")
 
 
 class RuntimeSettings:
@@ -349,15 +434,18 @@ class RuntimeSettings:
         attr = runtime_setting_attr(key)
         spec = RUNTIME_SETTING_SPECS[attr]
         value = parse_runtime_value(spec, raw, settings=self)
+        _validate_combined_runtime_value(self, attr, value)
         self._write(attr, encode_runtime_value(value))
         self._overrides[attr] = value
         return value
 
     def reset(self, key: str):
         attr = runtime_setting_attr(key)
+        value = getattr(self._base, attr)
+        _validate_combined_runtime_value(self, attr, value)
         self._write(attr, None)
         self._overrides.pop(attr, None)
-        return getattr(self._base, attr)
+        return value
 
     def rows(self) -> list[tuple[RuntimeSettingSpec, Any, str]]:
         return [
