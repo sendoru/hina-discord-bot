@@ -1,4 +1,4 @@
-{% macro status_badge(value, degraded=false) -%}
+{% macro status_badge(value, degraded=false, issue_count=0) -%}
 {% set base_label = "Unknown" if not value or value | lower == "unknown" else value %}
 {% set label = base_label ~ " · degraded" if degraded else base_label %}
 {% set normalized = label | lower %}
@@ -13,5 +13,5 @@
 {% else %}
   {% set tone = "neutral" %}
 {% endif %}
-<span class="status-badge status-{{ tone }}">{{ label }}</span>
+<span class="status-badge status-{{ tone }}">{{ label }}</span>{% if issue_count %}<span class="issue-count-badge" title="{{ issue_count }} observed issue{{ 's' if issue_count != 1 else '' }}" aria-label="{{ issue_count }} observed issue{{ 's' if issue_count != 1 else '' }}">⚠ {{ issue_count }}</span>{% endif %}
 {%- endmacro %}
