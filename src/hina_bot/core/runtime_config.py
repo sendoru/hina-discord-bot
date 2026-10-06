@@ -24,155 +24,212 @@ class RuntimeSettingSpec:
     attr: str
     env_name: str
     kind: str
+    description: str = ""
     minimum: int | float | None = None
     maximum: int | float | None = None
     empty_allowed: bool = False
     choices: tuple[str, ...] = ()
 
 
+_RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
+    "call_prefixes": "메시지 시작에서 히나 호출로 인식할 접두어 목록입니다. 순서가 유지되며 각 접두어는 최대 32자입니다.",
+    "dm_always_reply": "DM에서 호출어·멘션 없이 보낸 일반 메시지에도 항상 답할지 정합니다.",
+    "always_reply_channel_ids": "호출어 없이도 사람의 일반 메시지에 답하는 서버 채널 ID 목록입니다.",
+    "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
+    "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
+    "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
+    "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
+    "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
+    "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
+    "fast_model": "adaptive routing의 fast tier에서 사용할 모델 이름입니다.",
+    "smart_model": "adaptive routing의 smart tier에서 사용할 모델 이름입니다.",
+    "output_tokens": "fixed routing에서 한 요청에 허용할 provider 공통 최대 출력 토큰 예산입니다.",
+    "fast_output_tokens": "adaptive fast tier의 최대 출력 토큰 예산입니다. SMART_MAX_OUTPUT_TOKENS보다 클 수 없습니다.",
+    "smart_output_tokens": "adaptive smart tier와 명시적 장문 요청에 사용할 최대 출력 토큰 예산입니다.",
+    "memory_output_tokens": "장기 기억 요약·추출 요청에 사용할 최대 출력 토큰 예산입니다.",
+    "routing_classifier_max_output_tokens": "semantic/web routing classifier 응답에 허용할 최대 출력 토큰 예산입니다.",
+    "gemini_thinking_level": "Gemini fixed routing에서 사용할 추론 강도입니다.",
+    "gemini_fast_thinking_level": "Gemini adaptive fast tier에서 사용할 추론 강도입니다.",
+    "gemini_smart_thinking_level": "Gemini adaptive smart tier에서 사용할 추론 강도입니다.",
+    "gemini_store_interactions": "일반 채팅 answer의 Gemini interaction을 provider 측 로그에 저장할지 정합니다.",
+    "gemini_store_classifier_interactions": "semantic/web routing classifier의 Gemini interaction을 provider 측 로그에 저장할지 별도로 정합니다.",
+    "model_routing_smart_threshold": "채팅 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
+    "memory_routing_smart_threshold": "장기 기억 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
+    "channel_context_chars": "최근 서버 채널 문맥에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다. 0이면 전달하지 않습니다.",
+    "history_max_chars": "DM 최근 대화에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다.",
+    "cooldown": "같은 사용자의 연속 호출을 제한하는 cooldown 시간(초)입니다.",
+    "summary_every": "기존 text summary를 갱신하기 전에 필요한 새 대화 턴 수입니다. HISTORY_TURNS 이하여야 합니다.",
+    "structured_memory_every": "structured memory extractor가 한 번에 처리할 새 대화 턴 수입니다. HISTORY_TURNS 이하여야 합니다.",
+    "structured_memory_stale_after_seconds": "처리되지 않은 structured memory tail을 background sweep 대상으로 볼 때까지 기다리는 시간(초)입니다.",
+    "lore_max_items": "한 요청에 retrieval하여 전달할 lore 항목 수의 상한입니다.",
+    "lore_max_chars": "한 요청에 retrieval하여 전달할 lore 본문 총 문자 수의 상한입니다.",
+    "runtime_timezone": "현재 시각과 상대 날짜 해석, ambient context에 사용할 IANA timezone입니다.",
+    "runtime_locale": "ambient context와 외부 정보 요청에 사용할 locale 식별자입니다.",
+    "runtime_default_location": "사용자가 지역을 생략했을 때만 날씨·교통·영업시간 등에 쓰는 fallback 위치입니다. 실제 사용자 위치로 간주하지 않습니다.",
+    "empty_call_reply": "호출어·멘션만 있고 본문이 비어 있을 때 보내는 고정 응답입니다.",
+    "special_dm_empty_call_reply": "SPECIAL_DM_USER_ID와의 DM에서 빈 호출에만 사용하는 고정 응답입니다. 비우면 EMPTY_CALL_REPLY를 사용합니다.",
+    "empty_response_reply": "모델이 빈 문자열을 반환했을 때 Discord에 보내는 최종 fallback 응답입니다.",
+}
+
+
+def _runtime_spec(
+    attr: str,
+    env_name: str,
+    kind: str,
+    **kwargs,
+) -> RuntimeSettingSpec:
+    return RuntimeSettingSpec(
+        attr,
+        env_name,
+        kind,
+        description=_RUNTIME_SETTING_DESCRIPTIONS[attr],
+        **kwargs,
+    )
+
+
 RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
-    "call_prefixes": RuntimeSettingSpec(
+    "call_prefixes": _runtime_spec(
         "call_prefixes", "CALL_PREFIXES", "prefixes", maximum=20
     ),
-    "dm_always_reply": RuntimeSettingSpec("dm_always_reply", "DM_ALWAYS_REPLY", "bool"),
-    "always_reply_channel_ids": RuntimeSettingSpec(
+    "dm_always_reply": _runtime_spec("dm_always_reply", "DM_ALWAYS_REPLY", "bool"),
+    "always_reply_channel_ids": _runtime_spec(
         "always_reply_channel_ids",
         "ALWAYS_REPLY_CHANNEL_IDS",
         "discord_ids",
         maximum=100,
         empty_allowed=True,
     ),
-    "public_memory_in_dm": RuntimeSettingSpec(
+    "public_memory_in_dm": _runtime_spec(
         "public_memory_in_dm", "PUBLIC_SERVER_MEMORY_IN_DM", "bool"
     ),
-    "external_context_policy": RuntimeSettingSpec(
+    "external_context_policy": _runtime_spec(
         "external_context_policy",
         "EXTERNAL_CONTEXT_POLICY",
         "string",
         choices=tuple(sorted(EXTERNAL_CONTEXT_POLICIES)),
     ),
-    "chat_web_search": RuntimeSettingSpec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
-    "community_lore": RuntimeSettingSpec("community_lore", "COMMUNITY_LORE", "bool"),
-    "model_routing_mode": RuntimeSettingSpec(
+    "chat_web_search": _runtime_spec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
+    "community_lore": _runtime_spec("community_lore", "COMMUNITY_LORE", "bool"),
+    "model_routing_mode": _runtime_spec(
         "model_routing_mode",
         "MODEL_ROUTING_MODE",
         "string",
         choices=tuple(sorted(MODEL_ROUTING_MODES)),
     ),
-    "model": RuntimeSettingSpec("model", "LLM_MODEL", "string", maximum=200),
-    "fast_model": RuntimeSettingSpec("fast_model", "LLM_FAST_MODEL", "string", maximum=200),
-    "smart_model": RuntimeSettingSpec("smart_model", "LLM_SMART_MODEL", "string", maximum=200),
-    "output_tokens": RuntimeSettingSpec(
+    "model": _runtime_spec("model", "LLM_MODEL", "string", maximum=200),
+    "fast_model": _runtime_spec("fast_model", "LLM_FAST_MODEL", "string", maximum=200),
+    "smart_model": _runtime_spec("smart_model", "LLM_SMART_MODEL", "string", maximum=200),
+    "output_tokens": _runtime_spec(
         "output_tokens", "MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
     ),
-    "fast_output_tokens": RuntimeSettingSpec(
+    "fast_output_tokens": _runtime_spec(
         "fast_output_tokens", "FAST_MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
     ),
-    "smart_output_tokens": RuntimeSettingSpec(
+    "smart_output_tokens": _runtime_spec(
         "smart_output_tokens", "SMART_MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
     ),
-    "memory_output_tokens": RuntimeSettingSpec(
+    "memory_output_tokens": _runtime_spec(
         "memory_output_tokens", "MEMORY_MAX_OUTPUT_TOKENS", "int", minimum=128, maximum=65536
     ),
-    "routing_classifier_max_output_tokens": RuntimeSettingSpec(
+    "routing_classifier_max_output_tokens": _runtime_spec(
         "routing_classifier_max_output_tokens",
         "ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS",
         "int",
         minimum=32,
         maximum=1024,
     ),
-    "gemini_thinking_level": RuntimeSettingSpec(
+    "gemini_thinking_level": _runtime_spec(
         "gemini_thinking_level",
         "GEMINI_THINKING_LEVEL",
         "gemini_thinking_level",
         choices=tuple(sorted(GEMINI_THINKING_LEVELS)),
     ),
-    "gemini_fast_thinking_level": RuntimeSettingSpec(
+    "gemini_fast_thinking_level": _runtime_spec(
         "gemini_fast_thinking_level",
         "GEMINI_FAST_THINKING_LEVEL",
         "gemini_thinking_level",
         choices=tuple(sorted(GEMINI_THINKING_LEVELS)),
     ),
-    "gemini_smart_thinking_level": RuntimeSettingSpec(
+    "gemini_smart_thinking_level": _runtime_spec(
         "gemini_smart_thinking_level",
         "GEMINI_SMART_THINKING_LEVEL",
         "gemini_thinking_level",
         choices=tuple(sorted(GEMINI_THINKING_LEVELS)),
     ),
-    "gemini_store_interactions": RuntimeSettingSpec(
+    "gemini_store_interactions": _runtime_spec(
         "gemini_store_interactions", "GEMINI_STORE_INTERACTIONS", "bool"
     ),
-    "gemini_store_classifier_interactions": RuntimeSettingSpec(
+    "gemini_store_classifier_interactions": _runtime_spec(
         "gemini_store_classifier_interactions",
         "GEMINI_STORE_CLASSIFIER_INTERACTIONS",
         "bool",
     ),
-    "model_routing_smart_threshold": RuntimeSettingSpec(
+    "model_routing_smart_threshold": _runtime_spec(
         "model_routing_smart_threshold",
         "MODEL_ROUTING_SMART_THRESHOLD",
         "float",
         minimum=0.1,
         maximum=10.0,
     ),
-    "memory_routing_smart_threshold": RuntimeSettingSpec(
+    "memory_routing_smart_threshold": _runtime_spec(
         "memory_routing_smart_threshold",
         "MEMORY_ROUTING_SMART_THRESHOLD",
         "float",
         minimum=0.1,
         maximum=10.0,
     ),
-    "channel_context_chars": RuntimeSettingSpec(
+    "channel_context_chars": _runtime_spec(
         "channel_context_chars", "CHANNEL_CONTEXT_CHARS", "int", minimum=0, maximum=12000
     ),
-    "history_max_chars": RuntimeSettingSpec(
+    "history_max_chars": _runtime_spec(
         "history_max_chars", "HISTORY_MAX_CHARS", "int", minimum=0, maximum=120000
     ),
-    "cooldown": RuntimeSettingSpec(
+    "cooldown": _runtime_spec(
         "cooldown", "COOLDOWN_SECONDS", "float", minimum=0.0, maximum=3600.0
     ),
-    "summary_every": RuntimeSettingSpec(
+    "summary_every": _runtime_spec(
         "summary_every", "SUMMARY_EVERY", "int", minimum=2, maximum=30
     ),
-    "structured_memory_every": RuntimeSettingSpec(
+    "structured_memory_every": _runtime_spec(
         "structured_memory_every", "STRUCTURED_MEMORY_EVERY", "int", minimum=2, maximum=30
     ),
-    "structured_memory_stale_after_seconds": RuntimeSettingSpec(
+    "structured_memory_stale_after_seconds": _runtime_spec(
         "structured_memory_stale_after_seconds",
         "STRUCTURED_MEMORY_STALE_AFTER_SECONDS",
         "int",
         minimum=60,
         maximum=7 * 24 * 60 * 60,
     ),
-    "lore_max_items": RuntimeSettingSpec(
+    "lore_max_items": _runtime_spec(
         "lore_max_items", "LORE_MAX_ITEMS", "int", minimum=0, maximum=20
     ),
-    "lore_max_chars": RuntimeSettingSpec(
+    "lore_max_chars": _runtime_spec(
         "lore_max_chars", "LORE_MAX_CHARS", "int", minimum=0, maximum=12000
     ),
-    "runtime_timezone": RuntimeSettingSpec(
+    "runtime_timezone": _runtime_spec(
         "runtime_timezone", "RUNTIME_TIMEZONE", "string", maximum=100
     ),
-    "runtime_locale": RuntimeSettingSpec(
+    "runtime_locale": _runtime_spec(
         "runtime_locale", "RUNTIME_LOCALE", "string", maximum=32
     ),
-    "runtime_default_location": RuntimeSettingSpec(
+    "runtime_default_location": _runtime_spec(
         "runtime_default_location",
         "RUNTIME_DEFAULT_LOCATION",
         "string",
         maximum=100,
         empty_allowed=True,
     ),
-    "empty_call_reply": RuntimeSettingSpec(
+    "empty_call_reply": _runtime_spec(
         "empty_call_reply", "EMPTY_CALL_REPLY", "string", maximum=200
     ),
-    "special_dm_empty_call_reply": RuntimeSettingSpec(
+    "special_dm_empty_call_reply": _runtime_spec(
         "special_dm_empty_call_reply",
         "SPECIAL_DM_EMPTY_CALL_REPLY",
         "string",
         maximum=200,
         empty_allowed=True,
     ),
-    "empty_response_reply": RuntimeSettingSpec(
+    "empty_response_reply": _runtime_spec(
         "empty_response_reply", "EMPTY_RESPONSE_REPLY", "string", maximum=200
     ),
 }
