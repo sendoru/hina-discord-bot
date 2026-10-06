@@ -267,12 +267,18 @@ def test_overview_aggregates_trace_and_exchange_metrics(tmp_path):
 
     assert data["trace_count"] == 2
     assert data["stored_turn_count"] == 1
-    assert data["status_counts"] == {"generation_failed": 1, "completed": 1}
+    assert data["status_counts"] == {
+        "generation_failed": 1,
+        "completed · degraded": 1,
+    }
     assert data["tier_counts"] == {"fast": 1, "smart": 1}
     assert data["api_calls"] == 2
     assert data["tokens"]["total_tokens"] == 190
     assert data["web_search_calls"] == 1
     assert data["memory_failures"] == 1
+    assert data["failed_traces"] == 1
+    assert data["degraded_traces"] == 1
+    assert data["issue_traces"] == 2
     assert data["error_fingerprints"] == [("deadbeef", 1)]
 
 
@@ -294,6 +300,41 @@ def test_trace_filters_and_pagination_are_server_side(tmp_path):
     assert data["rows"][0]["stored"] is True
     assert data["rows"][0]["models"] == ("smart-model",)
     assert data["rows"][0]["operations"] == ("answer",)
+    assert data["rows"][0]["error"] is False
+    assert data["rows"][0]["issue"] is True
+    assert data["rows"][0]["degraded"] is True
+    assert data["rows"][0]["issue_label"] == "memory ×1"
+
+
+def test_completed_trace_with_classifier_error_is_degraded_not_failed(tmp_path):
+    service = build_service(tmp_path)
+    assert service.telemetry.usage_path is not None
+    with service.telemetry.usage_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({
+            "at": "2026-09-21T00:00:01.200000+00:00",
+            "turn_id": "trace-1",
+            "operation": "model_route_classify",
+            "status": "error",
+            "error_type": "CancelledError",
+            "elapsed_ms": 4001,
+        }) + "\n")
+
+    detail = service.trace("trace-1")
+
+    assert detail is not None
+    summary = detail["summary"]
+    assert summary["status"] == "completed"
+    assert summary["error"] is False
+    assert summary["issue"] is True
+    assert summary["degraded"] is True
+    assert summary["issue_operation"] == "model_route_classify"
+    assert summary["issue_error_type"] == "CancelledError"
+    assert summary["issue_label"] == "model_route_classify · CancelledError"
+
+    degraded = service.traces(error="no", issue="yes")
+    assert "trace-1" in [row["turn_id"] for row in degraded["rows"]]
+    failed = service.traces(error="yes")
+    assert [row["turn_id"] for row in failed["rows"]] == ["trace-2"]
 
 
 def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
