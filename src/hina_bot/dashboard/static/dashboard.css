@@ -2345,7 +2345,7 @@ pre {
 .trace-status {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   white-space: nowrap;
 }
 
@@ -2355,7 +2355,7 @@ pre {
   align-items: center;
   width: fit-content;
   min-height: 19px;
-  padding: 1px 6px;
+  padding: 1px 8px;
   border: 1px solid rgba(237, 200, 111, .28);
   border-radius: 999px;
   background: var(--warn-soft);
