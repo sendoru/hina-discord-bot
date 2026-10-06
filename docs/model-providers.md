@@ -41,8 +41,10 @@ SMART_MAX_OUTPUT_TOKENS=8192
 MEMORY_MAX_OUTPUT_TOKENS=4096
 GEMINI_FAST_THINKING_LEVEL=minimal
 GEMINI_SMART_THINKING_LEVEL=medium
-# 디버깅 시 Gemini adapter를 거치는 모든 요청을 AI Studio Logs에 저장
+# 일반 채팅 answer interaction 저장
 GEMINI_STORE_INTERACTIONS=false
+# semantic/web routing classifier interaction은 별도 opt-in
+GEMINI_STORE_CLASSIFIER_INTERACTIONS=false
 
 # 선택 사항: off | shadow | active
 ROUTING_CLASSIFIER_MODE=off
