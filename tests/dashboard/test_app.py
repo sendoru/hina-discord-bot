@@ -5,8 +5,21 @@ from fastapi.testclient import TestClient
 from hina_bot.core.observability import CURRENT_TURN_ID
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.dashboard.app import create_app
+from hina_bot.dashboard.app import _static_asset_version, create_app
 from hina_bot.dashboard.config import DashboardSettings
+
+
+def test_static_asset_version_tracks_current_file_contents(tmp_path):
+    asset = tmp_path / "dashboard.css"
+    asset.write_text("a", encoding="utf-8")
+    first = _static_asset_version(tmp_path, "dashboard.css")
+
+    asset.write_text("b", encoding="utf-8")
+    second = _static_asset_version(tmp_path, "dashboard.css")
+
+    assert len(first) == 12
+    assert len(second) == 12
+    assert first != second
 
 
 def write_rows(path, rows):
@@ -306,8 +319,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
-    assert 'dashboard.css?v=' in overview.text
-    assert 'clipboard.js' in overview.text
+    assert '/static/dashboard.css?v=' in overview.text
+    assert '/static/clipboard.js?v=' in overview.text
+    assert "20261006-trace-issues" not in overview.text
+    assert "20261003-typed-runtime" not in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
