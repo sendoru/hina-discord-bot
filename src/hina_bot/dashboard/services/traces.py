@@ -376,13 +376,10 @@ class TraceService(ReadService):
                 issue_terms = " ".join(
                     " ".join(
                         (
-                            str(item.get("kind", "")),
-                            str(item.get("source", "")),
                             str(item.get("operation", "")),
                             str(item.get("event", "")),
                             str(item.get("error_type", "")),
                             str(item.get("fingerprint", "")),
-                            str(item.get("label", "")),
                         )
                     )
                     for item in row.get("issues", ())
