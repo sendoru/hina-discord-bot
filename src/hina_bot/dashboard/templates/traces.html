@@ -23,7 +23,7 @@
       <button type="submit">Search</button>
     </div>
   </div>
-  <details class="advanced-filters" {% if data.filters.memory_failure or data.filters.scope or data.filters.status or data.filters.tier or data.filters.model or data.filters.operation or data.filters.error or data.filters.web_search or data.filters.after or data.filters.before %}open{% endif %}>
+  <details class="advanced-filters" {% if data.filters.memory_failure or data.filters.scope or data.filters.status or data.filters.tier or data.filters.model or data.filters.operation or data.filters.error or data.filters.issue or data.filters.web_search or data.filters.after or data.filters.before %}open{% endif %}>
     <summary>Advanced filters</summary>
     <div class="filter-row grouped-filter-row">
       <fieldset class="filter-cluster filter-cluster-3">
@@ -48,10 +48,15 @@
           <option value="yes" {% if data.filters.memory_failure == "yes" %}selected{% endif %}>yes</option>
           <option value="no" {% if data.filters.memory_failure == "no" %}selected{% endif %}>no</option>
         </select></label>
-        <div class="filter-field"><label for="filter-traces-error">Error</label><select id="filter-traces-error" name="error">
-          <option value="">error: any</option>
-          <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>error: yes</option>
-          <option value="no" {% if data.filters.error == "no" %}selected{% endif %}>error: no</option>
+        <div class="filter-field"><label for="filter-traces-error">Final failure</label><select id="filter-traces-error" name="error">
+          <option value="">failure: any</option>
+          <option value="yes" {% if data.filters.error == "yes" %}selected{% endif %}>failure: yes</option>
+          <option value="no" {% if data.filters.error == "no" %}selected{% endif %}>failure: no</option>
+        </select></div>
+        <div class="filter-field"><label for="filter-traces-issue">Issue</label><select id="filter-traces-issue" name="issue">
+          <option value="">issue: any</option>
+          <option value="yes" {% if data.filters.issue == "yes" %}selected{% endif %}>issue: yes</option>
+          <option value="no" {% if data.filters.issue == "no" %}selected{% endif %}>issue: no</option>
         </select></div>
         <div class="filter-field"><label for="filter-traces-web-search">Web search</label><select id="filter-traces-web-search" name="web_search">
           <option value="">search: any</option>
@@ -90,21 +95,20 @@
   <div class="table-wrap desktop-result-list" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
     <table class="wide-table">
       <thead>
-        <tr><th>Time</th><th>Scope</th><th>Status</th><th>Tier</th><th>Models</th><th>Tokens</th><th>Reply latency</th><th>Turn total</th><th>Search</th><th>Error</th><th>Stored</th></tr>
+        <tr><th>Time</th><th>Scope</th><th>Status</th><th>Tier</th><th>Models</th><th>Tokens</th><th>Reply latency</th><th>Turn total</th><th>Search</th><th>Stored</th></tr>
       </thead>
       <tbody>
       {% for row in data.rows %}
         <tr>
           <td><a href="{{ detail_url('/traces/' ~ row.turn_id, request, '/traces') }}">{{ row.at | localtime }}</a></td>
           <td>{{ row.scope or "—" }}</td>
-          <td>{{ status_badge(row.status) }}</td>
+          <td><span class="trace-status">{{ status_badge(row.status, row.degraded, row.issue_count) }}</span></td>
           <td>{{ row.model_tier or "—" }}</td>
           <td>{{ row.models | join(", ") or "—" }}</td>
           <td class="numeric">{{ row.total_tokens if row.total_tokens is not none else "—" }}</td>
           <td class="numeric">{{ row.reply_latency_ms ~ " ms" if row.reply_latency_ms is not none else "—" }}</td>
           <td class="numeric">{{ row.turn_latency_ms ~ " ms" if row.turn_latency_ms is not none else "—" }}</td>
           <td>{{ row.web_search_calls if row.web_search else "—" }}</td>
-          <td>{% if row.error %}<code>{{ row.error_fingerprint or "yes" }}</code>{% else %}—{% endif %}</td>
           <td>{{ "yes" if row.stored else "no" }}</td>
         </tr>
       {% endfor %}

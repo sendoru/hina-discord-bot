@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import secrets
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from fastapi.exception_handlers import http_exception_handler, request_validatio
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from jinja2 import pass_context
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .admin_write import AdminCommandWriter
@@ -24,6 +26,18 @@ from .services import (
 )
 from .telemetry import TelemetryReader
 from .timeutils import filter_input_time, filter_input_type, format_local_time, telemetry_freshness
+
+
+def _static_asset_version(static_dir: Path, asset_path: str) -> str:
+    root = static_dir.resolve()
+    path = (root / asset_path).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Static asset path escapes the static directory") from exc
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
 
 
 def create_app(settings: DashboardSettings | None = None) -> FastAPI:
@@ -44,12 +58,21 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     )
 
     package_dir = Path(__file__).parent
+    static_dir = package_dir / "static"
     templates = Jinja2Templates(directory=str(package_dir / "templates"))
+
+    @pass_context
+    def static_asset(context, path: str) -> str:
+        request = context["request"]
+        version = _static_asset_version(static_dir, path)
+        return f"{request.url_for('static', path=path)}?v={version}"
+
     templates.env.filters["localtime"] = (
         lambda value: format_local_time(value, settings.timezone)
     )
     templates.env.filters["filtertype"] = lambda value: filter_input_type(value, settings.timezone)
     templates.env.filters["filtertime"] = lambda value: filter_input_time(value, settings.timezone)
+    templates.env.globals["static_asset"] = static_asset
     templates.env.globals["back_url"] = back_url
     templates.env.globals["detail_url"] = detail_url
     templates.env.globals["applied_filters"] = applied_filters
@@ -61,7 +84,7 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     templates.env.globals["admin_form_nonce"] = lambda: secrets.token_hex(16)
 
     app = FastAPI(title="Hina Dashboard", docs_url=None, redoc_url=None)
-    app.mount("/static", StaticFiles(directory=str(package_dir / "static")), name="static")
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     app.state.repository = repository
     app.state.telemetry = telemetry
     app.state.admin_writer = admin_writer
