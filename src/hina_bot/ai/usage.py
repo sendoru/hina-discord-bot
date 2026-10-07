@@ -1,5 +1,6 @@
 """Content-free JSONL telemetry for logical Responses API calls and Discord turns."""
 
+import asyncio
 import json
 import logging
 import os
@@ -134,6 +135,10 @@ class EmptyProviderResponseError(RuntimeError):
         super().__init__(f"{provider} returned no visible response text")
 
 
+class RequestDeadlineExceeded(TimeoutError):
+    """A logical provider request exceeded its caller-owned wall-clock deadline."""
+
+
 class UsageLogger:
     def __init__(self, path: str):
         self.handler = self._handler(path)
@@ -262,6 +267,7 @@ class UsageLogger:
         *,
         route_metadata=None,
         accumulate: bool = True,
+        deadline_seconds: float | None = None,
         **kwargs,
     ):
         started = perf_counter()
@@ -301,7 +307,22 @@ class UsageLogger:
             else None
         )
 
-        try:
+        def record_partial_attempts():
+            if not responses:
+                return
+            row.update(_combined_attempt_fields(
+                responses,
+                baseline=cumulative_baseline,
+            ))
+            if cumulative_baseline is not None:
+                row["usage_accounting"] = "gemini_interaction_delta"
+                row.update(_cumulative_usage_fields(responses[-1]))
+            web_calls = sum(_web_search_calls(item) for item in responses)
+            row["web_search_calls"] = web_calls
+            row["web_search_used"] = web_calls > 0
+            row["api_attempts"] = len(responses)
+
+        async def perform_request():
             response = await client.responses.create(**kwargs)
             responses.append(response)
             provider = getattr(client, "provider_name", "")
@@ -352,21 +373,31 @@ class UsageLogger:
             if error_codes:
                 row["response_error_codes"] = list(dict.fromkeys(error_codes))
             return response
+
+        try:
+            if deadline_seconds is None:
+                return await perform_request()
+
+            deadline = asyncio.timeout(deadline_seconds)
+            try:
+                async with deadline:
+                    return await perform_request()
+            except TimeoutError as exc:
+                if deadline.expired():
+                    raise RequestDeadlineExceeded from exc
+                raise
+        except RequestDeadlineExceeded:
+            row.update(
+                status="timeout",
+                timeout_source="request_deadline",
+                timeout_seconds=deadline_seconds,
+            )
+            record_partial_attempts()
+            raise
         except BaseException as exc:
             row.update(status="error", error_type=type(exc).__name__)
             row.update(_provider_error_fields(exc))
-            if responses:
-                row.update(_combined_attempt_fields(
-                    responses,
-                    baseline=cumulative_baseline,
-                ))
-                if cumulative_baseline is not None:
-                    row["usage_accounting"] = "gemini_interaction_delta"
-                    row.update(_cumulative_usage_fields(responses[-1]))
-                web_calls = sum(_web_search_calls(item) for item in responses)
-                row["web_search_calls"] = web_calls
-                row["web_search_used"] = web_calls > 0
-                row["api_attempts"] = len(responses)
+            record_partial_attempts()
             raise
         finally:
             row["elapsed_ms"] = round((perf_counter() - started) * 1000)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from dataclasses import dataclass, replace
 
@@ -336,15 +335,13 @@ class SemanticModelRouter:
             "search_route_reason": information.search_reason,
         }
         try:
-            response = await asyncio.wait_for(
-                self.usage.request(
-                    self.client,
-                    "model_route_classify",
-                    route_metadata=metadata,
-                    accumulate=self.settings.routing_classifier_mode != "shadow",
-                    **request,
-                ),
-                timeout=self.settings.routing_classifier_timeout_seconds,
+            response = await self.usage.request(
+                self.client,
+                "model_route_classify",
+                route_metadata=metadata,
+                accumulate=self.settings.routing_classifier_mode != "shadow",
+                deadline_seconds=self.settings.routing_classifier_timeout_seconds,
+                **request,
             )
         except TimeoutError:
             return ClassificationOutcome("timeout")

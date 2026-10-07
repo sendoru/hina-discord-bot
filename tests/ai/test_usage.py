@@ -1,3 +1,4 @@
+import asyncio
 import json
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
@@ -69,6 +70,96 @@ async def test_usage_success_and_error_do_not_log_content(tmp_path):
     assert first['web_search_used'] is False
     assert second['error_type'] == 'ValueError'
     assert 'total_tokens' not in second
+
+
+@pytest.mark.asyncio
+async def test_request_deadline_logs_timeout_without_failed_api_call(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    started = asyncio.Event()
+
+    async def blocked_request(**_kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    client = NS(responses=NS(create=AsyncMock(side_effect=blocked_request)))
+
+    with logger.exchange("guild"), pytest.raises(TimeoutError):
+        await logger.request(
+            client,
+            "model_route_classify",
+            model="classifier",
+            input="secret",
+            deadline_seconds=0.01,
+        )
+    logger.close()
+
+    await started.wait()
+    detail = json.loads(path.read_text())
+    assert detail["status"] == "timeout"
+    assert detail["timeout_source"] == "request_deadline"
+    assert detail["timeout_seconds"] == pytest.approx(0.01)
+    assert "error_type" not in detail
+
+    exchange = json.loads((tmp_path / "discord-usage.jsonl").read_text())
+    assert exchange["status"] == "completed"
+    assert exchange["failed_calls"] == 0
+    assert exchange["operations"]["model_route_classify"]["failed_calls"] == 0
+
+
+@pytest.mark.asyncio
+async def test_request_deadline_does_not_swallow_real_task_cancellation(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    started = asyncio.Event()
+
+    async def blocked_request(**_kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    client = NS(responses=NS(create=AsyncMock(side_effect=blocked_request)))
+    task = asyncio.create_task(
+        logger.request(
+            client,
+            "model_route_classify",
+            model="classifier",
+            input="secret",
+            deadline_seconds=10,
+        )
+    )
+    await started.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    logger.close()
+
+    row = json.loads(path.read_text())
+    assert row["status"] == "error"
+    assert row["error_type"] == "CancelledError"
+    assert "timeout_source" not in row
+
+
+@pytest.mark.asyncio
+async def test_provider_timeout_remains_an_api_error_with_request_deadline(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    client = NS(responses=NS(create=AsyncMock(side_effect=TimeoutError())))
+
+    with pytest.raises(TimeoutError):
+        await logger.request(
+            client,
+            "model_route_classify",
+            model="classifier",
+            input="secret",
+            deadline_seconds=10,
+        )
+    logger.close()
+
+    row = json.loads(path.read_text())
+    assert row["status"] == "error"
+    assert row["error_type"] == "TimeoutError"
+    assert "timeout_source" not in row
 
 
 @pytest.mark.asyncio
