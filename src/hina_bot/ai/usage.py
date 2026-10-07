@@ -36,6 +36,44 @@ def _web_search_calls(response) -> int:
     return count
 
 
+def _safe_string_list(values, *, limit: int = 16, max_chars: int = 64) -> list[str]:
+    result = []
+    for value in values or ():
+        if not isinstance(value, str) or not value:
+            continue
+        result.append(value[:max_chars])
+        if len(result) >= limit:
+            break
+    return list(dict.fromkeys(result))
+
+
+def _response_output_types(response) -> list[str]:
+    values = []
+    for item in getattr(response, "output", None) or ():
+        item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
+        if isinstance(item_type, str) and item_type:
+            values.append(item_type)
+    return _safe_string_list(values)
+
+
+def _response_error_codes(response) -> list[str]:
+    return _safe_string_list(getattr(response, "_hina_error_codes", None) or ())
+
+
+def _response_diagnostic_fields(response, *, has_visible_text: bool | None = None) -> dict:
+    if has_visible_text is None:
+        has_visible_text = bool(_visible_text(response).strip())
+    return {
+        "response_has_visible_text": bool(has_visible_text),
+        "response_output_types": _response_output_types(response),
+        **(
+            {"response_error_codes": _response_error_codes(response)}
+            if _response_error_codes(response)
+            else {}
+        ),
+    }
+
+
 def _provider_error_fields(exc: BaseException) -> dict:
     """Return only adapter-approved diagnostics; never serialize arbitrary exception strings."""
     fields = {}
@@ -44,6 +82,11 @@ def _provider_error_fields(exc: BaseException) -> dict:
     response_status = getattr(exc, "response_status", None)
     error_code = getattr(exc, "error_code", None)
     error_message = getattr(exc, "error_message", None)
+    response_error_codes = _safe_string_list(
+        getattr(exc, "response_error_codes", None) or ()
+    )
+    output_types = _safe_string_list(getattr(exc, "output_types", None) or ())
+    has_visible_text = getattr(exc, "has_visible_text", None)
     if isinstance(provider, str) and provider:
         fields["provider"] = provider
     if isinstance(status_code, int):
@@ -54,6 +97,16 @@ def _provider_error_fields(exc: BaseException) -> dict:
         fields["provider_error_code"] = error_code
     if isinstance(error_message, str) and error_message:
         fields["provider_error_message"] = error_message
+    if response_error_codes:
+        fields["provider_response_error_codes"] = response_error_codes
+    if output_types:
+        fields["provider_output_types"] = output_types
+    if isinstance(has_visible_text, bool):
+        fields["provider_has_visible_text"] = has_visible_text
+    for field in _TOKEN_FIELDS:
+        value = getattr(exc, field, None)
+        if isinstance(value, int):
+            fields[f"provider_{field}"] = value
     return fields
 
 
@@ -127,12 +180,37 @@ def _visible_text(response) -> str:
 class EmptyProviderResponseError(RuntimeError):
     """A provider completed generation without returning visible response text."""
 
-    def __init__(self, provider: str, response_status: str):
+    def __init__(self, provider: str, response):
         self.provider = provider
-        self.response_status = response_status
+        self.response_status = str(getattr(response, "status", "unknown") or "unknown")
         self.error_code = "EMPTY_RESPONSE"
         self.error_message = "retry after completed empty response produced no visible text"
+        self.response_error_codes = tuple(_response_error_codes(response))
+        self.output_types = tuple(_response_output_types(response))
+        self.has_visible_text = False
+        for field, value in _usage_fields(response).items():
+            if isinstance(value, int):
+                setattr(self, field, value)
         super().__init__(f"{provider} returned no visible response text")
+
+
+class ModelResponseError(RuntimeError):
+    """The final provider response cannot be used as a completed user-visible answer."""
+
+    def __init__(self, provider: str, response, *, has_visible_text: bool):
+        status = str(getattr(response, "status", "unknown") or "unknown")
+        self.provider = str(provider or "unknown")[:64]
+        self.response_status = status[:64]
+        self.error_code = (
+            "NON_COMPLETED_RESPONSE" if status != "completed" else "EMPTY_RESPONSE"
+        )
+        self.response_error_codes = tuple(_response_error_codes(response))
+        self.output_types = tuple(_response_output_types(response))
+        self.has_visible_text = bool(has_visible_text)
+        for field, value in _usage_fields(response).items():
+            if isinstance(value, int):
+                setattr(self, field, value)
+        super().__init__("provider response is not a completed visible answer")
 
 
 class RequestDeadlineExceeded(TimeoutError):
@@ -314,6 +392,7 @@ class UsageLogger:
                 responses,
                 baseline=cumulative_baseline,
             ))
+            row.update(_response_diagnostic_fields(responses[-1]))
             if cumulative_baseline is not None:
                 row["usage_accounting"] = "gemini_interaction_delta"
                 row.update(_cumulative_usage_fields(responses[-1]))
@@ -336,8 +415,7 @@ class UsageLogger:
                 responses.append(response)
                 row["empty_response_retries"] = 1
                 if not _visible_text(response).strip():
-                    raise EmptyProviderResponseError(
-                        "gemini", str(getattr(response, "status", "unknown")))
+                    raise EmptyProviderResponseError("gemini", response)
 
             web_calls = sum(_web_search_calls(item) for item in responses)
             usage_fields = _combined_attempt_fields(
@@ -347,6 +425,7 @@ class UsageLogger:
             row.update(
                 status=response.status,
                 **usage_fields,
+                **_response_diagnostic_fields(response),
                 web_search_calls=web_calls,
                 web_search_used=web_calls > 0,
                 api_attempts=len(responses),

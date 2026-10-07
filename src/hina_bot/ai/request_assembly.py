@@ -29,6 +29,7 @@ from .structured_memory_context import (
     structured_memory_context,
     structured_memory_provenance,
 )
+from .usage import ModelResponseError
 from .vision import CURRENT_VISUAL_INPUTS
 from .web_search_runtime import tool_config
 from .web_search_text import response_text
@@ -715,7 +716,11 @@ class RequestAssembler(BaseLLM):
 
         text = response_text(response, hide_citations=hide_web_citations(provenance))
         if response.status != "completed" or not text:
-            raise ValueError("No completed model response")
+            raise ModelResponseError(
+                self.settings.provider,
+                response,
+                has_visible_text=bool(text.strip()),
+            )
         return text[:3500]
 
 
