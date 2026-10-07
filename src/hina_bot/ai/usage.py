@@ -307,7 +307,7 @@ class UsageLogger:
             else None
         )
 
-def record_partial_attempts():
+        def record_partial_attempts():
             if not responses:
                 return
             row.update(_combined_attempt_fields(
