@@ -84,15 +84,14 @@ async def test_request_deadline_logs_timeout_without_failed_api_call(tmp_path):
 
     client = NS(responses=NS(create=AsyncMock(side_effect=blocked_request)))
 
-    with logger.exchange("guild"):
-        with pytest.raises(TimeoutError):
-            await logger.request(
-                client,
-                "model_route_classify",
-                model="classifier",
-                input="secret",
-                deadline_seconds=0.01,
-            )
+    with logger.exchange("guild"), pytest.raises(TimeoutError):
+        await logger.request(
+            client,
+            "model_route_classify",
+            model="classifier",
+            input="secret",
+            deadline_seconds=0.01,
+        )
     logger.close()
 
     await started.wait()
