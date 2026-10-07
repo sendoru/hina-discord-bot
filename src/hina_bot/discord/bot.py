@@ -294,7 +294,7 @@ class HinaClient(discord.Client):
 
     async def _sweep_stale_structured_memory(self):
         scopes = self.store.stale_memory_extraction_scopes(
-            min_pending=1,
+            min_pending=2,
             stale_after_seconds=self.settings.structured_memory_stale_after_seconds,
         )
         for scope in scopes:
@@ -310,7 +310,7 @@ class HinaClient(discord.Client):
                         committed = await self.llm.extract_structured_memory(
                             self.store,
                             scope,
-                            min_turns=1,
+                            min_turns=2,
                         )
                 if committed:
                     self.events.emit(

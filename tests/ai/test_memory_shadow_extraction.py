@@ -415,8 +415,13 @@ def test_stale_extraction_scope_query_uses_age_and_pending_count():
         min_pending=1,
         stale_after_seconds=8 * 60 * 60,
     )
+    batched_scopes = store.stale_memory_extraction_scopes(
+        min_pending=2,
+        stale_after_seconds=8 * 60 * 60,
+    )
 
     assert set(scopes) == {stale, single}
+    assert batched_scopes == [stale]
     store.close()
 
 
