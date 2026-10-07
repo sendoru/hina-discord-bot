@@ -92,11 +92,11 @@ def _provider_error_fields(exc: BaseException) -> dict:
     if isinstance(status_code, int):
         fields["http_status"] = status_code
     if isinstance(response_status, str) and response_status:
-        fields["provider_response_status"] = response_status[:64]
+        fields["provider_response_status"] = response_status
     if isinstance(error_code, str) and error_code:
-        fields["provider_error_code"] = error_code[:64]
+        fields["provider_error_code"] = error_code
     if isinstance(error_message, str) and error_message:
-        fields["provider_error_message"] = error_message[:200]
+        fields["provider_error_message"] = error_message
     if response_error_codes:
         fields["provider_response_error_codes"] = response_error_codes
     if output_types:
@@ -180,12 +180,17 @@ def _visible_text(response) -> str:
 class EmptyProviderResponseError(RuntimeError):
     """A provider completed generation without returning visible response text."""
 
-    def __init__(self, provider: str, response_status: str):
+    def __init__(self, provider: str, response):
         self.provider = provider
-        self.response_status = response_status
+        self.response_status = str(getattr(response, "status", "unknown") or "unknown")
         self.error_code = "EMPTY_RESPONSE"
         self.error_message = "retry after completed empty response produced no visible text"
+        self.response_error_codes = tuple(_response_error_codes(response))
+        self.output_types = tuple(_response_output_types(response))
         self.has_visible_text = False
+        for field, value in _usage_fields(response).items():
+            if isinstance(value, int):
+                setattr(self, field, value)
         super().__init__(f"{provider} returned no visible response text")
 
 
@@ -410,8 +415,7 @@ class UsageLogger:
                 responses.append(response)
                 row["empty_response_retries"] = 1
                 if not _visible_text(response).strip():
-                    raise EmptyProviderResponseError(
-                        "gemini", str(getattr(response, "status", "unknown")))
+                    raise EmptyProviderResponseError("gemini", response)
 
             web_calls = sum(_web_search_calls(item) for item in responses)
             usage_fields = _combined_attempt_fields(
