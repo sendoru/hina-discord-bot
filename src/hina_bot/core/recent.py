@@ -11,7 +11,7 @@ class RecentMessages:
         # A channel is marked hydrated after its recent Discord history has been backfilled once.
         # Live Gateway messages do not set this flag, so off->on can still recover messages that
         # arrived while reading was disabled.
-        self.hydrated = set()
+        self.hydrated = OrderedDict()
 
     @staticmethod
     def _key(scope):
@@ -75,7 +75,7 @@ class RecentMessages:
         self.buffers.move_to_end(key)
         while len(self.buffers) > self.channels:
             old_key, _ = self.buffers.popitem(last=False)
-            self.hydrated.discard(old_key)
+            self.hydrated.pop(old_key, None)
 
     def prune(self, now):
         for key, rows in list(self.buffers.items()):
@@ -83,14 +83,17 @@ class RecentMessages:
                 rows.popleft()
             if not rows:
                 del self.buffers[key]
-                self.hydrated.discard(key)
 
     def needs_hydration(self, scope):
         self.prune(time.monotonic())
         return self._key(scope) not in self.hydrated
 
     def mark_hydrated(self, scope):
-        self.hydrated.add(self._key(scope))
+        key = self._key(scope)
+        self.hydrated[key] = None
+        self.hydrated.move_to_end(key)
+        while len(self.hydrated) > self.channels:
+            self.hydrated.popitem(last=False)
 
     def candidates(self, scope, before_id, *, include=None):
         """Return eligible rows before applying item or character budgets.
@@ -128,15 +131,15 @@ class RecentMessages:
         for key in list(self.buffers):
             if key[0] == scope.realm:
                 del self.buffers[key]
-                self.hydrated.discard(key)
+                self.hydrated.pop(key, None)
         for key in list(self.hydrated):
             if key[0] == scope.realm:
-                self.hydrated.discard(key)
+                self.hydrated.pop(key, None)
 
     def clear_channel(self, scope):
         key = self._key(scope)
         self.buffers.pop(key, None)
-        self.hydrated.discard(key)
+        self.hydrated.pop(key, None)
 
     def clear_all(self):
         self.buffers.clear()
