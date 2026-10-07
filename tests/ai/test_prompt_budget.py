@@ -36,6 +36,7 @@ def test_always_on_static_prompt_budget():
         + _integration_prompt("continuity.md")
         + _integration_prompt("current_speaker.md")
         + _integration_prompt("current_interaction.md")
+        + _integration_prompt("world_core.md")
         + _prompt("hina.md")
         + _integration_prompt("general_rp_output.md")
         + _integration_prompt("turn_response.md")
