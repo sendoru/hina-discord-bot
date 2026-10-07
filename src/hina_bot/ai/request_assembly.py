@@ -24,6 +24,7 @@ from .model_routing import ModelPlan, fixed_model_plan
 from .prompts import load_prompt
 from .providers import ProviderAPIError
 from .rp_output_policy import hide_web_citations, provenance_instruction
+from .usage import ModelResponseError
 from .runtime_context import build_runtime_context, runtime_instruction
 from .structured_memory_context import (
     structured_memory_context,
@@ -715,7 +716,11 @@ class RequestAssembler(BaseLLM):
 
         text = response_text(response, hide_citations=hide_web_citations(provenance))
         if response.status != "completed" or not text:
-            raise ValueError("No completed model response")
+            raise ModelResponseError(
+                self.settings.provider,
+                response,
+                has_visible_text=bool(text.strip()),
+            )
         return text[:3500]
 
 
