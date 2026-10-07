@@ -13,6 +13,7 @@ CURRENT_DIRECT_TRIGGER = ContextVar("current_direct_trigger", default=False)
 CURRENT_CHANNEL_CONTEXT = ContextVar("current_channel_context", default=None)
 
 _MAX_REFERENCE_SOURCES = 2
+_AMBIENT_CONTEXT_MAX_CHARS = 2000
 
 
 def _author_id(row: dict) -> str:
@@ -500,12 +501,17 @@ class TargetAwareRecentMessages(RecentMessages):
         channel_budget -= thread_used
         channel_slots -= len(thread_selected)
 
+        # Ambient channel chatter is useful for local flow, but it should not consume the
+        # entire context budget in busy channels. Cap ambient text independently while allowing
+        # any unused capacity to flow to stronger same-speaker or explicit target context.
+        ambient_budget = min(channel_budget, _AMBIENT_CONTEXT_MAX_CHARS)
         ambient_selected, ambient_unused = self._take_recent(
             ambient,
-            channel_budget,
+            ambient_budget,
             channel_slots,
         )
-        remaining = target_reserve + ambient_unused
+        ambient_used = ambient_budget - ambient_unused
+        remaining = target_reserve + (channel_budget - ambient_used)
         slots -= len(thread_selected) + len(ambient_selected)
 
         target_selected, target_unused = self._take_recent(
@@ -516,22 +522,22 @@ class TargetAwareRecentMessages(RecentMessages):
         remaining = target_unused
         slots -= len(target_selected)
 
-        selected_base_ids = {
+        selected_thread_ids = {
             str(row.get("message_id", ""))
-            for row in thread_selected + ambient_selected
+            for row in thread_selected
         }
-        older_base = [
-            row for row in speaker_thread + ambient
-            if str(row.get("message_id", "")) not in selected_base_ids
+        older_thread = [
+            row for row in speaker_thread
+            if str(row.get("message_id", "")) not in selected_thread_ids
         ]
-        older_base.sort(key=lambda row: row.get("message_id", ""))
-        base_backfill, remaining = self._take_recent(older_base, remaining, slots)
+        older_thread.sort(key=lambda row: row.get("message_id", ""))
+        thread_backfill, remaining = self._take_recent(older_thread, remaining, slots)
 
         selected_base = self._merge_in_source_order(
             speaker_thread + ambient,
             thread_selected,
             ambient_selected,
-            base_backfill,
+            thread_backfill,
         )
         selected_base.sort(key=lambda row: row.get("message_id", ""))
 

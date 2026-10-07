@@ -77,6 +77,32 @@ class ContextBudgetTests(unittest.TestCase):
         self.assertIn("channel_ambient", kinds)
         self.assertLessEqual(len(rows), 18)
 
+    def test_busy_channel_caps_ambient_text_without_clipping_speaker_thread(self):
+        recent = TargetAwareRecentMessages(limit=40, budget=6000, store=self.store)
+        speaker = Scope(1, 10, 200)
+        other = Scope(1, 10, 300)
+
+        recent.add(speaker, 100, "B", "S" * 2500)
+        for message_id in range(101, 107):
+            recent.add(other, message_id, "다른 사람", "A" * 1000)
+
+        rows = recent.context(speaker, 999)
+        speaker_chars = sum(
+            len(row["content"])
+            for row in rows
+            if row.get("context_kind") == "speaker_thread"
+        )
+        ambient_chars = sum(
+            len(row["content"])
+            for row in rows
+            if row.get("context_kind") == "channel_ambient"
+        )
+
+        self.assertEqual(speaker_chars, 2500)
+        self.assertLessEqual(ambient_chars, 2000)
+        self.assertGreater(ambient_chars, 0)
+        self.assertLessEqual(sum(len(row["content"]) for row in rows), 6000)
+
     def test_cross_user_assistant_tone_remains_attributed_in_busy_context(self):
         recent = TargetAwareRecentMessages(limit=40, budget=6000, store=self.store)
         user_a = Scope(1, 10, 100)
