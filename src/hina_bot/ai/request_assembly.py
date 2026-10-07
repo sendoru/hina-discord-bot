@@ -24,12 +24,12 @@ from .model_routing import ModelPlan, fixed_model_plan
 from .prompts import load_prompt
 from .providers import ProviderAPIError
 from .rp_output_policy import hide_web_citations, provenance_instruction
-from .usage import ModelResponseError
 from .runtime_context import build_runtime_context, runtime_instruction
 from .structured_memory_context import (
     structured_memory_context,
     structured_memory_provenance,
 )
+from .usage import ModelResponseError
 from .vision import CURRENT_VISUAL_INPUTS
 from .web_search_runtime import tool_config
 from .web_search_text import response_text
