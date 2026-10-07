@@ -100,6 +100,8 @@ CURRENT_SPEAKER_POLICY = load_prompt("current_speaker.md")
 
 CURRENT_INTERACTION_POLICY = load_prompt("current_interaction.md")
 
+WORLD_CORE_POLICY = load_prompt("world_core.md")
+
 TURN_RESPONSE_POLICY = load_prompt("turn_response.md")
 
 FINAL_OUTPUT_CHECK_POLICY = load_prompt("final_output.md")
@@ -516,6 +518,7 @@ class RequestAssembler(BaseLLM):
             reference_policies[0],
             CURRENT_SPEAKER_POLICY,
             CURRENT_INTERACTION_POLICY,
+            WORLD_CORE_POLICY,
             self.character,
             relationship_policy,
             capability_policy,
@@ -528,6 +531,7 @@ class RequestAssembler(BaseLLM):
             "instruction_identity_chars": (
                 len(CURRENT_SPEAKER_POLICY) + len(CURRENT_INTERACTION_POLICY)
             ),
+            "instruction_world_core_chars": len(WORLD_CORE_POLICY),
             "instruction_character_chars": len(self.character),
             "instruction_relationship_chars": len(relationship_policy),
             "instruction_runtime_chars": len(runtime_policy) + len(capability_policy),
