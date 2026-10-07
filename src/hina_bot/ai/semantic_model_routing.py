@@ -131,7 +131,9 @@ def _classifier_input(payload: dict, visual_inputs) -> str | list[dict]:
         })
         content.append({
             "type": "input_image",
-            "image_url": visual.input_url(),
+            # Classifier latency is bounded tightly. Reuse the already-validated bytes
+            # instead of making the provider fetch the Discord CDN URL again.
+            "image_url": visual.data_url(),
             "detail": "auto",
         })
     return [{"role": "user", "content": content}]
