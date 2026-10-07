@@ -31,6 +31,31 @@ class RecentBufferTests(unittest.TestCase):
         rows = recent.context(scope, 100)
         self.assertEqual([row["message_id"] for row in rows], [10, 30])
 
+    def test_ttl_expiry_does_not_require_channel_hydration_again(self):
+        recent = RecentMessages(ttl=1)
+        scope = Scope(1, 10, 100)
+        recent.add(scope, 1, "user", "recent")
+        recent.mark_hydrated(scope)
+
+        recent.prune(time.monotonic() + 2)
+
+        self.assertNotIn(recent._key(scope), recent.buffers)
+        self.assertFalse(recent.needs_hydration(scope))
+
+    def test_hydration_state_has_independent_channel_lru_bound(self):
+        recent = RecentMessages(channels=2)
+        first = Scope(1, 10, 100)
+        second = Scope(1, 20, 100)
+        third = Scope(1, 30, 100)
+
+        recent.mark_hydrated(first)
+        recent.mark_hydrated(second)
+        recent.mark_hydrated(third)
+
+        self.assertTrue(recent.needs_hydration(first))
+        self.assertFalse(recent.needs_hydration(second))
+        self.assertFalse(recent.needs_hydration(third))
+
     def test_clear_requires_hydration_again(self):
         recent = RecentMessages()
         scope = Scope(1, 10, 100)
