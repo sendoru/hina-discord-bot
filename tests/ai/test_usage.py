@@ -499,6 +499,7 @@ def test_context_size_event_keeps_only_numeric_attribution(tmp_path):
             instruction_base_chars=300,
             instruction_reference_chars=200,
             instruction_identity_chars=150,
+            instruction_world_core_chars=45,
             instruction_character_chars=250,
             instruction_relationship_chars=100,
             instruction_runtime_chars=80,
@@ -526,6 +527,7 @@ def test_context_size_event_keeps_only_numeric_attribution(tmp_path):
     assert row["operation"] == "context.size"
     assert row["context_chars_total"] == 1200
     assert row["instruction_chars"] == 1400
+    assert row["instruction_world_core_chars"] == 45
     assert row["instruction_character_chars"] == 250
     assert row["instruction_search_chars"] == 60
     assert row["instruction_separator_chars"] == 10
