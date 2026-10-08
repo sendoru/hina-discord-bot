@@ -111,3 +111,7 @@ Tests cover single-usage lexical parity (including packaged corpus), independent
 usage budgets, zero results, thresholds, stable ties, source neutrality, additive validation,
 runtime compatibility, interpretation/unknown guards, reaction serialization, and causal
 request wiring. They do not pin model prompt prose or claim live-answer quality gains.
+
+The opt-in resolver and exact relation implementation from #312 are documented in
+[Canonical entity and relationship grounding](retrieval-v2-entity-grounding.md).
+The original lexical adapter and production behavior remain unchanged.
