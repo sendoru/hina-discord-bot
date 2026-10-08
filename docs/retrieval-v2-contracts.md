@@ -15,8 +15,9 @@ memory, sample channel history, or change egress policy. Inputs contain user con
 the request must not be serialized into telemetry.
 
 `entities` carries resolved canonical entity ids, never aliases or subject strings.
-`required_entities` specifies the evidence constraint, including a pair when needed.
-Both are empty until supplied by an entity resolver; this milestone does not guess them.
+`relation_pair` is an optional complete, unambiguous two-entity constraint owned by the
+exact relationship lane. Factual/ambient retrieval must not reinterpret it as a generic
+candidate filter. It is `None` until supplied by the entity bridge.
 The request's intent describes the query; candidate usage describes eligible purposes.
 They are independent so a conversation can later retrieve ambient insight.
 
@@ -79,13 +80,15 @@ Insight need not be spoken aloud, remains interpretation, and yields to direct c
 conversation evidence. Adding an insight or reaction must never satisfy factual/relation
 web fallback. Bundle membership alone is not a local-sufficiency verdict.
 
-`lexical_bundle(request, candidates, budgets=...)` ranks once with the existing scorer,
-then selects per usage. Each explicitly enabled retrieval usage has its own `UsageBudget`
-(items, serialized reference characters, strict score threshold). Omitted or non-positive
-budgets disable a section. Oversized rows are skipped; weak or absent matches leave
-slots empty. A multi-usage candidate may appear in both sections. Stable ties preserve
-input order. Thresholds are in the ranker's scale; parity uses the legacy `score > 0`.
-No final production thresholds or weights are implied by this baseline.
+`UsageBudget` now contains only packing limits (`max_items`, `max_chars`). Admission and
+score thresholds belong to each retriever/ranker before composition. `pack_ranked()` is
+the common packing primitive for already-admitted rows.
+
+`BundleComposer` is the single section-packing and cross-section deduplication boundary.
+It packs in relation → factual → ambient → reaction ownership order; when a duplicate is
+claimed by an earlier/more specific section, the later section can refill from its next
+ranked row. An optional total character cap can sit above section budgets. `lexical_bundle`
+remains a compatibility adapter that performs lexical admission then uses this composer.
 
 `context_sections()` is an explicit model-serialization boundary, reusing legacy item
 semantics while retaining all four sections. It does not flatten them or serialize
@@ -108,7 +111,7 @@ is deliberately not invoked from the production answer path yet.
 - #316: production shadow wiring, content-free diagnostics and reversible rollout.
 
 Tests cover single-usage lexical parity (including packaged corpus), independent retrieval
-usage budgets, zero results, thresholds, stable ties, source neutrality, additive validation,
+usage budgets, zero results, shared packing/deduplication, stable ties, source neutrality, additive validation,
 runtime compatibility, interpretation/unknown guards, reaction serialization, and causal
 request wiring. They do not pin model prompt prose or claim live-answer quality gains.
 
