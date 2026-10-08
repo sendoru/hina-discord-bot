@@ -44,18 +44,21 @@ The original `build_retrieval_request()` retains its behavior and caller-supplie
   complete, unambiguous relationship pair. Single factual/profile targets are not relation
   hard constraints.
 - A relation-grounding question with one reviewed counterpart may use the configured RP
-  subject as the implicit second party (for example, “호시노랑 무슨 사이야?” or
-  “호시노는 선배야?”). The bridge checks conservative relation/addressing cues in the
-  visible text in addition to the existing routing intent, because the global classifier
-  is not the authority for whether exact relationship evidence may be useful. Two
-  explicitly resolved characters constrain that exact pair.
+  subject as the implicit second party for **high-precision relation/seniority/addressing
+  cues** (for example, “호시노랑 무슨 사이야?” or “호시노는 선배야?”).
+  Broader paraphrases such as “예전부터 친했어?”, “만났어?” or “알고 있었어?” are not
+  forced into an exact pair by regex; the factual semantic lane handles those meanings.
+  Two explicitly resolved characters still constrain that exact pair.
 - If a two-name relation phrase is only partially resolvable (for example, registered
   Hoshino plus unregistered Ako), the missing slot is **not** substituted with Hina.
   The known entity may remain in `entities`, but `relation_pair` stays empty.
-- An authorized anchor with provenance is inherited only for the existing deterministic
-  follow-up classification and a narrow set of name-free elliptical questions
-  (such as “그럼 무슨 사이야?”) when no character is explicit in the current message.
-  Unknown/new names and unsupported follow-up forms cannot inherit an old identity. Ambiguity blocks automatic constraints; explicit targets override the anchor.
+- An authorized anchor with provenance is inherited only for a **small name-free
+  profile/relation ellipsis** such as “그럼 무슨 사이야?”, “몇 학년이야?” or
+  “선배야?”. Open-ended why/how/when/what/amount follow-ups no longer inherit an entity
+  merely because the routing layer has an anchor; factual semantic retrieval can handle
+  those expressions without deterministic identity completion.
+- Unknown/new names and unsupported follow-up forms cannot inherit an old identity.
+  Ambiguity blocks automatic constraints; explicit targets override the anchor.
 - More than two explicit characters do not synthesize a pair. Ambiguous aliases stay
   unresolved; registered ids can still be present in `entities` without a constraint.
 
@@ -68,13 +71,27 @@ that pair explicitly through the base contract.
 ## Exact grounding and integration
 
 `RelationshipGrounder` indexes supplied `KnowledgeCandidate` rows by their explicit
-canonical entity set. It accepts reviewed canon rows with relation eligibility,
-confirmed KR release, source metadata, and usable evidence types. Inferences require
-linked evidence ids and remain interpretations. Reviewed unknown rows retain their
-existing guard. Missing data creates neither a fact nor an absence-of-relationship guard.
-Runtime rows currently lack reviewed canonical metadata, so admin ownership or lexical
-subjects do not promote them to relation evidence. This restriction is provenance-based;
-there is no static/runtime ranking tier.
+canonical entity set. Its retrieval eligibility is intentionally small:
+
+- `usage=relation`
+- canon lane
+- at least one canonical entity
+
+Editorial acceptance is already enforced when static rows enter through
+`LoreIndex.load(...)`: accepted status, non-candidate confidence, confirmed Korean
+release for canon, and reference-only exclusions are validated there. The grounder does
+not duplicate those checks.
+
+Question-specific evidence quality is also **not** a grounder responsibility. Direct vs
+inference, evidence chains, timeline/direction, polarity, unknown state and whether the
+selected row actually answers the current proposition belong to #315. This means manually
+constructing a `KnowledgeCandidate` and passing it directly to the constructor bypasses
+the reviewed LoreIndex boundary; production callers must provide reviewed candidates.
+
+Reviewed unknown rows retain their existing guard. Missing data creates neither a fact nor
+an absence-of-relationship guard. Runtime rows currently lack canon lane/canonical relation
+metadata, so admin ownership or lexical subjects do not promote them to relation evidence.
+There is no static/runtime ranking tier.
 
 `relation_pair` is consumed only by the exact relationship grounder. Pair-specific evidence
 is ordered before singleton profile/background rows; multi-entity rows must match the exact
@@ -138,9 +155,10 @@ or Hina-to-Hoshino addressing assertion is added. The positive profile compariso
 reliance on age/rank inference without a character-specific negative instruction.
 This is a retrieval regression fix in the opt-in path, **not a deployed answer-policy fix**.
 
-Tests load and validate both corpora, check all new evidence links, select profiles plus
-the comparison and direct evidence even with zero factual slots, preserve uncertainty
-and timelines, and compare legacy results with the additive annotations removed.
+Tests load and validate both corpora, check all new evidence links, preserve exact-pair
+ordering and uncertainty, verify that editorial rejection remains in LoreIndex validation,
+and verify that question-specific quality metadata no longer changes exact retrieval
+eligibility. They also compare legacy results with the additive annotations removed.
 
 ## Follow-ups and merge boundaries
 
