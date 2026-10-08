@@ -8,10 +8,10 @@ import json
 import os
 from collections.abc import Sequence
 from dataclasses import asdict, replace
+from enum import StrEnum
 from hashlib import sha256
 from math import isfinite
 from pathlib import Path
-from enum import StrEnum
 from statistics import mean, median
 from time import perf_counter
 
@@ -24,8 +24,8 @@ from hina_bot.core.knowledge_retrieval import (
     RankedKnowledgeCandidate,
     rank_lexical_candidates,
 )
-from hina_bot.core.profile_retrieval import rank_profile
 from hina_bot.core.lore import LoreIndex, read_jsonl
+from hina_bot.core.profile_retrieval import rank_profile
 from hina_bot.core.retrieval_v2 import RetrievalIntent, UsageBudget, pack_ranked
 from hina_bot.core.semantic_retrieval import (
     EmbeddingBackend,
