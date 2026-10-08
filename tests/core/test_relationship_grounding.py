@@ -1,4 +1,3 @@
-import json
 from dataclasses import replace
 from importlib.resources import files
 
@@ -11,10 +10,11 @@ from hina_bot.core.knowledge_retrieval import KnowledgeCandidate, KnowledgeUsage
 from hina_bot.core.lore import LoreIndex
 from hina_bot.core.relationship_grounding import RelationshipGrounder
 from hina_bot.core.retrieval_v2 import (
-    KnowledgeBundle,
+    BundleComposer,
     RetrievalRequest,
     UsageBudget,
     lexical_bundle,
+    pack_ranked,
 )
 from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
@@ -24,8 +24,10 @@ PAIR = (HINA, HOSHINO)
 BUDGET = UsageBudget(6, 3200)
 
 
-def request(entities=PAIR):
-    return RetrievalRequest("", "", entities=entities, required_entities=entities)
+def request(pair=PAIR):
+    entities = tuple(pair)
+    relation_pair = tuple(pair) if len(pair) == 2 else None
+    return RetrievalRequest("", "", entities=entities, relation_pair=relation_pair)
 
 
 def row(identifier="pair", **overrides):
@@ -38,11 +40,17 @@ def row(identifier="pair", **overrides):
     ), **overrides)
 
 
+def relation_bundle(rows, budget=BUDGET):
+    return BundleComposer({KnowledgeUsage.RELATION: budget}).compose({
+        KnowledgeUsage.RELATION: rows,
+    })
+
+
 def test_hoshino_regression_has_profiles_positive_year_comparison_and_direct_relation():
-    bundle = RelationshipGrounder.load().bundle(
+    grounded = RelationshipGrounder.load().ground(
         build_resolved_retrieval_request(RoutingPlan("호시노는 선배야?", "호시노는 선배야?")),
-        budget=BUDGET,
     )
+    bundle = relation_bundle(grounded)
     selected = {item.candidate.candidate_id: item.candidate for item in bundle.relations}
     assert not bundle.facts
     assert len(selected) == 5
@@ -58,7 +66,7 @@ def test_hoshino_regression_has_profiles_positive_year_comparison_and_direct_rel
     assert selected["canon.hina.first_meeting_with_hoshino_vol1"].awareness == "direct_experience"
     addressing = selected["canon.relationship_closer_after_fight_with_set_and_hoshino"]
     original = next(c for c in LoreIndex.load().candidates() if c.candidate_id == addressing.candidate_id)
-    assert addressing == original  # Preserve directional wording, source, and timeline exactly.
+    assert addressing == original
     assert all(item.score == 1 for item in bundle.relations)
 
 
@@ -67,34 +75,44 @@ def test_exact_grounding_never_depends_on_generic_factual_slot_or_query(query):
     req = replace(request(), retrieval_text=query)
     relation = row()
     factual = row("factual", usages=(KnowledgeUsage.FACTUAL,), keywords=(query or "x",))
-    base = lexical_bundle(req, [factual], budgets={KnowledgeUsage.FACTUAL: UsageBudget(0, 0)})
-    grounded = RelationshipGrounder([relation]).bundle(req, budget=BUDGET, base=base)
-    assert len(grounded.relations) == 1 and not grounded.facts
-    base = lexical_bundle(req, [factual], budgets={KnowledgeUsage.FACTUAL: BUDGET})
-    assert RelationshipGrounder([relation]).bundle(req, budget=BUDGET, base=base).facts == base.facts
+    facts = lexical_bundle(
+        req, [factual], budgets={KnowledgeUsage.FACTUAL: BUDGET},
+    ).facts
+    grounded = RelationshipGrounder([relation]).ground(req)
+    bundle = BundleComposer({
+        KnowledgeUsage.RELATION: BUDGET,
+        KnowledgeUsage.FACTUAL: BUDGET,
+    }).compose({
+        KnowledgeUsage.RELATION: grounded,
+        KnowledgeUsage.FACTUAL: facts,
+    })
+    assert len(bundle.relations) == 1
+    assert bundle.facts == facts
 
 
-def test_pair_must_match_exactly_and_profile_is_only_background():
+def test_pair_must_match_exactly_and_profiles_are_background_only():
     rows = [
         row("wrong_pair", entities=(HINA, "character.other")),
         row("superset", entities=(*PAIR, "character.other")),
         row("unrelated_profile", entities=("character.other",)),
         row("profile", entities=(HINA,)), row("correct"),
     ]
-    result = RelationshipGrounder(rows).ground(request(), budget=BUDGET)
+    result = RelationshipGrounder(rows).ground(request())
     assert [item.candidate.candidate_id for item in result] == ["correct", "profile"]
-    assert [item.candidate.candidate_id for item in RelationshipGrounder(rows).ground(
-        request((HINA,)), budget=BUDGET,
-    )] == ["profile"]
+    assert not RelationshipGrounder(rows).ground(request((HINA,)))
 
 
-def test_pair_evidence_is_reserved_before_profiles_under_small_budget():
+def test_pair_evidence_is_ordered_before_profiles_and_shared_packer_enforces_budget():
     rows = [
         row("hina_profile", entities=(HINA,)),
         row("hoshino_profile", entities=(HOSHINO,)),
         row("pair_evidence"),
     ]
-    selected = RelationshipGrounder(rows).ground(request(), budget=UsageBudget(1, 3200))
+    grounded = RelationshipGrounder(rows).ground(request())
+    assert [item.candidate.candidate_id for item in grounded] == [
+        "pair_evidence", "hina_profile", "hoshino_profile",
+    ]
+    selected = pack_ranked(grounded, UsageBudget(1, 3200))
     assert [item.candidate.candidate_id for item in selected] == ["pair_evidence"]
 
 
@@ -104,12 +122,11 @@ def test_age_rank_respect_and_cross_school_years_never_generate_relationship_or_
         "Hina respects Hoshino's strength and title",
     ):
         profile = row("profile", entities=(HOSHINO,), content=content)
-        selected = RelationshipGrounder([profile]).ground(request(), budget=BUDGET)
+        selected = RelationshipGrounder([profile]).ground(request())
         assert [item.candidate for item in selected] == [profile]
         assert selected[0].candidate.reference_item() == profile.reference_item()
-        # Even apparent profile content is not auto-promoted to relation usage.
         factual_only = replace(profile, usages=(KnowledgeUsage.FACTUAL,))
-        assert not RelationshipGrounder([factual_only]).ground(request(), budget=BUDGET)
+        assert not RelationshipGrounder([factual_only]).ground(request())
 
 
 @pytest.mark.parametrize("override", [
@@ -119,7 +136,7 @@ def test_age_rank_respect_and_cross_school_years_never_generate_relationship_or_
     {"fact_type": "adaptation"}, {"fact_type": None}, {"fact_type": "inference"},
 ])
 def test_unreviewed_unrelated_or_ineligible_rows_are_not_grounding(override):
-    assert not RelationshipGrounder([row(**override)]).ground(request(), budget=BUDGET)
+    assert not RelationshipGrounder([row(**override)]).ground(request())
 
 
 def test_reviewed_unknown_guard_is_preserved_but_absence_does_not_generate_one():
@@ -127,30 +144,32 @@ def test_reviewed_unknown_guard_is_preserved_but_absence_does_not_generate_one()
         fact_type="unknown", kind="interpretation", awareness="unknown",
         metadata=(("guard", "do_not_assert_positive_fact"),),
     )
-    bundle = RelationshipGrounder([unknown]).bundle(request(), budget=BUDGET)
+    bundle = relation_bundle(RelationshipGrounder([unknown]).ground(request()))
     assert bundle.context_sections()["relations"] == [unknown.reference_item()]
-    assert RelationshipGrounder([]).bundle(request(), budget=BUDGET) == KnowledgeBundle()
+    assert not RelationshipGrounder([]).ground(request())
 
 
-@pytest.mark.parametrize("req", [
-    RetrievalRequest("Hoshino", "Hoshino"),
-    replace(request(), entities=(HINA,)),
-    replace(request(), required_entities=()),
-])
-def test_unresolved_or_inconsistent_constraints_leave_relation_empty(req):
-    assert not RelationshipGrounder.load().ground(req, budget=BUDGET)
+def test_missing_or_invalid_relation_pair_leaves_grounding_empty():
+    assert not RelationshipGrounder.load().ground(RetrievalRequest("Hoshino", "Hoshino"))
+    assert not RelationshipGrounder.load().ground(request((HINA,)))
+    with pytest.raises(ValueError):
+        RetrievalRequest(
+            "", "", entities=(HINA,), relation_pair=PAIR,
+        )
+    with pytest.raises(ValueError):
+        RetrievalRequest(
+            "", "", entities=(HINA,), relation_pair=(HINA, HINA),
+        )
 
 
-def test_dedup_budget_skip_and_exact_score_threshold():
+def test_duplicate_relation_rows_are_deduped_before_shared_packing():
     small = row("small")
-    big = row("big", content="x" * 2000)
-    size = len(json.dumps(small.reference_item(), ensure_ascii=False))
-    grounder = RelationshipGrounder([big, small, small])
-    selected = grounder.ground(request(), budget=UsageBudget(5, size))
-    assert [item.candidate for item in selected] == [small]
-    for budget in (UsageBudget(0, 9999), UsageBudget(2, 0), UsageBudget(2, 9999, 1)):
-        assert not grounder.ground(request(), budget=budget)
-    assert len(grounder.ground(request(), budget=UsageBudget(1, 9999))) == 1
+    grounder = RelationshipGrounder([small, small])
+    grounded = grounder.ground(request())
+    assert [item.candidate for item in grounded] == [small]
+    assert not pack_ranked(grounded, UsageBudget(0, 9999))
+    assert not pack_ranked(grounded, UsageBudget(2, 0))
+    assert len(pack_ranked(grounded, UsageBudget(1, 9999))) == 1
 
 
 def test_runtime_metadata_is_not_synthesized_from_subject_or_admin_ownership():
@@ -158,7 +177,7 @@ def test_runtime_metadata_is_not_synthesized_from_subject_or_admin_ownership():
     try:
         registry = RuntimeKnowledgeRegistry(database, kind="world_fact")
         registry.add("pair", "히나 호시노 관계", "관계", "히나,호시노", "self")
-        assert not RelationshipGrounder(registry.candidates()).ground(request(), budget=BUDGET)
+        assert not RelationshipGrounder(registry.candidates()).ground(request())
     finally:
         database.close()
 
