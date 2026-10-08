@@ -219,11 +219,11 @@ async def test_resolved_relation_pair_does_not_drop_unannotated_factual_candidat
     rows = [
         candidate(
             "unannotated", semantic_text="positive",
-            keywords=("사이", "관계"), entities=(),
+            keywords=("사이",) * 2, entities=(),
         ),
         candidate(
             "conflict", semantic_text="positive",
-            keywords=("사이", "관계"),
+            keywords=("사이",) * 2,
             entities=("character.hina", "character.ako"),
         ),
     ]
