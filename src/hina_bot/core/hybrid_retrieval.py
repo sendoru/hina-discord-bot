@@ -95,9 +95,7 @@ def _entity_compatible(
         return True
     if required.issubset(annotated):
         return True
-    if annotated < required:
-        return True
-    return False
+    return annotated < required
 
 
 def eligible_candidates(
