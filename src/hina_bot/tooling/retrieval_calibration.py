@@ -9,6 +9,7 @@ import os
 from collections.abc import Sequence
 from dataclasses import asdict, replace
 from hashlib import sha256
+from math import isfinite
 from pathlib import Path
 from statistics import mean, median
 from time import perf_counter
@@ -28,6 +29,7 @@ from hina_bot.core.lore import LoreIndex, read_jsonl
 from hina_bot.core.retrieval_v2 import RetrievalIntent, UsageBudget
 from hina_bot.core.semantic_retrieval import (
     EmbeddingBackend,
+    EmbeddingUsage,
     SemanticCalibration,
     SemanticIndex,
     semantic_query,
@@ -82,21 +84,30 @@ async def evaluate(
     backend: EmbeddingBackend, cases: Sequence[dict], candidates: Sequence[KnowledgeCandidate], *,
     compare_intent_hint: bool = False, top_n: int = 3,
     reject: float | None = None, strong: float | None = None,
+    usd_per_million_tokens: float | None = None,
 ) -> dict:
     validate_cases(cases, candidates)
     if top_n <= 0 or (reject is None) != (strong is None):
         raise ValueError("positive top_n and paired reject/strong overrides are required")
+    if usd_per_million_tokens is not None and (
+        not isfinite(usd_per_million_tokens) or usd_per_million_tokens < 0
+    ):
+        raise ValueError("price must be finite and non-negative")
     index = SemanticIndex(backend)
-    report = {"schema_version": 1, "backend_key": backend.cache_key,
+    warmup = await index.warm(candidates)
+    candidate_usage = warmup.usage
+    query_usage = EmbeddingUsage()
+    report = {"schema_version": 2, "backend_key": backend.cache_key,
               "dimensions": backend.dimensions, "corpus_size": len(candidates), "top_n": top_n,
               "corpus_sha256": sha256(json.dumps([
                   (row.candidate_id, row.semantic_representation) for row in candidates
               ], ensure_ascii=False).encode()).hexdigest(),
               "fixtures_sha256": sha256(json.dumps(cases, sort_keys=True,
                                                     ensure_ascii=False).encode()).hexdigest(),
-              "status": "experimental_not_production_calibration", "variants": {}}
+              "status": "experimental_not_production_calibration",
+              "candidate_warmup": asdict(warmup), "variants": {}}
     for hint in ([False, True] if compare_intent_hint else [False]):
-        variant = "intent_hint" if hint else "routing_text"
+        variant = "intent_hint" if hint else "conversational_text"
         samples = {split: {label: [] for label in LABELS}
                    for split in ("calibration", "evaluation")}
         measured = []
@@ -109,14 +120,21 @@ async def evaluate(
                 entities=tuple(case.get("entities", ())),
                 required_entities=tuple(case.get("required_entities", ())),
             )
-            request = replace(request, intent=RetrievalIntent(case["intent"]))
+            request = replace(request, intent=RetrievalIntent(case["intent"]),
+                              retrieval_text=case.get("lexical_query", request.retrieval_text))
+            meaning = semantic_query(request, intent_hint=hint)
+            if (not hint and "expected_semantic_query" in case
+                    and meaning != case["expected_semantic_query"]):
+                raise ValueError("fixture semantic representation mismatch")
             rows = eligible_candidates(request, candidates)
             started = perf_counter()
             # Offline diagnostic deliberately measures all fixture intents, even those the
             # opt-in retriever short-circuits. Exactly one query call per case/variant.
-            result = await index.search(semantic_query(request, intent_hint=hint), rows,
+            result = await index.search(meaning, rows,
                                         top_k=len(rows))
             elapsed = (perf_counter() - started) * 1000
+            candidate_usage += result.candidate_usage
+            query_usage += result.query_usage
             scores = {rows[hit.order].candidate_id: hit.cosine for hit in result.hits}
             labeled = {label: {identifier: scores[identifier] for identifier in case[label]
                                if identifier in scores} for label in LABELS}
@@ -124,6 +142,14 @@ async def evaluate(
                 samples[case["split"]][label].extend(values.values())
             measured.append((case, request, rows, result, {
                 "id": case["id"], "split": case["split"], "intent": request.intent.value,
+                "representations": {"lexical": request.retrieval_text, "semantic": meaning},
+                "semantic_query_character_count": len(meaning),
+                "query_embedding": {**asdict(result.query_usage),
+                                    "latency_ms": result.query_embedding_ms},
+                "candidate_embedding": {**asdict(result.candidate_usage),
+                                        "warmup_ms": result.candidate_warmup_ms},
+                "request_count": (result.query_usage.request_count
+                                  + result.candidate_usage.request_count),
                 "cosines": labeled,
                 "semantic_top": [{"id": rows[h.order].candidate_id, "cosine": h.cosine}
                                  for h in result.hits[:top_n]],
@@ -189,6 +215,16 @@ async def evaluate(
                                              / len(negatives) if negatives else None),
                 }
         report["variants"][variant] = output
+    total = candidate_usage + query_usage
+    report["usage"] = {"candidate": asdict(candidate_usage), "query": asdict(query_usage),
+                       "total": asdict(total)}
+    report["cost"] = {
+        "usd_per_million_tokens": usd_per_million_tokens,
+        "estimated_usd": (total.prompt_token_count * usd_per_million_tokens / 1_000_000
+                          if total.prompt_token_count is not None
+                          and usd_per_million_tokens is not None else None),
+        "price_source": "operator_supplied" if usd_per_million_tokens is not None else None,
+    }
     return report
 
 
@@ -200,6 +236,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--model", default="gemini-embedding-2")
     parser.add_argument("--dimensions", type=int, default=768)
     parser.add_argument("--revision", default="1")
+    parser.add_argument("--batch-size", type=int, default=50)
+    parser.add_argument("--usd-per-million-tokens", type=float,
+                        help="optional current synchronous text-embedding price; no built-in rate")
     parser.add_argument("--top-n", type=int, default=3)
     parser.add_argument("--reject", type=float)
     parser.add_argument("--strong", type=float)
@@ -212,7 +251,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         validate_cases(cases, candidates)
         if args.top_n <= 0 or (args.reject is None) != (args.strong is None):
             raise ValueError("invalid top-n or unpaired reject/strong")
-        config = GeminiEmbeddingConfig(args.model, args.dimensions, args.revision)
+        config = GeminiEmbeddingConfig(args.model, args.dimensions, args.revision,
+                                       batch_size=args.batch_size)
+        if args.usd_per_million_tokens is not None and (
+            not isfinite(args.usd_per_million_tokens) or args.usd_per_million_tokens < 0
+        ):
+            raise ValueError("invalid price")
         if args.reject is not None:
             SemanticCalibration("validation", args.reject, args.strong)
     except (ValueError, KeyError, TypeError, OSError):
@@ -229,7 +273,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             return await evaluate(backend, cases, candidates, top_n=args.top_n,
                                   compare_intent_hint=args.compare_intent_hint,
-                                  reject=args.reject, strong=args.strong)
+                                  reject=args.reject, strong=args.strong,
+                                  usd_per_million_tokens=args.usd_per_million_tokens)
         finally:
             await backend.close()
 

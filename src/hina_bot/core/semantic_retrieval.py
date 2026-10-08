@@ -3,17 +3,38 @@
 from __future__ import annotations
 
 import asyncio
+import re
+import unicodedata
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from math import fsum, isfinite, sqrt
+from time import perf_counter
 from typing import Protocol
 
 from .knowledge_retrieval import KnowledgeCandidate
 from .retrieval_v2 import RetrievalRequest
 
 Vector = tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class EmbeddingUsage:
+    # None means the provider omitted usage, never a guessed token count.
+    prompt_token_count: int | None = 0
+    request_count: int = 0
+
+    def __add__(self, other: EmbeddingUsage) -> EmbeddingUsage:
+        tokens = (None if self.prompt_token_count is None or other.prompt_token_count is None
+                  else self.prompt_token_count + other.prompt_token_count)
+        return EmbeddingUsage(tokens, self.request_count + other.request_count)
+
+
+@dataclass(frozen=True)
+class EmbeddingResult:
+    vectors: tuple[Vector, ...]
+    usage: EmbeddingUsage = EmbeddingUsage()
 
 
 class EmbeddingBackend(Protocol):
@@ -25,9 +46,9 @@ class EmbeddingBackend(Protocol):
     @property
     def dimensions(self) -> int: ...
 
-    async def embed_query(self, text: str) -> Sequence[float]: ...
+    async def embed_query(self, text: str) -> EmbeddingResult: ...
 
-    async def embed_candidates(self, texts: Sequence[str]) -> Sequence[Sequence[float]]: ...
+    async def embed_candidates(self, texts: Sequence[str]) -> EmbeddingResult: ...
 
 
 def normalize(values: Sequence[float], dimensions: int) -> Vector:
@@ -43,16 +64,21 @@ def normalize(values: Sequence[float], dimensions: int) -> Vector:
 
 
 def semantic_query(request: RetrievalRequest, *, intent_hint: bool = False) -> str:
-    """Use the routing-normalized query; append an authorized anchor only if absent.
+    """Independent conversational meaning, never lexical expansions or canonical ids.
 
-    No raw visible-message fallback, canonical-id prose, alias inference or new LLM call.
-    Existing lexical expansion stays intact; the eval CLI compares intent hints separately.
+    Deduplicate contained anchors after Unicode/case/punctuation/whitespace normalization.
+    This intentionally does not guess equivalence for arbitrary paraphrases or negations.
     """
-    text = " ".join(request.retrieval_text.split())
+    text = " ".join(request.visible_text.split())
     anchor = " ".join(request.anchor_text.split())
     if not text:
         return ""
-    if anchor and anchor not in text:
+
+    def meaning_key(value: str) -> str:
+        return re.sub(r"[^\w]", "", unicodedata.normalize("NFKC", value).casefold())
+
+    anchor_key = meaning_key(anchor)
+    if anchor_key and anchor_key not in meaning_key(text):
         text = f"{anchor}\n{text}"
     return f"{request.intent.value}: {text}" if intent_hint else text
 
@@ -64,10 +90,22 @@ class SemanticHit:
 
 
 @dataclass(frozen=True)
+class CandidateWarmup:
+    cache_hits: int
+    cache_misses: int
+    usage: EmbeddingUsage = EmbeddingUsage()
+    elapsed_ms: float = 0.0
+
+
+@dataclass(frozen=True)
 class SemanticSearch:
     hits: tuple[SemanticHit, ...]
     cache_hits: int
     cache_misses: int
+    candidate_usage: EmbeddingUsage = EmbeddingUsage()
+    candidate_warmup_ms: float = 0.0
+    query_usage: EmbeddingUsage = EmbeddingUsage()
+    query_embedding_ms: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -106,6 +144,8 @@ class SemanticIndex:
         self._lock = asyncio.Lock()
 
     async def _vectors(self, candidates: Sequence[KnowledgeCandidate]):
+        started = perf_counter()
+        usage = EmbeddingUsage()
         backend_key = self.backend.cache_key
         texts = [row.semantic_representation.strip() for row in candidates]
         keys = [(backend_key, sha256(text.encode()).hexdigest()) for text in texts]
@@ -118,10 +158,11 @@ class SemanticIndex:
             hit_count = sum(key in self._cache for key in keys)
             if missing:
                 embedded = await self.backend.embed_candidates(list(missing.values()))
-                if len(embedded) != len(missing):
+                if len(embedded.vectors) != len(missing):
                     raise ValueError("embedding row count mismatch")
                 fresh = {key: normalize(vector, self.backend.dimensions)
-                         for key, vector in zip(missing, embedded)}
+                         for key, vector in zip(missing, embedded.vectors)}
+                usage = embedded.usage
                 vectors.update(fresh)
             if self.backend.cache_key != backend_key:
                 raise ValueError("embedding backend changed during cache fill")
@@ -131,12 +172,14 @@ class SemanticIndex:
                 self._cache.move_to_end(key)
             while len(self._cache) > self.max_entries:
                 self._cache.popitem(last=False)
-            return [vectors[key] for key in keys], hit_count, len(missing)
+            return [vectors[key] for key in keys], CandidateWarmup(
+                hit_count, len(missing), usage, (perf_counter() - started) * 1000,
+            )
 
-    async def warm(self, candidates: Sequence[KnowledgeCandidate]) -> tuple[int, int]:
+    async def warm(self, candidates: Sequence[KnowledgeCandidate]) -> CandidateWarmup:
         """Optional prewarm outside turn latency budget; no query embedding."""
-        _, hits, misses = await self._vectors(candidates)
-        return hits, misses
+        _, result = await self._vectors(candidates)
+        return result
 
     async def search(
         self, text: str, candidates: Sequence[KnowledgeCandidate], *, top_k: int,
@@ -144,12 +187,20 @@ class SemanticIndex:
         if not text.strip() or not candidates or top_k <= 0:
             return SemanticSearch((), 0, 0)
         key = self.backend.cache_key
-        matrix, hits, misses = await self._vectors(candidates)
-        query = normalize(await self.backend.embed_query(text), self.backend.dimensions)
+        matrix, warmup = await self._vectors(candidates)
+        started = perf_counter()
+        embedded = await self.backend.embed_query(text)
+        query_ms = (perf_counter() - started) * 1000
+        if len(embedded.vectors) != 1:
+            raise ValueError("query embedding row count mismatch")
+        query = normalize(embedded.vectors[0], self.backend.dimensions)
         if self.backend.cache_key != key:
             raise ValueError("embedding backend changed during search")
         scored = [SemanticHit(i, max(-1.0, min(1.0, fsum(
             left * right for left, right in zip(vector, query)
         )))) for i, vector in enumerate(matrix)]
         scored.sort(key=lambda row: (-row.cosine, row.order))
-        return SemanticSearch(tuple(scored[:top_k]), hits, misses)
+        return SemanticSearch(
+            tuple(scored[:top_k]), warmup.cache_hits, warmup.cache_misses,
+            warmup.usage, warmup.elapsed_ms, embedded.usage, query_ms,
+        )
