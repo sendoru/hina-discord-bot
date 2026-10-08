@@ -45,7 +45,9 @@ class RetrievalRequest:
 
 
 @dataclass(frozen=True)
-class LaneBudget:
+class UsageBudget:
+    """Selection limits and threshold for one retrieval KnowledgeUsage."""
+
     max_items: int
     max_chars: int
     # Strict threshold in the ranker's scale; lexical parity uses > 0.
@@ -54,7 +56,7 @@ class LaneBudget:
 
 @dataclass(frozen=True)
 class KnowledgeBundle:
-    """Selected evidence, with independent budgets and no obligation to fill slots.
+    """Selected evidence, with independent retrieval usage budgets and optional empty slots.
 
     Facts may include explicit lookup interpretations/unknown guards. They are not
     promoted to official facts. Ambient items shape a response only when scene-relevant;
@@ -95,13 +97,13 @@ def lexical_bundle(
     request: RetrievalRequest,
     candidates: Iterable[KnowledgeCandidate],
     *,
-    budgets: Mapping[KnowledgeUsage, LaneBudget],
+    budgets: Mapping[KnowledgeUsage, UsageBudget],
 ) -> KnowledgeBundle:
     """Rank once with the existing scorer, then select separately per enabled usage.
 
-    Omitted budgets disable a lane. This adapter adds no entity resolution, grounding,
-    semantic scores, insight activation or local-sufficiency policy. Callers must supply
-    candidates eligible under those future policies before enabling their budgets.
+    Omitted budgets disable a retrieval usage. This adapter adds no entity resolution,
+    grounding, semantic scores, insight activation or local-sufficiency policy. Callers must
+    supply eligible candidates before enabling their retrieval usage budgets.
     """
     ranked = rank_lexical_candidates(request.retrieval_text, candidates)
     selected: dict[KnowledgeUsage, tuple[RankedKnowledgeCandidate, ...]] = {}

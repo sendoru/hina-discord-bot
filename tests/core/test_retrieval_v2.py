@@ -15,8 +15,8 @@ from hina_bot.core.knowledge_retrieval import (
 from hina_bot.core.lore import LoreIndex, LoreValidationError, validate_record
 from hina_bot.core.retrieval_v2 import (
     KnowledgeBundle,
-    LaneBudget,
     RetrievalRequest,
+    UsageBudget,
     lexical_bundle,
 )
 from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
@@ -47,7 +47,7 @@ def test_packaged_factual_lexical_parity(query, limit, chars):
     index = LoreIndex.load()
     bundle = lexical_bundle(
         RetrievalRequest(query, query), index.candidates(include_community=False),
-        budgets={Usage.FACTUAL: LaneBudget(limit, chars)},
+        budgets={Usage.FACTUAL: UsageBudget(limit, chars)},
     )
     assert bundle.context_sections()["facts"] == index.search(
         query, limit=limit, chars=chars, include_community=False,
@@ -55,7 +55,7 @@ def test_packaged_factual_lexical_parity(query, limit, chars):
     assert not bundle.relations and not bundle.character_insights and not bundle.reactions
 
 
-def test_lane_budgets_do_not_compete_and_support_multiple_usages():
+def test_usage_budgets_do_not_compete_and_support_multiple_usages():
     rows = [
         candidate("fact"),
         candidate("relation", usages=(Usage.RELATION,)),
@@ -64,7 +64,7 @@ def test_lane_budgets_do_not_compete_and_support_multiple_usages():
     ]
     bundle = lexical_bundle(
         RetrievalRequest("기준", "기준"), iter(rows),
-        budgets={usage: LaneBudget(1, 1000) for usage in Usage},
+        budgets={usage: UsageBudget(1, 1000) for usage in Usage},
     )
     assert bundle.facts[0].candidate.candidate_id == "fact"
     assert bundle.relations[0].candidate.candidate_id == "relation"
@@ -78,16 +78,16 @@ def test_budget_skip_threshold_disabled_and_zero_result():
     long = candidate("long", content="가" * 1000)
     size = len(json.dumps(short.reference_item(), ensure_ascii=False))
     request = RetrievalRequest("기준", "기준")
-    bundle = lexical_bundle(request, [long, short], budgets={Usage.FACTUAL: LaneBudget(2, size)})
+    bundle = lexical_bundle(request, [long, short], budgets={Usage.FACTUAL: UsageBudget(2, size)})
     assert [row.candidate.candidate_id for row in bundle.facts] == ["short"]
     score = bundle.facts[0].score
     assert not lexical_bundle(
-        request, [short], budgets={Usage.FACTUAL: LaneBudget(2, size, min_score=score)},
+        request, [short], budgets={Usage.FACTUAL: UsageBudget(2, size, min_score=score)},
     ).facts
     assert lexical_bundle(request, [short], budgets={}) == KnowledgeBundle()
     assert lexical_bundle(
         RetrievalRequest("zzzzz", "zzzzz"), [short],
-        budgets={usage: LaneBudget(2, 1000) for usage in Usage},
+        budgets={usage: UsageBudget(2, 1000) for usage in Usage},
     ) == KnowledgeBundle()
 
 
@@ -98,7 +98,7 @@ def test_provenance_is_not_a_ranking_tier_and_unknown_is_not_promoted():
     runtime = candidate("runtime", source="runtime_knowledge")
     bundle = lexical_bundle(
         RetrievalRequest("기준", "기준"), [static, runtime],
-        budgets={Usage.FACTUAL: LaneBudget(2, 1000)},
+        budgets={Usage.FACTUAL: UsageBudget(2, 1000)},
     )
     assert [row.candidate.source for row in bundle.facts] == ["static_lore", "runtime_knowledge"]
     assert bundle.context_sections()["facts"][0]["kind"] == "interpretation"
@@ -149,7 +149,7 @@ def test_existing_inference_is_not_automatically_ambient():
     assert row.retrieval_usages == (Usage.FACTUAL,)
     assert row.semantic_representation == row.search_text
     assert not lexical_bundle(
-        RetrievalRequest("휴식", "휴식"), [row], budgets={Usage.AMBIENT: LaneBudget(2, 1000)},
+        RetrievalRequest("휴식", "휴식"), [row], budgets={Usage.AMBIENT: UsageBudget(2, 1000)},
     ).character_insights
 
 
@@ -171,7 +171,7 @@ def test_reaction_parity_and_provenance_stays_out_of_model_reference():
     index = LoreIndex([meme])
     bundle = lexical_bundle(
         RetrievalRequest("휴식", "휴식"), index.candidates(),
-        budgets={usage: LaneBudget(2, 1000) for usage in Usage},
+        budgets={usage: UsageBudget(2, 1000) for usage in Usage},
     )
     assert bundle.context_sections()["reactions"] == index.search("휴식")
     assert bundle.reactions[0].candidate.lane == "community_meme"
@@ -196,7 +196,7 @@ def test_runtime_registry_compatibility_without_synthesized_certainty(kind, awar
         rows = registry.candidates()
         bundle = lexical_bundle(
             RetrievalRequest("휴식", "휴식"), rows,
-            budgets={usage: LaneBudget(2, 1000) for usage in Usage},
+            budgets={usage: UsageBudget(2, 1000) for usage in Usage},
         )
         assert bundle.context_sections()["facts"] == registry.search("휴식", limit=2, chars=1000)
         row = bundle.facts[0].candidate
@@ -217,10 +217,10 @@ def test_semantic_representation_never_repeats_keywords_or_subjects():
     assert replace(row, semantic_text="reviewed meaning").semantic_representation == "reviewed meaning"
 
 
-def test_single_lane_adapter_preserves_tie_order_and_scores():
+def test_single_usage_adapter_preserves_tie_order_and_scores():
     rows = [candidate("first"), candidate("second")]
     request = RetrievalRequest("기준", "기준")
-    bundle = lexical_bundle(request, rows, budgets={Usage.FACTUAL: LaneBudget(2, 1000)})
+    bundle = lexical_bundle(request, rows, budgets={Usage.FACTUAL: UsageBudget(2, 1000)})
     assert bundle.context_sections()["facts"] == lexical_search("기준", rows, limit=2, chars=1000)
     assert bundle.facts[0].score == bundle.facts[1].score
     assert [row.order for row in bundle.facts] == [0, 1]
