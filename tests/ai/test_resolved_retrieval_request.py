@@ -72,6 +72,33 @@ def test_authorized_causal_followup_inherits_anchor_for_complete_relation_pair()
         assert not build_resolved_retrieval_request(routing).relation_pair
 
 
+@pytest.mark.parametrize(
+    "text",
+    ["그럼 왜?", "그럼 어떻게?", "그럼 언제?", "그럼 뭐야?", "그럼 얼마야?"],
+)
+def test_open_ended_followups_do_not_inherit_anchor_identity_for_exact_grounding(text):
+    request = build_resolved_retrieval_request(RoutingPlan(
+        text, "호시노 " + text, "호시노는?", "explicit_reply",
+    ))
+    assert not request.entities
+    assert not request.relation_pair
+
+
+def test_broad_relationship_paraphrase_stays_in_semantic_factual_lane():
+    text = "호시노랑 예전부터 친했던 거야?"
+    request = build_resolved_retrieval_request(RoutingPlan(text, text))
+    assert request.entities == ("character.hoshino",)
+    assert not request.relation_pair
+    assert request.intent == RetrievalIntent.CONVERSATION
+
+
+def test_high_precision_seniority_cue_still_forms_implicit_rp_pair():
+    text = "호시노는 선배야?"
+    request = build_resolved_retrieval_request(RoutingPlan(text, text))
+    assert set(request.entities) == PAIR
+    assert set(request.relation_pair or ()) == PAIR
+
+
 def test_ambiguity_does_not_fall_back_to_old_anchor():
     resolver = EntityResolver((*DEFAULT_ENTITIES, CanonicalEntity(
         "character.other", "다른 인물", ("호시노",),

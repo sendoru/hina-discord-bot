@@ -6,23 +6,25 @@ from dataclasses import replace
 from hina_bot.core.entity_resolution import HINA_ENTITY_ID, EntityResolver
 from hina_bot.core.retrieval_v2 import RetrievalIntent, RetrievalRequest
 
-from .contextual_routing import is_followup
 from .information_routing import classify_information_request
 from .routing_plan import RoutingPlan
 
-# A narrower condition than general routing inheritance: unknown/new names must not
-# silently become the old character. Extend these elliptical forms through evals.
-_ENTITY_FOLLOWUP = re.compile(
+# Only name-free forms that need exact profile/relation grounding inherit anchor identity.
+# Open-ended why/how/when/what questions are deliberately left to factual semantic recall.
+_ANCHOR_ELLIPSIS = re.compile(
     r"^\s*(?:(?:그럼|그러면|그렇다면|그래서|근데|그런데)\s*)?"
     r"(?:(?:걔|얘|쟤)(?:는|가|랑)?\s*)?"
-    r"(?:무슨\s*사이야|어떤\s*관계야|몇\s*학년(?:이야)?|학년은|"
-    r"어디\s*소속이야|누구야|왜|어떻게|언제|어디|뭐|무엇|얼마|서로\s*알아|친해)"
-    r"\s*[?？!.~]*\s*$"
+    r"(?:"
+    r"무슨\s*사이야|어떤\s*관계야|"
+    r"몇\s*학년(?:이야)?|학년은|어디\s*소속이야|"
+    r"선배야|후배야|동급생이야|같은\s*학년이야|"
+    r"(?:뭐라고|어떻게)\s*불러"
+    r")\s*[?？!.~]*\s*$",
+    re.IGNORECASE,
 )
 
-# Only used as a conservative blocker for the implicit RP-subject pair. If a relation
-# question visibly names two slots but one is outside the small reviewed registry, a
-# single resolved name must not be silently paired with Hina.
+# A single resolved name must not be paired with Hina when the visible relation syntax
+# contains a second, unresolved named slot.
 _EXPLICIT_RELATION_PAIR = re.compile(
     r"(?P<left>[^\s,!?？！，]+)\s*(?:와|과|랑|이랑|하고)\s*"
     r"(?!무슨(?:\s|$)|어떤(?:\s|$))"
@@ -31,11 +33,13 @@ _EXPLICIT_RELATION_PAIR = re.compile(
     re.IGNORECASE,
 )
 
+# Exact relationship grounding intentionally recognizes only high-precision relation,
+# seniority and addressing cues. Broader "친했어/만났어/알았어" paraphrases belong to
+# factual semantic retrieval and do not need a deterministic pair.
 _RELATION_GROUNDING_QUERY = re.compile(
     r"(?:무슨|어떤)\s*(?:사이|관계)|"
-    r"(?:선배|후배|동급생|같은\s*학년|호칭|(?:뭐|어떻게|어떤)\s*부르)|"
-    r"(?:친해|친한|친분|접점|서로\s*알)|"
-    r"(?:만나|마주|대면|대화)",
+    r"(?:선배|후배|동급생|같은\s*학년|호칭)|"
+    r"(?:(?:뭐라고|어떻게|어떤)\s*부르)",
     re.IGNORECASE,
 )
 
@@ -53,14 +57,13 @@ def _strip_call_prefix(content: str, call_prefixes: tuple[str, ...] | None) -> s
 
 
 def _has_partial_explicit_relation_pair(text: str, resolver: EntityResolver) -> bool:
-    """Return True when a two-slot relation phrase is only partially resolvable."""
     match = _EXPLICIT_RELATION_PAIR.search(text)
     if match is None:
         return False
-    resolved = [
+    resolved = (
         resolver.resolve_alias(match.group("left")),
         resolver.resolve_alias(match.group("right")),
-    ]
+    )
     return sum(entity_id is not None for entity_id in resolved) != 2
 
 
@@ -72,7 +75,8 @@ def build_retrieval_request(
     relation_pair: tuple[str, str] | None = None,
 ) -> RetrievalRequest:
     information = classify_information_request(
-        routing.routing_query, call_prefixes=call_prefixes,
+        routing.routing_query,
+        call_prefixes=call_prefixes,
     )
     if information.self_profile:
         intent = RetrievalIntent.PROFILE
@@ -100,13 +104,11 @@ def build_resolved_retrieval_request(
     rp_subject: str | None = HINA_ENTITY_ID,
     call_prefixes: tuple[str, ...] | None = None,
 ) -> RetrievalRequest:
-    """Opt-in entity bridge; the existing builder/production path stays unchanged.
+    """Resolve only high-confidence current/causal identities for v2 retrieval.
 
-    entities contains the canonical characters actually resolved for this retrieval
-    context. relation_pair is populated only for a complete, unambiguous relationship
-    pair. A configured RP subject may complete an implicit
-    "X랑 무슨 사이야?" pair, but it is not injected into every factual/profile query.
-    Partial two-name questions never synthesize the missing counterpart as Hina.
+    Current-turn explicit entities win. A reviewed RP subject may complete one explicit
+    counterpart only for high-precision relation grounding. Anchor identity is inherited
+    only for a small name-free profile/relation ellipsis. Uncertainty remains unresolved.
     """
     resolver = resolver if resolver is not None else EntityResolver()
     if rp_subject is not None and rp_subject not in resolver.entities:
@@ -135,12 +137,11 @@ def build_resolved_retrieval_request(
         and not partial_pair
         and routing.anchor
         and routing.anchor_source
-        and is_followup(routing.visible_content)
-        and _ENTITY_FOLLOWUP.fullmatch(routing.visible_content)
+        and _ANCHOR_ELLIPSIS.fullmatch(topic_text)
     ):
         inherited = resolver.resolve(routing.anchor)
         if not inherited.ambiguous_aliases:
-            mentioned = tuple(dict.fromkeys((*mentioned, *inherited.entities)))
+            mentioned = inherited.entities
         else:
             resolution = inherited
 
@@ -148,8 +149,6 @@ def build_resolved_retrieval_request(
     pair: tuple[str, str] | None = None
     if not resolution.ambiguous_aliases:
         if request.intent == RetrievalIntent.PROFILE and rp_subject and not mentioned:
-            # The configured RP subject identifies whose profile is requested, but this
-            # is not a relation evidence constraint.
             entities.append(rp_subject)
         elif relation_grounding:
             if len(mentioned) == 2 and not partial_pair:

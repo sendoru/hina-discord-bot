@@ -17,12 +17,12 @@ RELATION_CONTEXT_POLICY = (
 
 
 class RelationshipGrounder:
-    """Index explicitly reviewed relation rows by canonical entity set.
+    """Index relation-annotated canon rows by canonical entity set.
 
-    Single-entity rows are profile/background evidence only. Multi-entity rows must
-    match the complete required pair: shared Hina metadata cannot admit unrelated
-    character facts. Nothing derives seniority/addressing from profile content.
-    This selects grounding, not an answer-sufficiency verdict or timeline resolver.
+    The constructor expects candidates from a reviewed source such as LoreIndex.load().
+    Single-entity rows are profile/background evidence only. Multi-entity rows must match
+    the complete pair. This selects exact grounding candidates; #315 owns proposition-level
+    answer sufficiency, evidence quality and temporal/directional interpretation.
     """
 
     def __init__(self, candidates: Iterable[KnowledgeCandidate]):
@@ -34,18 +34,16 @@ class RelationshipGrounder:
 
     @staticmethod
     def _eligible(candidate: KnowledgeCandidate) -> bool:
+        """Index relation-annotated reviewed canon rows with canonical entities.
+
+        LoreIndex.load() already enforces accepted status, non-candidate confidence,
+        confirmed Korean release and reference-only exclusions. Question-specific evidence
+        quality (direct/inference, timeline, polarity, evidence chain) belongs to #315.
+        """
         return (
             KnowledgeUsage.RELATION in candidate.retrieval_usages
             and bool(candidate.entities)
             and candidate.lane == "canon"
-            and candidate.confidence in {"verified", "official_secondary", "crosschecked"}
-            and candidate.kr_release == "confirmed"
-            and bool(candidate.source_metadata)
-            and candidate.awareness != "audience_only"
-            and candidate.fact_type in {
-                "fact_direct", "fact_visual", "fact_reported", "unknown", "inference",
-            }
-            and (candidate.fact_type != "inference" or bool(candidate.evidence_ids))
         )
 
     @classmethod
