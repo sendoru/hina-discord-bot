@@ -69,7 +69,7 @@ def build_retrieval_request(
     *,
     call_prefixes: tuple[str, ...] | None = None,
     entities: tuple[str, ...] = (),
-    required_entities: tuple[str, ...] = (),
+    relation_pair: tuple[str, str] | None = None,
 ) -> RetrievalRequest:
     information = classify_information_request(
         routing.routing_query, call_prefixes=call_prefixes,
@@ -88,7 +88,7 @@ def build_retrieval_request(
         anchor_text=routing.anchor,
         anchor_source=routing.anchor_source,
         entities=entities,
-        required_entities=required_entities,
+        relation_pair=relation_pair,
         intent=intent,
     )
 
@@ -103,8 +103,8 @@ def build_resolved_retrieval_request(
     """Opt-in entity bridge; the existing builder/production path stays unchanged.
 
     entities contains the canonical characters actually resolved for this retrieval
-    context. required_entities is narrower: it is populated only for a complete,
-    unambiguous relationship pair. A configured RP subject may complete an implicit
+    context. relation_pair is populated only for a complete, unambiguous relationship
+    pair. A configured RP subject may complete an implicit
     "X랑 무슨 사이야?" pair, but it is not injected into every factual/profile query.
     Partial two-name questions never synthesize the missing counterpart as Hina.
     """
@@ -145,7 +145,7 @@ def build_resolved_retrieval_request(
             resolution = inherited
 
     entities = list(mentioned)
-    required: tuple[str, ...] = ()
+    pair: tuple[str, str] | None = None
     if not resolution.ambiguous_aliases:
         if request.intent == RetrievalIntent.PROFILE and rp_subject and not mentioned:
             # The configured RP subject identifies whose profile is requested, but this
@@ -153,18 +153,18 @@ def build_resolved_retrieval_request(
             entities.append(rp_subject)
         elif relation_grounding:
             if len(mentioned) == 2 and not partial_pair:
-                required = mentioned
+                pair = (mentioned[0], mentioned[1])
             elif (
                 len(mentioned) == 1
                 and not partial_pair
                 and rp_subject is not None
                 and mentioned[0] != rp_subject
             ):
-                required = tuple(dict.fromkeys((rp_subject, mentioned[0])))
+                pair = (rp_subject, mentioned[0])
                 entities.append(rp_subject)
 
     return replace(
         request,
         entities=tuple(dict.fromkeys(entities)),
-        required_entities=required,
+        relation_pair=pair,
     )
