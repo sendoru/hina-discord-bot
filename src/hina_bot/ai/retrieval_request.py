@@ -25,6 +25,7 @@ _ENTITY_FOLLOWUP = re.compile(
 # single resolved name must not be silently paired with Hina.
 _EXPLICIT_RELATION_PAIR = re.compile(
     r"(?P<left>[^\s,!?？！，]+)\s*(?:와|과|랑|이랑|하고)\s*"
+    r"(?!무슨(?:\s|$)|어떤(?:\s|$))"
     r"(?P<right>[^\s,!?？！，]+?)(?:은|는|이|가)?\s*"
     r"(?:(?:무슨|어떤)\s*)?(?:사이|관계)",
     re.IGNORECASE,
