@@ -17,8 +17,11 @@ dot product are sufficient. No ANN/vector DB, NumPy dependency, or persistent mi
 - `core/semantic_retrieval.py`: `EmbeddingBackend` protocol, normalization, process-local
   candidate cache, local cosine search and explicit piecewise calibration.
 - `ai/embedding_backend.py`: Gemini REST adapter, isolated from answer-provider adapters.
-- `core/hybrid_retrieval.py`: factual admission/ranking, experimental fusion and lexical
-  fallback; returns admitted ranked rows only. Packing/composition lives in `retrieval_v2`.
+- `core/hybrid_retrieval.py`: one runtime factual policy — qualifying lexical rows in
+  legacy order followed by calibrated semantic-only recall; returns admitted rows only.
+- `core/profile_retrieval.py`: deterministic exact/lexical profile path; no semantic call.
+- `tooling/retrieval_calibration.py`: live measurement plus offline weighted/RRF
+  comparison; experimental fusion variants do not leak into runtime core.
 - `tooling/retrieval_calibration.py`: live measurements and comparison, no rollout writes.
 
 `EmbeddingBackend` exposes `cache_key`, `dimensions`, `embed_query(text)` and
@@ -104,59 +107,59 @@ results, without exception text or content logging. Cold initialization should u
 explicit attempt; persistent cache/backoff infrastructure is deferred. Process restart
 requires a new fill. There is no measured live latency in this PR.
 
-## Experimental selection and thresholds
+## Runtime selection and thresholds
 
-`HybridConfig.calibration` defaults to `None`: **no semantic calls** until explicit
+`HybridConfig.calibration` defaults to `None`: **no semantic calls** until an explicit
 backend-matched `SemanticCalibration(reject, strong)` is supplied. No live threshold is
-shipped. Every numeric fusion/lexical default below is provisional, exposed via a frozen
-configuration object, and must be reevaluated before #316 production wiring.
+shipped. Runtime policy is intentionally small:
+
+- `lexical_min`: qualifying factual lexical threshold (default 12)
+- `semantic_min`: calibrated semantic admission threshold (default 0.5)
+- optional `skip_semantic_at_lexical`: disabled until measured
+- semantic timeout
+
+There is no runtime fusion enum, semantic/lexical top-K candidate union, weight tuning or
+RRF configuration.
 
 Selection:
 
-1. Empty query/corpus or disabled budget returns no factual result. The retriever itself
-   does **not** refuse `conversation` intent: once a caller invokes factual semantic
-   retrieval, the legacy regex classifier is not allowed to veto the semantic channel.
-   Production invocation/gating remains #316.
-2. Profile intent uses lexical only and preserves positive deterministic profile-field
-   lexical hits. Optional `skip_semantic_at_lexical` permits a caller to skip semantic
-   search at an evaluated strong lexical cutoff; it is unset by default.
-3. Otherwise combine lexical top-20, semantic top-20 and supplied canonical-entity hits.
-4. Convert cosine to 0 below/equal `reject`, 1 above/equal `strong`, and linearly interpolate.
-5. Admit a semantic channel contribution at calibrated score >= 0.5, or a lexical channel
-   contribution at raw score >= 12. The channels are independent: semantic top-K absence
-   means “not scored by that channel”, not negative evidence, and a semantic rejection
-   cannot delete a qualifying lexical result.
-6. Fusion uses only admitted channel contributions. Weighted fusion falls back to the
-   single admitted channel when the other one is absent/rejected; RRF likewise counts
-   only admitted ranks. Lexical-first preserves qualifying lexical order and uses semantic
-   results to fill recall gaps.
-7. Return admitted/ranked rows. `BundleComposer` later applies item/character budgets and
-   cross-section deduplication. Score thresholds are ranker policy, not packing policy.
+1. Filter to factual-eligible candidates. Relation-pair metadata is not a factual gate.
+2. Profile requests use the separate `rank_profile()` path and never require semantic
+   retrieval. An accidental profile call to `HybridRetriever` returns `not_applicable`.
+3. Rank the full factual corpus lexically. Rows at or above `lexical_min` are admitted in
+   existing lexical order.
+4. Unless a measured strong lexical short-circuit fires, embed the natural semantic query
+   and score **every factual candidate** in the small local corpus. There is no semantic
+   top-K candidate-generation cutoff.
+5. Convert cosine to calibrated relevance with the existing piecewise
+   `SemanticCalibration`. Semantic rows at or above `semantic_min` that were not already
+   admitted lexically are appended in semantic score order.
+6. Semantic rejection never deletes or reorders a qualifying lexical row. Weak rows in both
+   channels produce zero result.
+7. `BundleComposer` later applies item/character budgets and cross-section deduplication;
+   score thresholds are retrieval policy, not packing policy.
 
-For lexical score normalization, the provisional scale is 24 (clipped at 1). The original
-raw lexical order is preserved in lexical-only/profile and the lexical-first priority
-partition, including where normalization clips multiple scores. Stable ties use input
-order, never source priority. Runtime ownership/world_fact does not outrank static canon.
-Existing interpretation/unknown guards and provenance stay attached to selected rows.
-
-| Fusion | Experimental rule | Tradeoff |
-| --- | --- | --- |
-| `lexical_first` (default) | qualifying lexical partition in original order, then semantic-only recall | Smallest preservation policy; semantic evidence never vetoes a lexical admission |
-| `weighted` | weighted average only when **both** channels are admitted; otherwise use the admitted channel unchanged | Scale/weight sensitive; avoids treating missing/rejected semantic evidence as a penalty |
-| `rrf` | sum of `(k+1)/(k+rank)` over **admitted** channels, default k=60 | Rank-scale independent; top-K presence alone is not admission |
-
-RRF scores can approach 2; other scores are <=1. Budget thresholds are backend/fusion
-scale, not probabilities. The common 0.5 trial cutoff is not claimed to be optimal across
-methods. Lexical-first partition priority can produce a non-monotonic score sequence.
-No top1/top2 separation is imposed before measurements establish a benefit. The default
-is a conservative **implementation baseline, not an empirical winner**.
+This policy directly encodes the current requirement: **preserve lexical precision and use
+semantic search only for additional recall**. Static/runtime provenance is not a ranking
+tier, and stable input order resolves equal semantic scores.
 
 A missing backend/calibration, backend-key mismatch, HTTP failure, timeout or invalid
-vector uses lexical-only fallback with the same factual admission policy and nonzero
-lexical cutoff (profile intent preserves any positive field hit).
-Task cancellation propagates. Minimal content-free result diagnostics expose semantic
-status, successful cache hits/misses and elapsed milliseconds; no production telemetry or
-usage-log writes. Failed attempts do not report partial cache counts as successful work.
+vector uses thresholded lexical-only fallback. Task cancellation propagates. Minimal
+content-free diagnostics expose semantic status, cache hits/misses and elapsed
+milliseconds; no production telemetry or usage-log writes are introduced here.
+
+### Offline comparison only
+
+The calibration CLI still compares:
+
+- lexical-only
+- runtime lexical-first + semantic recall
+- weighted fusion
+- RRF
+
+Weighted/RRF helpers live only in `tooling/retrieval_calibration.py`. They exist to test
+whether future live measurements justify changing the runtime policy; they are not
+runtime-selectable strategies.
 
 ## Run calibration with a real key
 
@@ -217,10 +220,10 @@ Output is schema-version 2 JSON (stdout unless `--output`), with:
 - per case: separate lexical/semantic representations, semantic-query character count,
   query promptTokenCount and embedding latency, candidate miss-fill tokens/warm-up latency,
   HTTP request count, labeled cosine values, semantic top ids/cosines, timing/cache counts,
-  and each fusion's selected ids/scores, positive/hard-negative/unrelated hits,
-  unjudged selections and zero-result status;
+  and each offline comparison method's selected ids/scores, positive/hard-negative/unrelated
+  hits, unjudged selections and zero-result status;
 - split-specific recall@N, hard-negative rejection, labeled profile precision,
-  zero-result accuracy and unjudged counts for lexical-only and the three fusion methods.
+  zero-result accuracy and unjudged counts for lexical-only, the runtime policy, weighted and RRF.
 
 Reports contain **the supplied fixture's lexical and semantic query text** for inspection,
 plus ids/scores and usage, never credentials or candidate corpus text. This is CLI-only;
@@ -264,8 +267,8 @@ taxes and account-specific discounts and does not assume async Batch discounts.
 
 ## Next boundaries and review
 
-Review semantic admission vs lexical preservation, fixture labels/splits, candidate cache
-lifecycle and Gemini request format especially carefully. #312 is now present in the
+Review semantic admission vs lexical preservation, profile-path separation, fixture
+labels/splits, candidate cache lifecycle and Gemini request format especially carefully. #312 is now present in the
 integration base. Cross-component regressions cover resolved self-profile queries,
 complete relation pairs, unannotated factual rows and explicit contradictory annotations.
 
