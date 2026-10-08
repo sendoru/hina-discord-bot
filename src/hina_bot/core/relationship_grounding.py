@@ -1,13 +1,11 @@
 """Opt-in exact grounding, independent of lexical/semantic ranking and factual slots."""
 
-import json
 from collections.abc import Iterable
-from dataclasses import replace
 from importlib.resources import files
 
 from .knowledge_retrieval import KnowledgeCandidate, KnowledgeUsage, RankedKnowledgeCandidate
 from .lore import LoreIndex
-from .retrieval_v2 import KnowledgeBundle, RetrievalRequest, UsageBudget
+from .retrieval_v2 import RetrievalRequest
 
 # Consumption policy for the future v2 context assembler, not a character-specific ban.
 RELATION_CONTEXT_POLICY = (
@@ -60,38 +58,25 @@ class RelationshipGrounder:
         return cls([*supplemental.candidates(), *base.candidates()])
 
     def ground(
-        self, request: RetrievalRequest, *, budget: UsageBudget,
+        self, request: RetrievalRequest,
     ) -> tuple[RankedKnowledgeCandidate, ...]:
-        required = frozenset(request.required_entities)
-        if (not required or not required <= set(request.entities)
-                or budget.max_items <= 0 or budget.max_chars <= 0 or budget.min_score >= 1):
+        pair = frozenset(request.relation_pair or ())
+        if not pair:
             return ()
-        profiles = [row for entity in sorted(required)
-                    for row in self._by_entities.get(frozenset((entity,)), ())]
-        pairs = self._by_entities.get(required, ()) if len(required) > 1 else ()
-        # For a complete relationship pair, pair-specific evidence is the reason this
-        # lane exists and must not be displaced by singleton background under a small
-        # budget. Question-facet ordering within pair evidence remains #315.
-        ordered = [*pairs, *profiles] if len(required) > 1 else profiles
-        selected, used = [], 0
+        profiles = [
+            row
+            for entity in sorted(pair)
+            for row in self._by_entities.get(frozenset((entity,)), ())
+        ]
+        pairs = self._by_entities.get(pair, ())
+        # Exact pair evidence precedes singleton background. Packing is centralized in
+        # BundleComposer, so grounding returns every admitted row in stable priority order.
+        ordered = [*pairs, *profiles]
+        selected = []
         seen = set()
         for order, candidate in ordered:
             if candidate.candidate_id in seen:
                 continue
-            size = len(json.dumps(candidate.reference_item(), ensure_ascii=False))
-            if used + size > budget.max_chars:
-                continue
-            # 1 is binary exact eligibility, never confidence or a hybrid score.
             selected.append(RankedKnowledgeCandidate(1.0, order, candidate))
             seen.add(candidate.candidate_id)
-            used += size
-            if len(selected) >= budget.max_items:
-                break
         return tuple(selected)
-
-    def bundle(
-        self, request: RetrievalRequest, *, budget: UsageBudget,
-        base: KnowledgeBundle | None = None,
-    ) -> KnowledgeBundle:
-        """Replace only relations; factual/ambient/reaction selection remains independent."""
-        return replace(base or KnowledgeBundle(), relations=self.ground(request, budget=budget))

@@ -19,7 +19,7 @@ def test_request_reuses_existing_deterministic_intent_and_query(text, intent):
     assert request.intent == intent
     assert request.visible_text == text
     assert request.retrieval_text == information.lore_query
-    assert not request.entities and not request.required_entities
+    assert not request.entities and not request.relation_pair
 
 
 def test_followup_preserves_visible_turn_causal_anchor_and_resolved_ids_separately():
@@ -28,10 +28,10 @@ def test_followup_preserves_visible_turn_causal_anchor_and_resolved_ids_separate
         anchor="호시노랑 무슨 사이야?", anchor_source="explicit_reply",
     )
     entities = ("character.hina", "character.hoshino")
-    request = build_retrieval_request(routing, entities=entities, required_entities=entities)
+    request = build_retrieval_request(routing, entities=entities, relation_pair=entities)
     assert request.visible_text == "정말?"
     assert request.anchor_text == routing.anchor
     assert request.anchor_source == routing.anchor_source
     assert request.intent == RetrievalIntent.RELATIONSHIP_OR_EVENT
-    assert request.entities == entities and request.required_entities == entities
+    assert request.entities == entities and request.relation_pair == entities
     assert request.retrieval_text != request.visible_text

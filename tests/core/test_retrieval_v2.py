@@ -14,10 +14,12 @@ from hina_bot.core.knowledge_retrieval import (
 )
 from hina_bot.core.lore import LoreIndex, LoreValidationError, validate_record
 from hina_bot.core.retrieval_v2 import (
+    BundleComposer,
     KnowledgeBundle,
     RetrievalRequest,
     UsageBudget,
     lexical_bundle,
+    pack_ranked,
 )
 from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
@@ -73,22 +75,67 @@ def test_usage_budgets_do_not_compete_and_support_multiple_usages():
     assert set(bundle.context_sections()) == {"facts", "relations", "character_insights", "reactions"}
 
 
-def test_budget_skip_threshold_disabled_and_zero_result():
+def test_budget_is_packing_only_and_zero_result_stays_empty():
     short = candidate("short")
     long = candidate("long", content="가" * 1000)
     size = len(json.dumps(short.reference_item(), ensure_ascii=False))
     request = RetrievalRequest("기준", "기준")
     bundle = lexical_bundle(request, [long, short], budgets={Usage.FACTUAL: UsageBudget(2, size)})
     assert [row.candidate.candidate_id for row in bundle.facts] == ["short"]
-    score = bundle.facts[0].score
-    assert not lexical_bundle(
-        request, [short], budgets={Usage.FACTUAL: UsageBudget(2, size, min_score=score)},
-    ).facts
     assert lexical_bundle(request, [short], budgets={}) == KnowledgeBundle()
     assert lexical_bundle(
         RetrievalRequest("zzzzz", "zzzzz"), [short],
         budgets={usage: UsageBudget(2, 1000) for usage in Usage},
     ) == KnowledgeBundle()
+    with pytest.raises(ValueError):
+        UsageBudget(-1, 100)
+    with pytest.raises(ValueError):
+        UsageBudget(1, -1)
+
+
+def test_common_packer_deduplicates_and_skips_oversized_rows_without_score_policy():
+    repeated = RankedKnowledgeCandidate(0.01, 0, candidate("same"))
+    duplicate = RankedKnowledgeCandidate(99, 1, candidate("same"))
+    big = RankedKnowledgeCandidate(50, 2, candidate("big", content="가" * 1000))
+    size = len(json.dumps(repeated.candidate.reference_item(), ensure_ascii=False))
+    packed = pack_ranked([big, repeated, duplicate], UsageBudget(2, size))
+    assert [row.candidate.candidate_id for row in packed] == ["same"]
+    assert packed[0].score == 0.01
+
+
+def test_bundle_composer_owns_cross_section_dedup_refill_and_total_budget():
+    shared = candidate("shared", usages=(Usage.FACTUAL, Usage.RELATION))
+    relation_next = candidate("relation-next", usages=(Usage.RELATION,))
+    fact_next = candidate("fact-next")
+    relation_rows = (
+        RankedKnowledgeCandidate(1, 0, shared),
+        RankedKnowledgeCandidate(1, 1, relation_next),
+    )
+    factual_rows = (
+        RankedKnowledgeCandidate(1, 0, shared),
+        RankedKnowledgeCandidate(1, 1, fact_next),
+    )
+    budget = UsageBudget(1, 1000)
+    bundle = BundleComposer({
+        Usage.RELATION: budget,
+        Usage.FACTUAL: budget,
+    }).compose({
+        Usage.RELATION: relation_rows,
+        Usage.FACTUAL: factual_rows,
+    })
+    assert [row.candidate.candidate_id for row in bundle.relations] == ["shared"]
+    assert [row.candidate.candidate_id for row in bundle.facts] == ["fact-next"]
+
+    shared_size = len(json.dumps(shared.reference_item(), ensure_ascii=False))
+    capped = BundleComposer({
+        Usage.RELATION: budget,
+        Usage.FACTUAL: budget,
+    }, max_total_chars=shared_size).compose({
+        Usage.RELATION: relation_rows,
+        Usage.FACTUAL: factual_rows,
+    })
+    assert [row.candidate.candidate_id for row in capped.relations] == ["shared"]
+    assert not capped.facts
 
 
 def test_provenance_is_not_a_ranking_tier_and_unknown_is_not_promoted():

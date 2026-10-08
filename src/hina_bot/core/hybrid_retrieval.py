@@ -1,9 +1,8 @@
-"""Experimental factual selection for #313. Never called by production answer code."""
+"""Experimental factual selection for #313/#321. Never called by production answer code."""
 
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -16,7 +15,7 @@ from .knowledge_retrieval import (
     RankedKnowledgeCandidate,
     rank_lexical_candidates,
 )
-from .retrieval_v2 import KnowledgeBundle, RetrievalIntent, RetrievalRequest, UsageBudget
+from .retrieval_v2 import RetrievalIntent, RetrievalRequest
 from .semantic_retrieval import SemanticCalibration, SemanticHit, SemanticIndex, semantic_query
 
 
@@ -28,11 +27,7 @@ class Fusion(StrEnum):
 
 @dataclass(frozen=True)
 class HybridConfig:
-    """All numeric defaults are provisional evaluation settings, not calibrated policy.
-
-    Missing calibration disables semantic calls. No Settings/env/production enable switch
-    is introduced here. A caller must explicitly construct the experimental v2 retriever.
-    """
+    """Experimental ranking policy. #321 will simplify the runtime strategy next."""
 
     calibration: SemanticCalibration | None = None
     fusion: Fusion = Fusion.LEXICAL_FIRST
@@ -72,41 +67,27 @@ class HybridConfig:
 
 @dataclass(frozen=True)
 class HybridResult:
-    bundle: KnowledgeBundle
+    """Already-admitted factual rows plus content-free semantic diagnostics."""
+
+    rows: tuple[RankedKnowledgeCandidate, ...]
     semantic_status: str
     cache_hits: int = 0
     cache_misses: int = 0
     elapsed_ms: float = 0.0
 
 
-def _entity_compatible(
-    required_entities: Sequence[str], candidate_entities: Sequence[str],
-) -> bool:
-    """Keep unknown/partial metadata while rejecting explicit contradictory annotations.
-
-    #312 reserves required_entities for a complete relation evidence pair. Most existing
-    factual rows and all current runtime rows are still unannotated. Missing metadata is
-    therefore unknown, not a mismatch. A reviewed partial subset can remain useful
-    background; a same-size/different or wholly unrelated annotation is contradictory.
-    """
-    required = set(required_entities)
-    annotated = set(candidate_entities)
-    if not required or not annotated:
-        return True
-    if required.issubset(annotated):
-        return True
-    return annotated < required
-
-
 def eligible_candidates(
-    request: RetrievalRequest, candidates: Sequence[KnowledgeCandidate],
+    candidates: Sequence[KnowledgeCandidate],
 ) -> list[KnowledgeCandidate]:
+    """Filter only by factual retrieval eligibility and stable identity.
+
+    Relation-pair correctness belongs to the exact relation lane; factual retrieval must
+    not interpret RetrievalRequest.relation_pair as a generic candidate gate.
+    """
     seen = set()
     result = []
     for row in candidates:
         if KnowledgeUsage.FACTUAL not in row.retrieval_usages:
-            continue
-        if not _entity_compatible(request.required_entities, row.entities):
             continue
         identity = (row.source, row.candidate_id)
         if identity in seen:
@@ -125,9 +106,8 @@ def rank_hybrid(
 ) -> list[RankedKnowledgeCandidate]:
     """Fuse independent lexical and semantic evidence without cross-channel vetoes.
 
-    A channel can nominate/admit a candidate, but absence from another channel's top-K is
-    not negative evidence. In particular, a calibrated semantic miss/rejection never
-    deletes a qualifying lexical result. Source is never a ranking tier.
+    This keeps the #313 experimental fusion strategies intact for one more cleanup step.
+    Packing is no longer part of this function or HybridRetriever.
     """
     lexical = rank_lexical_candidates(request.retrieval_text, candidates)
     lex_scores = {row.order: float(row.score) for row in lexical}
@@ -155,8 +135,7 @@ def rank_hybrid(
     for order in union:
         lexical_score = lex_scores.get(order, 0.0)
         raw_lex = min(lexical_score / config.lexical_scale, 1.0)
-        # A deterministic profile query already narrows retrieval_text to reviewed
-        # profile fields, so preserve legacy positive lexical hits in that exact lane.
+        # Profile separation is handled in a later #321 step; preserve current behavior.
         lex_ok = lexical_score > 0 if profile else lexical_score >= config.lexical_min
         lex = max(raw_lex, config.min_score) if lex_ok else 0.0
 
@@ -182,7 +161,6 @@ def rank_hybrid(
             if sem_ok and order in sem_ranks:
                 score += (config.rrf_k + 1) / (config.rrf_k + sem_ranks[order])
         else:
-            # Preserve qualifying lexical order; semantic fills genuine recall gaps.
             score = lex if lex_ok else sem
 
         if score < config.min_score:
@@ -208,25 +186,6 @@ def rank_hybrid(
     return ranked
 
 
-def pack_facts(
-    ranked: Sequence[RankedKnowledgeCandidate], budget: UsageBudget,
-) -> KnowledgeBundle:
-    rows, used = [], 0
-    if budget.max_items <= 0 or budget.max_chars <= 0:
-        return KnowledgeBundle()
-    for row in ranked:
-        if row.score <= budget.min_score:
-            continue
-        size = len(json.dumps(row.candidate.reference_item(), ensure_ascii=False))
-        if used + size > budget.max_chars:
-            continue
-        rows.append(row)
-        used += size
-        if len(rows) >= budget.max_items:
-            break
-    return KnowledgeBundle(facts=tuple(rows))
-
-
 class HybridRetriever:
     def __init__(
         self, index: SemanticIndex | None = None, *, config: HybridConfig | None = None,
@@ -238,15 +197,13 @@ class HybridRetriever:
         self,
         request: RetrievalRequest,
         candidates: Sequence[KnowledgeCandidate],
-        *,
-        budget: UsageBudget,
     ) -> HybridResult:
         started = perf_counter()
         config = self.config
-        rows = eligible_candidates(request, candidates)
+        rows = eligible_candidates(candidates)
         query = semantic_query(request, intent_hint=config.intent_hint)
-        if not query or not rows or budget.max_items <= 0 or budget.max_chars <= 0:
-            return HybridResult(KnowledgeBundle(), "not_needed")
+        if not query or not rows:
+            return HybridResult((), "not_needed")
 
         lexical = rank_lexical_candidates(request.retrieval_text, rows)
         strong = (
@@ -258,10 +215,8 @@ class HybridRetriever:
         semantic_hits = None
         hits = misses = 0
 
-        # Profile is an exact deterministic lane. For every other intent, including a
-        # caller-supplied CONVERSATION request, the retriever does not second-guess whether
-        # semantic factual search was warranted. Invocation policy belongs to the caller
-        # / future #316 rollout, not the legacy regex classifier.
+        # Production invocation policy belongs to #316. Profile separation is the next
+        # #321 cleanup step, so current lexical short-circuit behavior is preserved here.
         if request.intent == RetrievalIntent.PROFILE or strong:
             status = "lexical_short_circuit"
         elif self.index is not None and config.calibration is not None:
@@ -277,12 +232,11 @@ class HybridRetriever:
                     hits, misses = result.cache_hits, result.cache_misses
                     status = "available"
                 except Exception:  # noqa: BLE001 - optional backend must never fail an answer
-                    # No exception text/request content is logged. Cancellation still propagates.
                     status = "failed"
 
         ranked = rank_hybrid(request, rows, config, semantic_hits=semantic_hits)
         return HybridResult(
-            pack_facts(ranked, budget),
+            tuple(ranked),
             status,
             hits,
             misses,

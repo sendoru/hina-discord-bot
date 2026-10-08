@@ -40,7 +40,7 @@ The original `build_retrieval_request()` retains its behavior and caller-supplie
 - `entities` records canonical characters resolved for the current retrieval context.
   The RP subject is added only when it is actually needed to complete an implicit
   relationship pair or identify a self-profile target; it is not injected into every turn.
-- `required_entities` is narrower than `entities`: this milestone uses it only for a
+- `relation_pair` is narrower than `entities`: this milestone uses it only for a
   complete, unambiguous relationship pair. Single factual/profile targets are not relation
   hard constraints.
 - A relation-grounding question with one reviewed counterpart may use the configured RP
@@ -51,7 +51,7 @@ The original `build_retrieval_request()` retains its behavior and caller-supplie
   explicitly resolved characters constrain that exact pair.
 - If a two-name relation phrase is only partially resolvable (for example, registered
   Hoshino plus unregistered Ako), the missing slot is **not** substituted with Hina.
-  The known entity may remain in `entities`, but `required_entities` stays empty.
+  The known entity may remain in `entities`, but `relation_pair` stays empty.
 - An authorized anchor with provenance is inherited only for the existing deterministic
   follow-up classification and a narrow set of name-free elliptical questions
   (such as “그럼 무슨 사이야?”) when no character is explicit in the current message.
@@ -76,35 +76,33 @@ Runtime rows currently lack reviewed canonical metadata, so admin ownership or l
 subjects do not promote them to relation evidence. This restriction is provenance-based;
 there is no static/runtime ranking tier.
 
-Selection requires a nonempty `required_entities` subset of `entities`; in the
-resolved builder this means a complete relationship pair. Single-entity profile/background
-rows may support that pair, while multi-entity rows must match the **complete set**, not
-merely overlap it. An unrelated Hina/third-character relation cannot satisfy Hina/Hoshino.
-Profiles alone do not establish a direct relationship. For pair constraints, pair-specific
-evidence is packed **before** singleton profiles so a small relation budget cannot spend all
-slots on background identity data. Corpus order is stable within each group; predicate/facet
-ordering within pair evidence remains #315. Duplicate ids are selected once.
-`UsageBudget` independently bounds relation item count and serialized reference characters;
-oversized rows are skipped. A score of 1 means binary exact eligibility, not certainty,
-semantic similarity, or a score to fuse with #313.
+`relation_pair` is consumed only by the exact relationship grounder. Pair-specific evidence
+is ordered before singleton profile/background rows; multi-entity rows must match the exact
+pair and unrelated pairs are not admitted. The grounder returns all admitted rows in stable
+priority order and does **not** pack them. `BundleComposer` applies the relation
+`UsageBudget` (`max_items`, `max_chars`) together with other sections. A score of 1 means
+binary exact eligibility, not certainty, semantic similarity, or a cross-lane fusion score.
 
 ```python
 from hina_bot.ai.retrieval_request import build_resolved_retrieval_request
 from hina_bot.core.relationship_grounding import RelationshipGrounder
-from hina_bot.core.retrieval_v2 import UsageBudget
+from hina_bot.core.knowledge_retrieval import KnowledgeUsage
+from hina_bot.core.retrieval_v2 import BundleComposer, UsageBudget
 
 request = build_resolved_retrieval_request(routing_plan)
-# Construct/cache the immutable candidate index outside the per-turn hot path.
 grounder = RelationshipGrounder.load()
-bundle = grounder.bundle(request, budget=UsageBudget(6, 3200), base=factual_bundle)
+relation_rows = grounder.ground(request)
+bundle = BundleComposer({
+    KnowledgeUsage.RELATION: UsageBudget(6, 3200),
+}).compose({
+    KnowledgeUsage.RELATION: relation_rows,
+})
 sections = bundle.context_sections()
 ```
 
-`base` is optional. The composer **replaces** its relations with exact results while
-preserving facts, insights, and reactions. It does not call or alter `lexical_bundle`.
-A caller enabling the exact path must use this composer/`ground()` instead of selecting
-relations with a lexical budget. Relation rows are supplied from the full corpus, never
-from factual top-N results. `RELATION_CONTEXT_POLICY` is the generic consumption policy
+`RelationshipGrounder` only retrieves/orders exact relation rows. Final relation packing,
+deduplication against facts/insights/reactions, and optional total prompt limits belong to
+`BundleComposer`. Relation rows are supplied from the full corpus, never from factual top-N results. `RELATION_CONTEXT_POLICY` is the generic consumption policy
 for a future v2 assembler: keep school/year distinct from age/rank/respect, do not infer
 cross-school seniority or addressing, respect directional/timeline evidence, and use a
 name when no confirmed addressing is available. It is not injected into production yet.
@@ -147,7 +145,7 @@ and timelines, and compare legacy results with the additive annotations removed.
 ## Follow-ups and merge boundaries
 
 - **#313**: consumes the resolved request independently. No embedding backend, fusion,
-  RRF, calibration, semantic thresholds, or ranking changes here. `required_entities`
+  RRF, calibration, semantic thresholds, or ranking changes here. `relation_pair`
   represents a complete relation pair, not a blanket factual prefilter; candidate rows with
   no entity annotation are therefore “unknown metadata”, not automatically contradictory
   evidence. Grounder results should be composed after factual selection, retaining their
