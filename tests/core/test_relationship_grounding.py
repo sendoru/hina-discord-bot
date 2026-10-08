@@ -7,7 +7,7 @@ from hina_bot.ai.retrieval_request import build_resolved_retrieval_request
 from hina_bot.ai.routing_plan import RoutingPlan
 from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate, KnowledgeUsage
-from hina_bot.core.lore import LoreIndex
+from hina_bot.core.lore import LoreIndex, LoreValidationError, validate_record
 from hina_bot.core.relationship_grounding import RelationshipGrounder
 from hina_bot.core.retrieval_v2 import (
     BundleComposer,
@@ -130,13 +130,41 @@ def test_age_rank_respect_and_cross_school_years_never_generate_relationship_or_
 
 
 @pytest.mark.parametrize("override", [
-    {"entities": ()}, {"usages": (KnowledgeUsage.FACTUAL,)}, {"lane": "community_meme"},
-    {"confidence": None}, {"confidence": "candidate"}, {"kr_release": "pending"},
-    {"source_metadata": ()}, {"awareness": "audience_only"}, {"fact_type": "fandom"},
-    {"fact_type": "adaptation"}, {"fact_type": None}, {"fact_type": "inference"},
+    {"entities": ()},
+    {"usages": (KnowledgeUsage.FACTUAL,)},
+    {"lane": "community_meme"},
 ])
-def test_unreviewed_unrelated_or_ineligible_rows_are_not_grounding(override):
+def test_grounder_only_requires_relation_annotation_canon_lane_and_entities(override):
     assert not RelationshipGrounder([row(**override)]).ground(request())
+
+
+@pytest.mark.parametrize("override", [
+    {"confidence": None},
+    {"confidence": "candidate"},
+    {"kr_release": "pending"},
+    {"source_metadata": ()},
+    {"awareness": "audience_only"},
+    {"fact_type": "fandom"},
+    {"fact_type": "adaptation"},
+    {"fact_type": None},
+    {"fact_type": "inference"},
+])
+def test_question_specific_quality_metadata_does_not_change_exact_pair_retrieval(override):
+    selected = RelationshipGrounder([row(**override)]).ground(request())
+    assert [item.candidate.candidate_id for item in selected] == ["pair"]
+
+
+@pytest.mark.parametrize("override", [
+    {"status": "candidate"},
+    {"confidence": "candidate"},
+    {"kr_release": "pending"},
+])
+def test_lore_load_validation_owns_editorial_acceptance_before_grounding(override):
+    base = LoreIndex.load(str(files("hina_bot").joinpath(
+        "data/relationship_grounding.jsonl",
+    ))).records[0]
+    with pytest.raises(LoreValidationError):
+        validate_record(base | override, accepted=True)
 
 
 def test_reviewed_unknown_guard_is_preserved_but_absence_does_not_generate_one():
