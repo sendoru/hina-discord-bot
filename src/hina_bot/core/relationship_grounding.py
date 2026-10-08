@@ -66,13 +66,16 @@ class RelationshipGrounder:
         if (not required or not required <= set(request.entities)
                 or budget.max_items <= 0 or budget.max_chars <= 0 or budget.min_score >= 1):
             return ()
-        # Profiles precede pair evidence so minimal budgets retain identity grounding.
         profiles = [row for entity in sorted(required)
                     for row in self._by_entities.get(frozenset((entity,)), ())]
         pairs = self._by_entities.get(required, ()) if len(required) > 1 else ()
+        # For a complete relationship pair, pair-specific evidence is the reason this
+        # lane exists and must not be displaced by singleton background under a small
+        # budget. Question-facet ordering within pair evidence remains #315.
+        ordered = [*pairs, *profiles] if len(required) > 1 else profiles
         selected, used = [], 0
         seen = set()
-        for order, candidate in [*profiles, *pairs]:
+        for order, candidate in ordered:
             if candidate.candidate_id in seen:
                 continue
             size = len(json.dumps(candidate.reference_item(), ensure_ascii=False))
