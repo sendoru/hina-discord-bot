@@ -21,12 +21,11 @@ from hina_bot.core.hybrid_retrieval import (
     Fusion,
     HybridConfig,
     eligible_candidates,
-    pack_facts,
     rank_hybrid,
 )
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate
 from hina_bot.core.lore import LoreIndex, read_jsonl
-from hina_bot.core.retrieval_v2 import RetrievalIntent, UsageBudget
+from hina_bot.core.retrieval_v2 import RetrievalIntent, UsageBudget, pack_ranked
 from hina_bot.core.semantic_retrieval import (
     EmbeddingBackend,
     EmbeddingUsage,
@@ -118,7 +117,11 @@ async def evaluate(
                 RoutingPlan(visible, routing_text, anchor=case.get("anchor_text", "")),
                 call_prefixes=("히나야",),
                 entities=tuple(case.get("entities", ())),
-                required_entities=tuple(case.get("required_entities", ())),
+                relation_pair=(
+                    tuple(case["relation_pair"])
+                    if len(case.get("relation_pair", ())) == 2
+                    else None
+                ),
             )
             request = replace(request, intent=RetrievalIntent(case["intent"]),
                               retrieval_text=case.get("lexical_query", request.retrieval_text))
@@ -126,7 +129,7 @@ async def evaluate(
             if (not hint and "expected_semantic_query" in case
                     and meaning != case["expected_semantic_query"]):
                 raise ValueError("fixture semantic representation mismatch")
-            rows = eligible_candidates(request, candidates)
+            rows = eligible_candidates(candidates)
             started = perf_counter()
             # Offline diagnostic deliberately measures all fixture intents, even those the
             # opt-in retriever short-circuits. Exactly one query call per case/variant.
@@ -177,7 +180,7 @@ async def evaluate(
                     request, rows, config,
                     semantic_hits=result.hits if use_semantic else None,
                 )
-                chosen = pack_facts(ranked, UsageBudget(top_n, 3200)).facts
+                chosen = pack_ranked(ranked, UsageBudget(top_n, 3200))
                 selected = [row.candidate.candidate_id for row in chosen]
                 labeled_ids = set().union(*(case[label] for label in LABELS))
                 methods[method] = {
