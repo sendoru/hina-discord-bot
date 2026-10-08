@@ -173,9 +173,10 @@ async def evaluate(
                                       else Fusion(method))
                 use_semantic = (method != "lexical_only"
                                 and request.intent != RetrievalIntent.PROFILE)
-                ranked = ([] if request.intent == RetrievalIntent.CONVERSATION else rank_hybrid(
-                    request, rows, config, semantic_hits=result.hits if use_semantic else None,
-                ))
+                ranked = rank_hybrid(
+                    request, rows, config,
+                    semantic_hits=result.hits if use_semantic else None,
+                )
                 chosen = pack_facts(ranked, UsageBudget(top_n, 3200)).facts
                 selected = [row.candidate.candidate_id for row in chosen]
                 labeled_ids = set().union(*(case[label] for label in LABELS))
