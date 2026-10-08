@@ -82,10 +82,20 @@ def test_pair_must_match_exactly_and_profile_is_only_background():
         row("profile", entities=(HINA,)), row("correct"),
     ]
     result = RelationshipGrounder(rows).ground(request(), budget=BUDGET)
-    assert [item.candidate.candidate_id for item in result] == ["profile", "correct"]
+    assert [item.candidate.candidate_id for item in result] == ["correct", "profile"]
     assert [item.candidate.candidate_id for item in RelationshipGrounder(rows).ground(
         request((HINA,)), budget=BUDGET,
     )] == ["profile"]
+
+
+def test_pair_evidence_is_reserved_before_profiles_under_small_budget():
+    rows = [
+        row("hina_profile", entities=(HINA,)),
+        row("hoshino_profile", entities=(HOSHINO,)),
+        row("pair_evidence"),
+    ]
+    selected = RelationshipGrounder(rows).ground(request(), budget=UsageBudget(1, 3200))
+    assert [item.candidate.candidate_id for item in selected] == ["pair_evidence"]
 
 
 def test_age_rank_respect_and_cross_school_years_never_generate_relationship_or_addressing():
