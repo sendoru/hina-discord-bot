@@ -6,7 +6,12 @@ import pytest
 
 from hina_bot.ai.retrieval_request import build_resolved_retrieval_request
 from hina_bot.ai.routing_plan import RoutingPlan
-from hina_bot.core.hybrid_retrieval import Fusion, HybridConfig, HybridRetriever
+from hina_bot.core.hybrid_retrieval import (
+    Fusion,
+    HybridConfig,
+    HybridRetriever,
+    rank_hybrid,
+)
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate, rank_lexical_candidates
 from hina_bot.core.lore import LoreIndex
 from hina_bot.core.retrieval_v2 import RetrievalIntent, RetrievalRequest, UsageBudget
@@ -14,6 +19,7 @@ from hina_bot.core.semantic_retrieval import (
     EmbeddingResult,
     EmbeddingUsage,
     SemanticCalibration,
+    SemanticHit,
     SemanticIndex,
     normalize,
     semantic_query,
@@ -95,14 +101,8 @@ async def test_semantic_top_k_absence_or_rejection_is_not_negative_evidence(fusi
     ]
     # The semantic top-K contains only the positive row. The strong lexical row has no
     # semantic score at all, which is unknown rather than evidence against it.
-    ranked = __import__(
-        "hina_bot.core.hybrid_retrieval", fromlist=["rank_hybrid"]
-    ).rank_hybrid(
-        request(), rows, config, semantic_hits=(
-            __import__(
-                "hina_bot.core.semantic_retrieval", fromlist=["SemanticHit"]
-            ).SemanticHit(1, 1.0),
-        ),
+    ranked = rank_hybrid(
+        request(), rows, config, semantic_hits=(SemanticHit(1, 1.0),),
     )
     assert {row.candidate.candidate_id for row in ranked} == {"negative", "positive"}
 
@@ -176,8 +176,8 @@ async def test_required_entities_reject_explicit_conflicts_but_keep_unknown_or_p
     result = await engine.retrieve(req, rows, budget=UsageBudget(5, 3200))
     assert "conflict" not in ids(result)
     assert {"unannotated", "partial", "positive"} <= set(ids(result))
-    assert "positive" not in backend.documents[:0]  # no content assertion on provider order
-    assert "positive" in backend.documents or failure
+    if not failure:
+        assert set(backend.documents) == {"negative", "unrelated", "positive"}
 
 
 async def test_conversation_intent_does_not_block_semantic_retrieval_once_invoked():
