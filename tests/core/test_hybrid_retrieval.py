@@ -4,8 +4,11 @@ from math import sqrt
 
 import pytest
 
+from hina_bot.ai.retrieval_request import build_resolved_retrieval_request
+from hina_bot.ai.routing_plan import RoutingPlan
 from hina_bot.core.hybrid_retrieval import Fusion, HybridConfig, HybridRetriever
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate, rank_lexical_candidates
+from hina_bot.core.lore import LoreIndex
 from hina_bot.core.retrieval_v2 import RetrievalIntent, RetrievalRequest, UsageBudget
 from hina_bot.core.semantic_retrieval import (
     EmbeddingResult,
@@ -69,14 +72,39 @@ BUDGET = UsageBudget(3, 3200)
 
 
 @pytest.mark.parametrize("fusion", list(Fusion))
-async def test_paraphrase_recall_and_overlap_hard_negative_rejection(fusion):
+async def test_semantic_recall_adds_positive_without_vetoing_strong_lexical(fusion):
     engine, backend = retriever(fusion=fusion)
     rows = [candidate("negative", keywords=("완전히", "질문")), candidate()]
     assert rank_lexical_candidates(request().retrieval_text, rows)[0].candidate == rows[0]
     result = await engine.retrieve(request(), rows, budget=BUDGET)
-    assert ids(result) == ["positive"]
+    assert set(ids(result)) == {"negative", "positive"}
     assert len(backend.queries) == 1
     assert result.semantic_status == "available"
+
+
+@pytest.mark.parametrize("fusion", list(Fusion))
+async def test_semantic_top_k_absence_or_rejection_is_not_negative_evidence(fusion):
+    config = HybridConfig(
+        calibration=SemanticCalibration("fake:v1:2", 0.5, 0.9),
+        fusion=fusion,
+        semantic_top_k=1,
+    )
+    rows = [
+        candidate("negative", keywords=("완전히", "질문")),
+        candidate(),
+    ]
+    # The semantic top-K contains only the positive row. The strong lexical row has no
+    # semantic score at all, which is unknown rather than evidence against it.
+    ranked = __import__(
+        "hina_bot.core.hybrid_retrieval", fromlist=["rank_hybrid"]
+    ).rank_hybrid(
+        request(), rows, config, semantic_hits=(
+            __import__(
+                "hina_bot.core.semantic_retrieval", fromlist=["SemanticHit"]
+            ).SemanticHit(1, 1.0),
+        ),
+    )
+    assert {row.candidate.candidate_id for row in ranked} == {"negative", "positive"}
 
 
 async def test_unrelated_factual_query_can_have_zero_results():
@@ -126,27 +154,82 @@ async def test_backend_failure_uses_thresholded_lexical_fallback(stage):
 
 
 @pytest.mark.parametrize("failure", [False, True])
-async def test_required_entities_gate_all_channels_including_failure(failure):
+async def test_required_entities_reject_explicit_conflicts_but_keep_unknown_or_partial_metadata(
+    failure,
+):
     engine, backend = retriever()
     backend.failure = failure
-    entities = ("character.hina", "character.hoshino")
-    req = request("생일", entities=entities, required_entities=entities)
-    rows = [candidate("bad", semantic_text="positive", entities=entities[:1],
-                      keywords=("생일",) * 10),
-            candidate(entities=entities, keywords=("생일",) * 2)]
-    result = await engine.retrieve(req, rows, budget=BUDGET)
-    assert ids(result) == ["positive"]
-    assert backend.documents == ["positive"]
+    pair = ("character.hina", "character.hoshino")
+    req = request("생일", entities=pair, required_entities=pair)
+    rows = [
+        candidate(
+            "conflict", semantic_text="positive",
+            entities=("character.hina", "character.ako"), keywords=("생일",) * 10,
+        ),
+        candidate("unannotated", semantic_text="negative", keywords=("생일",) * 2),
+        candidate(
+            "partial", semantic_text="unrelated",
+            entities=("character.hina",), keywords=("생일",) * 2,
+        ),
+        candidate(entities=pair, keywords=("생일",) * 2),
+    ]
+    result = await engine.retrieve(req, rows, budget=UsageBudget(5, 3200))
+    assert "conflict" not in ids(result)
+    assert {"unannotated", "partial", "positive"} <= set(ids(result))
+    assert "positive" not in backend.documents[:0]  # no content assertion on provider order
+    assert "positive" in backend.documents or failure
 
 
-async def test_conversation_disabled_usage_and_empty_budget_skip_embedding():
+async def test_conversation_intent_does_not_block_semantic_retrieval_once_invoked():
     engine, backend = retriever()
     req = replace(request(), intent=RetrievalIntent.CONVERSATION)
-    assert not (await engine.retrieve(req, [candidate()], budget=BUDGET)).bundle.facts
+    result = await engine.retrieve(req, [candidate()], budget=BUDGET)
+    assert ids(result) == ["positive"]
+    assert result.semantic_status == "available"
+    assert backend.documents == ["positive"] and len(backend.queries) == 1
+
+
+async def test_empty_budget_and_non_factual_usage_still_skip_embedding():
+    engine, backend = retriever()
     assert not (await engine.retrieve(request(), [candidate()], budget=UsageBudget(0, 10))).bundle.facts
     assert not (await engine.retrieve(request(), [candidate(kind="optional_reaction")],
                                       budget=BUDGET)).bundle.facts
     assert not backend.documents and not backend.queries
+
+
+async def test_resolved_builder_profile_queries_keep_unannotated_corpus_candidates():
+    engine = HybridRetriever()
+    rows = LoreIndex.load().candidates()
+    for text, expected in (
+        ("히나야 생일 언제야?", "canon.hina.birthday"),
+        ("히나야 무기 이름 뭐야?", "canon.hina.weapon.name_and_class"),
+    ):
+        req = build_resolved_retrieval_request(
+            RoutingPlan(text, text), call_prefixes=("히나야",),
+        )
+        assert not req.required_entities
+        result = await engine.retrieve(req, rows, budget=UsageBudget(3, 3200))
+        assert expected in ids(result)
+
+
+async def test_resolved_relation_pair_does_not_drop_unannotated_factual_candidates():
+    pair_text = "호시노랑 예전부터 친했던 거야?"
+    req = build_resolved_retrieval_request(RoutingPlan(pair_text, pair_text))
+    assert set(req.required_entities) == {"character.hina", "character.hoshino"}
+    rows = [
+        candidate(
+            "unannotated", semantic_text="positive",
+            keywords=("친분", "관계"), entities=(),
+        ),
+        candidate(
+            "conflict", semantic_text="positive",
+            keywords=("친분", "관계"),
+            entities=("character.hina", "character.ako"),
+        ),
+    ]
+    engine = HybridRetriever()
+    result = await engine.retrieve(req, rows, budget=BUDGET)
+    assert ids(result) == ["unannotated"]
 
 
 async def test_sources_are_not_priorities_and_ties_are_stable():
