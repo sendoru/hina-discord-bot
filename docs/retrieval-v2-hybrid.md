@@ -17,8 +17,8 @@ dot product are sufficient. No ANN/vector DB, NumPy dependency, or persistent mi
 - `core/semantic_retrieval.py`: `EmbeddingBackend` protocol, normalization, process-local
   candidate cache, local cosine search and explicit piecewise calibration.
 - `ai/embedding_backend.py`: Gemini REST adapter, isolated from answer-provider adapters.
-- `core/hybrid_retrieval.py`: supplied entity constraint, candidate union, experimental
-  fusion, score/character budgets and lexical fallback; returns only `bundle.facts`.
+- `core/hybrid_retrieval.py`: factual admission/ranking, experimental fusion and lexical
+  fallback; returns admitted ranked rows only. Packing/composition lives in `retrieval_v2`.
 - `tooling/retrieval_calibration.py`: live measurements and comparison, no rollout writes.
 
 `EmbeddingBackend` exposes `cache_key`, `dimensions`, `embed_query(text)` and
@@ -74,25 +74,11 @@ not pseudo-natural-language text. No LLM rewrite. Intent hints are disabled by d
 the CLI can measure a separate intent-prefix variant. This conversational representation
 needs new calibration; results from the former lexical-expanded query are not reusable.
 
-Only factual-eligible candidates are considered. #312 now reserves
-`required_entities` for a **complete relation evidence pair**, so factual retrieval does
-not treat it as a blanket requirement that every candidate carry the full pair metadata.
-The existing corpus is only partially annotated and current runtime knowledge has no
-canonical entities.
-
-Entity compatibility therefore has three states during migration:
-
-- no candidate entity metadata: unknown, keep it eligible;
-- reviewed metadata that is a proper subset of the required pair: partial/background,
-  keep it eligible;
-- reviewed metadata that explicitly names a contradictory entity set: reject it.
-
-A full/superset match is also eligible. Missing metadata can support retrieval recall but
-must not later be mistaken for entity-grounded answer sufficiency; that decision belongs
-to #315. `entities` can nominate exact annotated candidates into the union, but membership
-alone never proves relevance. No resolver, alias DB, relationship DB, entity-pair
-inference or relationship evidence sufficiency is introduced here; #312 supplies the
-resolver and exact relation lane.
+Only factual-eligible candidates are considered. #321 makes the complete
+`relation_pair` an exact relationship-lane concern. Factual retrieval does not use the
+pair as a candidate gate; canonical `entities` may still nominate exact annotated rows
+inside the existing experimental ranker. Whether a retrieved fact is sufficient for the
+question remains #315.
 
 ## Cache and latency
 
@@ -144,9 +130,8 @@ Selection:
    single admitted channel when the other one is absent/rejected; RRF likewise counts
    only admitted ranks. Lexical-first preserves qualifying lexical order and uses semantic
    results to fill recall gaps.
-7. Apply the resulting score, then `UsageBudget`'s strict score threshold, serialized
-   reference char limit and item limit. Oversized rows are skipped. Zero is normal; slots
-   are not filled with arbitrary `score > 0` candidates.
+7. Return admitted/ranked rows. `BundleComposer` later applies item/character budgets and
+   cross-section deduplication. Score thresholds are ranker policy, not packing policy.
 
 For lexical score normalization, the provisional scale is 24 (clipped at 1). The original
 raw lexical order is preserved in lexical-only/profile and the lexical-first priority
@@ -167,8 +152,8 @@ No top1/top2 separation is imposed before measurements establish a benefit. The 
 is a conservative **implementation baseline, not an empirical winner**.
 
 A missing backend/calibration, backend-key mismatch, HTTP failure, timeout or invalid
-vector uses lexical-only fallback with the same migration-safe entity compatibility and
-nonzero lexical cutoff (profile intent preserves any positive field hit).
+vector uses lexical-only fallback with the same factual admission policy and nonzero
+lexical cutoff (profile intent preserves any positive field hit).
 Task cancellation propagates. Minimal content-free result diagnostics expose semantic
 status, successful cache hits/misses and elapsed milliseconds; no production telemetry or
 usage-log writes. Failed attempts do not report partial cache counts as successful work.
@@ -204,7 +189,7 @@ to #316 rather than inherited from the legacy factual regex classifier.
 
 Fixture schema: unique `id`, `split` (`calibration` or `evaluation`), `visible_text`,
 explicit `intent`, and disjoint `positive`, `hard_negative`, `unrelated` candidate-id
-lists. Optional `retrieval_text`, `anchor_text`, `entities`, `required_entities` describe
+lists. Optional `retrieval_text`, `anchor_text`, `entities`, `relation_pair` describe
 already-authorized routing inputs. Optional `lexical_query` overrides only the lexical
 representation after routing; `expected_semantic_query` independently checks the natural
 representation. The fixture includes expanded lexical hints alongside an unchanged

@@ -14,7 +14,7 @@ from hina_bot.core.hybrid_retrieval import (
 )
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate, rank_lexical_candidates
 from hina_bot.core.lore import LoreIndex
-from hina_bot.core.retrieval_v2 import RetrievalIntent, RetrievalRequest, UsageBudget
+from hina_bot.core.retrieval_v2 import RetrievalIntent, RetrievalRequest
 from hina_bot.core.semantic_retrieval import (
     EmbeddingResult,
     EmbeddingUsage,
@@ -71,10 +71,9 @@ def retriever(backend=None, **kwargs):
 
 
 def ids(result):
-    return [row.candidate.candidate_id for row in result.bundle.facts]
+    return [row.candidate.candidate_id for row in result.rows]
 
 
-BUDGET = UsageBudget(3, 3200)
 
 
 @pytest.mark.parametrize("fusion", list(Fusion))
@@ -82,7 +81,7 @@ async def test_semantic_recall_adds_positive_without_vetoing_strong_lexical(fusi
     engine, backend = retriever(fusion=fusion)
     rows = [candidate("negative", keywords=("완전히", "질문")), candidate()]
     assert rank_lexical_candidates(request().retrieval_text, rows)[0].candidate == rows[0]
-    result = await engine.retrieve(request(), rows, budget=BUDGET)
+    result = await engine.retrieve(request(), rows)
     assert set(ids(result)) == {"negative", "positive"}
     assert len(backend.queries) == 1
     assert result.semantic_status == "available"
@@ -109,17 +108,17 @@ async def test_semantic_top_k_absence_or_rejection_is_not_negative_evidence(fusi
 
 async def test_unrelated_factual_query_can_have_zero_results():
     engine, _ = retriever()
-    result = await engine.retrieve(request(), [candidate("unrelated")], budget=BUDGET)
-    assert not result.bundle.facts
+    result = await engine.retrieve(request(), [candidate("unrelated")])
+    assert not result.rows
 
 
 async def test_default_without_calibration_makes_no_calls():
     backend = FakeBackend()
     engine = HybridRetriever(SemanticIndex(backend))
-    result = await engine.retrieve(request("생일"), [candidate(keywords=("생일",))], budget=BUDGET)
+    result = await engine.retrieve(request("생일"), [candidate(keywords=("생일",))])
     assert not backend.queries and not backend.documents
     assert result.semantic_status == "unavailable"
-    assert not result.bundle.facts  # a weak single token must not fill a slot
+    assert not result.rows  # a weak single token must not fill a slot
 
 
 @pytest.mark.parametrize("field", ["생일", "학년", "무기", "소속", "직책"])
@@ -128,7 +127,7 @@ async def test_profile_preserves_legacy_order_and_skips_semantics(field):
     req = RetrievalRequest(field, field, intent=RetrievalIntent.PROFILE)
     rows = [candidate("negative", keywords=(field,) * 4),
             candidate("positive", keywords=(field,) * 5)]
-    result = await engine.retrieve(req, rows, budget=BUDGET)
+    result = await engine.retrieve(req, rows)
     assert ids(result) == [r.candidate.candidate_id for r in rank_lexical_candidates(field, rows)]
     assert not backend.queries and not backend.documents
 
@@ -136,7 +135,7 @@ async def test_profile_preserves_legacy_order_and_skips_semantics(field):
 async def test_configured_strong_lexical_hit_skips_semantics():
     engine, backend = retriever(skip_semantic_at_lexical=14)
     result = await engine.retrieve(request("생일"),
-                                  [candidate(keywords=("생일",) * 2)], budget=BUDGET)
+                                  [candidate(keywords=("생일",) * 2)])
     assert ids(result) == ["positive"]
     assert result.semantic_status == "lexical_short_circuit"
     assert not backend.queries
@@ -147,23 +146,21 @@ async def test_backend_failure_uses_thresholded_lexical_fallback(stage):
     engine, backend = retriever()
     setattr(backend, stage, True)
     result = await engine.retrieve(request("생일"),
-                                  [candidate(keywords=("생일",) * 2)], budget=BUDGET)
+                                  [candidate(keywords=("생일",) * 2)])
     assert ids(result) == ["positive"]
     assert result.semantic_status == "failed"
     assert "sensitive" not in repr(result)
 
 
 @pytest.mark.parametrize("failure", [False, True])
-async def test_required_entities_reject_explicit_conflicts_but_keep_unknown_or_partial_metadata(
-    failure,
-):
+async def test_factual_retrieval_does_not_interpret_relation_pair_as_candidate_gate(failure):
     engine, backend = retriever()
     backend.failure = failure
     pair = ("character.hina", "character.hoshino")
-    req = request("생일", entities=pair, required_entities=pair)
+    req = request("생일", entities=pair, relation_pair=pair)
     rows = [
         candidate(
-            "conflict", semantic_text="positive",
+            "different-relation", semantic_text="positive",
             entities=("character.hina", "character.ako"), keywords=("생일",) * 10,
         ),
         candidate("unannotated", semantic_text="negative", keywords=("생일",) * 2),
@@ -173,27 +170,25 @@ async def test_required_entities_reject_explicit_conflicts_but_keep_unknown_or_p
         ),
         candidate(entities=pair, keywords=("생일",) * 2),
     ]
-    result = await engine.retrieve(req, rows, budget=UsageBudget(5, 3200))
-    assert "conflict" not in ids(result)
-    assert {"unannotated", "partial", "positive"} <= set(ids(result))
+    result = await engine.retrieve(req, rows)
+    assert {"different-relation", "unannotated", "partial", "positive"} <= set(ids(result))
     if not failure:
-        assert set(backend.documents) == {"negative", "unrelated", "positive"}
+        assert set(backend.documents) == {"positive", "negative", "unrelated"}
 
 
 async def test_conversation_intent_does_not_block_semantic_retrieval_once_invoked():
     engine, backend = retriever()
     req = replace(request(), intent=RetrievalIntent.CONVERSATION)
-    result = await engine.retrieve(req, [candidate()], budget=BUDGET)
+    result = await engine.retrieve(req, [candidate()])
     assert ids(result) == ["positive"]
     assert result.semantic_status == "available"
     assert backend.documents == ["positive"] and len(backend.queries) == 1
 
 
-async def test_empty_budget_and_non_factual_usage_still_skip_embedding():
+async def test_non_factual_usage_skips_embedding():
     engine, backend = retriever()
-    assert not (await engine.retrieve(request(), [candidate()], budget=UsageBudget(0, 10))).bundle.facts
-    assert not (await engine.retrieve(request(), [candidate(kind="optional_reaction")],
-                                      budget=BUDGET)).bundle.facts
+    result = await engine.retrieve(request(), [candidate(kind="optional_reaction")])
+    assert not result.rows
     assert not backend.documents and not backend.queries
 
 
@@ -207,15 +202,15 @@ async def test_resolved_builder_profile_queries_keep_unannotated_corpus_candidat
         req = build_resolved_retrieval_request(
             RoutingPlan(text, text), call_prefixes=("히나야",),
         )
-        assert not req.required_entities
-        result = await engine.retrieve(req, rows, budget=UsageBudget(3, 3200))
+        assert not req.relation_pair
+        result = await engine.retrieve(req, rows)
         assert expected in ids(result)
 
 
-async def test_resolved_relation_pair_does_not_drop_unannotated_factual_candidates():
+async def test_resolved_relation_pair_is_not_a_factual_candidate_filter():
     pair_text = "호시노랑 무슨 사이야?"
     req = build_resolved_retrieval_request(RoutingPlan(pair_text, pair_text))
-    assert set(req.required_entities) == {"character.hina", "character.hoshino"}
+    assert set(req.relation_pair) == {"character.hina", "character.hoshino"}
     rows = [
         candidate(
             "unannotated", semantic_text="positive",
@@ -228,8 +223,8 @@ async def test_resolved_relation_pair_does_not_drop_unannotated_factual_candidat
         ),
     ]
     engine = HybridRetriever()
-    result = await engine.retrieve(req, rows, budget=BUDGET)
-    assert ids(result) == ["unannotated"]
+    result = await engine.retrieve(req, rows)
+    assert ids(result) == ["unannotated", "conflict"]
 
 
 async def test_actual_builder_classifier_miss_does_not_block_semantic_channel():
@@ -237,7 +232,7 @@ async def test_actual_builder_classifier_miss_does_not_block_semantic_channel():
     req = build_resolved_retrieval_request(RoutingPlan(text, text))
     assert req.intent == RetrievalIntent.CONVERSATION
     engine, backend = retriever()
-    result = await engine.retrieve(req, [candidate()], budget=BUDGET)
+    result = await engine.retrieve(req, [candidate()])
     assert ids(result) == ["positive"]
     assert result.semantic_status == "available"
     assert backend.queries == [text]
@@ -247,16 +242,16 @@ async def test_sources_are_not_priorities_and_ties_are_stable():
     engine, _ = retriever()
     rows = [candidate("one", source="static_lore", semantic_text="positive"),
             candidate("two", source="runtime_knowledge", semantic_text="positive")]
-    assert ids(await engine.retrieve(request(), rows, budget=BUDGET)) == ["one", "two"]
-    assert ids(await engine.retrieve(request(), rows[::-1], budget=BUDGET)) == ["two", "one"]
+    assert ids(await engine.retrieve(request(), rows)) == ["one", "two"]
+    assert ids(await engine.retrieve(request(), rows[::-1])) == ["two", "one"]
 
 
 async def test_current_reference_and_guard_are_kept_when_embedding_is_reused():
     engine, backend = retriever()
-    await engine.retrieve(request(), [candidate()], budget=BUDGET)
+    await engine.retrieve(request(), [candidate()])
     changed = candidate(kind="interpretation", metadata=(("guard", "do_not_assert_positive_fact"),))
-    result = await engine.retrieve(request(), [changed], budget=BUDGET)
-    assert result.bundle.facts[0].candidate == changed
+    result = await engine.retrieve(request(), [changed])
+    assert result.rows[0].candidate == changed
     assert backend.documents == ["positive"]
     assert result.cache_hits == 1 and result.cache_misses == 0
 
@@ -285,7 +280,7 @@ async def test_calibration_model_mismatch_falls_back_without_calls():
     engine, backend = retriever()
     backend.cache_key = "new-model"
     result = await engine.retrieve(request("생일"),
-                                  [candidate(keywords=("생일",) * 2)], budget=BUDGET)
+                                  [candidate(keywords=("생일",) * 2)])
     assert result.semantic_status == "calibration_mismatch"
     assert ids(result) == ["positive"]
     assert not backend.queries and not backend.documents
@@ -314,9 +309,9 @@ async def test_timeout_and_cancellation():
             await asyncio.Event().wait()
     engine, _ = retriever(Slow(), timeout_seconds=0.01)
     result = await engine.retrieve(request("생일"),
-                                  [candidate(keywords=("생일",) * 2)], budget=BUDGET)
+                                  [candidate(keywords=("생일",) * 2)])
     assert result.semantic_status == "failed" and ids(result) == ["positive"]
-    task = asyncio.create_task(engine.retrieve(request(), [candidate()], budget=BUDGET))
+    task = asyncio.create_task(engine.retrieve(request(), [candidate()]))
     await asyncio.sleep(0)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -361,7 +356,7 @@ def test_anchor_containment_ignores_formatting(visible, anchor):
 async def test_empty_lexical_query_cannot_disable_semantic_recall():
     engine, _ = retriever()
     result = await engine.retrieve(replace(request(), retrieval_text=""),
-                                   [candidate()], budget=BUDGET)
+                                   [candidate()])
     assert ids(result) == ["positive"]
 
 

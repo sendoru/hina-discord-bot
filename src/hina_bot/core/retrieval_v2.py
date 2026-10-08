@@ -1,10 +1,10 @@
-"""Provider-neutral v2 contracts and an opt-in lexical compatibility adapter.
+"""Provider-neutral v2 contracts, packing and bundle composition.
 
-This is not the production selection policy. Legacy packing and web fallback stay intact.
+This remains opt-in. Legacy production packing/web fallback stay intact until #316.
 """
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -30,9 +30,10 @@ class RetrievalIntent(StrEnum):
 class RetrievalRequest:
     """Authorized turn inputs; not a log record or an embedding provider request.
 
-    entities contains resolved canonical ids only. required_entities is the evidence
-    constraint (e.g. an entity pair), not a set of lexical aliases. Empty means unresolved.
-    anchor_text must come from the existing causal/egress routing policy.
+    entities contains canonical ids resolved for the current retrieval context.
+    relation_pair is a complete, unambiguous pair used only by exact relationship
+    grounding. Factual/ambient retrievers must not interpret it as a generic candidate
+    filter. anchor_text must come from the existing causal/egress routing policy.
     """
 
     visible_text: str
@@ -40,29 +41,39 @@ class RetrievalRequest:
     anchor_text: str = ""
     anchor_source: str = ""
     entities: tuple[str, ...] = ()
-    required_entities: tuple[str, ...] = ()
+    relation_pair: tuple[str, str] | None = None
     intent: RetrievalIntent = RetrievalIntent.CONVERSATION
+
+    def __post_init__(self) -> None:
+        if self.relation_pair is None:
+            return
+        if len(set(self.relation_pair)) != 2:
+            raise ValueError("relation_pair must contain two distinct canonical entities")
+        if not set(self.relation_pair) <= set(self.entities):
+            raise ValueError("relation_pair must be present in entities")
 
 
 @dataclass(frozen=True)
 class UsageBudget:
-    """Selection limits and threshold for one retrieval KnowledgeUsage."""
+    """Pure packing limits for one retrieval KnowledgeUsage."""
 
     max_items: int
     max_chars: int
-    # Strict threshold in the ranker's scale; lexical parity uses > 0.
-    min_score: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.max_items < 0 or self.max_chars < 0:
+            raise ValueError("usage budgets must be non-negative")
 
 
 @dataclass(frozen=True)
 class KnowledgeBundle:
-    """Selected evidence, with independent retrieval usage budgets and optional empty slots.
+    """Selected evidence, separated by retrieval purpose.
 
     Facts may include explicit lookup interpretations/unknown guards. They are not
     promoted to official facts. Ambient items shape a response only when scene-relevant;
     they need not be mentioned and current direct evidence takes precedence. Reactions
-    are optional behavior guides, not factual evidence. Relations require grounding
-    policy in #312; membership alone never proves local evidence sufficient (#315).
+    are optional behavior guides, not factual evidence. Bundle membership alone never
+    proves local evidence sufficient (#315).
     """
 
     facts: tuple[RankedKnowledgeCandidate, ...] = ()
@@ -81,16 +92,118 @@ class KnowledgeBundle:
                 raise ValueError(f"candidate is not eligible for {usage}")
 
     def context_sections(self) -> dict[str, list[dict]]:
-        """Explicit serialization boundary; never serialize the request or query here.
-
-        Reuse reference semantics, including interpretation/unknown guards and meme
-        reaction-only output. Rich provenance and scores remain in the typed bundle.
-        No flattening: ambient/reaction sections must not be used as factual evidence.
-        """
+        """Explicit serialization boundary; never serialize the request or query here."""
         return {
             name: [row.candidate.reference_item() for row in getattr(self, name)]
             for name in ("facts", "relations", "character_insights", "reactions")
         }
+
+
+CandidateIdentity = tuple[str, str]
+
+
+def candidate_identity(row: RankedKnowledgeCandidate) -> CandidateIdentity:
+    return row.candidate.source, row.candidate.candidate_id
+
+
+def reference_size(row: RankedKnowledgeCandidate) -> int:
+    return len(json.dumps(row.candidate.reference_item(), ensure_ascii=False))
+
+
+def pack_ranked(
+    ranked: Iterable[RankedKnowledgeCandidate],
+    budget: UsageBudget,
+    *,
+    excluded: frozenset[CandidateIdentity] = frozenset(),
+) -> tuple[RankedKnowledgeCandidate, ...]:
+    """Pack already-admitted rows; score thresholds belong to retrievers, not budgets."""
+    if budget.max_items == 0 or budget.max_chars == 0:
+        return ()
+    rows = []
+    used_chars = 0
+    seen = set(excluded)
+    for row in ranked:
+        identity = candidate_identity(row)
+        if identity in seen:
+            continue
+        size = reference_size(row)
+        if used_chars + size > budget.max_chars:
+            continue
+        rows.append(row)
+        seen.add(identity)
+        used_chars += size
+        if len(rows) >= budget.max_items:
+            break
+    return tuple(rows)
+
+
+_SECTION_ORDER = (
+    KnowledgeUsage.RELATION,
+    KnowledgeUsage.FACTUAL,
+    KnowledgeUsage.AMBIENT,
+    KnowledgeUsage.REACTION,
+)
+_SECTION_FIELD = {
+    KnowledgeUsage.FACTUAL: "facts",
+    KnowledgeUsage.RELATION: "relations",
+    KnowledgeUsage.AMBIENT: "character_insights",
+    KnowledgeUsage.REACTION: "reactions",
+}
+
+
+class BundleComposer:
+    """Single packing/deduplication boundary for all retrieval purposes.
+
+    More specific relationship grounding owns a duplicate before generic factual rows;
+    factual evidence owns a duplicate before ambient/reaction guidance. A skipped duplicate
+    does not consume a section slot, so that section can refill from its next ranked row.
+    """
+
+    def __init__(
+        self,
+        budgets: Mapping[KnowledgeUsage, UsageBudget],
+        *,
+        max_total_chars: int | None = None,
+    ):
+        if max_total_chars is not None and max_total_chars < 0:
+            raise ValueError("max_total_chars must be non-negative")
+        self.budgets = dict(budgets)
+        self.max_total_chars = max_total_chars
+
+    def compose(
+        self,
+        rows: Mapping[KnowledgeUsage, Sequence[RankedKnowledgeCandidate]],
+    ) -> KnowledgeBundle:
+        selected: dict[KnowledgeUsage, tuple[RankedKnowledgeCandidate, ...]] = {
+            usage: () for usage in KnowledgeUsage
+        }
+        claimed: set[CandidateIdentity] = set()
+        total_used = 0
+
+        for usage in _SECTION_ORDER:
+            budget = self.budgets.get(usage)
+            if budget is None:
+                continue
+            if self.max_total_chars is None:
+                effective = budget
+            else:
+                remaining = max(0, self.max_total_chars - total_used)
+                effective = UsageBudget(budget.max_items, min(budget.max_chars, remaining))
+            packed = pack_ranked(
+                rows.get(usage, ()),
+                effective,
+                excluded=frozenset(claimed),
+            )
+            selected[usage] = packed
+            for row in packed:
+                claimed.add(candidate_identity(row))
+                total_used += reference_size(row)
+
+        kwargs = {
+            _SECTION_FIELD[usage]: selected[usage]
+            for usage in KnowledgeUsage
+        }
+        return KnowledgeBundle(**kwargs)
 
 
 def lexical_bundle(
@@ -99,32 +212,13 @@ def lexical_bundle(
     *,
     budgets: Mapping[KnowledgeUsage, UsageBudget],
 ) -> KnowledgeBundle:
-    """Rank once with the existing scorer, then select separately per enabled usage.
-
-    Omitted budgets disable a retrieval usage. This adapter adds no entity resolution,
-    grounding, semantic scores, insight activation or local-sufficiency policy. Callers must
-    supply eligible candidates before enabling their retrieval usage budgets.
-    """
+    """Compatibility adapter: lexical admission, shared v2 composition/packing."""
     ranked = rank_lexical_candidates(request.retrieval_text, candidates)
-    selected: dict[KnowledgeUsage, tuple[RankedKnowledgeCandidate, ...]] = {}
-    for usage in KnowledgeUsage:
-        budget = budgets.get(usage)
-        rows, used = [], 0
-        if budget is not None and budget.max_items > 0 and budget.max_chars > 0:
-            for row in ranked:
-                if usage not in row.candidate.retrieval_usages or row.score <= budget.min_score:
-                    continue
-                size = len(json.dumps(row.candidate.reference_item(), ensure_ascii=False))
-                if used + size > budget.max_chars:
-                    continue
-                rows.append(row)
-                used += size
-                if len(rows) >= budget.max_items:
-                    break
-        selected[usage] = tuple(rows)
-    return KnowledgeBundle(
-        facts=selected[KnowledgeUsage.FACTUAL],
-        relations=selected[KnowledgeUsage.RELATION],
-        character_insights=selected[KnowledgeUsage.AMBIENT],
-        reactions=selected[KnowledgeUsage.REACTION],
-    )
+    rows = {
+        usage: tuple(
+            row for row in ranked
+            if usage in row.candidate.retrieval_usages
+        )
+        for usage in KnowledgeUsage
+    }
+    return BundleComposer(budgets).compose(rows)
