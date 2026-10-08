@@ -20,6 +20,40 @@ _ENTITY_FOLLOWUP = re.compile(
     r"\s*[?？!.~]*\s*$"
 )
 
+# Only used as a conservative blocker for the implicit RP-subject pair. If a relation
+# question visibly names two slots but one is outside the small reviewed registry, a
+# single resolved name must not be silently paired with Hina.
+_EXPLICIT_RELATION_PAIR = re.compile(
+    r"(?P<left>[^\s,!?？！，]+)\s*(?:와|과|랑|이랑|하고)\s*"
+    r"(?P<right>[^\s,!?？！，]+?)(?:은|는|이|가)?\s*"
+    r"(?:(?:무슨|어떤)\s*)?(?:사이|관계)",
+    re.IGNORECASE,
+)
+
+
+def _strip_call_prefix(content: str, call_prefixes: tuple[str, ...] | None) -> str:
+    text = content.lstrip()
+    matched = max(
+        (prefix for prefix in (call_prefixes or ()) if text.startswith(prefix)),
+        key=len,
+        default=None,
+    )
+    if matched is not None:
+        text = text[len(matched):].lstrip(" \t\n,:：!！?？~")
+    return text
+
+
+def _has_partial_explicit_relation_pair(text: str, resolver: EntityResolver) -> bool:
+    """Return True when a two-slot relation phrase is only partially resolvable."""
+    match = _EXPLICIT_RELATION_PAIR.search(text)
+    if match is None:
+        return False
+    resolved = [
+        resolver.resolve_alias(match.group("left")),
+        resolver.resolve_alias(match.group("right")),
+    ]
+    return sum(entity_id is not None for entity_id in resolved) != 2
+
 
 def build_retrieval_request(
     routing: RoutingPlan,
@@ -59,35 +93,61 @@ def build_resolved_retrieval_request(
 ) -> RetrievalRequest:
     """Opt-in entity bridge; the existing builder/production path stays unchanged.
 
-    The configured RP subject is an identity, not a name guessed from user first-person
-    text. One named counterpart grounds that RP pair; two explicit characters ground
-    that pair. Ambiguity or more than two targets leaves the evidence constraint empty.
-    Authorized anchors are inherited only for a recognized name-free elliptical follow-up.
-    Normalized lexical queries and classifier context never introduce new entities.
+    entities contains the canonical characters actually resolved for this retrieval
+    context. required_entities is narrower: it is populated only for a complete,
+    unambiguous relationship pair. A configured RP subject may complete an implicit
+    "X랑 무슨 사이야?" pair, but it is not injected into every factual/profile query.
+    Partial two-name questions never synthesize the missing counterpart as Hina.
     """
     resolver = resolver if resolver is not None else EntityResolver()
     if rp_subject is not None and rp_subject not in resolver.entities:
         raise ValueError("RP subject must be a registered canonical entity")
-    rp_entities = (rp_subject,) if rp_subject else ()
+
     request = build_retrieval_request(routing, call_prefixes=call_prefixes)
-    resolution = resolver.resolve(routing.visible_content)
+    topic_text = _strip_call_prefix(routing.visible_content, call_prefixes)
+    resolution = resolver.resolve(topic_text)
     mentioned = resolution.entities
-    if (not resolution.ambiguous_aliases
-            and not mentioned
-            and routing.anchor and routing.anchor_source and is_followup(routing.visible_content)
-            and _ENTITY_FOLLOWUP.fullmatch(routing.visible_content)):
+    partial_pair = (
+        request.intent == RetrievalIntent.RELATIONSHIP_OR_EVENT
+        and _has_partial_explicit_relation_pair(topic_text, resolver)
+    )
+
+    if (
+        not resolution.ambiguous_aliases
+        and not mentioned
+        and not partial_pair
+        and routing.anchor
+        and routing.anchor_source
+        and is_followup(routing.visible_content)
+        and _ENTITY_FOLLOWUP.fullmatch(routing.visible_content)
+    ):
         inherited = resolver.resolve(routing.anchor)
         if not inherited.ambiguous_aliases:
             mentioned = tuple(dict.fromkeys((*mentioned, *inherited.entities)))
         else:
             resolution = inherited
-    required = ()
+
+    entities = list(mentioned)
+    required: tuple[str, ...] = ()
     if not resolution.ambiguous_aliases:
-        if len(mentioned) == 1:
-            required = tuple(dict.fromkeys((*rp_entities, *mentioned)))
-        elif len(mentioned) == 2:
-            required = mentioned
-        elif not mentioned and request.intent == RetrievalIntent.PROFILE and rp_subject:
-            required = (rp_subject,)
-    entities = tuple(dict.fromkeys((*rp_entities, *mentioned)))
-    return replace(request, entities=entities, required_entities=required)
+        if request.intent == RetrievalIntent.PROFILE and rp_subject and not mentioned:
+            # The configured RP subject identifies whose profile is requested, but this
+            # is not a relation evidence constraint.
+            entities.append(rp_subject)
+        elif request.intent == RetrievalIntent.RELATIONSHIP_OR_EVENT:
+            if len(mentioned) == 2 and not partial_pair:
+                required = mentioned
+            elif (
+                len(mentioned) == 1
+                and not partial_pair
+                and rp_subject is not None
+                and mentioned[0] != rp_subject
+            ):
+                required = tuple(dict.fromkeys((rp_subject, mentioned[0])))
+                entities.append(rp_subject)
+
+    return replace(
+        request,
+        entities=tuple(dict.fromkeys(entities)),
+        required_entities=required,
+    )
