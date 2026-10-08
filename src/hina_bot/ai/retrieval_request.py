@@ -33,7 +33,7 @@ _EXPLICIT_RELATION_PAIR = re.compile(
 
 _RELATION_GROUNDING_QUERY = re.compile(
     r"(?:무슨|어떤)\s*(?:사이|관계)|"
-    r"(?:선배|후배|동급생|같은\s*학년|호칭|부르)|"
+    r"(?:선배|후배|동급생|같은\s*학년|호칭|(?:뭐|어떻게|어떤)\s*부르)|"
     r"(?:친해|친한|친분|접점|서로\s*알)|"
     r"(?:만나|마주|대면|대화)",
     re.IGNORECASE,
