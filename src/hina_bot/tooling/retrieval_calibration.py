@@ -11,19 +11,20 @@ from dataclasses import asdict, replace
 from hashlib import sha256
 from math import isfinite
 from pathlib import Path
+from enum import StrEnum
 from statistics import mean, median
 from time import perf_counter
 
 from hina_bot.ai.embedding_backend import GeminiEmbeddingBackend, GeminiEmbeddingConfig
 from hina_bot.ai.retrieval_request import build_retrieval_request
 from hina_bot.ai.routing_plan import RoutingPlan
-from hina_bot.core.hybrid_retrieval import (
-    Fusion,
-    HybridConfig,
-    eligible_candidates,
-    rank_hybrid,
+from hina_bot.core.hybrid_retrieval import HybridConfig, eligible_candidates, rank_factual
+from hina_bot.core.knowledge_retrieval import (
+    KnowledgeCandidate,
+    RankedKnowledgeCandidate,
+    rank_lexical_candidates,
 )
-from hina_bot.core.knowledge_retrieval import KnowledgeCandidate
+from hina_bot.core.profile_retrieval import rank_profile
 from hina_bot.core.lore import LoreIndex, read_jsonl
 from hina_bot.core.retrieval_v2 import RetrievalIntent, UsageBudget, pack_ranked
 from hina_bot.core.semantic_retrieval import (
@@ -35,6 +36,74 @@ from hina_bot.core.semantic_retrieval import (
 )
 
 LABELS = ("positive", "hard_negative", "unrelated")
+
+
+class Fusion(StrEnum):
+    """Offline comparison only; runtime core has one lexical-first policy."""
+
+    LEXICAL_FIRST = "lexical_first"
+    WEIGHTED = "weighted"
+    RRF = "rrf"
+
+
+def experimental_rank(
+    request,
+    candidates,
+    calibration,
+    semantic_hits,
+    *,
+    fusion: Fusion,
+    lexical_min: float = 12.0,
+    semantic_min: float = 0.5,
+    lexical_scale: float = 24.0,
+    semantic_weight: float = 0.5,
+    rrf_k: int = 60,
+):
+    """Compare alternate fusion policies without expanding runtime policy surface."""
+    if request.intent == RetrievalIntent.PROFILE:
+        return list(rank_profile(request, candidates))
+
+    runtime = HybridConfig(
+        calibration=calibration,
+        lexical_min=lexical_min,
+        semantic_min=semantic_min,
+    )
+    if fusion == Fusion.LEXICAL_FIRST:
+        return rank_factual(
+            request, candidates, runtime, semantic_hits=semantic_hits,
+        )
+
+    lexical = rank_lexical_candidates(request.retrieval_text, candidates)
+    lexical = [row for row in lexical if row.score >= lexical_min]
+    lex_scores = {row.order: float(row.score) for row in lexical}
+    lex_ranks = {row.order: i + 1 for i, row in enumerate(lexical)}
+
+    sem_scores = {}
+    sem_ranks = {}
+    for hit in semantic_hits:
+        score = calibration.score(hit.cosine)
+        if score < semantic_min:
+            continue
+        sem_scores[hit.order] = score
+        sem_ranks[hit.order] = len(sem_ranks) + 1
+
+    ranked = []
+    for order in set(lex_scores) | set(sem_scores):
+        if fusion == Fusion.WEIGHTED:
+            lex = min(lex_scores.get(order, 0.0) / lexical_scale, 1.0)
+            sem = sem_scores.get(order, 0.0)
+            if order in lex_scores and order in sem_scores:
+                score = (1 - semantic_weight) * lex + semantic_weight * sem
+            else:
+                score = lex if order in lex_scores else sem
+        else:
+            score = 0.0
+            if order in lex_ranks:
+                score += (rrf_k + 1) / (rrf_k + lex_ranks[order])
+            if order in sem_ranks:
+                score += (rrf_k + 1) / (rrf_k + sem_ranks[order])
+        ranked.append(RankedKnowledgeCandidate(score, order, candidates[order]))
+    return sorted(ranked, key=lambda row: (-row.score, row.order))
 
 
 def validate_cases(cases: Sequence[dict], candidates: Sequence[KnowledgeCandidate]) -> None:
@@ -166,20 +235,28 @@ async def evaluate(
                   "trial_thresholds": {"reject": calibration.reject, "strong": calibration.strong},
                   "distributions": {split: {label: distribution(v) for label, v in values.items()}
                                     for split, values in samples.items()},
-                  "fusion_settings": asdict(HybridConfig(calibration=calibration, intent_hint=hint)),
+                  "fusion_settings": {
+                      "runtime": asdict(HybridConfig(calibration=calibration)),
+                      "offline_methods": [fusion.value for fusion in Fusion],
+                      "intent_hint_variant": hint,
+                  },
                   "cases": [], "metrics": {}}
         for case, request, rows, result, case_report in measured:
             methods = {}
             for method in ("lexical_only", *(fusion.value for fusion in Fusion)):
-                config = HybridConfig(calibration=calibration,
-                                      fusion=Fusion.LEXICAL_FIRST if method == "lexical_only"
-                                      else Fusion(method))
-                use_semantic = (method != "lexical_only"
-                                and request.intent != RetrievalIntent.PROFILE)
-                ranked = rank_hybrid(
-                    request, rows, config,
-                    semantic_hits=result.hits if use_semantic else None,
-                )
+                if method == "lexical_only":
+                    if request.intent == RetrievalIntent.PROFILE:
+                        ranked = list(rank_profile(request, rows))
+                    else:
+                        ranked = rank_factual(
+                            request, rows, HybridConfig(calibration=calibration),
+                            semantic_hits=None,
+                        )
+                else:
+                    ranked = experimental_rank(
+                        request, rows, calibration, result.hits,
+                        fusion=Fusion(method),
+                    )
                 chosen = pack_ranked(ranked, UsageBudget(top_n, 3200))
                 selected = [row.candidate.candidate_id for row in chosen]
                 labeled_ids = set().union(*(case[label] for label in LABELS))
