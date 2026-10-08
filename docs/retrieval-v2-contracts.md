@@ -80,8 +80,8 @@ conversation evidence. Adding an insight or reaction must never satisfy factual/
 web fallback. Bundle membership alone is not a local-sufficiency verdict.
 
 `lexical_bundle(request, candidates, budgets=...)` ranks once with the existing scorer,
-then selects per usage. Each explicitly enabled usage has its own `LaneBudget` (items,
-serialized reference characters, strict score threshold). Omitted or non-positive
+then selects per usage. Each explicitly enabled retrieval usage has its own `UsageBudget`
+(items, serialized reference characters, strict score threshold). Omitted or non-positive
 budgets disable a section. Oversized rows are skipped; weak or absent matches leave
 slots empty. A multi-usage candidate may appear in both sections. Stable ties preserve
 input order. Thresholds are in the ranker's scale; parity uses the legacy `score > 0`.
@@ -91,12 +91,12 @@ No final production thresholds or weights are implied by this baseline.
 semantics while retaining all four sections. It does not flatten them or serialize
 request content, ranking diagnostics, or source metadata. Typed candidates retain rich
 provenance for #315/#316; content-free telemetry must be designed separately in #316.
-Consumers must add lane semantics to model context when a lane is activated (#314).
+Consumers must add retrieval usage semantics to model context when a usage is activated (#314).
 
 The adapter accepts candidates from `LoreIndex`, `RuntimeKnowledgeRegistry`, or their
 union. It performs no entity matching, grounding, semantic retrieval, or scene filtering;
-callers must apply those policies before enabling future lane budgets. It is deliberately
-not invoked from the production answer path yet.
+callers must apply those policies before enabling future retrieval usage budgets. The adapter
+is deliberately not invoked from the production answer path yet.
 
 ## Follow-on work
 
@@ -107,7 +107,7 @@ not invoked from the production answer path yet.
 - #315: evidence sufficiency from metadata, intent and required entity matches.
 - #316: production shadow wiring, content-free diagnostics and reversible rollout.
 
-Tests cover single-lane lexical parity (including packaged corpus), independent lane
-budgets, zero results, thresholds, stable ties, source neutrality, additive validation,
+Tests cover single-usage lexical parity (including packaged corpus), independent retrieval
+usage budgets, zero results, thresholds, stable ties, source neutrality, additive validation,
 runtime compatibility, interpretation/unknown guards, reaction serialization, and causal
 request wiring. They do not pin model prompt prose or claim live-answer quality gains.
