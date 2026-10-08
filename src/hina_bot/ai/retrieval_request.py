@@ -31,6 +31,14 @@ _EXPLICIT_RELATION_PAIR = re.compile(
     re.IGNORECASE,
 )
 
+_RELATION_GROUNDING_QUERY = re.compile(
+    r"(?:무슨|어떤)\s*(?:사이|관계)|"
+    r"(?:선배|후배|동급생|같은\s*학년|호칭|부르)|"
+    r"(?:친해|친한|친분|접점|서로\s*알)|"
+    r"(?:만나|마주|대면|대화)",
+    re.IGNORECASE,
+)
+
 
 def _strip_call_prefix(content: str, call_prefixes: tuple[str, ...] | None) -> str:
     text = content.lstrip()
@@ -108,8 +116,16 @@ def build_resolved_retrieval_request(
     topic_text = _strip_call_prefix(routing.visible_content, call_prefixes)
     resolution = resolver.resolve(topic_text)
     mentioned = resolution.entities
+    relation_grounding = (
+        request.intent in {
+            RetrievalIntent.RELATIONSHIP,
+            RetrievalIntent.EVENT,
+            RetrievalIntent.RELATIONSHIP_OR_EVENT,
+        }
+        or bool(_RELATION_GROUNDING_QUERY.search(topic_text))
+    )
     partial_pair = (
-        request.intent == RetrievalIntent.RELATIONSHIP_OR_EVENT
+        relation_grounding
         and _has_partial_explicit_relation_pair(topic_text, resolver)
     )
 
@@ -135,7 +151,7 @@ def build_resolved_retrieval_request(
             # The configured RP subject identifies whose profile is requested, but this
             # is not a relation evidence constraint.
             entities.append(rp_subject)
-        elif request.intent == RetrievalIntent.RELATIONSHIP_OR_EVENT:
+        elif relation_grounding:
             if len(mentioned) == 2 and not partial_pair:
                 required = mentioned
             elif (
