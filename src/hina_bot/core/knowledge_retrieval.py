@@ -4,6 +4,16 @@ import json
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from enum import StrEnum
+
+
+class KnowledgeUsage(StrEnum):
+    """Retrieval purpose, independent of storage source and lore's canon/meme lane."""
+
+    FACTUAL = "factual"
+    RELATION = "relation"
+    AMBIENT = "ambient"
+    REACTION = "reaction"
 
 _TOKEN = re.compile(r"[0-9A-Za-z가-힣]{2,}")
 _LEXEME = re.compile(r"[0-9A-Za-z가-힣]+")
@@ -52,8 +62,35 @@ class KnowledgeCandidate:
     time: str | None = None
     metadata: tuple[tuple[str, str], ...] = ()
     subject_boundary: bool = False
+    # Additive v2 metadata. None/empty means unavailable, never verified or resolved.
+    lane: str | None = None
+    usages: tuple[KnowledgeUsage, ...] = ()
+    entities: tuple[str, ...] = ()
+    fact_type: str | None = None
+    confidence: str | None = None
+    kr_release: str | None = None
+    source_metadata: tuple[tuple[str, str], ...] = ()
+    semantic_text: str | None = None
+    evidence_ids: tuple[str, ...] = ()
+
+    @property
+    def retrieval_usages(self) -> tuple[KnowledgeUsage, ...]:
+        if self.usages:
+            return self.usages
+        # Existing interpretations remain explicit lookup references, not ambient context.
+        if self.kind == "optional_reaction":
+            return (KnowledgeUsage.REACTION,)
+        return (KnowledgeUsage.FACTUAL,)
+
+    @property
+    def semantic_representation(self) -> str:
+        """Meaning text only; subjects/keywords are kept in the lexical channel."""
+        return self.semantic_text if self.semantic_text is not None else self.search_text
 
     def reference_item(self) -> dict:
+        if self.kind == "optional_reaction":
+            # Keep rich provenance in the candidate, never in a model's reaction guide.
+            return {"kind": self.kind, "content": self.content}
         if self.reference is None:
             item = {"kind": self.kind, "content": self.content}
         else:
@@ -73,7 +110,8 @@ class KnowledgeCandidate:
 
 @dataclass(frozen=True)
 class RankedKnowledgeCandidate:
-    score: int
+    # Ranking score in the backend's scale, not confidence or raw semantic cosine.
+    score: float
     order: int
     candidate: KnowledgeCandidate
 

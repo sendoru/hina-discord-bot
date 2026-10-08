@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 
-from .knowledge_retrieval import KnowledgeCandidate, lexical_search
+from .knowledge_retrieval import KnowledgeCandidate, KnowledgeUsage, lexical_search
 
 LANES = {"canon", "community_meme"}
 KNOWLEDGE_LEVELS = {
@@ -39,6 +39,28 @@ def fact_type(record: dict) -> str:
     if record.get("lane") == "community_meme":
         return "fandom"
     return "fact_direct"
+
+
+def retrieval_usages(record: dict) -> tuple[KnowledgeUsage, ...]:
+    value = record.get("usage")
+    if value is None:
+        value = "reaction" if record["lane"] == "community_meme" else "factual"
+    values = [value] if isinstance(value, str) else value
+    if not isinstance(values, list) or not values:
+        raise LoreValidationError(f"{record['id']}: usage must be a value or non-empty list")
+    try:
+        usages = tuple(KnowledgeUsage(item) for item in values)
+    except (ValueError, TypeError) as exc:
+        raise LoreValidationError(f"{record['id']}: invalid usage") from exc
+    if len(usages) != len(set(usages)):
+        raise LoreValidationError(f"{record['id']}: duplicate usage")
+    if record["lane"] == "community_meme" and usages != (KnowledgeUsage.REACTION,):
+        raise LoreValidationError(f"{record['id']}: community meme is reaction-only")
+    if record["lane"] == "canon" and KnowledgeUsage.REACTION in usages:
+        raise LoreValidationError(f"{record['id']}: canon is not a reaction guide")
+    if KnowledgeUsage.AMBIENT in usages and fact_type(record) != "inference":
+        raise LoreValidationError(f"{record['id']}: ambient requires an interpretation")
+    return usages
 
 
 def validate_record(record: dict, *, accepted: bool = False) -> dict:
@@ -84,6 +106,20 @@ def validate_record(record: dict, *, accepted: bool = False) -> dict:
         raise LoreValidationError(f"{record['id']}: incomplete source")
     if record["lane"] == "community_meme" and not record.get("reaction"):
         raise LoreValidationError(f"{record['id']}: community meme needs a reaction guide")
+    retrieval_usages(record)
+    for key in ("entities", "evidence_ids"):
+        if key not in record:
+            continue
+        values = record[key]
+        if (not isinstance(values, list) or len(values) > 30
+                or any(not isinstance(value, str)
+                       or not re.fullmatch(r"[a-z0-9_.-]{3,100}", value) for value in values)
+                or len(values) != len(set(values))):
+            raise LoreValidationError(f"{record['id']}: invalid {key}")
+    if "semantic_text" in record:
+        value = record["semantic_text"]
+        if not isinstance(value, str) or not 1 <= len(value.strip()) <= 600:
+            raise LoreValidationError(f"{record['id']}: semantic_text must be 1~600 chars")
     return record
 
 
@@ -130,6 +166,17 @@ class LoreIndex:
             if record["lane"] == "community_meme" and not include_community:
                 continue
             evidence_type = fact_type(record)
+            v2_metadata = {
+                "lane": record["lane"],
+                "usages": retrieval_usages(record),
+                "entities": tuple(record.get("entities", ())),
+                "fact_type": evidence_type,
+                "confidence": record.get("confidence"),
+                "kr_release": record.get("kr_release"),
+                "source_metadata": tuple(sorted(record.get("source", {}).items())),
+                "semantic_text": record.get("semantic_text"),
+                "evidence_ids": tuple(record.get("evidence_ids", ())),
+            }
             if (
                 record["lane"] == "canon"
                 and evidence_type in REFERENCE_ONLY_FACT_TYPES
@@ -147,7 +194,10 @@ class LoreIndex:
                     search_text=record["summary"],
                     subjects=tuple(record["subjects"]),
                     keywords=tuple(record["keywords"]),
+                    awareness=record["knowledge"],
+                    time=record["timeline"],
                     subject_boundary=True,
+                    **v2_metadata,
                 ))
                 continue
 
@@ -170,6 +220,7 @@ class LoreIndex:
                 time=record["timeline"],
                 metadata=metadata,
                 subject_boundary=True,
+                **v2_metadata,
             ))
         return candidates
 
