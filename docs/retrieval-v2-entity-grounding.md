@@ -43,9 +43,12 @@ The original `build_retrieval_request()` retains its behavior and caller-supplie
 - `required_entities` is narrower than `entities`: this milestone uses it only for a
   complete, unambiguous relationship pair. Single factual/profile targets are not relation
   hard constraints.
-- A relation question with one reviewed counterpart may use the configured RP subject as
-  the implicit second party (for example, “호시노랑 무슨 사이야?”). Two explicitly
-  resolved characters constrain that exact pair.
+- A relation-grounding question with one reviewed counterpart may use the configured RP
+  subject as the implicit second party (for example, “호시노랑 무슨 사이야?” or
+  “호시노는 선배야?”). The bridge checks conservative relation/addressing cues in the
+  visible text in addition to the existing routing intent, because the global classifier
+  is not the authority for whether exact relationship evidence may be useful. Two
+  explicitly resolved characters constrain that exact pair.
 - If a two-name relation phrase is only partially resolvable (for example, registered
   Hoshino plus unregistered Ako), the missing slot is **not** substituted with Hina.
   The known entity may remain in `entities`, but `required_entities` stays empty.
