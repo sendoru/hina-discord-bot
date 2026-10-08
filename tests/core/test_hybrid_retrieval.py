@@ -8,6 +8,8 @@ from hina_bot.core.hybrid_retrieval import Fusion, HybridConfig, HybridRetriever
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate, rank_lexical_candidates
 from hina_bot.core.retrieval_v2 import RetrievalIntent, RetrievalRequest, UsageBudget
 from hina_bot.core.semantic_retrieval import (
+    EmbeddingResult,
+    EmbeddingUsage,
     SemanticCalibration,
     SemanticIndex,
     normalize,
@@ -33,13 +35,13 @@ class FakeBackend:
         self.documents.extend(texts)
         if self.failure:
             raise RuntimeError("sensitive backend response")
-        return [self.vectors[text] for text in texts]
+        return EmbeddingResult(tuple(self.vectors[text] for text in texts), EmbeddingUsage(37, 1))
 
     async def embed_query(self, text):
         self.queries.append(text)
         if self.query_failure:
             raise RuntimeError("query failed")
-        return (1, 0)
+        return EmbeddingResult(((1, 0),), EmbeddingUsage(11, 1))
 
 
 def candidate(identifier="positive", **kwargs):
@@ -237,20 +239,36 @@ def test_invalid_embeddings(vector, dimensions):
 async def test_malformed_backend_does_not_poison_cache():
     class Broken(FakeBackend):
         async def embed_candidates(self, texts):
-            return [[1]]
+            return EmbeddingResult(((1,),))
     index = SemanticIndex(Broken())
     with pytest.raises(ValueError):
         await index.warm([candidate()])
     assert not index._cache
 
 
-def test_query_uses_retrieval_text_and_deduplicates_anchor_without_ids():
-    req = request("이미 포함된 원인 질문", anchor_text="원인 질문", entities=("character.hina",))
-    assert semantic_query(req) == req.retrieval_text
-    assert semantic_query(replace(req, visible_text="원문 노출 금지")) == req.retrieval_text
-    assert semantic_query(replace(req, anchor_text="다른 원인")) == "다른 원인\n이미 포함된 원인 질문"
-    assert semantic_query(replace(req, retrieval_text="")) == ""
+def test_query_is_independent_of_lexical_hints_and_uses_only_visible_and_anchor():
+    req = request("호시노랑 친했어?", anchor_text="호시노랑 친했어", entities=("character.hina",))
+    polluted = replace(req, retrieval_text="직접 만남 대면 대화 관계 접점 무기 이름")
+    assert semantic_query(polluted) == "호시노랑 친했어?"
+    assert semantic_query(replace(polluted, retrieval_text="")) == "호시노랑 친했어?"
+    assert semantic_query(replace(polluted, visible_text="정말?")) == "호시노랑 친했어\n정말?"
+    assert semantic_query(replace(req, visible_text="")) == ""
     assert semantic_query(req, intent_hint=True).startswith("fact:")
+
+
+@pytest.mark.parametrize("visible,anchor", [
+    ("정말 Hoshino랑, 처음 만난 거야?", "hoshino랑 처음 만난 거야"),
+    ("호시노랑 처음 만난 거야?", "호시노랑  처음\n만난 거야"),
+])
+def test_anchor_containment_ignores_formatting(visible, anchor):
+    assert semantic_query(request(visible, anchor_text=anchor)) == visible
+
+
+async def test_empty_lexical_query_cannot_disable_semantic_recall():
+    engine, _ = retriever()
+    result = await engine.retrieve(replace(request(), retrieval_text=""),
+                                   [candidate()], budget=BUDGET)
+    assert ids(result) == ["positive"]
 
 
 @pytest.mark.parametrize("reject,strong", [(0.5, 0.5), (1, 2), (float('nan'), 1)])

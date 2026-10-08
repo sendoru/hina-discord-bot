@@ -1,13 +1,12 @@
 """Opt-in Gemini Embedding 2 adapter; separate from answer-provider lifecycle."""
 
-import asyncio
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 import httpx
 
-from hina_bot.core.semantic_retrieval import Vector, normalize
+from hina_bot.core.semantic_retrieval import EmbeddingResult, EmbeddingUsage, normalize
 
 
 class EmbeddingError(RuntimeError):
@@ -20,8 +19,11 @@ class GeminiEmbeddingConfig:
     dimensions: int = 768
     revision: str = "1"
     timeout_seconds: float = 15.0
+    batch_size: int = 50
 
     def __post_init__(self):
+        if type(self.batch_size) is not int or not 1 <= self.batch_size <= 100:
+            raise ValueError("batch_size must be an integer in 1..100")
         if not re.fullmatch(r"gemini-embedding-2(?:-[a-z0-9-]+)?", self.model):
             raise ValueError("this adapter supports Gemini Embedding 2 models only")
         if not 1 <= self.dimensions <= 3072 or not self.revision:
@@ -56,34 +58,59 @@ class GeminiEmbeddingBackend:
     async def close(self):
         await self._http.aclose()
 
-    async def _embed(self, text: str) -> Vector:
+    def _content_request(self, text: str) -> dict:
+        return {"model": f"models/{self.config.model}",
+                "content": {"parts": [{"text": text}]},
+                "outputDimensionality": self.dimensions}
+
+    async def _request(self, method: str, payload: dict) -> dict:
         try:
-            response = await self._http.post(
-                f"models/{self.config.model}:embedContent",
-                json={"content": {"parts": [{"text": text}]},
-                      "outputDimensionality": self.dimensions},
-            )
+            response = await self._http.post(f"models/{self.config.model}:{method}", json=payload)
         except httpx.HTTPError:
             raise EmbeddingError("Gemini embedding transport failure") from None
         if response.status_code != 200:
             raise EmbeddingError(f"Gemini embedding HTTP {response.status_code}")
         try:
-            return normalize(response.json()["embedding"]["values"], self.dimensions)
-        except (KeyError, TypeError, ValueError, OverflowError):
+            data = response.json()
+            if not isinstance(data, dict):
+                raise TypeError("invalid response")
+            return data
+        except (TypeError, ValueError):
             raise EmbeddingError("Gemini embedding invalid response") from None
 
-    async def embed_query(self, text: str) -> Vector:
-        return await self._embed(f"task: search result | query: {text}")
+    @staticmethod
+    def _usage(data: dict) -> EmbeddingUsage:
+        metadata = data.get("usageMetadata")
+        count = metadata.get("promptTokenCount") if isinstance(metadata, dict) else None
+        if count is not None and (type(count) is not int or count < 0):
+            raise EmbeddingError("Gemini embedding invalid usage metadata")
+        return EmbeddingUsage(count, 1)
 
-    async def embed_candidates(self, texts: Sequence[str]) -> list[Vector]:
-        # Embedding 2 aggregates multi-part input. One independent request per document
-        # avoids accidental corpus aggregation and limits concurrent quota pressure.
-        result = []
-        for start in range(0, len(texts), 4):
-            batch = await asyncio.gather(*(
-                self._embed(f"title: none | text: {text}") for text in texts[start:start + 4]
-            ), return_exceptions=True)
-            if any(isinstance(value, BaseException) for value in batch):
-                raise EmbeddingError("Gemini candidate embedding failed")
-            result.extend(batch)
-        return result
+    def _vectors(self, entries: object, expected: int):
+        try:
+            if not isinstance(entries, list) or len(entries) != expected:
+                raise ValueError("embedding row count mismatch")
+            return tuple(normalize(entry["values"], self.dimensions) for entry in entries)
+        except (KeyError, TypeError, ValueError, OverflowError):
+            raise EmbeddingError("Gemini embedding invalid vectors") from None
+
+    async def embed_query(self, text: str) -> EmbeddingResult:
+        data = await self._request(
+            "embedContent", self._content_request(f"task: search result | query: {text}"),
+        )
+        return EmbeddingResult(self._vectors([data.get("embedding")], 1), self._usage(data))
+
+    async def embed_candidates(self, texts: Sequence[str]) -> EmbeddingResult:
+        # Synchronous batches of independent requests, not multipart aggregated content.
+        # API guarantees positional response order; validate cardinality and every vector
+        # before returning ANY chunk to the index's atomic cache-fill transaction.
+        vectors = []
+        usage = EmbeddingUsage()
+        for start in range(0, len(texts), self.config.batch_size):
+            chunk = texts[start:start + self.config.batch_size]
+            data = await self._request("batchEmbedContents", {"requests": [
+                self._content_request(f"title: none | text: {text}") for text in chunk
+            ]})
+            vectors.extend(self._vectors(data.get("embeddings"), len(chunk)))
+            usage += self._usage(data)
+        return EmbeddingResult(tuple(vectors), usage)

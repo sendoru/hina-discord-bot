@@ -22,7 +22,10 @@ dot product are sufficient. No ANN/vector DB, NumPy dependency, or persistent mi
 - `tooling/retrieval_calibration.py`: live measurements and comparison, no rollout writes.
 
 `EmbeddingBackend` exposes `cache_key`, `dimensions`, `embed_query(text)` and
-`embed_candidates(texts)`. No Gemini type reaches a public retrieval contract.
+`embed_candidates(texts)`. Both return an internal provider-neutral `EmbeddingResult`
+with vectors and `EmbeddingUsage` (prompt token count + HTTP request count). Usage is
+per operation, not mutable global counters, so concurrent callers do not mix accounting.
+The #311 public request/candidate/bundle contracts are unchanged. No Gemini type leaks.
 The Gemini adapter uses the repository's existing `httpx` dependency, model
 `gemini-embedding-2`, and **768 dimensions** by default. A different Embedding 2 revision
 or dimensionality can be supplied explicitly. There is no automatic model substitution.
@@ -31,11 +34,22 @@ Official API references checked 2026-10-08:
 [embedding guide](https://ai.google.dev/gemini-api/docs/embeddings) and
 [REST reference](https://ai.google.dev/api/embeddings).
 Embedding 2 uses task instructions in text rather than `taskType`. The adapter uses
-search-query and untitled-document formatting. It sends one independent `embedContent`
-request per candidate (up to four concurrent), since a multipart Embedding 2 input can
-aggregate into one vector. Query search sends exactly one query request. No retries are
-hidden in the adapter. Vector count, dimensions, finite values and nonzero norms are
-validated, and normalization is repeated defensively on all backend outputs.
+search-query and untitled-document formatting. Query requests use `embedContent` once.
+Candidate cache misses use **synchronous `batchEmbedContents`**, not aggregated multipart
+content and not asynchronous Batch jobs. Each entry has its own model/content/dimension
+request. Chunks run sequentially, default **50 inputs**, configurable from 1 to **100**.
+The [upstream integration reference](https://reference.langchain.com/python/langchain-google-genai/embeddings/GoogleGenerativeAIEmbeddings/embed_documents)
+documents Google's 100-input ceiling; the REST reference documents independent requests,
+ordered results and usageMetadata. The default deliberately stays below that ceiling.
+HTTP batching does not imply a rate-quota increase or asynchronous Batch pricing.
+
+Response order is guaranteed by the API. The adapter preserves chunk and positional
+order, validates exact cardinality and every vector, then returns the complete result.
+There are no echoed per-input ids to independently detect a server violating its ordering
+contract; tests use distinct vectors to verify our mapping. A partial, missing, extra or
+invalid vector in any chunk prevents the entire fill from reaching the cache. No retries
+are hidden in the adapter. Dimensions, finite values and nonzero norms are validated,
+and normalization is repeated defensively on all backend outputs.
 
 ## Input representation and entity boundaries
 
@@ -45,13 +59,20 @@ source labels and raw JSON are not appended. Updating a guard or confidence neve
 an old cached candidate into new evidence: only vectors are cached; current objects and
 reference serialization always come from the current candidate snapshot.
 
-The query starts with `retrieval_text` (existing routing prefix removal/normalization),
-not literal `visible_text`. Whitespace is normalized. An authorized `anchor_text` is
-appended only when not already present; a blank query does not fall back to raw input.
-Existing routing lexical expansions are retained, not stripped by brittle suffix rules.
-Canonical ids are used as constraints, not embedded as pseudo-natural-language aliases.
-No per-turn LLM rewrite. Intent hints are disabled by default; the CLI can measure a
-second representation with an intent prefix. These variants need separate calibration.
+The semantic query uses **`visible_text`**, normalized for whitespace, plus authorized
+`anchor_text` only when absent. It never reads `retrieval_text`; lexical ranking continues
+to use that existing `lore_query` representation unchanged. Calling prefixes remain
+natural conversational text rather than triggering lexical field extraction. A blank
+visible turn does not fall back to lexical keywords. An anchor already contained after
+Unicode normalization, case folding and punctuation/spacing removal is not repeated.
+This deterministic builder does not claim to recognize arbitrary paraphrases as equivalent
+or drop potentially meaningful negation based on fuzzy overlap.
+
+Only the visible turn and supplied causal anchor are considered: no system prompt,
+`hina.md`, world_core, memory dump or channel-history dump. Canonical ids remain gates,
+not pseudo-natural-language text. No LLM rewrite. Intent hints are disabled by default;
+the CLI can measure a separate intent-prefix variant. This conversational representation
+needs new calibration; results from the former lexical-expanded query are not reusable.
 
 Only factual-eligible candidates are considered. `required_entities` is an ALL-members
 constraint applied **before lexical and semantic search**, including every fallback.
@@ -71,9 +92,11 @@ Text edits miss automatically; identical text can share vectors across static/ru
 sources. Keyword/subject-only edits do not require new embeddings. Deleted or disabled
 rows disappear from the next supplied snapshot and cannot be returned from the cache.
 Old vectors age out. Queries are never cached. A fill lock avoids duplicate concurrent
-cold fills. Full validated batches commit atomically; malformed results do not poison it.
+cold fills. The full cache-miss fill (including every HTTP batch chunk) commits atomically; malformed
+results do not poison it.
 
-`await index.warm(candidates)` prewarms without query embedding, outside a turn deadline.
+`await index.warm(candidates)` prewarms without query embedding, outside a turn deadline,
+and returns cache hit/miss counts, candidate usage and warm-up latency.
 The first lazy search also fills missing candidates, so cold startup is **not** a
 query-only call. Subsequent searches with unchanged content embed only the query. The
 retriever bounds the entire optional semantic attempt to 30 seconds by default; request
@@ -143,11 +166,13 @@ uv run python -m hina_bot.tooling.retrieval_calibration \
 
 The CLI does not automatically load `.env.local`. Set the environment using your existing
 secret-management workflow; never put the key in a CLI argument, fixture, report or PR.
-This is an explicitly invoked, billable API evaluation. With unchanged 130-row corpus
-and 12 cases, the default run embeds 130 unique candidate texts plus 12 queries; enabling
-intent comparison adds 12 query embeddings, not another corpus fill. Counts can differ
-if text is duplicated. Every new process starts with an empty cache. No production logs,
-private conversations or runtime DB are read by the CLI.
+This is an explicitly invoked, billable API evaluation. With 130 unique candidate texts
+and 12 cases, the default 50-input batch size makes **3 candidate HTTP batch requests +
+12 single query HTTP requests**. Intent comparison adds 12 query requests, not another
+corpus fill. Query embeddings are measured once per case/variant and reused across fusion
+comparisons. Counts change with unique text count or `--batch-size`. Each new process
+starts with an empty cache. The CLI prewarms the corpus before timing queries separately.
+No production logs, private conversations or runtime DB are read by the CLI.
 
 A custom reviewed lore JSONL can be supplied with `--lore`, and fixtures with `--cases`.
 `--reject` and `--strong` must be supplied together to compare explicit trial thresholds.
@@ -160,7 +185,11 @@ those selection skips when reporting fusion results.
 Fixture schema: unique `id`, `split` (`calibration` or `evaluation`), `visible_text`,
 explicit `intent`, and disjoint `positive`, `hard_negative`, `unrelated` candidate-id
 lists. Optional `retrieval_text`, `anchor_text`, `entities`, `required_entities` describe
-already-authorized routing inputs. Labels refer to packaged, reviewed lore; no corpus
+already-authorized routing inputs. Optional `lexical_query` overrides only the lexical
+representation after routing; `expected_semantic_query` independently checks the natural
+representation. The fixture includes expanded lexical hints alongside an unchanged
+semantic expectation, and regression tests verify empty/broken lexical input cannot
+suppress semantic recall. Labels refer to packaged, reviewed lore; no corpus
 rewrite or entity resolution is performed. The 12 curated cases cover first meeting vs
 prior knowledge, rest/responsibility vs shopping, weak-overlap paraphrases, lexical
 hard negatives, profile lookup and ordinary/unrelated queries.
@@ -174,22 +203,59 @@ correlated development set; broaden it before claiming generalization or rolling
 If no separating interval exists or any API call fails, the command fails and writes no
 new report. A previous output file is not removed; check exit status before consuming it.
 
-Output is JSON (stdout unless `--output`), with:
+Output is schema-version 2 JSON (stdout unless `--output`), with:
 
 - backend key, dimensions, corpus size, corpus/fixture SHA-256, experimental status;
 - per query representation: trial thresholds and all fusion settings;
 - calibration/evaluation distributions per label: count/min/median/mean/max;
-- per case: labeled cosine values, semantic top ids/cosines, timing/cache counts,
+- initial `candidate_warmup`: latency, cache counts, batch promptTokenCount and request count;
+- per case: separate lexical/semantic representations, semantic-query character count,
+  query promptTokenCount and embedding latency, candidate miss-fill tokens/warm-up latency,
+  HTTP request count, labeled cosine values, semantic top ids/cosines, timing/cache counts,
   and each fusion's selected ids/scores, positive/hard-negative/unrelated hits,
   unjudged selections and zero-result status;
 - split-specific recall@N, hard-negative rejection, labeled profile precision,
   zero-result accuracy and unjudged counts for lexical-only and the three fusion methods.
 
-Reports contain fixture/candidate ids and scores, not query/corpus text or credentials.
+Reports contain **the supplied fixture's lexical and semantic query text** for inspection,
+plus ids/scores and usage, never credentials or candidate corpus text. This is CLI-only;
+no production usage log or #316 telemetry integration is introduced.
 Unjudged candidates are not automatically labeled wrong or correct; inspect them before
 interpreting precision. Scores above are genuinely measured **only when run with the
 real API**. Unit tests use synthetic vectors solely to verify the mechanics. This PR
 contains no live distributions, measured latency, or evidence that one fusion wins.
+
+### Actual token and cost accounting
+
+The adapter reads **`usageMetadata.promptTokenCount`** on each query and each synchronous
+batch response. A batch count is added once, never multiplied by its number of inputs.
+Missing usage is `null` (unknown), not zero or a text-length estimate; a cache hit has zero
+new calls/tokens. Unknown usage propagates to the combined total and suppresses total cost
+estimation. Synthetic test metadata validates wiring only, not actual Gemini tokenization.
+No assumed 100–200-token query estimate is used.
+
+`semantic_query_character_count` measures the builder's natural text. Query prompt tokens
+measure the actual API input, including the adapter's task prefix. `query_embedding.latency_ms`
+excludes candidate warm-up and cosine search; initial `candidate_warmup.elapsed_ms` includes
+cache preparation and all sequential candidate batch calls. `usage.candidate`, `usage.query`
+and `usage.total` aggregate a completed run across both query variants without double
+counting the prewarm. `request_count` counts HTTP calls, not quota units or embedded texts.
+A failed CLI run emits no completed report; these totals are not a billing ledger for
+failed/partial runs.
+
+No provider price is hardcoded. Optionally pass the current **synchronous text embedding**
+USD price per million input tokens:
+
+```bash
+uv run python -m hina_bot.tooling.retrieval_calibration \
+  --batch-size 50 --usd-per-million-tokens "$EMBEDDING_USD_PER_MILLION" \
+  --output data/retrieval-v2-calibration.json
+```
+
+`cost.estimated_usd = usage.total.prompt_token_count * supplied_rate / 1_000_000`.
+Without a rate, token counts remain available and `estimated_usd` is null. The report
+records the supplied rate and labels it `operator_supplied`; this excludes credits,
+taxes and account-specific discounts and does not assume async Batch discounts.
 
 ## Next boundaries and review
 
