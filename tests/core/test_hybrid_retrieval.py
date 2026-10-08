@@ -213,23 +213,34 @@ async def test_resolved_builder_profile_queries_keep_unannotated_corpus_candidat
 
 
 async def test_resolved_relation_pair_does_not_drop_unannotated_factual_candidates():
-    pair_text = "호시노랑 예전부터 친했던 거야?"
+    pair_text = "호시노랑 무슨 사이야?"
     req = build_resolved_retrieval_request(RoutingPlan(pair_text, pair_text))
     assert set(req.required_entities) == {"character.hina", "character.hoshino"}
     rows = [
         candidate(
             "unannotated", semantic_text="positive",
-            keywords=("친분", "관계"), entities=(),
+            keywords=("사이", "관계"), entities=(),
         ),
         candidate(
             "conflict", semantic_text="positive",
-            keywords=("친분", "관계"),
+            keywords=("사이", "관계"),
             entities=("character.hina", "character.ako"),
         ),
     ]
     engine = HybridRetriever()
     result = await engine.retrieve(req, rows, budget=BUDGET)
     assert ids(result) == ["unannotated"]
+
+
+async def test_actual_builder_classifier_miss_does_not_block_semantic_channel():
+    text = "호시노랑 예전부터 친했던 거야?"
+    req = build_resolved_retrieval_request(RoutingPlan(text, text))
+    assert req.intent == RetrievalIntent.CONVERSATION
+    engine, backend = retriever()
+    result = await engine.retrieve(req, [candidate()], budget=BUDGET)
+    assert ids(result) == ["positive"]
+    assert result.semantic_status == "available"
+    assert backend.queries == [text]
 
 
 async def test_sources_are_not_priorities_and_ties_are_stable():
