@@ -37,10 +37,18 @@ The original `build_retrieval_request()` retains its behavior and caller-supplie
 - It resolves visible text before using the existing classifier's normalized lore query.
 - The RP subject is configured as `character.hina`, can be another registered id, or
   can be disabled with `None`. User first-person pronouns do not change that identity.
-- A single named character grounds the RP subject/counterpart pair. Two explicit
-  characters constrain that pair; the RP subject is not added as a third required id.
-- A self-profile request can require just the RP subject. Ordinary text without a
-  resolved character has no required entity constraint and retrieves no relations.
+- `entities` records canonical characters resolved for the current retrieval context.
+  The RP subject is added only when it is actually needed to complete an implicit
+  relationship pair or identify a self-profile target; it is not injected into every turn.
+- `required_entities` is narrower than `entities`: this milestone uses it only for a
+  complete, unambiguous relationship pair. Single factual/profile targets are not relation
+  hard constraints.
+- A relation question with one reviewed counterpart may use the configured RP subject as
+  the implicit second party (for example, “호시노랑 무슨 사이야?”). Two explicitly
+  resolved characters constrain that exact pair.
+- If a two-name relation phrase is only partially resolvable (for example, registered
+  Hoshino plus unregistered Ako), the missing slot is **not** substituted with Hina.
+  The known entity may remain in `entities`, but `required_entities` stays empty.
 - An authorized anchor with provenance is inherited only for the existing deterministic
   follow-up classification and a narrow set of name-free elliptical questions
   (such as “그럼 무슨 사이야?”) when no character is explicit in the current message.
@@ -49,9 +57,10 @@ The original `build_retrieval_request()` retains its behavior and caller-supplie
   unresolved; registered ids can still be present in `entities` without a constraint.
 
 The bridge adds no channel-history/memory access. Expanded lexical hints and classifier
-context are not identity evidence. Automatic constraints describe RP grounding targets,
-not a claim that every referent in a sentence was understood. Unregistered characters
-remain unresolved; callers with a more precise required pair can use the original builder.
+context are not identity evidence. Automatic constraints describe fully grounded relationship evidence, not a claim
+that every referent in a sentence was understood. Unregistered or partially resolved
+characters remain unresolved; callers with a reviewed, more precise pair can still supply
+that pair explicitly through the base contract.
 
 ## Exact grounding and integration
 
@@ -64,14 +73,17 @@ Runtime rows currently lack reviewed canonical metadata, so admin ownership or l
 subjects do not promote them to relation evidence. This restriction is provenance-based;
 there is no static/runtime ranking tier.
 
-Selection requires a nonempty `required_entities` subset of `entities`. Single-entity
-profile/background rows may support that constraint; multi-entity rows must match the
-**complete set**, not merely overlap it. An unrelated Hina/third-character relation cannot
-satisfy Hina/Hoshino. Profiles alone do not establish a direct relationship. Requested
-profiles precede pair rows; corpus order is stable within each group. Duplicate ids are
-selected once. `UsageBudget` independently bounds relation item count and serialized
-reference characters; oversized rows are skipped. A score of 1 means binary exact
-eligibility, not certainty, semantic similarity, or a score to fuse with #313.
+Selection requires a nonempty `required_entities` subset of `entities`; in the
+resolved builder this means a complete relationship pair. Single-entity profile/background
+rows may support that pair, while multi-entity rows must match the **complete set**, not
+merely overlap it. An unrelated Hina/third-character relation cannot satisfy Hina/Hoshino.
+Profiles alone do not establish a direct relationship. For pair constraints, pair-specific
+evidence is packed **before** singleton profiles so a small relation budget cannot spend all
+slots on background identity data. Corpus order is stable within each group; predicate/facet
+ordering within pair evidence remains #315. Duplicate ids are selected once.
+`UsageBudget` independently bounds relation item count and serialized reference characters;
+oversized rows are skipped. A score of 1 means binary exact eligibility, not certainty,
+semantic similarity, or a score to fuse with #313.
 
 ```python
 from hina_bot.ai.retrieval_request import build_resolved_retrieval_request
@@ -132,10 +144,13 @@ and timelines, and compare legacy results with the additive annotations removed.
 ## Follow-ups and merge boundaries
 
 - **#313**: consumes the resolved request independently. No embedding backend, fusion,
-  RRF, calibration, semantic thresholds, or ranking changes here. Grounder results should
-  be composed after factual selection, retaining their own budget. Shared contract/core
-  ranking files are untouched. `ai/retrieval_request.py` gets only additive bridge code;
-  three existing corpus rows get metadata, so concurrent corpus edits may need resolution.
+  RRF, calibration, semantic thresholds, or ranking changes here. `required_entities`
+  represents a complete relation pair, not a blanket factual prefilter; candidate rows with
+  no entity annotation are therefore “unknown metadata”, not automatically contradictory
+  evidence. Grounder results should be composed after factual selection, retaining their
+  own budget. Shared contract/core ranking files are untouched. `ai/retrieval_request.py`
+  gets only additive bridge code; three existing corpus rows get metadata, so concurrent
+  corpus edits may need resolution.
 - **#315**: interpret the distinction between singleton background and exact pair evidence;
   bundle membership never proves local sufficiency. Add question-specific evidence and
   temporal sufficiency handling, directional addressing consumption, and web fallback.
