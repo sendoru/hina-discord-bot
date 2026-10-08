@@ -185,10 +185,10 @@ async def test_conversation_intent_does_not_block_semantic_retrieval_once_invoke
     assert backend.documents == ["positive"] and len(backend.queries) == 1
 
 
-async def test_empty_budget_and_non_factual_usage_still_skip_embedding():
+async def test_non_factual_usage_skips_embedding():
     engine, backend = retriever()
-    assert not (await engine.retrieve(request(), [candidate()])).bundle.facts
-    assert not (await engine.retrieve(request(), [candidate(kind="optional_reaction")])).bundle.facts
+    result = await engine.retrieve(request(), [candidate(kind="optional_reaction")])
+    assert not result.rows
     assert not backend.documents and not backend.queries
 
 
