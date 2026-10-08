@@ -74,13 +74,25 @@ not pseudo-natural-language text. No LLM rewrite. Intent hints are disabled by d
 the CLI can measure a separate intent-prefix variant. This conversational representation
 needs new calibration; results from the former lexical-expanded query are not reusable.
 
-Only factual-eligible candidates are considered. `required_entities` is an ALL-members
-constraint applied **before lexical and semantic search**, including every fallback.
-Missing metadata fails a supplied constraint; an empty constraint does not invent one.
-`entities` can nominate additional exact/entity candidates into the union, but membership
+Only factual-eligible candidates are considered. #312 now reserves
+`required_entities` for a **complete relation evidence pair**, so factual retrieval does
+not treat it as a blanket requirement that every candidate carry the full pair metadata.
+The existing corpus is only partially annotated and current runtime knowledge has no
+canonical entities.
+
+Entity compatibility therefore has three states during migration:
+
+- no candidate entity metadata: unknown, keep it eligible;
+- reviewed metadata that is a proper subset of the required pair: partial/background,
+  keep it eligible;
+- reviewed metadata that explicitly names a contradictory entity set: reject it.
+
+A full/superset match is also eligible. Missing metadata can support retrieval recall but
+must not later be mistaken for entity-grounded answer sufficiency; that decision belongs
+to #315. `entities` can nominate exact annotated candidates into the union, but membership
 alone never proves relevance. No resolver, alias DB, relationship DB, entity-pair
-inference or relationship evidence sufficiency is introduced. No current corpus entity
-annotations are fabricated to make this path pass. #312 supplies canonical metadata.
+inference or relationship evidence sufficiency is introduced here; #312 supplies the
+resolver and exact relation lane.
 
 ## Cache and latency
 
@@ -115,19 +127,26 @@ configuration object, and must be reevaluated before #316 production wiring.
 
 Selection:
 
-1. A conversation intent, empty query/corpus or disabled budget returns no factual result
-   and makes no embedding calls. A caller must route a genuinely factual request first.
-2. Profile intent uses lexical only. Optional `skip_semantic_at_lexical` permits a caller
-   to skip semantic search at an evaluated strong lexical cutoff; it is unset by default.
+1. Empty query/corpus or disabled budget returns no factual result. The retriever itself
+   does **not** refuse `conversation` intent: once a caller invokes factual semantic
+   retrieval, the legacy regex classifier is not allowed to veto the semantic channel.
+   Production invocation/gating remains #316.
+2. Profile intent uses lexical only and preserves positive deterministic profile-field
+   lexical hits. Optional `skip_semantic_at_lexical` permits a caller to skip semantic
+   search at an evaluated strong lexical cutoff; it is unset by default.
 3. Otherwise combine lexical top-20, semantic top-20 and supplied canonical-entity hits.
 4. Convert cosine to 0 below/equal `reject`, 1 above/equal `strong`, and linearly interpolate.
-5. Admit a semantic candidate at calibrated score >= 0.5, or a lexical candidate with
-   raw score >= 12. When semantics are available, lexical admission also requires a
-   positive calibrated semantic score in semantic top-K; this rejects misleading overlap.
-   That conservative gate is deliberately bypassed for profiles and backend failure.
-6. Apply fusion, minimum score (default 0.5), then `UsageBudget`'s strict score threshold,
-   serialized-reference char limit and item limit. Oversized rows are skipped. Zero is
-   normal; slots are not filled with arbitrary `score > 0` candidates.
+5. Admit a semantic channel contribution at calibrated score >= 0.5, or a lexical channel
+   contribution at raw score >= 12. The channels are independent: semantic top-K absence
+   means “not scored by that channel”, not negative evidence, and a semantic rejection
+   cannot delete a qualifying lexical result.
+6. Fusion uses only admitted channel contributions. Weighted fusion falls back to the
+   single admitted channel when the other one is absent/rejected; RRF likewise counts
+   only admitted ranks. Lexical-first preserves qualifying lexical order and uses semantic
+   results to fill recall gaps.
+7. Apply the resulting score, then `UsageBudget`'s strict score threshold, serialized
+   reference char limit and item limit. Oversized rows are skipped. Zero is normal; slots
+   are not filled with arbitrary `score > 0` candidates.
 
 For lexical score normalization, the provisional scale is 24 (clipped at 1). The original
 raw lexical order is preserved in lexical-only/profile and the lexical-first priority
@@ -137,9 +156,9 @@ Existing interpretation/unknown guards and provenance stay attached to selected 
 
 | Fusion | Experimental rule | Tradeoff |
 | --- | --- | --- |
-| `lexical_first` (default) | qualifying lexical partition in original order, then semantic recall | Smallest policy; preserves lexical order but can retain semantically borderline overlap |
-| `weighted` | `(1-w)*clipped_lexical + w*calibrated_semantic`, default w=0.5 | Scale/weight sensitive; needs measured tuning |
-| `rrf` | sum of `(k+1)/(k+rank)` over available channels, default k=60 | Rank-scale independent; absolute admission gates remain essential |
+| `lexical_first` (default) | qualifying lexical partition in original order, then semantic-only recall | Smallest preservation policy; semantic evidence never vetoes a lexical admission |
+| `weighted` | weighted average only when **both** channels are admitted; otherwise use the admitted channel unchanged | Scale/weight sensitive; avoids treating missing/rejected semantic evidence as a penalty |
+| `rrf` | sum of `(k+1)/(k+rank)` over **admitted** channels, default k=60 | Rank-scale independent; top-K presence alone is not admission |
 
 RRF scores can approach 2; other scores are <=1. Budget thresholds are backend/fusion
 scale, not probabilities. The common 0.5 trial cutoff is not claimed to be optimal across
@@ -148,7 +167,8 @@ No top1/top2 separation is imposed before measurements establish a benefit. The 
 is a conservative **implementation baseline, not an empirical winner**.
 
 A missing backend/calibration, backend-key mismatch, HTTP failure, timeout or invalid
-vector uses lexical-only fallback with the same entity gate and nonzero lexical cutoff.
+vector uses lexical-only fallback with the same migration-safe entity compatibility and
+nonzero lexical cutoff (profile intent preserves any positive field hit).
 Task cancellation propagates. Minimal content-free result diagnostics expose semantic
 status, successful cache hits/misses and elapsed milliseconds; no production telemetry or
 usage-log writes. Failed attempts do not report partial cache counts as successful work.
@@ -177,10 +197,10 @@ No production logs, private conversations or runtime DB are read by the CLI.
 A custom reviewed lore JSONL can be supplied with `--lore`, and fixtures with `--cases`.
 `--reject` and `--strong` must be supplied together to compare explicit trial thresholds.
 `--top-n` changes selection size; default 3 with a 3,200-character budget. The direct
-Python API also accepts a prepared static/runtime candidate union. The production
-retriever intentionally skips conversation/profile semantic calls; the calibration CLI
-measures **all fixture queries** to expose negative distributions, then reproduces
-those selection skips when reporting fusion results.
+Python API also accepts a prepared static/runtime candidate union. Profile semantics are
+still intentionally skipped. Conversation/fact semantic execution is measured whenever
+the caller invokes the retriever; deciding whether production should invoke it is deferred
+to #316 rather than inherited from the legacy factual regex classifier.
 
 Fixture schema: unique `id`, `split` (`calibration` or `evaluation`), `visible_text`,
 explicit `intent`, and disjoint `positive`, `hard_negative`, `unrelated` candidate-id
@@ -260,14 +280,13 @@ taxes and account-specific discounts and does not assume async Batch discounts.
 ## Next boundaries and review
 
 Review semantic admission vs lexical preservation, fixture labels/splits, candidate cache
-lifecycle and Gemini request format especially carefully. For this corpus, packaged
-birthday/weapon lookups have lexical evidence; some school-year/affiliation/position
-queries have no good current lexical hit. #312 handles that grounding gap independently.
+lifecycle and Gemini request format especially carefully. #312 is now present in the
+integration base. Cross-component regressions cover resolved self-profile queries,
+complete relation pairs, unannotated factual rows and explicit contradictory annotations.
 
-No changes to `knowledge_retrieval.py`, `retrieval_v2.py`, `retrieval_request.py`,
-`lore.py`, `runtime_knowledge.py`, packaged lore or shared contract documentation: #312
-should have no direct edited-file conflict. #314 owns ambient activation; #315 owns
-structured evidence sufficiency/web fallback; #316 owns live result review, production
+This PR still does not change shared contracts, legacy scoring, production assembly or
+runtime storage. #314 owns ambient activation; #315 owns proposition-level evidence
+sufficiency/web fallback; #316 owns invocation policy, live result review, production
 shadow comparison, telemetry and rollout gates. Before wiring production, explicitly
 review calibration for the chosen model/revision/dimensions/query representation and
 relevance policy. There is deliberately no production enable switch in this PR.
