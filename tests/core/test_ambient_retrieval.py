@@ -157,12 +157,24 @@ def test_scene_query_uses_only_small_natural_scene_projection():
         {"rp_entity": ""},
         {"rp_entity": HINA, "recent_turns": ("a", "b", "c")},
         {"rp_entity": HINA, "recent_turns": ("",)},
+        {"rp_entity": HINA, "recent_turns": ("x" * 601,)},
         {"rp_entity": HINA, "relationship_signal": "x" * 301},
     ],
 )
 def test_scene_rejects_unbounded_or_invalid_projection(kwargs):
     with pytest.raises(ValueError):
         AmbientScene(request("안녕"), **kwargs)
+
+
+def test_short_recent_fragment_does_not_delete_richer_current_turn():
+    scene = AmbientScene(
+        request("오늘은 쉬어도 돼"),
+        rp_entity=HINA,
+        recent_turns=("쉬어",),
+    )
+    query = ambient_scene_query(scene)
+    assert "쉬어" in query
+    assert "오늘은 쉬어도 돼" in query
 
 
 def test_ambient_candidate_filter_is_hina_specific_reviewed_interpretation_only():
