@@ -44,7 +44,7 @@ same row if factual and ambient retrieval both select it.
 
 - current `RetrievalRequest.visible_text`;
 - the already authorized causal `anchor_text`;
-- at most two explicitly supplied recent turns;
+- at most two explicitly supplied recent turns, each at most 600 characters;
 - one short natural-language relationship signal;
 - current RP entity as a **filter**, not embedding text.
 
