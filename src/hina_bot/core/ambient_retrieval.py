@@ -33,8 +33,8 @@ class AmbientScene:
             raise ValueError("ambient scene requires an RP entity")
         if len(self.recent_turns) > 2:
             raise ValueError("ambient scene accepts at most two recent turns")
-        if any(not turn.strip() for turn in self.recent_turns):
-            raise ValueError("ambient recent turns must be non-empty")
+        if any(not turn.strip() or len(turn) > 600 for turn in self.recent_turns):
+            raise ValueError("ambient recent turns must be non-empty and <= 600 chars")
         if len(self.relationship_signal) > 300:
             raise ValueError("ambient relationship signal is too long")
 
@@ -81,7 +81,7 @@ def ambient_scene_query(scene: AmbientScene) -> str:
         key = _meaning_key(text)
         if not key:
             return
-        if any(key in old or old in key for old in keys):
+        if key in keys:
             return
         parts.append(text)
         keys.append(key)
