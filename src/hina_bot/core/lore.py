@@ -58,8 +58,15 @@ def retrieval_usages(record: dict) -> tuple[KnowledgeUsage, ...]:
         raise LoreValidationError(f"{record['id']}: community meme is reaction-only")
     if record["lane"] == "canon" and KnowledgeUsage.REACTION in usages:
         raise LoreValidationError(f"{record['id']}: canon is not a reaction guide")
-    if KnowledgeUsage.AMBIENT in usages and fact_type(record) != "inference":
-        raise LoreValidationError(f"{record['id']}: ambient requires an interpretation")
+    if KnowledgeUsage.AMBIENT in usages:
+        if fact_type(record) != "inference" or record.get("knowledge") != "inference":
+            raise LoreValidationError(
+                f"{record['id']}: ambient requires an in-character interpretation"
+            )
+        if not record.get("entities"):
+            raise LoreValidationError(f"{record['id']}: ambient requires canonical entities")
+        if not record.get("evidence_ids"):
+            raise LoreValidationError(f"{record['id']}: ambient requires evidence_ids")
     return usages
 
 
