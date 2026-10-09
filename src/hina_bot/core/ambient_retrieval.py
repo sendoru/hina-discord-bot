@@ -22,7 +22,7 @@ from .knowledge_retrieval import (
 )
 from .memory_items import RELATIONSHIP_EVIDENCE_AXES
 from .retrieval_v2 import RetrievalRequest
-from .semantic_retrieval import SemanticCalibration, SemanticIndex
+from .semantic_retrieval import SemanticCalibration, SemanticHit, SemanticIndex
 
 _RECENT_TURNS_MAX = 2
 _SEGMENT_MAX_CHARS = 320
@@ -155,6 +155,25 @@ def eligible_ambient_candidates(
     return rows
 
 
+def rank_ambient(
+    candidates: Sequence[KnowledgeCandidate],
+    hits: Sequence[SemanticHit],
+    config: AmbientConfig,
+) -> tuple[RankedKnowledgeCandidate, ...]:
+    """Apply calibrated ambient admission to cosine-ordered full-corpus hits."""
+    if config.calibration is None:
+        return ()
+    admitted = []
+    for hit in hits:
+        score = config.calibration.score(hit.cosine)
+        if score < config.min_score:
+            continue
+        admitted.append(
+            RankedKnowledgeCandidate(score, hit.order, candidates[hit.order])
+        )
+    return tuple(admitted)
+
+
 class AmbientRetriever:
     """Semantic-only, precision-first ambient retrieval with no lexical/web fallback."""
 
@@ -202,17 +221,10 @@ class AmbientRetriever:
                 elapsed_ms=(perf_counter() - started) * 1000,
             )
 
-        admitted = []
-        for hit in result.hits:
-            score = config.calibration.score(hit.cosine)
-            if score < config.min_score:
-                continue
-            admitted.append(
-                RankedKnowledgeCandidate(score, hit.order, rows[hit.order])
-            )
+        admitted = rank_ambient(rows, result.hits, config)
 
         return AmbientResult(
-            tuple(admitted),
+            admitted,
             "available",
             result.cache_hits,
             result.cache_misses,
