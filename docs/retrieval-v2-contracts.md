@@ -106,7 +106,9 @@ is deliberately not invoked from the production answer path yet.
 - #312: canonical resolver, exact profile/entity-pair grounding and ambiguity guards.
 - #313: lexical/semantic union, calibration, fusion eval and lexical fallback. No
   provider, vector database or external infrastructure is part of these contracts.
-- #314: reviewed ambient eligibility, small scene budget, activation and model semantics.
+- #314: implemented opt-in scene-aware semantic ambient retrieval, reviewed Hina inference
+  eligibility, high-threshold zero-result behavior and model consumption semantics. See
+  [Scene-aware ambient character insights](retrieval-v2-ambient.md).
 - #315: evidence sufficiency from metadata, intent and required entity matches.
 - #316: production shadow wiring, content-free diagnostics and reversible rollout.
 
