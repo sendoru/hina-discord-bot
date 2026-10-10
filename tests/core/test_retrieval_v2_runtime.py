@@ -1,4 +1,5 @@
 from dataclasses import replace
+
 from hina_bot.core.ambient_retrieval import AmbientSceneContext
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate, KnowledgeUsage
 from hina_bot.core.relationship_grounding import RelationshipGrounder
