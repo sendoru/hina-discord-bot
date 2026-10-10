@@ -56,6 +56,28 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 조회 권한이 있는 텍스트 채널/스레드만 선택할 수 있습니다. `target:server/global`과
 `channel`을 동시에 지정할 수는 없습니다. DM에서는 다른 채널 지정이 허용되지 않습니다.
 
+`/memory mode` 사용 예시:
+
+```text
+/memory mode value:off
+/memory mode value:off target:channel channel:#general
+/memory mode value:read_only target:server
+/memory mode value:off target:global
+/memory mode value:inherit target:server
+```
+
+`target`은 `channel`(기본, 현재 채널), `server`(현재 서버), `global`(전역) 중에서
+선택합니다. `value`는 `normal/read_only/write_only/off/inherit`이며,
+`inherit`는 채널·서버에서만 가능하고 전역에서는 사용할 수 없습니다.
+장기 기억 모드는 `channel → server → global → 기본(normal)` 순서로
+우선 적용됩니다. 전역 값을 변경해도 서버·채널에 설정된 override는 유지됩니다.
+
+`/memory purge`도 `target:channel/server/global`을 사용합니다. 기본은 현재
+채널이며 `target:server`는 현재 서버, `target:global`은 모든 서버·DM의
+자동 기억을 삭제합니다. 다른 채널만 삭제할 때는
+`/memory purge target:channel channel:#general confirm:true`처럼 지정합니다.
+어느 범위든 실제 삭제에는 `confirm:true`가 필요합니다.
+
 현재 위치의 상속 경로는 `/memory status`로 확인할 수 있습니다. 여러 서버·채널의 직접 설정과
 전체 상속 결과는 Dashboard `/state`에서 확인합니다.
 
@@ -148,6 +170,22 @@ cross-user public memory 조회는 막습니다.
 | `/chatlog mode value:<all|direct|off|inherit>` | 전역/서버/채널의 최근 채널 문맥 수집·사용 범위 설정. 선택적 `channel`로 같은 서버의 다른 텍스트 채널/스레드 지정 |
 | `/chatlog status` | 현재 채널의 상속 체인과 최종 적용값 확인 |
 | `/chatlog clear` | 현재 채널의 메모리 내 최근 대화 문맥 비우기 |
+
+`/chatlog mode` 사용 예시:
+
+```text
+/chatlog mode value:direct
+/chatlog mode value:direct target:channel channel:#general
+/chatlog mode value:off target:server
+/chatlog mode value:direct target:global
+/chatlog mode value:inherit target:channel
+```
+
+`target`은 `channel`(기본, 현재 채널), `server`(현재 서버), `global`(전역)이고,
+선택적 `channel`은 `target:channel`일 때 같은 서버의 다른 텍스트 채널/스레드만
+지정할 수 있습니다. `inherit`는 채널·서버에서만 가능하며, 전역 기본값에서는
+사용할 수 없습니다. 전역 값을 바꿔도 기존 서버·채널 override가 우선합니다.
+DM에서는 최근 **서버 채널** 대화 문맥을 사용하지 않습니다.
 
 `/chatlog mode`는 예전의 on/off와 capture 설정을 하나의 정책으로 합칩니다.
 
