@@ -164,8 +164,10 @@ def _entities_compatible(
     candidate: KnowledgeCandidate,
     request: RetrievalRequest,
 ) -> bool:
-    if not candidate.entities or not request.entities:
-        return True
+    if not candidate.entities:
+        return not request.entities
+    if not request.entities:
+        return False
     return bool(set(candidate.entities) & set(request.entities))
 
 
