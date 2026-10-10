@@ -149,3 +149,80 @@ def test_memory_edit_requires_write_mode_and_csrf(tmp_path):
             },
         )
     assert response.status_code == 403
+
+
+def test_memory_retract_requires_confirmation_and_queues_lifecycle_action(tmp_path):
+    database = tmp_path / "hina.sqlite3"
+    item_id = _memory_database(database)
+    app = create_app(_settings(tmp_path, database, write_enabled=True))
+
+    with TestClient(app) as client:
+        detail = client.get(f"/memory/{item_id}")
+        assert detail.status_code == 200
+        assert f'action="/memory/{item_id}/retract"' in detail.text
+        assert "Retract memory" in detail.text
+
+        missing_confirm = client.post(
+            f"/memory/{item_id}/retract",
+            data={
+                "_csrf": app.state.admin_writer.csrf_token,
+                "_request_id": "c" * 32,
+                "expected_revision": "0",
+            },
+        )
+        assert missing_confirm.status_code == 422
+
+        response = client.post(
+            f"/memory/{item_id}/retract",
+            data={
+                "_csrf": app.state.admin_writer.csrf_token,
+                "_request_id": "d" * 32,
+                "expected_revision": "0",
+                "confirm": "yes",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"].startswith(f"/memory/{item_id}?queued=")
+
+    db = sqlite3.connect(database)
+    try:
+        row = db.execute(
+            """SELECT action,target,payload_json,status
+               FROM admin_commands ORDER BY id DESC LIMIT 1"""
+        ).fetchone()
+    finally:
+        db.close()
+    assert row[0] == "memory.item.retract"
+    assert row[1] == str(item_id)
+    assert row[3] == "pending"
+    assert json.loads(row[2]) == {
+        "item_id": item_id,
+        "expected_revision": 0,
+    }
+
+
+def test_retracted_memory_detail_is_read_only_but_preserved(tmp_path):
+    database = tmp_path / "hina.sqlite3"
+    store = Store(str(database))
+    scope = Scope(None, 10, 100)
+    item_id = store.add_memory_item(
+        scope,
+        "keep provenance",
+        kind="fact",
+        disclosure="local",
+        source_message_ids=("55",),
+    )
+    store.retract_memory_item(item_id, expected_revision=0)
+    store.close()
+
+    app = create_app(_settings(tmp_path, database, write_enabled=True))
+    with TestClient(app) as client:
+        response = client.get(f"/memory/{item_id}")
+
+    assert response.status_code == 200
+    assert "retracted" in response.text
+    assert "runtime retrieval과 reconciliation에서 제외" in response.text
+    assert "keep provenance" in response.text
+    assert f'action="/memory/{item_id}/edit"' not in response.text
+    assert f'action="/memory/{item_id}/retract"' not in response.text

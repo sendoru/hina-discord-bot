@@ -19,6 +19,31 @@
     }
   }
 
+  document.addEventListener("submit", (event) => {
+    const submitted = event.target;
+    if (!(submitted instanceof HTMLFormElement)) return;
+    const submitter = event.submitter;
+    if (!(submitter instanceof HTMLElement)) return;
+    const target = submitter.dataset.confirmRetract;
+    if (!target) return;
+
+    if (!window.confirm(
+      `정말 이 memory를 retract할까요?\n\n${target}\n\n내용과 provenance는 보존되지만 runtime memory에서는 제외됩니다.`,
+    )) {
+      event.preventDefault();
+      return;
+    }
+
+    let confirmation = submitted.querySelector('input[name="confirm"]');
+    if (!(confirmation instanceof HTMLInputElement)) {
+      confirmation = document.createElement("input");
+      confirmation.type = "hidden";
+      confirmation.name = "confirm";
+      submitted.appendChild(confirmation);
+    }
+    confirmation.value = "yes";
+  });
+
   const notice = document.querySelector("[data-admin-command-watch]");
   if (!(notice instanceof HTMLElement)) return;
   const commandId = notice.dataset.adminCommandWatch;

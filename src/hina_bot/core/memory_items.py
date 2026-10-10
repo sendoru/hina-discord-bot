@@ -32,6 +32,7 @@ class MemoryAccess(StrEnum):
 class MemoryStatus(StrEnum):
     ACTIVE = "active"
     SUPERSEDED = "superseded"
+    RETRACTED = "retracted"
 
 
 MEMORY_CONTENT_MAX_CHARS = 600

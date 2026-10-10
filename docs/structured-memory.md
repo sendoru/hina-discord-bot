@@ -138,7 +138,8 @@ re-checks ownership and origin rules when applying a lifecycle transition: DM re
 any item owned by the current user, while server reconciliation targets only the current disclosure
 space. A proposal can therefore never widen memory visibility merely by superseding another item.
 
-Exact retry suppression deliberately scans active and superseded history. If item storage or proposal
+Exact retry suppression deliberately scans active and superseded history, but not retracted rows. This
+allows a later genuine re-observation to create memory again after an operator retracts an item. If item storage or proposal
 application partially succeeds but the extraction cursor cannot advance, the retry reuses the existing
 item/proposal instead of creating another row. Lifecycle application is idempotent and failures leave the
 batch pending for retry.
