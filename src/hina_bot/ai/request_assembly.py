@@ -363,9 +363,10 @@ class RequestAssembler(BaseLLM):
                 for emoji in emoji_catalog or []
             ],
             "lore_reference": references,
-            "character_insights": character_insights,
-            "optional_reactions": optional_reactions,
         }
+        if bundle is not None:
+            context["character_insights"] = character_insights
+            context["optional_reactions"] = optional_reactions
         # This is the authoritative external-data boundary. Earlier capture/routing filters improve
         # behavior and data minimization, but a row that slips through them still cannot reach the
         # provider unless the active egress policy admits it here.
