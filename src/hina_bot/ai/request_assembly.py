@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 import httpx
 
 from hina_bot.core.ambient_retrieval import AMBIENT_CONTEXT_POLICY
+from hina_bot.core.relationship_grounding import RELATION_CONTEXT_POLICY
+from hina_bot.core.ambient_retrieval import AMBIENT_CONTEXT_POLICY
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
@@ -550,9 +552,22 @@ class RequestAssembler(BaseLLM):
             instruction_parts.append(REACTION_CONTEXT_POLICY)
         # Keep conditional reply/reference guidance after the stable shared prefix.
         instruction_parts.extend(reference_policies[1:])
+        retrieval_usages = {
+            row.get("retrieval_usage")
+            for row in references
+            if isinstance(row, dict)
+        }
+        if "relation" in retrieval_usages:
+            instruction_parts.append(RELATION_CONTEXT_POLICY)
+        if "ambient" in retrieval_usages:
+            instruction_parts.append(AMBIENT_CONTEXT_POLICY)
         instruction_group_chars = {
             "instruction_base_chars": len(POLICY),
-            "instruction_reference_chars": sum(map(len, reference_policies)),
+            "instruction_reference_chars": (
+                sum(map(len, reference_policies))
+                + (len(RELATION_CONTEXT_POLICY) if "relation" in retrieval_usages else 0)
+                + (len(AMBIENT_CONTEXT_POLICY) if "ambient" in retrieval_usages else 0)
+            ),
             "instruction_identity_chars": (
                 len(CURRENT_SPEAKER_POLICY) + len(CURRENT_INTERACTION_POLICY)
             ),
