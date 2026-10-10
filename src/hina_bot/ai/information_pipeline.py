@@ -187,13 +187,26 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         channel_rows,
         use_memory,
     ):
-        run = await self._run_retrieval_v2(
-            routing,
-            store=store,
-            scope=scope,
-            channel_rows=channel_rows,
-            use_memory=use_memory,
-        )
+        try:
+            run = await self._run_retrieval_v2(
+                routing,
+                store=store,
+                scope=scope,
+                channel_rows=channel_rows,
+                use_memory=use_memory,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - shadow must never affect the answer path
+            self._emit_retrieval_v2(
+                "shadow",
+                "failed",
+                legacy_references,
+                selected_context="legacy",
+                fallback_reason="preflight_error",
+                retrieval_v2_error_type=type(exc).__name__,
+            )
+            return
         self._emit_retrieval_v2(
             "shadow",
             run.status,
@@ -572,34 +585,47 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                     fallback_reason=self.retrieval_v2.semantic_gate_reason,
                 )
             else:
-                run = await self._run_retrieval_v2(
-                    routing,
-                    store=assembly_store,
-                    scope=scope,
-                    channel_rows=channel_rows,
-                    use_memory=assembly_use_memory,
-                )
-                if run.result is None:
+                try:
+                    run = await self._run_retrieval_v2(
+                        routing,
+                        store=assembly_store,
+                        scope=scope,
+                        channel_rows=channel_rows,
+                        use_memory=assembly_use_memory,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - legacy is the rollback path
                     self._emit_retrieval_v2(
                         "active",
-                        run.status,
+                        "failed",
                         information.references,
-                        run,
                         selected_context="legacy",
-                        fallback_reason=run.fallback_reason,
+                        fallback_reason="preflight_error",
+                        retrieval_v2_error_type=type(exc).__name__,
                     )
                 else:
-                    self._emit_retrieval_v2(
-                        "active",
-                        "completed",
-                        information.references,
-                        run,
-                        selected_context="v2",
-                    )
-                    information = self._activate_retrieval_v2(
-                        information,
-                        run.result,
-                    )
+                    if run.result is None:
+                        self._emit_retrieval_v2(
+                            "active",
+                            run.status,
+                            information.references,
+                            run,
+                            selected_context="legacy",
+                            fallback_reason=run.fallback_reason,
+                        )
+                    else:
+                        self._emit_retrieval_v2(
+                            "active",
+                            "completed",
+                            information.references,
+                            run,
+                            selected_context="v2",
+                        )
+                        information = self._activate_retrieval_v2(
+                            information,
+                            run.result,
+                        )
 
         CURRENT_MEMORY_CONTEXT.set(tuple(build_memory_context(channel_rows, scope.user_id)))
         factual_recall_plan = plan_reference_gated_recall(
