@@ -67,6 +67,36 @@ Review the held-out distributions/zero-result behavior, copy the matching `backe
 and approved factual/ambient threshold pairs into the rollout settings, then enable shadow
 first. Neither CLI writes production settings.
 
+## Semantic invocation and admission
+
+Retrieval v2 does not require the legacy information classifier, a registered
+canonical entity or an authorized anchor to permit semantic recall. For
+conversation-classified turns, the v2 engine attempts semantic-only factual
+recall on nontrivial text (at least five visible characters, or an anchor).
+Profile requests continue to use exact/lexical retrieval, while empty and
+very short unanchored turns skip factual embedding.
+
+Conversation semantic recall does **not** admit lexical-only factual hits:
+embedding failure or absent calibration yields no conversational factual
+references. Explicit information intents retain lexical-first retrieval and
+lexical fallback. All semantic admission remains gated by the measured
+thresholds, and unrelated turns may return zero results. A conversation-only
+semantic fact is contextual reference, **not** an automatic local-evidence
+sufficiency result; recognized relation propositions are assessed separately.
+
+Conversation composition gives scene-aware ambient insight and reaction guides
+slots ahead of optional semantic factual recall. Explicit information requests
+keep the existing relation-then-factual priority. These are packing priorities,
+not new candidate eligibility gates.
+
+Direction-sensitive local evidence is accepted only with a confidently
+identified grammatical subject, not merely the order of named entities.
+Unmarked, conflicting, or reciprocal direction fails closed for local
+sufficiency; it can still be included as contextual evidence for the model.
+
+Review the increased query-embedding invocation rate, ambient/factual selection
+mix, and latency in shadow telemetry before approving live thresholds.
+
 ## End-to-end path
 
 The rollout engine executes:
