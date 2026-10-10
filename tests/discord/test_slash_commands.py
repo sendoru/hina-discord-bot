@@ -53,6 +53,7 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
         assert emoji.get_command(name) is not None
 
     assert slash_bot.tree.get_command("instruction") is None
+    assert slash_bot.tree.get_command("config") is None  # RuntimeSettings-only group
     knowledge = slash_bot.tree.get_command("knowledge")
     assert knowledge is not None
     assert {command.name for command in knowledge.commands} == {"ingest"}

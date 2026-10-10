@@ -1,5 +1,7 @@
 import asyncio
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
@@ -156,19 +158,37 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         store.close()
 
     def test_legacy_mode_and_capture_settings_are_migrated_to_one_policy(self):
-        store = Store(":memory:")
-        store.set_chat_log_mode_override("global", "on")
-        set_capture_mode_override(store, "global", "direct")
-        store.set_chat_log_mode_override("guild:1", "off")
+        # Simulate a pre-migration database, then reopen without constructing
+        # ChatLogCommands. The migration must run as part of Store initialization.
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = str(Path(tempdir) / "legacy.sqlite3")
+            store = Store(path)
+            store.set_chat_log_mode_override("global", "on")
+            set_capture_mode_override(store, "global", "direct")
+            store.set_chat_log_mode_override("guild:1", "off")
+            store.set_note("config:chatlog_unified_v1", "")
+            store.close()
 
-        group = ChatLogCommands(NS(store=store, emoji_admin_ids={100}))
-        global_scope = Scope(2, 20, 100)
-        disabled_scope = Scope(1, 10, 100)
-
-        self.assertIn("최종 적용: **direct**", group._status_text(global_scope))
-        self.assertIn("최종 적용: **off**", group._status_text(disabled_scope))
-        self.assertEqual(store.note("config:chatlog_unified_v1"), "1")
-        store.close()
+            store = Store(path)
+            try:
+                self.assertEqual(store.note("config:chatlog_unified_v1"), "1")
+                global_scope = Scope(2, 20, 100)
+                disabled_scope = Scope(1, 10, 100)
+                self.assertIn(
+                    "최종 적용: **direct**",
+                    ChatLogCommands(NS(store=store, emoji_admin_ids={100}))._status_text(global_scope),
+                )
+                self.assertIn(
+                    "최종 적용: **off**",
+                    ChatLogCommands(NS(store=store, emoji_admin_ids={100}))._status_text(disabled_scope),
+                )
+                # Reopening must not repeat or overwrite the converted policy.
+                store.close()
+                store = Store(path)
+                self.assertEqual(store.note("config:chatlog_unified_v1"), "1")
+                self.assertEqual(store.chat_log_mode_override("guild:1"), "off")
+            finally:
+                store.close()
 
     async def test_clear_only_drops_current_channel_recent_buffer(self):
         store, recent = Store(":memory:"), RecentMessages()

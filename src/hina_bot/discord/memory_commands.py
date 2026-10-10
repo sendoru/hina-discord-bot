@@ -1,12 +1,11 @@
 """Persistent-memory controls for users and bot administrators."""
 import logging
-from enum import Enum
 
 import discord
 from discord import app_commands
 
 from hina_bot.core.routing import Scope
-from hina_bot.core.scope_overrides import scope_target_key
+from hina_bot.core.scope_overrides import MemoryMode, scope_target_key
 
 from .scope_targets import command_target_scope
 
@@ -29,21 +28,6 @@ _PURGE_TARGET_CHOICES = [
     app_commands.Choice(name="현재 서버의 모든 사용자 기억", value="server"),
 ]
 _SOURCE_LABEL = {"channel": "채널", "server": "서버", "global": "전역", "default": "기본값"}
-
-
-class MemoryMode(str, Enum):
-    normal = "normal"
-    read_only = "read_only"
-    write_only = "write_only"
-    off = "off"
-
-    @property
-    def reads(self):
-        return self in (MemoryMode.normal, MemoryMode.read_only)
-
-    @property
-    def writes(self):
-        return self in (MemoryMode.normal, MemoryMode.write_only)
 
 
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
