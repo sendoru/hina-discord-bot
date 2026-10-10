@@ -48,9 +48,13 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 
 | 명령 | 기능 |
 | --- | --- |
-| `/memory mode` | 전역/서버/채널 자동 장기 기억 읽기·쓰기 모드 설정 |
+| `/memory mode` | 전역/서버/채널 자동 장기 기억 읽기·쓰기 모드 설정. 선택적 `channel`로 같은 서버의 다른 텍스트 채널/스레드 지정 |
 | `/memory status` | 현재 채널의 전역 → 서버 → 채널 상속 체인과 최종 적용값 확인 |
-| `/memory purge` | 채널/서버/전역 범위의 자동 사용자 기억 초기화 |
+| `/memory purge` | 채널/서버/전역 범위의 자동 사용자 기억 초기화. `target:channel`에서 선택적 `channel` 지원 |
+
+설정·삭제 명령의 `channel`은 생략하면 실행 중인 채널을 사용하며, 명시하면 같은 서버에서
+조회 권한이 있는 텍스트 채널/스레드만 선택할 수 있습니다. `target:server/global`과
+`channel`을 동시에 지정할 수는 없습니다. DM에서는 다른 채널 지정이 허용되지 않습니다.
 
 현재 위치의 상속 경로는 `/memory status`로 확인할 수 있습니다. 여러 서버·채널의 직접 설정과
 전체 상속 결과는 Dashboard `/state`에서 확인합니다.
@@ -141,7 +145,7 @@ cross-user public memory 조회는 막습니다.
 
 | 명령 | 기능 |
 | --- | --- |
-| `/chatlog mode value:<all|direct|off|inherit>` | 전역/서버/채널의 최근 채널 문맥 수집·사용 범위 설정 |
+| `/chatlog mode value:<all|direct|off|inherit>` | 전역/서버/채널의 최근 채널 문맥 수집·사용 범위 설정. 선택적 `channel`로 같은 서버의 다른 텍스트 채널/스레드 지정 |
 | `/chatlog status` | 현재 채널의 상속 체인과 최종 적용값 확인 |
 | `/chatlog clear` | 현재 채널의 메모리 내 최근 대화 문맥 비우기 |
 
