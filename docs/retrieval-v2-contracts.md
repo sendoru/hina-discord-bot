@@ -1,9 +1,11 @@
 # Retrieval v2 contracts (#311)
 
-This milestone is an **opt-in contract and lexical adapter**, not a production rollout.
-`LLM.lore_references()`, runtime-first packing, `lore_reference`, and `enough_local()`
-continue to use the legacy path. Entity grounding, hybrid ranking, ambient activation,
-structured sufficiency, and shadow comparison follow in #312–#316.
+This milestone began as an **opt-in contract and lexical adapter**, not a production
+rollout. `LLM.lore_references()`, runtime-first packing and `lore_reference` still use
+the legacy answer-context path until #316. #312–#315 now provide entity grounding, hybrid
+ranking, ambient activation and structured evidence sufficiency behind those contracts;
+#315 also replaces the legacy relation-wording web-fallback heuristic while preserving the
+legacy selected references. #316 owns the final v2 retrieval rollout.
 
 ## Inputs
 
@@ -45,7 +47,8 @@ this milestone's adapter has only existing integer lexical scores.
 | `time`, `kr_release` | Existing timeline and release provenance |
 | `source_metadata` | Original source type/title/locator/url, separate from storage source |
 | `semantic_text` | Optional reviewed meaning text; fallback is summary/content `search_text` |
-| `evidence_ids` | Linked fact ids, not automatically expanded or validated for existence |
+| `evidence_ids` | Linked fact ids used to support reviewed derived claims |
+| `claims` | Optional typed propositions for sufficiency: predicate, canonical direction, value, time scope and polarity |
 
 Neither storage source nor corpus lane is a ranking priority in the adapter. Runtime
 rows have no review-confidence/source-lane fields: absent values stay `None` / empty.
@@ -61,9 +64,10 @@ and unknown guards) and reaction for community memes. Ambient eligibility requir
 
 The lore ingestion queue already uses `evidence` for a **text excerpt**, and strips it
 when publishing reviewed rows. Linked facts therefore use `evidence_ids` to avoid
-reinterpreting that existing field. No corpus reclassification or editorial changes are
-included here. New metadata is preserved by `LoreIndex.candidates()` but is not added to
-the legacy reference serializer or used by legacy ranking. CLI authoring UI is deferred.
+reinterpreting that existing field. #315 adds optional `claims` for proposition-level
+sufficiency; claims are typed metadata and are never inferred from summary wording.
+`LoreIndex.candidates()` preserves them while the model-facing legacy reference serializer
+does not expose them. CLI authoring UI remains deferred.
 
 ## Bundle and lexical adapter
 
@@ -109,7 +113,7 @@ is deliberately not invoked from the production answer path yet.
 - #314: implemented opt-in scene-aware semantic ambient retrieval, reviewed Hina inference
   eligibility, high-threshold zero-result behavior and model consumption semantics. See
   [Scene-aware ambient character insights](retrieval-v2-ambient.md).
-- #315: evidence sufficiency from metadata, intent and required entity matches.
+- #315: implemented structured proposition-level evidence sufficiency and web-fallback routing; see [Structured local evidence sufficiency](retrieval-v2-evidence-sufficiency.md).
 - #316: production shadow wiring, content-free diagnostics and reversible rollout.
 
 Tests cover single-usage lexical parity (including packaged corpus), independent retrieval
