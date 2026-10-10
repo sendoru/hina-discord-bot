@@ -101,11 +101,11 @@ def _factual_invocation(request: RetrievalRequest) -> str:
         return "profile_exact"
     if request.intent.value in {"fact", "relationship", "event", "relationship_or_event"}:
         return "information_intent"
-    if request.entities:
-        return "entity_context"
-    if request.anchor_text and request.anchor_source:
-        return "causal_anchor"
-    return "not_needed"
+    # Legacy information-intent regexes, registered entities and recognized anchors
+    # must not veto semantic recall. Only trivial unanchored turns skip retrieval.
+    if len(request.visible_text.strip()) < 5 and not request.anchor_text.strip():
+        return "not_needed"
+    return "conversation_semantic"
 
 
 def rank_reactions(
@@ -283,7 +283,11 @@ class RetrievalV2Engine:
             factual_rows = rank_profile(request, candidates)
             factual_result = HybridResult(tuple(factual_rows), "profile_exact")
         elif invocation != "not_needed":
-            factual_result = await self.factual.retrieve(request, candidates)
+            factual_result = await self.factual.retrieve(
+                request,
+                candidates,
+                lexical_enabled=invocation != "conversation_semantic",
+            )
 
         ambient_result = None
         if scene is not None and request.intent.value == "conversation":
@@ -309,7 +313,16 @@ class RetrievalV2Engine:
                 ambient_result.rows if ambient_result is not None else ()
             ),
             KnowledgeUsage.REACTION: reaction_rows,
-        })
+        }, section_order=(
+            (
+                KnowledgeUsage.RELATION,
+                KnowledgeUsage.AMBIENT,
+                KnowledgeUsage.REACTION,
+                KnowledgeUsage.FACTUAL,
+            )
+            if request.intent.value == "conversation"
+            else None
+        ))
         evidence = assess_local_evidence(
             request,
             bundle,
