@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from importlib.resources import files
 
 from hina_bot.core.ambient_retrieval import AmbientSceneContext
-from hina_bot.core.embedding_backend import GeminiEmbeddingBackend, GeminiEmbeddingConfig
+from .embedding_backend import GeminiEmbeddingBackend, GeminiEmbeddingConfig
 from hina_bot.core.lore import LoreIndex
 from hina_bot.core.relationship_grounding import RelationshipGrounder
 from hina_bot.core.relationship_profile import (
