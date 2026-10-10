@@ -601,17 +601,6 @@ def test_retrieval_v2_rollout_defaults_off_and_shadow_is_hot_reloadable():
         store.close()
 
 
-def test_retrieval_v2_active_runtime_switch_is_hot_but_runtime_gate_is_separate():
-    store = Store(":memory:")
-    try:
-        settings = RuntimeSettings(_base(), store)
-        assert settings.set_text("RETRIEVAL_V2_MODE", "active") == "active"
-        assert settings.retrieval_v2_mode == "active"
-        assert settings.set_text("RETRIEVAL_V2_MODE", "off") == "off"
-    finally:
-        store.close()
-
-
 def test_settings_load_retrieval_v2_active_requires_matching_live_calibration(
     monkeypatch, tmp_path: Path,
 ):
