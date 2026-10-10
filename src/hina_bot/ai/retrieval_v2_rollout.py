@@ -152,17 +152,7 @@ def _recent_same_speaker(store, scope, channel_context, *, use_memory: bool) -> 
         and isinstance(row.get("content"), str)
         and row["content"].strip()
     ]
-    if rows:
-        return tuple(row["content"] for row in rows[-2:])
-
-    if scope.guild_id is None and use_memory and hasattr(store, "history"):
-        turns = store.history(scope)
-        return tuple(
-            str(turn.get("content") or "")
-            for turn in turns[-2:]
-            if str(turn.get("content") or "").strip()
-        )
-    return ()
+    return tuple(row["content"] for row in rows[-2:])
 
 
 def _relationship_signal(store, scope, *, use_memory: bool) -> str:
