@@ -49,7 +49,6 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 | 명령 | 기능 |
 | --- | --- |
 | `/memory mode` | 전역/서버/채널 자동 장기 기억 읽기·쓰기 모드 설정. 선택적 `channel`로 같은 서버의 다른 텍스트 채널/스레드 지정 |
-| `/memory status` | 현재 채널의 전역 → 서버 → 채널 상속 체인과 최종 적용값 확인 |
 | `/memory purge` | 현재 채널·같은 서버의 다른 채널 또는 현재 서버 전체의 자동 사용자 기억 삭제. **전역 삭제는 Discord에서 제공하지 않음** |
 
 설정·삭제 명령의 `channel`은 생략하면 실행 중인 채널을 사용하며, 명시하면 같은 서버에서
@@ -87,11 +86,36 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 모든 서버·DM의 자동 기억을 삭제하는 전역 purge는 사고 방지를 위해 Dashboard의
 별도 관리 기능에서만 수행할 수 있습니다.
 
-현재 위치의 상속 경로는 `/memory status`로 확인할 수 있습니다. 여러 서버·채널의 직접 설정과
-전체 상속 결과는 Dashboard `/state`에서 확인합니다.
+현재 위치 또는 같은 서버의 다른 채널에서 memory/chatlog 상속 경로를 함께 확인하려면
+`/state show`를 사용합니다. 여러 서버·채널의 직접 설정과 전체 상속 결과는
+Dashboard `/state`에서 확인합니다.
 
 `/memory purge`는 자동 대화 기록·요약·공유 요약만 범위에 맞게 삭제합니다. 개인/서버 수동 메모와
 memory/chatlog 설정 자체는 유지합니다.
+
+## 현재 컨텍스트 상태 조회
+
+`/state show`는 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자만 사용할 수 있습니다.
+
+| 명령 | 기능 |
+| --- | --- |
+| `/state show` | 현재 채널의 장기 기억·최근 대화 문맥 최종 설정 및 각 상속 범위 확인 |
+| `/state show channel:#general` | 같은 서버의 다른 채널 설정 조회 (조회 권한 필요) |
+| `/state show user:@멤버` | 현재 서버 멤버의 수동 개인 메모 **존재 여부만** 확인 |
+
+자동 기억 및 chatlog 정책은 사용자별이 아닌 **global → server → channel**
+설정입니다. `user`를 지정해도 유효 정책은 달라지지 않습니다.
+`user`를 생략하면 명령 호출자가 기본이며, 다른 서버 사용자나 DM에서 다른 사용자
+지정은 허용하지 않습니다.
+
+출력에는 memory 모드와 읽기/쓰기 가능 여부, chatlog의 설정 모드와 실제
+recent-context 동작(특히 DM에서 off), 상속 출처, 채널·서버·개인
+수동 메모 존재 여부만 포함합니다. **메모 본문은 출력하지 않으며, 모든 응답은
+관리자 전용·ephemeral**입니다.
+
+기존 `/memory status`와 `/chatlog status`는 `/state show`로 대체되었습니다.
+서버·채널별 설정의 전체 목록이나 설정값 편집은 Dashboard `/state`에서
+계속 제공합니다.
 
 ## 런타임 설정
 
@@ -168,7 +192,6 @@ cross-user public memory 조회는 막습니다.
 | 명령 | 기능 |
 | --- | --- |
 | `/chatlog mode value:<all|direct|off|inherit>` | 전역/서버/채널의 최근 채널 문맥 수집·사용 범위 설정. 선택적 `channel`로 같은 서버의 다른 텍스트 채널/스레드 지정 |
-| `/chatlog status` | 현재 채널의 상속 체인과 최종 적용값 확인 |
 | `/chatlog clear` | 현재 채널의 메모리 내 최근 대화 문맥 비우기 |
 
 `/chatlog mode` 사용 예시:

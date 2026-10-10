@@ -173,7 +173,7 @@ class ModeCommandTests(unittest.IsolatedAsyncioTestCase):
         for admin_id in (100, 101):
             interaction.user.id = admin_id
             self.assertTrue(await group.interaction_check(interaction))
-        self.assertEqual({c.name for c in group.commands}, {"mode", "status", "purge"})
+        self.assertEqual({c.name for c in group.commands}, {"mode", "purge"})
 
     def test_available_in_guilds_and_private_contexts(self):
         group = MemoryCommands(NS(emoji_admin_ids={100}))
