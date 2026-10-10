@@ -8,7 +8,11 @@ from dataclasses import dataclass
 
 from .entity_resolution import HINA_ENTITY_ID
 from .evidence_claims import EvidenceClaim, EvidencePolarity
-from .knowledge_retrieval import KnowledgeCandidate, RankedKnowledgeCandidate
+from .knowledge_retrieval import (
+    KnowledgeCandidate,
+    KnowledgeUsage,
+    RankedKnowledgeCandidate,
+)
 from .retrieval_v2 import KnowledgeBundle, RetrievalIntent, RetrievalRequest
 
 _TRUSTED_CONFIDENCE = {"verified", "official_secondary", "crosschecked"}
@@ -190,6 +194,26 @@ def _conflicting_claims(claims: Iterable[EvidenceClaim], predicate: str) -> bool
         if len(values) > 1:
             return True
     return False
+
+
+def selected_evidence_bundle(
+    candidates: Iterable[KnowledgeCandidate],
+) -> KnowledgeBundle:
+    """Adapt already-selected legacy/local candidates to the v2 evidence contract."""
+    rows = tuple(
+        RankedKnowledgeCandidate(1.0, order, candidate)
+        for order, candidate in enumerate(candidates)
+    )
+    return KnowledgeBundle(
+        facts=tuple(
+            row for row in rows
+            if KnowledgeUsage.FACTUAL in row.candidate.retrieval_usages
+        ),
+        relations=tuple(
+            row for row in rows
+            if KnowledgeUsage.RELATION in row.candidate.retrieval_usages
+        ),
+    )
 
 
 def assess_local_evidence(
