@@ -459,11 +459,21 @@ class Settings:
             s.retrieval_v2_semantic_reject == 0.0
             and s.retrieval_v2_semantic_strong == 0.0
         )
-        if (
+        calibration_valid = (
             not calibration_disabled
-            and s.retrieval_v2_semantic_reject >= s.retrieval_v2_semantic_strong
-        ):
+            and s.retrieval_v2_semantic_reject < s.retrieval_v2_semantic_strong
+        )
+        if not calibration_disabled and not calibration_valid:
             raise ValueError(
                 "Retrieval v2 semantic calibration은 reject < strong이어야 합니다."
             )
+        if s.retrieval_v2_mode == "active":
+            if not calibration_valid:
+                raise ValueError(
+                    "RETRIEVAL_V2_MODE=active에는 live semantic calibration이 필요합니다."
+                )
+            if not s.gemini_api_key.strip():
+                raise ValueError(
+                    "RETRIEVAL_V2_MODE=active에는 GEMINI_API_KEY가 필요합니다."
+                )
         return s
