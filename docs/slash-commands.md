@@ -108,10 +108,18 @@ memory/chatlog 설정 자체는 유지합니다.
 `user`를 생략하면 명령 호출자가 기본이며, 다른 서버 사용자나 DM에서 다른 사용자
 지정은 허용하지 않습니다.
 
-출력에는 memory 모드와 읽기/쓰기 가능 여부, chatlog의 설정 모드와 실제
-recent-context 동작(특히 DM에서 off), 상속 출처, 채널·서버·개인
-수동 메모 존재 여부만 포함합니다. **메모 본문은 출력하지 않으며, 모든 응답은
-관리자 전용·ephemeral**입니다.
+출력에는 memory 모드와 읽기/쓰기 가능 여부, chatlog 활성화(on/off)와 수집
+범위(all/direct)의 **독립적인 상속 경로**, 실제 로컬 recent-context 동작
+(특히 DM에서 off)을 포함합니다. Dashboard `/state`와 동일한 계산으로 표시하며,
+기존 데이터에서 두 override의 출처가 달라도 로컬 최종 동작은 일치합니다.
+
+`EXTERNAL_CONTEXT_POLICY`와 외부 LLM으로 전송 가능한 최근 문맥도 별도로
+안내합니다. 로컬 설정이 `all`이더라도
+`bot_interactions_only`이면 일반 채널 잡담은 외부 모델에 전송되지 않습니다.
+다른 문맥의 전송 여부는 별도의 egress 규칙도 따릅니다.
+
+수동 메모는 채널·서버·개인별 **존재 여부만** 표시하며 본문은 공개하지 않습니다.
+모든 응답은 관리자 전용·ephemeral입니다.
 
 기존 상태 조회 명령은 `/state show`로 대체되어 Discord command tree에서 등록 해제됐습니다.
 서버·채널별 설정의 전체 목록이나 설정값 편집은 Dashboard `/state`에서

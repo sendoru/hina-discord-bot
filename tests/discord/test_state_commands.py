@@ -12,7 +12,10 @@ from hina_bot.core.scope_overrides import (
     resolve_scope_chain,
 )
 from hina_bot.core.store import Store
-from hina_bot.discord.chatlog_capture import capture_mode_overrides
+from hina_bot.discord.chatlog_capture import (
+    capture_mode_overrides,
+    set_capture_mode_override,
+)
 from hina_bot.discord.chatlog_commands import _set_mode_override
 from hina_bot.discord.state_commands import StateCommands, effective_state_text
 
@@ -38,7 +41,11 @@ def _interaction(*, guild_id=1, channel_id=10, user_id=100):
 def state_context():
     store = Store(":memory:")
     # Store initialization performs the legacy chatlog migration independently of commands.
-    client = NS(store=store, emoji_admin_ids={100})
+    client = NS(
+        store=store,
+        emoji_admin_ids={100},
+        settings=NS(external_context_policy="full"),
+    )
     yield store, StateCommands(client)
     store.close()
 
@@ -77,8 +84,11 @@ async def test_state_shows_effective_precedence_and_memory_capabilities(state_co
     assert "전역: `off`" in result
     assert "서버: `read_only`" in result
     assert "채널: `write_only`" in result
-    assert "설정 모드: **off** (출처: 채널)" in result
-    assert "실제 사용: **off**" in result
+    assert "활성화 설정: **off** (출처: 채널)" in result
+    assert "수집 범위 설정: **all** (출처: 채널)" in result
+    assert "로컬 최근 문맥: **off**" in result
+    assert "활성화 설정 상속" in result
+    assert "수집 범위 상속" in result
 
     # Same underlying override chains and capability logic as Dashboard /state.
     scope = Scope(1, 20, 100)
@@ -109,7 +119,9 @@ async def test_inheritance_and_default_source_are_reported(state_context):
     await group.show.callback(group, interaction)
     result = interaction.response.send_message.call_args.args[0]
     assert "최종 적용: **read_only** (출처: 전역)" in result
-    assert "설정 모드: **direct** (출처: 전역)" in result
+    assert "활성화 설정: **on** (출처: 전역)" in result
+    assert "수집 범위 설정: **direct** (출처: 전역)" in result
+    assert "로컬 최근 문맥: **direct**" in result
     assert "상속 → read_only" in result
     assert "상속 → direct" in result
 
@@ -119,7 +131,8 @@ async def test_inheritance_and_default_source_are_reported(state_context):
     await group.show.callback(group, interaction)
     result = interaction.response.send_message.call_args.args[0]
     assert "최종 적용: **normal** (출처: 기본값)" in result
-    assert "설정 모드: **all** (출처: 기본값)" in result
+    assert "활성화 설정: **on** (출처: 기본값)" in result
+    assert "수집 범위 설정: **all** (출처: 기본값)" in result
 
 
 @pytest.mark.asyncio
@@ -176,8 +189,10 @@ async def test_dm_recent_context_is_effectively_off_and_other_user_is_forbidden(
     interaction = _interaction(guild_id=None, channel_id=99)
     await group.show.callback(group, interaction)
     result = interaction.response.send_message.call_args.args[0]
-    assert "설정 모드: **all**" in result
-    assert "실제 사용: **off** (DM에서는 사용하지 않음)" in result
+    assert "활성화 설정: **on**" in result
+    assert "수집 범위 설정: **all**" in result
+    assert "로컬 최근 문맥: **off** (DM에서는 사용하지 않음)" in result
+    assert "전송 가능 범위: 없음 (채널 recent buffer 미사용)" in result
     assert "서버 공통 메모" not in result
 
     await group.show.callback(group, interaction, None, NS(id=200, guild=NS(id=1)))
@@ -191,5 +206,76 @@ def test_pure_render_matches_current_store_effective_policy(state_context):
     _set_mode_override(store, scope.channel, "direct")
     result = effective_state_text(store, scope)
     assert "최종 적용: **normal** (출처: 채널)" in result
-    assert "설정 모드: **direct** (출처: 채널)" in result
-    assert "실제 사용: **direct**" in result
+    assert "활성화 설정: **on** (출처: 채널)" in result
+    assert "수집 범위 설정: **direct** (출처: 채널)" in result
+    assert "로컬 최근 문맥: **direct**" in result
+
+
+@pytest.mark.parametrize(
+    "on_off,capture,expected",
+    [
+        ("off", "direct", "off"),
+        ("on", "direct", "direct"),
+        ("off", "all", "off"),
+        ("on", "all", "all"),
+    ],
+)
+def test_mixed_legacy_overrides_match_dashboard_and_runtime(
+    state_context, on_off, capture, expected,
+):
+    store, _ = state_context
+    scope = Scope(1, 10, 100)
+    # Legacy/partial overrides can have different sources for enable and capture.
+    store.set_chat_log_mode_override("global", on_off)
+    set_capture_mode_override(store, scope.channel, capture)
+    text = effective_state_text(store, scope, external_context_policy="full")
+    enabled = resolve_scope_chain(store.chat_log_mode_overrides(), scope, default="on")
+    captured = resolve_scope_chain(capture_mode_overrides(store), scope, default="all")
+    dashboard_effective = effective_recent_context_mode(
+        scope,
+        chat_log_mode=enabled["effective"],
+        capture_mode=captured["effective"],
+    )
+    assert dashboard_effective == expected
+    assert f"로컬 최근 문맥: **{dashboard_effective}**" in text
+    assert f"활성화 설정: **{on_off}** (출처: 전역)" in text
+    assert f"수집 범위 설정: **{capture}** (출처: 채널)" in text
+    if expected == "off":
+        assert "전송 가능 범위: 없음" in text
+    else:
+        assert "전송 가능 범위: 로컬 문맥 중 다른 전송 경계에서도 허용된 항목" in text
+
+
+@pytest.mark.asyncio
+async def test_external_egress_policy_is_separate_from_local_capture(state_context):
+    store, group = state_context
+    _set_mode_override(store, "global", "all")
+    interaction = _interaction()
+
+    # The local all mode must never be presented as unrestricted external egress.
+    group.client.settings.external_context_policy = "bot_interactions_only"
+    await group.show.callback(group, interaction)
+    text = interaction.response.send_message.call_args.args[0]
+    assert "로컬 최근 문맥: **all**" in text
+    assert "프라이버시 정책: **bot_interactions_only**" in text
+    assert "전송 가능 범위: 직접 호출 발언·히나 답변 등 허용된 항목만" in text
+    assert "일반 잡담 제외" in text
+
+    group.client.settings.external_context_policy = "full"
+    await group.show.callback(group, interaction)
+    text = interaction.response.send_message.call_args.args[0]
+    assert "로컬 최근 문맥: **all**" in text
+    assert "프라이버시 정책: **full**" in text
+    assert "전송 가능 범위: 로컬 문맥 중 다른 전송 경계에서도 허용된 항목" in text
+
+
+@pytest.mark.asyncio
+async def test_egress_boundary_is_explicitly_not_channel_recent_when_off(state_context):
+    store, group = state_context
+    _set_mode_override(store, "global", "off")
+    group.client.settings.external_context_policy = "bot_interactions_only"
+    interaction = _interaction()
+    await group.show.callback(group, interaction)
+    rendered = interaction.response.send_message.call_args.args[0]
+    assert "로컬 최근 문맥: **off**" in rendered
+    assert "전송 가능 범위: 없음 (채널 recent buffer 미사용)" in rendered
