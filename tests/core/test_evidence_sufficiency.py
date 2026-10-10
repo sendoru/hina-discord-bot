@@ -1,4 +1,5 @@
 from dataclasses import replace
+from importlib.resources import files
 
 from hina_bot.core.evidence_sufficiency import (
     assess_local_evidence,
@@ -37,11 +38,9 @@ def request(text, *, entities=(HINA, HOSHINO), pair=(HINA, HOSHINO), intent=Retr
 
 def packaged_candidates():
     base = LoreIndex.load().candidates(include_community=False)
-    supplemental = LoreIndex.load(
-        str(__import__("importlib").resources.files("hina_bot").joinpath(
-            "data/relationship_grounding.jsonl"
-        ))
-    ).candidates(include_community=False)
+    supplemental = LoreIndex.load(str(files("hina_bot").joinpath(
+        "data/relationship_grounding.jsonl",
+    ))).candidates(include_community=False)
     return [*supplemental, *base]
 
 
