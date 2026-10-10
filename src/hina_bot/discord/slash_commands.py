@@ -7,8 +7,12 @@ import discord
 from discord import app_commands
 
 from hina_bot.core.routing import Scope
+from hina_bot.core.runtime_config import RuntimeSettings
 
 from .chatlog_commands import ChatLogCommands
+from .config_commands import ConfigCommands
+from .knowledge_commands import KnowledgeCommands
+from .memory_commands import MemoryCommands
 from .note_commands import NoteCommands
 from .state_commands import StateCommands
 
@@ -317,11 +321,16 @@ class EmojiSlashCommands(app_commands.Group):
 
 def install_slash_commands(client):
     """Install the slash-only user/admin command surface on a production client."""
+    client.tree.add_command(MemoryCommands(client))
     upgrade_memory_group(client)
+    client.tree.add_command(KnowledgeCommands(client))
     client.tree.add_command(NoteCommands(client))
     client.tree.add_command(ChatLogCommands(client))
     client.tree.add_command(StateCommands(client))
     client.tree.add_command(EmojiSlashCommands(client))
+    # Runtime-only settings commands share this explicit registration root.
+    if isinstance(client.settings, RuntimeSettings):
+        client.tree.add_command(ConfigCommands(client))
 
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.allowed_installs(guilds=True, users=True)

@@ -113,7 +113,7 @@ recent-context 동작(특히 DM에서 off), 상속 출처, 채널·서버·개�
 수동 메모 존재 여부만 포함합니다. **메모 본문은 출력하지 않으며, 모든 응답은
 관리자 전용·ephemeral**입니다.
 
-기존 `/memory status`와 `/chatlog status`는 `/state show`로 대체되었습니다.
+기존 상태 조회 명령은 `/state show`로 대체되어 Discord command tree에서 등록 해제됐습니다.
 서버·채널별 설정의 전체 목록이나 설정값 편집은 Dashboard `/state`에서
 계속 제공합니다.
 
