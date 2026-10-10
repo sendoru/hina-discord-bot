@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import json
 
 from hina_bot.core.semantic_retrieval import EmbeddingResult, EmbeddingUsage
@@ -45,7 +47,7 @@ def test_packaged_ambient_calibration_fixtures_validate_without_api_key(capsys):
 async def test_ambient_calibration_report_accounts_for_query_and_candidate_usage():
     from hina_bot.core.lore import read_jsonl
 
-    cases = read_jsonl("evals/retrieval_v2_ambient.jsonl")
+    cases = read_jsonl(Path("evals/retrieval_v2_ambient.jsonl"))
     backend = FakeAmbientBackend()
     report = await evaluate(
         backend,
