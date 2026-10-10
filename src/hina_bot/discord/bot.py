@@ -42,6 +42,13 @@ BOT_TRIGGER_CHAIN_LIMIT = 2
 BOT_TRIGGER_CHAIN_WINDOW_SECONDS = 15.0
 # The production wrapper owns typing across preflight and generation.
 CURRENT_TYPING_ACTIVE = ContextVar("current_typing_active", default=False)
+CURRENT_TYPING_STOP = ContextVar("current_typing_stop", default=None)
+
+
+async def _stop_active_typing():
+    stop = CURRENT_TYPING_STOP.get()
+    if stop is not None:
+        await stop()
 
 
 @asynccontextmanager
@@ -618,6 +625,7 @@ class HinaClient(discord.Client):
                             "한 번에 4000자 이내로 이야기해 주세요.",
                         )
                         reply_delivered = True
+                        await _stop_active_typing()
                         self.events.emit(
                             "turn.dropped",
                             scope=scope_kind,
@@ -661,6 +669,7 @@ class HinaClient(discord.Client):
                             ),
                         )
                         reply_delivered = True
+                        await _stop_active_typing()
                         timings["delivery_ms"] = round(
                             (time.perf_counter() - delivery_started) * 1000
                         )
@@ -774,6 +783,7 @@ class HinaClient(discord.Client):
                                         allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
                                     )
                                 reply_delivered = True
+                                await _stop_active_typing()
                                 timings["delivery_ms"] = round(
                                     (time.perf_counter() - delivery_started) * 1000
                                 )
@@ -941,6 +951,7 @@ class HinaClient(discord.Client):
                 try:
                     await self.send_text(message.channel, fallback_reply)
                     reply_delivered = True
+                    await _stop_active_typing()
                     timings["fallback_delivery_ms"] = round(
                         (time.perf_counter() - fallback_started) * 1000
                     )
