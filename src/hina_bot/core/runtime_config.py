@@ -12,6 +12,8 @@ from .config import (
     EXTERNAL_CONTEXT_POLICIES,
     GEMINI_THINKING_LEVELS,
     MODEL_ROUTING_MODES,
+    LEGACY_RAG_MODES,
+    RAG_MODES,
     RETRIEVAL_V2_MODES,
     Settings,
     parse_call_prefixes,
@@ -40,7 +42,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
-    "retrieval_v2_mode": "Retrieval v2 rollout 모드입니다. off는 legacy만, shadow는 legacy 답변과 비동기 비교, active는 v2 context를 사용하고 실패 시 legacy로 즉시 fallback합니다.",
+    "rag_mode": "RAG 모드입니다. off는 지식 검색 없음, v1은 기존 검색, shadow는 v1 답변과 비동기 v2 비교, v2는 v2만 사용합니다. v2 실패 시 RAG 없이 답합니다.",
     "retrieval_v2_timeout_seconds": "Retrieval v2 shadow/active 한 턴의 전체 실행 시간 상한(초)입니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
@@ -113,11 +115,11 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         choices=tuple(sorted(EXTERNAL_CONTEXT_POLICIES)),
     ),
     "chat_web_search": _runtime_spec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
-    "retrieval_v2_mode": _runtime_spec(
-        "retrieval_v2_mode",
-        "RETRIEVAL_V2_MODE",
+    "rag_mode": _runtime_spec(
+        "rag_mode",
+        "RAG_MODE",
         "string",
-        choices=tuple(sorted(RETRIEVAL_V2_MODES)),
+        choices=tuple(sorted(RAG_MODES)),
     ),
     "retrieval_v2_timeout_seconds": _runtime_spec(
         "retrieval_v2_timeout_seconds",
@@ -264,6 +266,8 @@ def runtime_setting_attr(key: str) -> str:
     upper = normalized.upper()
     if upper in ENV_TO_RUNTIME_ATTR:
         return ENV_TO_RUNTIME_ATTR[upper]
+    if normalized.lower() == "retrieval_v2_mode":
+        return "rag_mode"
     raise ValueError(f"알 수 없는 런타임 설정이에요: {key}")
 
 
@@ -408,18 +412,16 @@ def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
     if effective["structured_memory_every"] > history_turns:
         raise ValueError("STRUCTURED_MEMORY_EVERY는 HISTORY_TURNS 이하여야 해요.")
 
-    retrieval_mode = (
-        value if attr == "retrieval_v2_mode" else settings.retrieval_v2_mode
-    )
-    if retrieval_mode == "active":
+    retrieval_mode = value if attr == "rag_mode" else settings.rag_mode
+    if retrieval_mode == "v2":
         if not settings.gemini_api_key:
-            raise ValueError("Retrieval v2 active에는 GEMINI_API_KEY가 필요해요.")
+            raise ValueError("RAG_MODE=v2에는 GEMINI_API_KEY가 필요해요.")
         expected_backend = retrieval_v2_expected_backend_key(
             settings.retrieval_v2_embedding_dimensions
         )
         if settings.retrieval_v2_calibration_backend_key != expected_backend:
             raise ValueError(
-                "Retrieval v2 active의 calibration backend key가 현재 embedding 설정과 "
+                "RAG_MODE=v2의 calibration backend key가 현재 embedding 설정과 "
                 "일치해야 해요."
             )
         if any(item is None for item in (
@@ -429,7 +431,7 @@ def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
             settings.retrieval_v2_ambient_strong,
         )):
             raise ValueError(
-                "Retrieval v2 active에는 factual/ambient calibration threshold가 모두 필요해요."
+                "RAG_MODE=v2에는 factual/ambient calibration threshold가 모두 필요해요."
             )
 
 
@@ -460,8 +462,34 @@ class RuntimeSettings:
             );
             """
         )
+        self._migrate_legacy_rag_override()
         self._capture_startup_snapshot()
         self.reload()
+
+    def _migrate_legacy_rag_override(self) -> None:
+        """Keep pre-existing DB rollout mode when upgrading to RAG_MODE."""
+        row = self._store.db.execute(
+            "SELECT value FROM runtime_config WHERE key='retrieval_v2_mode'"
+        ).fetchone()
+        if row is None:
+            return
+        current = self._store.db.execute(
+            "SELECT 1 FROM runtime_config WHERE key='rag_mode'"
+        ).fetchone()
+        with self._store.db:
+            if current is None:
+                try:
+                    legacy = json.loads(row["value"])
+                except (TypeError, ValueError):
+                    legacy = None
+                if isinstance(legacy, str) and legacy in LEGACY_RAG_MODES:
+                    self._store.db.execute(
+                        "INSERT INTO runtime_config(key,value) VALUES (?,?)",
+                        ("rag_mode", encode_runtime_value(LEGACY_RAG_MODES[legacy])),
+                    )
+            self._store.db.execute(
+                "DELETE FROM runtime_config WHERE key='retrieval_v2_mode'"
+            )
 
     def _capture_startup_snapshot(self) -> None:
         rows = [
@@ -500,6 +528,9 @@ class RuntimeSettings:
         object.__setattr__(self, "_overrides", loaded)
 
     def __getattr__(self, name: str):
+        if name == "retrieval_v2_mode":
+            return {"off": "off", "v1": "off", "shadow": "shadow",
+                    "v2": "active"}[self.rag_mode]
         overrides = object.__getattribute__(self, "_overrides")
         if name in overrides:
             return overrides[name]
@@ -532,12 +563,18 @@ class RuntimeSettings:
 
     def set_text(self, key: str, raw: str):
         attr = runtime_setting_attr(key)
+        legacy = key.strip().lower() == "retrieval_v2_mode"
+        if legacy:
+            old_value = raw.strip().lower()
+            if old_value not in RETRIEVAL_V2_MODES:
+                raise ValueError("RETRIEVAL_V2_MODE은 off, shadow, active 중 하나여야 해요.")
+            raw = LEGACY_RAG_MODES[old_value]
         spec = RUNTIME_SETTING_SPECS[attr]
         value = parse_runtime_value(spec, raw, settings=self)
         _validate_combined_runtime_value(self, attr, value)
         self._write(attr, encode_runtime_value(value))
         self._overrides[attr] = value
-        return value
+        return old_value if legacy else value
 
     def reset(self, key: str):
         attr = runtime_setting_attr(key)
@@ -545,6 +582,8 @@ class RuntimeSettings:
         _validate_combined_runtime_value(self, attr, value)
         self._write(attr, None)
         self._overrides.pop(attr, None)
+        if key.strip().lower() == "retrieval_v2_mode":
+            return self.retrieval_v2_mode
         return value
 
     def rows(self) -> list[tuple[RuntimeSettingSpec, Any, str]]:
