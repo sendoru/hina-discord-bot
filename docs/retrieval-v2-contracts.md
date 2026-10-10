@@ -1,9 +1,11 @@
 # Retrieval v2 contracts (#311)
 
-This milestone is an **opt-in contract and lexical adapter**, not a production rollout.
-`LLM.lore_references()`, runtime-first packing, `lore_reference`, and `enough_local()`
-continue to use the legacy path. Entity grounding, hybrid ranking, ambient activation,
-structured sufficiency, and shadow comparison follow in #312–#316.
+This milestone began as an **opt-in contract and lexical adapter**, not a production
+rollout. `LLM.lore_references()`, runtime-first packing and `lore_reference` still use
+the legacy answer-context path until #316. #312–#315 now provide entity grounding, hybrid
+ranking, ambient activation and structured evidence sufficiency behind those contracts;
+#315 also replaces the legacy relation-wording web-fallback heuristic while preserving the
+legacy selected references. #316 owns the final v2 retrieval rollout.
 
 ## Inputs
 
