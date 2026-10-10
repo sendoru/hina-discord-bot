@@ -65,6 +65,8 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
     assert "`히나야`" in HELP_TEXT
     assert "`/knowledge ingest`" in HELP_TEXT
     assert "`/state show`" in HELP_TEXT
+    assert "`/config always-reply enable|disable|status`" in HELP_TEXT
+    assert "`/config privacy`" in HELP_TEXT
     assert "`/chatlog status`" not in HELP_TEXT
     assert "`/chatlog overview`" not in HELP_TEXT
     assert "`/instruction" not in HELP_TEXT

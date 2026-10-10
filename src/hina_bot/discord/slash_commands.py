@@ -44,6 +44,10 @@ DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니�
 `/state show` — 현재 채널의 기억·최근 문맥 설정과 상속 출처 통합 확인
 `/chatlog clear` — 현재 채널의 임시 최근 대화 문맥 비우기
 
+자동 응답 및 프라이버시
+`/config always-reply enable|disable|status` — 봇 관리자용 채널 자동 응답 관리
+`/config privacy` — 봇 관리자용 외부 모델 전송 정책 변경
+
 관리
 Dashboard — 동적 캐릭터 지침 및 runtime knowledge 조회·편집
 `/knowledge ingest` — 조사 메모를 knowledge로 구조화·반영
