@@ -496,6 +496,31 @@ class RuntimeSettings:
         self._overrides[attr] = value
         return value
 
+    def update_discord_id(self, key: str, discord_id: int, *, enabled: bool) -> bool:
+        """Add/remove one ID from the effective set, preserving all other entries.
+
+        Mutations run synchronously in the bot process (including Dashboard jobs), so
+        no coroutine can interleave the read/validation/write on this event loop.
+        No-op updates preserve the existing DB/startup source.
+        """
+        attr = runtime_setting_attr(key)
+        spec = RUNTIME_SETTING_SPECS[attr]
+        if spec.kind != "discord_ids":
+            raise ValueError(f"{spec.env_name}는 Discord ID 목록 설정이 아니에요.")
+        if type(discord_id) is not int or discord_id <= 0:
+            raise ValueError("Discord 채널 ID는 양의 정수여야 해요.")
+        if type(enabled) is not bool:
+            raise ValueError("enabled는 불리언 값이어야 해요.")
+
+        current = frozenset(getattr(self, attr))
+        if (discord_id in current) == enabled:
+            return False
+        updated = current | {discord_id} if enabled else current - {discord_id}
+        # Reuse the same parser, 100-item bound, DB override and cross-field
+        # validation as Dashboard runtime.set; do not implement another writer.
+        self.set_text(attr, ",".join(str(item) for item in sorted(updated)))
+        return True
+
     def reset(self, key: str):
         attr = runtime_setting_attr(key)
         value = getattr(self._base, attr)
