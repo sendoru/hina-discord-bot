@@ -44,9 +44,28 @@ A stale calibration from a different model/revision/dimension cannot activate se
 production retrieval. Shadow mode may still run deterministic profile/relation/lexical
 parts when live semantic calibration is absent.
 
-The repository deliberately does not ship live threshold values. Use the #313 and #314
-calibration commands in an environment with the Gemini key, record the backend key and
-measured thresholds, then enable shadow first.
+The repository deliberately does not ship live threshold values. Validate fixtures
+without credentials first:
+
+```bash
+python -m hina_bot.tooling.retrieval_calibration --validate-only
+python -m hina_bot.tooling.ambient_calibration --validate-only
+```
+
+Then, in an environment with `GEMINI_API_KEY`, produce separate live factual and ambient
+reports:
+
+```bash
+python -m hina_bot.tooling.retrieval_calibration \
+  --output data/logs/retrieval-v2-factual-calibration.json
+
+python -m hina_bot.tooling.ambient_calibration \
+  --output data/logs/retrieval-v2-ambient-calibration.json
+```
+
+Review the held-out distributions/zero-result behavior, copy the matching `backend_key`
+and approved factual/ambient threshold pairs into the rollout settings, then enable shadow
+first. Neither CLI writes production settings.
 
 ## End-to-end path
 
