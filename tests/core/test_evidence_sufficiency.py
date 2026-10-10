@@ -66,6 +66,29 @@ def test_requirement_extracts_predicate_direction_and_time_from_question_not_sum
     assert requirement.subject == HOSHINO and requirement.object == HINA
 
 
+def test_builder_direction_does_not_depend_on_mention_order():
+    rows = by_id(packaged_candidates())
+    awareness = rows["canon.hina.knows_hoshino_past_before_meeting"]
+    bundle = KnowledgeBundle(facts=(ranked(awareness),))
+    for text in (
+        "히나가 호시노를 만나기 전부터 알고 있었어?",
+        "호시노를 히나가 만나기 전부터 알고 있었어?",
+    ):
+        req = build_resolved_retrieval_request(RoutingPlan(text, text))
+        assert assess_local_evidence(
+            req, bundle, supporting_candidates=rows.values()
+        ).sufficient, text
+
+    for text in (
+        "호시노가 히나를 만나기 전부터 알고 있었어?",
+        "히나를 호시노가 만나기 전부터 알고 있었어?",
+    ):
+        req = build_resolved_retrieval_request(RoutingPlan(text, text))
+        assert not assess_local_evidence(
+            req, bundle, supporting_candidates=rows.values()
+        ).sufficient, text
+
+
 def test_first_meeting_evidence_does_not_answer_prior_awareness():
     rows = by_id(packaged_candidates())
     meeting = rows["canon.hina.first_meeting_with_hoshino_vol1"]
