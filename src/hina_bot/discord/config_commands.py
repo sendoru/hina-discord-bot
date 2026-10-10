@@ -11,6 +11,8 @@ from hina_bot.core.runtime_config import (
     format_runtime_value,
 )
 
+from .scope_targets import command_target_scope
+
 log = logging.getLogger("hina")
 
 def _setting_key_choices(current: str) -> list[app_commands.Choice[str]]:
@@ -63,6 +65,90 @@ def apply_runtime_setting_side_effects(client, key: str) -> None:
         client.recent.clear_all()
 
 
+
+class AlwaysReplyCommands(app_commands.Group):
+    """Channel-scoped commands for the ALWAYS_REPLY_CHANNEL_IDS runtime set."""
+
+    def __init__(self, client):
+        super().__init__(
+            name="always-reply",
+            description="현재 서버의 채널별 자동 응답 관리 (봇 관리자 전용)",
+        )
+        self.client = client
+
+    @staticmethod
+    def _scope(interaction: discord.Interaction, channel):
+        scope = command_target_scope(interaction, channel=channel)
+        if scope.guild_id is None:
+            raise ValueError("DM에서는 서버 채널의 always-reply 설정을 사용할 수 없어요.")
+        invoking_channel = getattr(interaction, "channel", None)
+        if (
+            channel is None and invoking_channel is not None
+            and not isinstance(invoking_channel, (discord.TextChannel, discord.Thread))
+        ):
+            raise ValueError("텍스트 채널이나 스레드에서 실행해 주세요.")
+        return scope
+
+    async def _mutate(self, interaction: discord.Interaction, channel, *, enabled: bool):
+        try:
+            scope = self._scope(interaction, channel)
+            changed = self.client.settings.update_discord_id(
+                "always_reply_channel_ids", scope.channel_id, enabled=enabled
+            )
+            if changed:
+                apply_runtime_setting_side_effects(self.client, "always_reply_channel_ids")
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        state = "켜짐" if enabled else "꺼짐"
+        result = "변경했어요." if changed else "이미 해당 상태라 변경하지 않았어요."
+        await interaction.response.send_message(
+            f"<#{scope.channel_id}> 채널의 자동 응답: **{state}** — {result} "
+            f"[설정 출처: {self.client.settings.source('always_reply_channel_ids')}]"
+            + (" 기존 recent buffer도 초기화했어요." if changed else ""),
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="enable", description="현재/선택 채널의 자동 응답 켜기")
+    @app_commands.describe(channel="다른 서버 채널 선택 (생략하면 현재 채널)")
+    async def enable(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | discord.Thread | None = None,
+    ):
+        await self._mutate(interaction, channel, enabled=True)
+
+    @app_commands.command(name="disable", description="현재/선택 채널의 자동 응답 끄기")
+    @app_commands.describe(channel="다른 서버 채널 선택 (생략하면 현재 채널)")
+    async def disable(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | discord.Thread | None = None,
+    ):
+        await self._mutate(interaction, channel, enabled=False)
+
+    @app_commands.command(name="status", description="현재/선택 채널의 자동 응답 상태")
+    @app_commands.describe(channel="다른 서버 채널 선택 (생략하면 현재 채널)")
+    async def status(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | discord.Thread | None = None,
+    ):
+        try:
+            scope = self._scope(interaction, channel)
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+        enabled = scope.channel_id in self.client.settings.always_reply_channel_ids
+        source = self.client.settings.source("always_reply_channel_ids")
+        await interaction.response.send_message(
+            f"<#{scope.channel_id}> 채널 자동 응답: "
+            f"**{'켜짐' if enabled else '꺼짐'}** [설정 출처: {source}]",
+            ephemeral=True,
+        )
+
+
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 @app_commands.allowed_installs(guilds=True, users=True)
 class ConfigCommands(app_commands.Group):
@@ -71,6 +157,10 @@ class ConfigCommands(app_commands.Group):
         self.client = client
         # Full runtime setting inspection now belongs to the dashboard.
         self.remove_command("status")
+        # Bulk runtime edits belong to the Dashboard; keep direct privacy and ID controls.
+        self.remove_command("set")
+        self.remove_command("reset")
+        self.add_command(AlwaysReplyCommands(client))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id not in self.client.emoji_admin_ids:
@@ -87,7 +177,7 @@ class ConfigCommands(app_commands.Group):
 
     async def on_error(self, interaction: discord.Interaction, error):
         log.warning("Config command failed (%s)", type(error).__name__)
-        text = "런타임 설정을 처리하지 못했어요. /config status로 현재 상태를 확인해 주세요."
+        text = "런타임 설정을 처리하지 못했어요. Dashboard /admin/runtime에서 확인해 주세요."
         if interaction.response.is_done():
             await interaction.followup.send(text, ephemeral=True)
         else:

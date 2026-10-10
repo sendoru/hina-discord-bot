@@ -95,51 +95,42 @@ memory/chatlog 설정 자체는 유지합니다.
 
 ## 런타임 설정
 
-`/config` 그룹 전체는 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자 전용입니다. 아래 설정은 봇을
-재시작하지 않고 바꿀 수 있으며 SQLite에 override로 저장됩니다.
+`/config` 그룹은 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자 전용입니다.
+서버 내의 빠른 채널 설정과 긴급 privacy 변경만 Discord에서 제공하며,
+다른 런타임 설정의 목록 조회·편집·override 초기화는 Dashboard `/admin/runtime`에서 합니다.
 
 | 명령 | 기능 |
 | --- | --- |
 | `/config privacy value:<정책>` | 외부 LLM으로 보낼 대화 문맥의 최종 프라이버시 경계 설정 |
-| `/config set key:<설정> value:<값>` | 일반 runtime DB override 저장 후 즉시 적용 |
-| `/config reset key:<설정>` | 일반 runtime DB override 삭제 후 시작 시 값으로 복귀 |
+| `/config always-reply enable [channel]` | 현재/선택 채널의 자동 응답 켜기 |
+| `/config always-reply disable [channel]` | 현재/선택 채널의 자동 응답 끄기 |
+| `/config always-reply status [channel]` | 해당 채널의 자동 응답 상태와 설정 출처 확인 |
 
-전체 runtime effective 값과 DB override 여부는 Dashboard `/admin/runtime`에서 확인합니다.
-`/config set/reset`은 Stage 2의 채널 ID 목록 전용 명령이 준비되기 전까지 유지합니다.
+```text
+/config always-reply enable
+/config always-reply status
+/config always-reply disable channel:#general
+```
 
-`/config set/reset` 대상은 `MODEL_ROUTING_MODE`, `LLM_MODEL`, `LLM_FAST_MODEL`,
-`LLM_SMART_MODEL`, `MAX_OUTPUT_TOKENS`, `FAST_MAX_OUTPUT_TOKENS`,
-`SMART_MAX_OUTPUT_TOKENS`, `MEMORY_MAX_OUTPUT_TOKENS`,
-`ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS`, `GEMINI_THINKING_LEVEL`,
-`GEMINI_FAST_THINKING_LEVEL`, `GEMINI_SMART_THINKING_LEVEL`,
-`GEMINI_STORE_INTERACTIONS`, `GEMINI_STORE_CLASSIFIER_INTERACTIONS`, `CALL_PREFIXES`,
-`EMPTY_CALL_REPLY`, `SPECIAL_DM_EMPTY_CALL_REPLY`, `EMPTY_RESPONSE_REPLY`,
-`DM_ALWAYS_REPLY`, `ALWAYS_REPLY_CHANNEL_IDS`, `COOLDOWN_SECONDS`,
-`PUBLIC_SERVER_MEMORY_IN_DM`, `CHAT_WEB_SEARCH`, `COMMUNITY_LORE`,
-`CHANNEL_CONTEXT_CHARS`, `HISTORY_MAX_CHARS`, `SUMMARY_EVERY`,
-`STRUCTURED_MEMORY_EVERY`, `STRUCTURED_MEMORY_STALE_AFTER_SECONDS`,
-`LORE_MAX_ITEMS`, `LORE_MAX_CHARS`, `RUNTIME_TIMEZONE`, `RUNTIME_LOCALE`,
-`RUNTIME_DEFAULT_LOCATION`입니다.
-`EXTERNAL_CONTEXT_POLICY`는 프라이버시 경계라는 의미가 드러나도록 `/config privacy`에서 별도로
-관리합니다.
+`channel`을 생략하면 현재 채널, 선택하면 **같은 서버에서 조회 가능한**
+텍스트 채널이나 스레드를 대상으로 합니다. DM이나 다른 서버 채널은 지정할 수 없습니다.
+이 명령은 `ALWAYS_REPLY_CHANNEL_IDS`의 **effective 목록에서 해당 채널 하나만
+추가·삭제**하며 다른 등록 채널은 보존합니다. 이미 원하는 상태라면 새 DB override를
+만들거나 recent buffer를 비우지 않습니다.
 
-우선순위는 **SQLite override → 시작 시 `.env.local`/`.env` 값 → 코드 기본값**입니다. 따라서 env의
-값은 여전히 배포 기본값으로 사용할 수 있고, `/config reset`은 해당 DB override만 지웁니다.
-`RUNTIME_DEFAULT_LOCATION`을 명시적으로 비우려면 `/config set`의 value에 `none`을 사용합니다.
-`CALL_PREFIXES`는 쉼표 구분 문자열, `ALWAYS_REPLY_CHANNEL_IDS`는 쉼표 구분 Discord 채널 ID 목록,
-불리언 값은 `on/off` 또는 `true/false`를 받습니다. 설정 수가 Discord의 정적 choice
-한도를 넘기므로 `/config set/reset`의 key는 autocomplete로 검색합니다. `FAST_MAX_OUTPUT_TOKENS`는
-항상 `SMART_MAX_OUTPUT_TOKENS` 이하여야 하고, `SUMMARY_EVERY`와
-`STRUCTURED_MEMORY_EVERY`는 시작 시 `HISTORY_TURNS` 이하여야 합니다.
-`SPECIAL_DM_EMPTY_CALL_REPLY`를 비우려면 value에 `none`을 사용할 수 있습니다.
-`GEMINI_STORE_INTERACTIONS`는 기본적으로
-꺼져 있으며, 켜면 일반 채팅 answer interaction만 provider 측에 저장됩니다.
-semantic/web routing classifier 저장은 `GEMINI_STORE_CLASSIFIER_INTERACTIONS`로 별도 제어하며,
-기본값은 꺼짐입니다. memory summary·identity resolution 같은 다른 내부 보조 호출은 저장하지 않습니다.
+변경 시에는 SQLite override에 즉시 저장되고, direct-trigger 판정이 바뀌므로
+기존 recent buffer와 hydration 상태를 초기화합니다. 처음 상태가 startup `.env`에서
+온 경우에도 하나를 삭제하면 나머지 채널을 포함한 새 목록이 DB override가 되며
+재시작 후에도 유지됩니다. 채널 등록은 최대 100개입니다.
+
+Dashboard에서는 같은 `ALWAYS_REPLY_CHANNEL_IDS` 목록과 기타 모든 runtime 설정을
+계속 편집할 수 있습니다. 두 인터페이스 모두 동일한 런타임 검증·저장 경로를 사용합니다.
+설정값의 우선순위는 **SQLite override → 시작 시 `.env.local`/`.env` → 코드 기본값**이고,
+Dashboard에서 DB override를 reset하면 시작 시 기본값으로 돌아갑니다.
+`EXTERNAL_CONTEXT_POLICY`는 Discord의 `/config privacy`에서도 즉시 변경 가능합니다.
 
 `ALWAYS_REPLY_CHANNEL_IDS` 지정 채널에서는 사람의 일반 메시지도 직접 대화 턴으로 취급하지만,
-다른 봇은 호출어 또는 멘션/답장 핑이 있을 때만 응답합니다. 이 목록을
-바꾸면 direct-trigger 판정이 바뀌므로 기존 recent buffer도 즉시 비웁니다.
+다른 봇은 호출어 또는 멘션/답장 핑이 있을 때만 응답합니다.
 
 ### 외부 모델 전송 경계
 
