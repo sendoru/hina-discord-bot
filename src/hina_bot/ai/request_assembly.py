@@ -6,7 +6,9 @@ from datetime import UTC, datetime
 
 import httpx
 
+from hina_bot.core.ambient_retrieval import AMBIENT_CONTEXT_POLICY
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
+from hina_bot.core.relationship_grounding import RELATION_CONTEXT_POLICY
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
     CURRENT_EGRESS_DECISION,
@@ -108,6 +110,11 @@ TURN_RESPONSE_POLICY = load_prompt("turn_response.md")
 FINAL_OUTPUT_CHECK_POLICY = load_prompt("final_output.md")
 
 LIVE_INFORMATION_POLICY = load_prompt("live_information.md")
+
+REACTION_CONTEXT_POLICY = (
+    "optional_reactions는 선택적 반응 가이드이며 세계관 사실이나 사용자 사실의 근거가 아닙니다. "
+    "현재 장면과 명확히 맞을 때만 자연스럽게 반영하고, 맞지 않으면 사용하지 않습니다."
+)
 
 
 def capability_status_instruction(*, web_search_enabled: bool) -> str:
@@ -288,7 +295,16 @@ class RequestAssembler(BaseLLM):
         )
 
         runtime = build_runtime_context(self.settings)
-        references = list(information_plan.references)
+        bundle = information_plan.knowledge_bundle
+        if bundle is None:
+            references = list(information_plan.references)
+            character_insights = []
+            optional_reactions = []
+        else:
+            sections = bundle.context_sections()
+            references = [*sections["relations"], *sections["facts"]]
+            character_insights = sections["character_insights"]
+            optional_reactions = sections["reactions"]
         freshness = information_plan.freshness
         fact_question = information_plan.fact_question
         search_mode = information_plan.search_mode
@@ -347,6 +363,8 @@ class RequestAssembler(BaseLLM):
                 for emoji in emoji_catalog or []
             ],
             "lore_reference": references,
+            "character_insights": character_insights,
+            "optional_reactions": optional_reactions,
         }
         # This is the authoritative external-data boundary. Earlier capture/routing filters improve
         # behavior and data minimization, but a row that slips through them still cannot reach the
@@ -486,6 +504,12 @@ class RequestAssembler(BaseLLM):
             "context_lore_chars": _serialized_chars(
                 context.get("lore_reference", [])
             ),
+            "context_character_insight_chars": _serialized_chars(
+                context.get("character_insights", [])
+            ),
+            "context_reaction_chars": _serialized_chars(
+                context.get("optional_reactions", [])
+            ),
             "context_emoji_chars": _serialized_chars(
                 context.get("available_custom_emojis", [])
             ),
@@ -526,9 +550,20 @@ class RequestAssembler(BaseLLM):
         ]
         # Keep conditional reply/reference guidance after the stable shared prefix.
         instruction_parts.extend(reference_policies[1:])
+        retrieval_policy_chars = 0
+        if bundle is not None and bundle.relations:
+            instruction_parts.append(RELATION_CONTEXT_POLICY)
+            retrieval_policy_chars += len(RELATION_CONTEXT_POLICY)
+        if character_insights:
+            instruction_parts.append(AMBIENT_CONTEXT_POLICY)
+            retrieval_policy_chars += len(AMBIENT_CONTEXT_POLICY)
+        if optional_reactions:
+            instruction_parts.append(REACTION_CONTEXT_POLICY)
+            retrieval_policy_chars += len(REACTION_CONTEXT_POLICY)
         instruction_group_chars = {
             "instruction_base_chars": len(POLICY),
             "instruction_reference_chars": sum(map(len, reference_policies)),
+            "instruction_retrieval_chars": retrieval_policy_chars,
             "instruction_identity_chars": (
                 len(CURRENT_SPEAKER_POLICY) + len(CURRENT_INTERACTION_POLICY)
             ),
