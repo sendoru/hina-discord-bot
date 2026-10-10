@@ -55,7 +55,11 @@ def _trace_latency_breakdown(
 
     # Match the aggregate generation attribution: active routing + answer API
     # calls, excluding shadow routing. All critical calls need timings.
-    critical_calls = critical_generation_api_rows(usage)
+    critical_calls = critical_generation_api_rows(
+        row
+        for row in usage
+        if isinstance(row.get("model"), str) and row.get("model")
+    )
     api_latencies = [
         value
         for row in critical_calls
