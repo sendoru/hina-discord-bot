@@ -318,6 +318,7 @@ class RetrievalV2Runner:
         *,
         mode: str,
         applied: bool,
+        semantic_ready: bool,
     ) -> dict:
         legacy_ids = tuple(
             str(row.get("reference"))
@@ -350,11 +351,7 @@ class RetrievalV2Runner:
             "status": outcome.status,
             "retrieval_v2_mode": mode,
             "retrieval_v2_applied": applied,
-            "retrieval_v2_semantic_ready": (
-                outcome.hybrid.semantic_status not in {
-                    "unavailable", "calibration_mismatch",
-                }
-            ),
+            "retrieval_v2_semantic_ready": semantic_ready,
             "retrieval_v2_legacy_selected": len(legacy_ids),
             "retrieval_v2_selected": len(v2_ids),
             "retrieval_v2_overlap": overlap,
