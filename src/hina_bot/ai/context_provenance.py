@@ -150,6 +150,8 @@ def build_context_provenance(
     channel = list(context.get("channel_recent_messages", ()) or ())
     public = list(context.get("public_server_context", ()) or ())
     lore = list(context.get("lore_reference", ()) or ())
+    insights = list(context.get("character_insights", ()) or ())
+    reactions = list(context.get("optional_reactions", ()) or ())
     visual_rows = list(visuals or ())
     history_message_ids = [
         str(value)
@@ -183,6 +185,8 @@ def build_context_provenance(
         _section("structured_memory", all_structured_items),
         _section("relationship_projection", relationship_axes),
         _section("lore_reference", lore),
+        _section("character_insights", insights),
+        _section("optional_reactions", reactions),
         _section("visual_inputs", visual_rows),
     ]
 
@@ -225,6 +229,14 @@ def build_context_provenance(
         ),
         *(_public_source(row, current_user_id) for row in public),
         *(_lore_source(row) for row in lore),
+        *(
+            {**_lore_source(row), "source_type": "character_insight"}
+            for row in insights
+        ),
+        *(
+            {**_lore_source(row), "source_type": "optional_reaction"}
+            for row in reactions
+        ),
         *(_visual_source(visual) for visual in visual_rows),
     ]
     sources = all_sources[-_MAX_SOURCES:]
