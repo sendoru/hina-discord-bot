@@ -16,7 +16,7 @@ from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 
-from .bot import CURRENT_TYPING_ACTIVE
+from .bot import CURRENT_TYPING_ACTIVE, CURRENT_TYPING_STOP
 from .bot import HinaClient as BaseHinaClient
 from .chatlog_capture import capture_mode
 from .interaction_context import build_interaction_context
@@ -40,6 +40,27 @@ CURRENT_PUBLIC_CONTEXT_REQUEST = ContextVar(
     "current_public_context_request",
     default=(False, ()),
 )
+
+
+class _ManagedTyping:
+    """End the typing indicator on delivery, not after post-reply memory work."""
+
+    def __init__(self, context):
+        self.context = context
+        self.active = False
+
+    async def __aenter__(self):
+        await self.context.__aenter__()
+        self.active = True
+        return self
+
+    async def stop(self):
+        if self.active:
+            self.active = False
+            await self.context.__aexit__(None, None, None)
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.stop()
 
 
 async def _timed(awaitable):
@@ -344,18 +365,22 @@ class HinaClient(BaseHinaClient):
         )
         typing_factory = getattr(message.channel, "typing", None)
         use_typing = should_type and callable(typing_factory)
-        async with (typing_factory() if use_typing else nullcontext()):
+        managed = _ManagedTyping(typing_factory()) if use_typing else nullcontext()
+        async with managed as session:
             typing_start_ms = (
                 round((time.perf_counter() - preflight_started) * 1000)
                 if use_typing and preflight_started is not None
                 else None
             )
             token = CURRENT_TYPING_ACTIVE.set(True) if use_typing else None
+            stop_token = CURRENT_TYPING_STOP.set(session.stop) if use_typing else None
             try:
                 return await self._preflight_on_message(
                     message, text, scope, preflight_started, typing_start_ms
                 )
             finally:
+                if stop_token is not None:
+                    CURRENT_TYPING_STOP.reset(stop_token)
                 if token is not None:
                     CURRENT_TYPING_ACTIVE.reset(token)
 
