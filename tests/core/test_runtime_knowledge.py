@@ -280,7 +280,7 @@ class KnowledgeCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(group.allowed_installs.guild)
 
     def test_command_set(self):
-        expected = {"ingest", "list", "show", "enable", "disable", "remove"}
+        expected = {"ingest"}
         self.assertEqual({command.name for command in KnowledgeCommands(self.client).commands}, expected)
 
 
