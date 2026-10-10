@@ -11,7 +11,9 @@ GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
-RETRIEVAL_V2_MODES = frozenset({"off", "shadow", "active"})
+RETRIEVAL_V2_MODES = frozenset({"off", "shadow", "active"})  # Legacy env alias.
+RAG_MODES = frozenset({"off", "v1", "shadow", "v2"})
+LEGACY_RAG_MODES = {"off": "v1", "shadow": "shadow", "active": "v2"}
 
 
 def _optional_unit_float(variable: str) -> float | None:
@@ -137,7 +139,8 @@ class Settings:
     lore_max_chars: int = 3200
     community_lore: bool = True
     chat_web_search: bool = True
-    retrieval_v2_mode: str = "off"
+    rag_mode: str = "v1"
+    retrieval_v2_mode: str = "off"  # Legacy read compatibility.
     retrieval_v2_timeout_seconds: float = 3.0
     retrieval_v2_factual_reject: float | None = None
     retrieval_v2_factual_strong: float | None = None
@@ -177,12 +180,22 @@ class Settings:
 
         provider = _provider(os.getenv("LLM_PROVIDER", "openai"), "LLM_PROVIDER")
 
-        retrieval_v2_mode = os.getenv(
-            "RETRIEVAL_V2_MODE", "off"
-        ).strip().lower()
-        if retrieval_v2_mode not in RETRIEVAL_V2_MODES:
-            allowed = ", ".join(sorted(RETRIEVAL_V2_MODES))
-            raise ValueError(f"RETRIEVAL_V2_MODE은 {allowed} 중 하나여야 합니다.")
+        # RAG_MODE supersedes RETRIEVAL_V2_MODE. The latter is a legacy alias,
+        # where old "off" meant *v1 enabled*, not an all-RAG kill switch.
+        configured_rag_mode = os.getenv("RAG_MODE", "").strip().lower()
+        legacy_mode = os.getenv("RETRIEVAL_V2_MODE", "off").strip().lower()
+        if configured_rag_mode:
+            rag_mode = configured_rag_mode
+        else:
+            if legacy_mode not in RETRIEVAL_V2_MODES:
+                allowed = ", ".join(sorted(RETRIEVAL_V2_MODES))
+                raise ValueError(f"RETRIEVAL_V2_MODE은 {allowed} 중 하나여야 합니다.")
+            rag_mode = LEGACY_RAG_MODES[legacy_mode]
+        if rag_mode not in RAG_MODES:
+            allowed = ", ".join(sorted(RAG_MODES))
+            raise ValueError(f"RAG_MODE는 {allowed} 중 하나여야 합니다.")
+        retrieval_v2_mode = {"off": "off", "v1": "off", "shadow": "shadow",
+                             "v2": "active"}[rag_mode]
         try:
             retrieval_v2_timeout_seconds = float(
                 os.getenv("RETRIEVAL_V2_TIMEOUT_SECONDS", "3.0")
@@ -307,17 +320,17 @@ class Settings:
         }
         if not keys[provider]:
             raise ValueError(f"{_env_key(provider)}를 설정해 주세요.")
-        if retrieval_v2_mode == "active":
+        if rag_mode == "v2":
             if not keys["gemini"]:
                 raise ValueError(
-                    "RETRIEVAL_V2_MODE=active에는 GEMINI_API_KEY가 필요합니다."
+                    "RAG_MODE=v2에는 GEMINI_API_KEY가 필요합니다."
                 )
             expected_backend = retrieval_v2_expected_backend_key(
                 retrieval_v2_embedding_dimensions
             )
             if retrieval_v2_calibration_backend_key != expected_backend:
                 raise ValueError(
-                    "RETRIEVAL_V2_MODE=active의 calibration backend key가 "
+                    "RAG_MODE=v2의 calibration backend key가 "
                     "현재 Gemini embedding 설정과 일치해야 합니다."
                 )
             if any(value is None for value in (
@@ -327,7 +340,7 @@ class Settings:
                 retrieval_v2_ambient_strong,
             )):
                 raise ValueError(
-                    "RETRIEVAL_V2_MODE=active에는 factual/ambient live calibration "
+                    "RAG_MODE=v2에는 factual/ambient live calibration "
                     "threshold가 모두 필요합니다."
                 )
 
@@ -482,6 +495,7 @@ class Settings:
             lore_max_chars=int(os.getenv("LORE_MAX_CHARS", "3200")),
             community_lore=community_lore == "true",
             chat_web_search=chat_web_search == "true",
+            rag_mode=rag_mode,
             retrieval_v2_mode=retrieval_v2_mode,
             retrieval_v2_timeout_seconds=retrieval_v2_timeout_seconds,
             retrieval_v2_factual_reject=retrieval_v2_factual_reject,
