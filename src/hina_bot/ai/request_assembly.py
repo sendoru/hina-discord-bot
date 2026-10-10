@@ -7,12 +7,12 @@ from datetime import UTC, datetime
 import httpx
 
 from hina_bot.core.ambient_retrieval import AMBIENT_CONTEXT_POLICY
-from hina_bot.core.relationship_grounding import RELATION_CONTEXT_POLICY
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
     CURRENT_EGRESS_DECISION,
 )
+from hina_bot.core.relationship_grounding import RELATION_CONTEXT_POLICY
 
 from .context_provenance import build_context_provenance
 from .egress_policy import apply_context_policy
