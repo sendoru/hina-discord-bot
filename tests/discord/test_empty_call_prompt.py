@@ -1,20 +1,22 @@
+from hina_bot.ai.vision import VisualInput
 from hina_bot.core.routing import Scope
-from hina_bot.discord.bot import _bare_call_reply
-from hina_bot.discord.web_bot import _augment_empty_call
+from hina_bot.discord.bot import _bare_call_reply, _has_strong_visual_context
 
 
-def test_bare_text_call_does_not_invent_llm_intent():
-    assert _augment_empty_call("히나야", "", False) is None
-    assert _augment_empty_call("<@99>", "", False) is None
+def _visual(reference_strength: str) -> VisualInput:
+    return VisualInput(
+        b"image",
+        "image/png",
+        "attachment",
+        reference_strength=reference_strength,
+    )
 
 
-def test_bare_visual_call_keeps_visual_prompt():
-    assert _augment_empty_call("히나야", "", True) == "히나야 이 이미지나 스티커를 봐줘."
-
-
-def test_nonempty_or_nontrigger_messages_are_unchanged():
-    assert _augment_empty_call("히나야 뭐해", "뭐해", False) is None
-    assert _augment_empty_call("그냥 채팅", None, False) is None
+def test_only_strong_visual_context_bypasses_bare_call_reply():
+    assert not _has_strong_visual_context(())
+    assert _has_strong_visual_context((_visual("current_message"),))
+    assert _has_strong_visual_context((_visual("explicit_reply"),))
+    assert not _has_strong_visual_context((_visual("passive_recent"),))
 
 
 def test_bare_call_reply_uses_configured_values():

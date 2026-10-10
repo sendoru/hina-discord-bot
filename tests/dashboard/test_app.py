@@ -5,8 +5,21 @@ from fastapi.testclient import TestClient
 from hina_bot.core.observability import CURRENT_TURN_ID
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.dashboard.app import create_app
+from hina_bot.dashboard.app import _static_asset_version, create_app
 from hina_bot.dashboard.config import DashboardSettings
+
+
+def test_static_asset_version_tracks_current_file_contents(tmp_path):
+    asset = tmp_path / "dashboard.css"
+    asset.write_text("a", encoding="utf-8")
+    first = _static_asset_version(tmp_path, "dashboard.css")
+
+    asset.write_text("b", encoding="utf-8")
+    second = _static_asset_version(tmp_path, "dashboard.css")
+
+    assert len(first) == 12
+    assert len(second) == 12
+    assert first != second
 
 
 def write_rows(path, rows):
@@ -157,6 +170,15 @@ def dashboard_client(tmp_path):
         usage,
         [
             {
+                "at": "2026-09-21T00:00:00.500000+00:00",
+                "turn_id": "trace-ui",
+                "operation": "model_route_classify",
+                "model": "classifier-model",
+                "status": "error",
+                "error_type": "CancelledError",
+                "elapsed_ms": 4001,
+            },
+            {
                 "at": "2026-09-21T00:00:01+00:00",
                 "turn_id": "trace-ui",
                 "operation": "answer",
@@ -174,8 +196,10 @@ def dashboard_client(tmp_path):
                 "at": "2026-09-21T00:00:01+00:00",
                 "turn_id": "trace-ui",
                 "scope": "dm",
-                "models": ["test-model"],
-                "calls": 1,
+                "status": "completed_with_api_errors",
+                "models": ["classifier-model", "test-model"],
+                "calls": 2,
+                "failed_calls": 1,
                 "total_tokens": 12,
                 "web_search_calls": 0,
             }
@@ -295,8 +319,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'class="nav-link nav-home active"' in overview.text
     assert 'hina-dashboard-icon.webp' in overview.text
     assert 'rel="icon" type="image/webp"' in overview.text
-    assert 'dashboard.css?v=' in overview.text
-    assert 'clipboard.js' in overview.text
+    assert '/static/dashboard.css?v=' in overview.text
+    assert '/static/clipboard.js?v=' in overview.text
+    assert "20261006-trace-issues" not in overview.text
+    assert "20261003-typed-runtime" not in overview.text
     assert "Observability" in overview.text
     assert "Context" in overview.text
     assert "Memory ops" in overview.text
@@ -307,7 +333,7 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "2026-09-21 09:00:00 KST" in overview.text
     assert 'class="freshness-badge freshness-danger"' in overview.text
     assert "마지막 기록" in overview.text
-    assert 'class="status-badge status-success">completed</span>' in overview.text
+    assert 'class="status-badge status-warning">completed · degraded</span>' in overview.text
     assert 'href="/traces" aria-label="View all traces"' in overview.text
     assert 'href="/conversations" aria-label="View stored conversations"' in overview.text
     assert 'href="/analytics#usage-breakdown" aria-label="View API call breakdown"' in overview.text
@@ -317,6 +343,13 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Current observability epoch #1" in traces.text
     assert 'aria-label="Observability epoch"' in traces.text
     assert "Advanced filters" in traces.text
+    assert "Final failure" in traces.text
+    assert "Issue" in traces.text
+    assert "<th>Issue</th>" not in traces.text
+    assert "model_route_classify · CancelledError" not in traces.text
+    assert 'class="status-badge status-warning">completed · degraded</span>' in traces.text
+    assert 'class="issue-count-badge"' in traces.text
+    assert "⚠ 1" in traces.text
     assert 'class="wide-table"' in traces.text
     assert 'aria-label="Applied filters"' in traces.text
     assert analytics.status_code == 200
@@ -338,6 +371,10 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Raw scope" in detail.text
     assert "Context &amp; provenance" in detail.text
     assert "Egress policy" in detail.text
+    assert "degraded completion" in detail.text
+    assert 'id="trace-issues"' in detail.text
+    assert "model_route_classify · CancelledError" in detail.text
+    assert "api_error" in detail.text
     assert failed_detail.status_code == 200
     assert "Failed conversation record" in failed_detail.text
     assert "failed dashboard request" in failed_detail.text
@@ -483,6 +520,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert ".notice.warning" in static.text
     assert ".mobile-nav-panel" in static.text
     assert ".wide-table" in static.text
+    assert ".issue-count-badge" in static.text
+    assert ".trace-issue-list" in static.text
     assert ".relationship-mobile-card" in static.text
     assert ".relationship-desktop" in static.text
     assert ".scope-picker" in static.text

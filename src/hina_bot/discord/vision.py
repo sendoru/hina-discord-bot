@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import re
+import time
+from collections import OrderedDict
 from dataclasses import dataclass
 
 import discord
@@ -54,6 +56,57 @@ class VisionLimits:
             "emoji": self.emojis,
             "sticker": self.stickers,
         }[source]
+
+
+class VisionFetchCache:
+    """Small per-client TTL/LRU cache for fetched *historical* visuals.
+
+    Cache bytes and immutable source metadata, never an authorization decision or
+    request-specific provenance. Each request independently selects its allowed
+    refs; cached bytes are relabeled with that request's context strength.
+    """
+
+    def __init__(self, *, ttl_seconds=300, empty_ttl_seconds=15,
+                 max_entries=48, max_bytes=16 * 1024 * 1024):
+        self.ttl_seconds = ttl_seconds
+        self.empty_ttl_seconds = empty_ttl_seconds
+        self.max_entries = max_entries
+        self.max_bytes = max_bytes
+        self.entries = OrderedDict()
+        self.total_bytes = 0
+
+    def _remove(self, key):
+        entry = self.entries.pop(key, None)
+        if entry is not None:
+            self.total_bytes -= entry[2]
+
+    def get(self, key):
+        entry = self.entries.get(key)
+        if entry is None:
+            return None
+        added_at, visuals, _size = entry
+        ttl = self.ttl_seconds if visuals else self.empty_ttl_seconds
+        if time.monotonic() - added_at >= ttl:
+            self._remove(key)
+            return None
+        self.entries.move_to_end(key)
+        return visuals
+
+    def invalidate(self, channel_id, message_id):
+        for key in list(self.entries):
+            if key[0] == channel_id and key[1] == str(message_id):
+                self._remove(key)
+
+    def put(self, key, visuals):
+        visuals = tuple(visuals)
+        size = sum(len(item.data) for item in visuals)
+        self._remove(key)
+        if size > self.max_bytes or self.max_entries <= 0:
+            return
+        self.entries[key] = (time.monotonic(), visuals, size)
+        self.total_bytes += size
+        while len(self.entries) > self.max_entries or self.total_bytes > self.max_bytes:
+            self._remove(next(iter(self.entries)))
 
 
 def _sniff_image_mime(data: bytes) -> str | None:
@@ -191,6 +244,7 @@ async def collect_visual_inputs(
     *,
     context_refs: list[VisualContextRef] | tuple[VisualContextRef, ...] = (),
     limits: VisionLimits | None = None,
+    cache: VisionFetchCache | None = None,
     downloader=_download,
     max_context_messages: int = MAX_CONTEXT_VISUAL_MESSAGES,
 ) -> list[VisualInput]:
@@ -308,6 +362,31 @@ async def collect_visual_inputs(
                 break
             if ref.message_id in seen_message_ids:
                 continue
+            # Inline emojis in an explicit reply are included, but passive inline
+            # emojis are not. Keep the two payload selections in separate entries.
+            inline_emojis = ref.context_kind == "replied_message"
+            key = (getattr(channel, "id", None), ref.message_id, inline_emojis)
+            cached = cache.get(key) if cache is not None else None
+            if cached is not None:
+                seen_message_ids.add(ref.message_id)
+                before = len(result)
+                for item in cached:
+                    await add_bytes(
+                        item.data, item.source, item.name,
+                        {
+                            "context_kind": ref.context_kind,
+                            "reference_strength": ref.reference_strength,
+                            "message_id": item.message_id,
+                            "author_name": item.author_name,
+                            "author_user_id": item.author_user_id,
+                            "message_content": item.message_content,
+                            "at": item.at,
+                        },
+                        uri=item.uri,
+                    )
+                if len(result) > before:
+                    accepted_context_messages += 1
+                continue
             try:
                 target = await fetch_message(int(ref.message_id))
             except (
@@ -318,13 +397,24 @@ async def collect_visual_inputs(
                 discord.HTTPException,
             ) as exc:
                 log.warning("Selected visual lookup failed (%s)", type(exc).__name__)
+                if cache is not None and isinstance(exc, discord.NotFound):
+                    cache.put(key, ())
                 continue
+            before = len(result)
             added = await collect_message(
                 target,
                 context_kind=ref.context_kind,
                 reference_strength=ref.reference_strength,
-                include_inline_emojis=ref.context_kind == "replied_message",
+                include_inline_emojis=inline_emojis,
             )
+            if cache is not None:
+                # Empty/no-image refs are common with passive inline emojis.
+                # Cache them briefly; do not permanently cache failed downloads.
+                collected = result[before:]
+                if collected or not message_has_visual(
+                    target, include_inline_emojis=inline_emojis
+                ):
+                    cache.put(key, collected)
             if added:
                 accepted_context_messages += 1
 

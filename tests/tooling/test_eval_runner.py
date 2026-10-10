@@ -479,10 +479,13 @@ def test_tone_cases_include_response_planning_leakage_regressions():
     cases = read_cases(Path("evals/tone_cases.jsonl"))
     by_id = {row["id"]: row for row in cases}
     stage = by_id["rp_stage_direction_does_not_leak_response_planning"]
+    action_rp = by_id["action_style_rp_uses_dialogue_not_stage_direction"]
     mention = by_id["mention_like_request_does_not_leak_response_planning"]
 
     assert stage["input"] == "(자는 중)"
     assert "답변 구상" in stage["expected"]
+    assert action_rp["input"] == "히나 마구 쓰다듬어주기"
+    assert "무대 지시" in action_rp["expected"]
     assert "@example_user" in mention["input"]
     assert "response-planning scaffold" in mention["expected"]
 

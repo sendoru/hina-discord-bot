@@ -14,6 +14,7 @@ from hina_bot.ai.request_assembly import (
     TARGET_HISTORY_POLICY,
     TURN_RESPONSE_POLICY,
     WEB_SEARCH_POLICY,
+    WORLD_CORE_POLICY,
     WORLD_FACT_DETAIL_POLICY,
     WORLD_WEB_SEARCH_POLICY,
 )
@@ -29,6 +30,7 @@ def test_static_answer_policies_are_loaded_from_named_resources():
         "reference_provenance.md": REFERENCE_PROVENANCE_POLICY,
         "current_speaker.md": CURRENT_SPEAKER_POLICY,
         "current_interaction.md": CURRENT_INTERACTION_POLICY,
+        "world_core.md": WORLD_CORE_POLICY,
         "turn_response.md": TURN_RESPONSE_POLICY,
         "final_output.md": FINAL_OUTPUT_CHECK_POLICY,
         "live_information.md": LIVE_INFORMATION_POLICY,

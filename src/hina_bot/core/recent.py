@@ -12,6 +12,7 @@ class RecentMessages:
         # Live Gateway messages do not set this flag, so off->on can still recover messages that
         # arrived while reading was disabled.
         self.hydrated = set()
+        self._hydrated_lru = OrderedDict()
 
     @staticmethod
     def _key(scope):
@@ -76,6 +77,7 @@ class RecentMessages:
         while len(self.buffers) > self.channels:
             old_key, _ = self.buffers.popitem(last=False)
             self.hydrated.discard(old_key)
+            self._hydrated_lru.pop(old_key, None)
 
     def prune(self, now):
         for key, rows in list(self.buffers.items()):
@@ -83,14 +85,19 @@ class RecentMessages:
                 rows.popleft()
             if not rows:
                 del self.buffers[key]
-                self.hydrated.discard(key)
 
     def needs_hydration(self, scope):
         self.prune(time.monotonic())
         return self._key(scope) not in self.hydrated
 
     def mark_hydrated(self, scope):
-        self.hydrated.add(self._key(scope))
+        key = self._key(scope)
+        self.hydrated.add(key)
+        self._hydrated_lru[key] = None
+        self._hydrated_lru.move_to_end(key)
+        while len(self._hydrated_lru) > self.channels:
+            old_key, _ = self._hydrated_lru.popitem(last=False)
+            self.hydrated.discard(old_key)
 
     def candidates(self, scope, before_id, *, include=None):
         """Return eligible rows before applying item or character budgets.
@@ -129,15 +136,19 @@ class RecentMessages:
             if key[0] == scope.realm:
                 del self.buffers[key]
                 self.hydrated.discard(key)
+                self._hydrated_lru.pop(key, None)
         for key in list(self.hydrated):
             if key[0] == scope.realm:
                 self.hydrated.discard(key)
+                self._hydrated_lru.pop(key, None)
 
     def clear_channel(self, scope):
         key = self._key(scope)
         self.buffers.pop(key, None)
         self.hydrated.discard(key)
+        self._hydrated_lru.pop(key, None)
 
     def clear_all(self):
         self.buffers.clear()
         self.hydrated.clear()
+        self._hydrated_lru.clear()

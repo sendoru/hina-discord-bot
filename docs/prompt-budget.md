@@ -37,9 +37,11 @@ integration policy가 담당하는 규칙과 우회 방식·키워드 예시 나
 
 ## 회귀 방지
 
-`tests/ai/test_prompt_budget.py`는 base policy 크기와 캐릭터·관계 prompt 상한을 확인하고, 특정 인물
-관계 사실이 `hina.md`에 다시 들어오는 것을 막습니다. byte 수는 provider별 실제 token 수와 같지는
-않지만 tokenizer에 종속되지 않는 간단한 크기 회귀 지표로 사용합니다.
+`tests/ai/test_prompt_budget.py`는 base policy와 캐릭터·관계 prompt뿐 아니라 일반 응답에 항상
+주입되는 정적 prompt 묶음의 전체 크기도 확인합니다. 현재 상한은 관계 prompt를 포함해 10,000
+characters이며, runtime/capability처럼 요청마다 생성되는 짧은 동적 지침과 memory/search/vision 같은
+조건부 지침은 이 합계에서 제외합니다. 개별 byte 수와 전체 character 수는 provider별 실제 token
+수와 같지는 않지만 tokenizer에 종속되지 않는 간단한 크기 회귀 지표로 사용합니다.
 
 실제 merge 전에는 기존 `evals/character_lore_cases.jsonl`의 캐릭터·관계·몰입 사례를 확인하고,
 특히 일반 서버/DM/특별 DM에서 캐릭터성이나 관계 검색 품질이 떨어지지 않는지 smoke test합니다.

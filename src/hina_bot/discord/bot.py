@@ -4,10 +4,12 @@ import sys
 import time
 import weakref
 from contextlib import ExitStack, asynccontextmanager, nullcontext
+from contextvars import ContextVar
 from datetime import timedelta
 
 import discord
 
+from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
 from hina_bot.core.observability import (
@@ -38,6 +40,15 @@ USER_ONLY_ALLOWED_MENTIONS = discord.AllowedMentions(
 )
 BOT_TRIGGER_CHAIN_LIMIT = 2
 BOT_TRIGGER_CHAIN_WINDOW_SECONDS = 15.0
+# The production wrapper owns typing across preflight and generation.
+CURRENT_TYPING_ACTIVE = ContextVar("current_typing_active", default=False)
+CURRENT_TYPING_STOP = ContextVar("current_typing_stop", default=None)
+
+
+async def _stop_active_typing():
+    stop = CURRENT_TYPING_STOP.get()
+    if stop is not None:
+        await stop()
 
 
 @asynccontextmanager
@@ -107,6 +118,14 @@ def _bare_call_reply(
     if special_dm and special_dm_empty_call_reply:
         return special_dm_empty_call_reply
     return empty_call_reply
+
+
+def _has_strong_visual_context(visuals) -> bool:
+    """Return whether visuals explicitly belong to the active user turn."""
+    return any(
+        visual.reference_strength in {"current_message", "explicit_reply"}
+        for visual in visuals
+    )
 
 
 class HinaClient(discord.Client):
@@ -285,7 +304,7 @@ class HinaClient(discord.Client):
 
     async def _sweep_stale_structured_memory(self):
         scopes = self.store.stale_memory_extraction_scopes(
-            min_pending=1,
+            min_pending=2,
             stale_after_seconds=self.settings.structured_memory_stale_after_seconds,
         )
         for scope in scopes:
@@ -301,7 +320,7 @@ class HinaClient(discord.Client):
                         committed = await self.llm.extract_structured_memory(
                             self.store,
                             scope,
-                            min_turns=1,
+                            min_turns=2,
                         )
                 if committed:
                     self.events.emit(
@@ -606,6 +625,7 @@ class HinaClient(discord.Client):
                             "한 번에 4000자 이내로 이야기해 주세요.",
                         )
                         reply_delivered = True
+                        await _stop_active_typing()
                         self.events.emit(
                             "turn.dropped",
                             scope=scope_kind,
@@ -634,7 +654,7 @@ class HinaClient(discord.Client):
                         return
                     self.cooldowns[key] = cooldown_received_at
 
-                    if not text:
+                    if not text and not _has_strong_visual_context(CURRENT_VISUAL_INPUTS.get()):
                         raw_turn_persistence = "skipped"
                         raw_turn_persistence_reason = "fixed_reply_no_raw_turn"
                         stage = "delivery"
@@ -649,6 +669,7 @@ class HinaClient(discord.Client):
                             ),
                         )
                         reply_delivered = True
+                        await _stop_active_typing()
                         timings["delivery_ms"] = round(
                             (time.perf_counter() - delivery_started) * 1000
                         )
@@ -696,7 +717,11 @@ class HinaClient(discord.Client):
                             timings["slot_wait_ms"] = round(
                                 (time.perf_counter() - slot_started) * 1000
                             )
-                            async with message.channel.typing():
+                            async with (
+                                nullcontext()
+                                if CURRENT_TYPING_ACTIVE.get()
+                                else message.channel.typing()
+                            ):
                                 stage = "context"
                                 context_started = time.perf_counter()
                                 sources = (
@@ -758,6 +783,7 @@ class HinaClient(discord.Client):
                                         allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
                                     )
                                 reply_delivered = True
+                                await _stop_active_typing()
                                 timings["delivery_ms"] = round(
                                     (time.perf_counter() - delivery_started) * 1000
                                 )
@@ -925,6 +951,7 @@ class HinaClient(discord.Client):
                 try:
                     await self.send_text(message.channel, fallback_reply)
                     reply_delivered = True
+                    await _stop_active_typing()
                     timings["fallback_delivery_ms"] = round(
                         (time.perf_counter() - fallback_started) * 1000
                     )

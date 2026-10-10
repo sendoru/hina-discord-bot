@@ -152,6 +152,35 @@ def test_uncertain_or_failed_classifier_exposes_no_semantic_score():
 
 
 @pytest.mark.asyncio
+async def test_classifier_deadline_falls_back_and_logs_timeout(tmp_path):
+    log_path = tmp_path / "usage.jsonl"
+    usage = UsageLogger(str(log_path))
+
+    async def blocked_classifier(**_kwargs):
+        await asyncio.Event().wait()
+
+    classifier_client = client(response("unused"))
+    classifier_client.responses.create.side_effect = blocked_classifier
+    router = SemanticModelRouter(
+        settings(routing_classifier_timeout_seconds=0.01),
+        classifier_client,
+        usage,
+    )
+
+    try:
+        outcome = await router.classify(information("안녕"), baseline_tier="fast")
+    finally:
+        usage.close()
+
+    assert outcome.status == "timeout"
+    row = json.loads(log_path.read_text())
+    assert row["operation"] == "model_route_classify"
+    assert row["status"] == "timeout"
+    assert row["timeout_source"] == "request_deadline"
+    assert "error_type" not in row
+
+
+@pytest.mark.asyncio
 async def test_classifier_input_contains_semantic_context_but_no_objective_load():
     config = settings()
     classifier_client = client(response(classification(level="medium")))
@@ -176,6 +205,23 @@ async def test_classifier_input_contains_semantic_context_but_no_objective_load(
     assert "third-party-secret" not in request["input"]
     assert request["store"] is False
     assert "tools" not in request
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_classifier_store_is_separate_gemini_opt_in(enabled):
+    config = settings(
+        gemini_store_interactions=True,
+        gemini_store_classifier_interactions=enabled,
+    )
+    classifier_client = client(response(classification()))
+    router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
+
+    outcome = await router.classify(information("안녕"), baseline_tier="fast")
+
+    assert outcome.status == "completed"
+    request = classifier_client.responses.create.await_args.kwargs
+    assert request["store"] is enabled
 
 
 @pytest.mark.asyncio

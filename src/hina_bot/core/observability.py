@@ -55,6 +55,48 @@ def safe_exception_fields(exc: BaseException, stage: str) -> dict[str, object]:
         status_code = getattr(exc, "status", None)
     if isinstance(status_code, int):
         fields["http_status"] = status_code
+
+    provider = getattr(exc, "provider", None)
+    response_status = getattr(exc, "response_status", None)
+    error_code = getattr(exc, "error_code", None)
+    response_error_codes = getattr(exc, "response_error_codes", None)
+    output_types = getattr(exc, "output_types", None)
+    has_visible_text = getattr(exc, "has_visible_text", None)
+    if isinstance(provider, str) and provider:
+        fields["provider"] = provider[:64]
+    if isinstance(response_status, str) and response_status:
+        fields["provider_response_status"] = response_status[:64]
+    if isinstance(error_code, str) and error_code:
+        fields["provider_error_code"] = error_code[:64]
+    if isinstance(response_error_codes, (list, tuple)):
+        safe_codes = [
+            value[:64]
+            for value in response_error_codes[:16]
+            if isinstance(value, str) and value
+        ]
+        if safe_codes:
+            fields["provider_response_error_codes"] = list(dict.fromkeys(safe_codes))
+    if isinstance(output_types, (list, tuple)):
+        safe_types = [
+            value[:64]
+            for value in output_types[:16]
+            if isinstance(value, str) and value
+        ]
+        if safe_types:
+            fields["provider_output_types"] = list(dict.fromkeys(safe_types))
+    if isinstance(has_visible_text, bool):
+        fields["provider_has_visible_text"] = has_visible_text
+    for token_field in (
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "cached_tokens",
+        "reasoning_tokens",
+    ):
+        value = getattr(exc, token_field, None)
+        if isinstance(value, int):
+            fields[f"provider_{token_field}"] = value
+
     cause = exc.__cause__ or exc.__context__
     if cause is not None:
         fields["error_cause_type"] = type(cause).__name__
