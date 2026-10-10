@@ -250,8 +250,8 @@ def test_trusted_direct_factual_row_suffices_but_unreviewed_runtime_row_does_not
     assert not assess_local_evidence(req, KnowledgeBundle(facts=(ranked(runtime),))).sufficient
 
 
-def test_relationship_grounder_now_surfaces_prior_awareness_claim_for_pair():
+def test_awareness_claim_does_not_pollute_generic_exact_relation_grounding():
     grounder = RelationshipGrounder.load()
     req = request("히나는 호시노를 만나기 전부터 알고 있었어?")
     ids = [row.candidate.candidate_id for row in grounder.ground(req)]
-    assert "canon.hina.knows_hoshino_past_before_meeting" in ids
+    assert "canon.hina.knows_hoshino_past_before_meeting" not in ids
