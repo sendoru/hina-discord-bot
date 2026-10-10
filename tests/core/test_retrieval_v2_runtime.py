@@ -51,8 +51,8 @@ async def test_conversation_without_calibration_stays_local_and_does_not_invent_
         RoutingPlan("오늘 좀 피곤하네", "오늘 좀 피곤하네"),
     )
     result = await engine.retrieve(request)
-    assert result.factual_invocation == "not_needed"
-    assert result.factual_status == "not_needed"
+    assert result.factual_invocation == "conversation_semantic"
+    assert result.factual_status == "unavailable"
     assert result.ambient_status == "not_invoked"
     assert not result.bundle.character_insights
 
@@ -177,6 +177,43 @@ def _reaction_candidate():
     )
 
 
+async def test_conversation_classifier_miss_invokes_semantic_only():
+    backend = _FakeEmbedding()
+    calibration = SemanticCalibration(backend.cache_key, 0.5, 0.9)
+    engine = RetrievalV2Engine(
+        LoreIndex.load(),
+        semantic_index=SemanticIndex(backend),
+        factual_calibration=calibration,
+    )
+    text = "쟤 원래 저렇게까지 일을 놓질 못해?"
+    request = build_resolved_retrieval_request(RoutingPlan(text, text))
+    assert request.intent == RetrievalIntent.CONVERSATION
+    result = await engine.retrieve(request)
+    assert result.factual_invocation == "conversation_semantic"
+    assert result.factual_status == "available"
+    assert result.semantic_selected > 0
+    assert result.lexical_selected == 0
+    assert len(backend.queries) == 1
+
+    offline = await RetrievalV2Engine(LoreIndex.load()).retrieve(request)
+    assert offline.factual_status == "unavailable"
+    assert not offline.bundle.facts
+
+
+async def test_trivial_turn_skips_factual_embedding():
+    backend = _FakeEmbedding()
+    calibration = SemanticCalibration(backend.cache_key, 0.5, 0.9)
+    engine = RetrievalV2Engine(
+        LoreIndex.load(), semantic_index=SemanticIndex(backend),
+        factual_calibration=calibration,
+    )
+    result = await engine.retrieve(
+        build_resolved_retrieval_request(RoutingPlan("응", "응"))
+    )
+    assert result.factual_invocation == "not_needed"
+    assert not backend.queries
+
+
 async def test_end_to_end_ambient_and_reaction_lanes_share_total_budget():
     backend = _FakeEmbedding()
     calibration = SemanticCalibration(backend.cache_key, 0.5, 0.9)
@@ -211,7 +248,8 @@ async def test_end_to_end_ambient_and_reaction_lanes_share_total_budget():
         scene=scene,
     )
 
-    assert result.factual_invocation == "not_needed"
+    assert result.factual_invocation == "conversation_semantic"
+    assert result.factual_status == "available"
     assert result.ambient_status == "available"
     assert 1 <= len(result.bundle.character_insights) <= 2
     assert [row.candidate.candidate_id for row in result.bundle.reactions] == [

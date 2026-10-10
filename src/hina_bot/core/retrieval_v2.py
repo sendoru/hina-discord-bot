@@ -177,7 +177,12 @@ class BundleComposer:
     def compose(
         self,
         rows: Mapping[KnowledgeUsage, Sequence[RankedKnowledgeCandidate]],
+        *,
+        section_order: Sequence[KnowledgeUsage] | None = None,
     ) -> KnowledgeBundle:
+        order = tuple(section_order) if section_order is not None else _SECTION_ORDER
+        if len(order) != len(_SECTION_ORDER) or set(order) != set(_SECTION_ORDER):
+            raise ValueError("section order must include each retrieval usage once")
         selected: dict[KnowledgeUsage, tuple[RankedKnowledgeCandidate, ...]] = {
             usage: () for usage in KnowledgeUsage
         }
@@ -185,7 +190,7 @@ class BundleComposer:
         total_used = 0
         total_items = 0
 
-        for usage in _SECTION_ORDER:
+        for usage in order:
             budget = self.budgets.get(usage)
             if budget is None:
                 continue
