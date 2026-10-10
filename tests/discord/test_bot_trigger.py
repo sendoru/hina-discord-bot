@@ -19,7 +19,7 @@ from hina_bot.discord.bot import (
     _timed_channel_lock,
     _timed_memory_lock,
 )
-from hina_bot.discord.bot import HinaClient as BaseHinaClient
+from hina_bot.discord.bot import CURRENT_TYPING_ACTIVE, HinaClient as BaseHinaClient
 from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.target_context import TARGET_CONTEXT
 from hina_bot.discord.turn_provenance import build_turn_provenance
@@ -931,3 +931,124 @@ async def test_same_channel_next_turn_can_generate_while_prior_memory_update_run
 
     release_memory.set()
     await asyncio.gather(first, second)
+
+
+@pytest.mark.asyncio
+async def test_bare_prefix_skips_visual_preflight_and_typing(tmp_path):
+    store = Store(":memory:")
+    store.set_chat_log_mode_override("global", "off")
+    llm = NS(answer=AsyncMock(), close=AsyncMock())
+    path = tmp_path / "events.jsonl"
+    bot = ProductionHinaClient(
+        Settings(discord_token="test", openai_api_key="test", cooldown=0,
+                 event_log_path=str(path)),
+        store=store, llm=llm,
+    )
+    bot._connection.user = NS(id=99)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 10
+    channel.send = AsyncMock(return_value=NS(id=1000))
+    channel.permissions_for.return_value = NS(view_channel=True, read_message_history=True)
+    author = NS(id=100, bot=False, display_name="사용자")
+    guild = NS(id=1, default_role=NS(), unavailable=False)
+    message = make_message(channel, guild, message_id=320, author=author, text="히나야")
+    message.created_at = datetime.now(UTC)
+
+    try:
+        with patch(
+            "hina_bot.discord.web_bot.collect_visual_inputs",
+            new=AsyncMock(return_value=[]),
+        ) as fetch_visuals:
+            await bot.on_message(message)
+        fetch_visuals.assert_not_awaited()
+        channel.typing.assert_not_called()
+        channel.send.assert_awaited_once()
+        llm.answer.assert_not_awaited()
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        preflight = next(row for row in rows if row["event"] == "turn.preflight")
+        assert preflight["preflight_fast_path"] is True
+        assert preflight["visual_fetch_ms"] == 0
+        assert preflight["typing_start_ms"] is None
+    finally:
+        await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_typing_starts_before_visual_preflight_and_is_not_duplicated(tmp_path):
+    store = Store(":memory:")
+    store.set_chat_log_mode_override("global", "off")
+    llm = NS(close=AsyncMock())
+    bot = ProductionHinaClient(
+        Settings(discord_token="test", openai_api_key="test", cooldown=0,
+                 event_log_path=str(tmp_path / "events.jsonl")),
+        store=store, llm=llm,
+    )
+    bot._connection.user = NS(id=99)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 10
+    guild = NS(id=1, default_role=NS(), unavailable=False)
+    author = NS(id=100, bot=False, display_name="사용자")
+    message = make_message(channel, guild, message_id=321, author=author, text="히나야 안녕")
+    order = []
+
+    async def entered(*args):
+        order.append("typing-start")
+
+    async def exited(*args):
+        order.append("typing-end")
+
+    async def visuals(*args, **kwargs):
+        assert CURRENT_TYPING_ACTIVE.get() is True
+        order.append("visual-preflight")
+        return []
+
+    async def forwarded(*args):
+        assert CURRENT_TYPING_ACTIVE.get() is True
+        order.append("base-handler")
+
+    channel.typing.return_value.__aenter__ = AsyncMock(side_effect=entered)
+    channel.typing.return_value.__aexit__ = AsyncMock(side_effect=exited)
+    try:
+        with (
+            patch("hina_bot.discord.web_bot.collect_visual_inputs", new=visuals),
+            patch.object(BaseHinaClient, "on_message",
+                         new=AsyncMock(side_effect=forwarded)),
+        ):
+            await bot.on_message(message)
+        assert order == ["typing-start", "visual-preflight", "base-handler", "typing-end"]
+        channel.typing.assert_called_once()
+        rows = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
+        preflight = next(row for row in rows if row["event"] == "turn.preflight")
+        assert preflight["preflight_fast_path"] is False
+        assert preflight["typing_start_ms"] >= 0
+    finally:
+        await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_bare_prefix_in_always_reply_dm_keeps_llm_path(tmp_path):
+    store = Store(":memory:")
+    llm = NS(close=AsyncMock())
+    bot = ProductionHinaClient(
+        Settings(discord_token="test", openai_api_key="test", cooldown=0,
+                 dm_always_reply=True, event_log_path=str(tmp_path / "events.jsonl")),
+        store=store, llm=llm,
+    )
+    bot._connection.user = NS(id=99)
+    channel = MagicMock()
+    channel.id = 10
+    message = make_message(
+        channel, None, message_id=322,
+        author=NS(id=100, bot=False, display_name="사용자"), text="히나야",
+    )
+    try:
+        with (
+            patch("hina_bot.discord.web_bot.collect_visual_inputs",
+                  new=AsyncMock(return_value=[])) as fetch_visuals,
+            patch.object(BaseHinaClient, "on_message", new=AsyncMock()) as forwarded,
+        ):
+            await bot.on_message(message)
+        fetch_visuals.assert_awaited_once()
+        forwarded.assert_awaited_once()
+    finally:
+        await bot.close()
