@@ -51,7 +51,7 @@ class RetrievalV2Budgets:
     max_total_chars: int
 
     @classmethod
-    def from_legacy(cls, max_items: int, max_chars: int) -> "RetrievalV2Budgets":
+    def from_legacy(cls, max_items: int, max_chars: int) -> RetrievalV2Budgets:
         items = max(0, int(max_items))
         chars = max(0, int(max_chars))
         return cls(
