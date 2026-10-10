@@ -246,6 +246,22 @@ def test_generic_relation_requires_a_matching_claim_not_merely_same_entity_pair(
     assert right.sufficient
 
 
+def test_conversational_semantic_fact_is_not_factual_sufficiency():
+    rows = by_id(packaged_candidates())
+    direct = rows["canon.hina.visual_horns_wings_halo"]
+    req = RetrievalRequest(
+        "오늘은 일 좀 내려놓고 쉬어도 돼.",
+        "오늘은 일 좀 내려놓고 쉬어도 돼.",
+        intent=RetrievalIntent.CONVERSATION,
+    )
+    result = assess_local_evidence(
+        req, KnowledgeBundle(facts=(ranked(direct),)),
+        supporting_candidates=rows.values(),
+    )
+    assert not result.sufficient
+    assert result.reason == "not_factual_query"
+
+
 def test_ambient_and_reaction_sections_never_satisfy_factual_web_fallback():
     direct = KnowledgeCandidate(
         candidate_id="ambient.direct",
