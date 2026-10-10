@@ -40,8 +40,10 @@ def effective_state_text(store, scope: Scope) -> str:
     server_note = bool(store.note(scope.realm)) if scope.guild_id is not None else False
 
     lines = [
-        f"대상: {'DM' if scope.guild_id is None else f'<#{scope.channel_id}>'}"
-        f" / 사용자 ID: `{scope.user_id}`",
+        (
+            f"대상: {'DM' if scope.guild_id is None else f'<#{scope.channel_id}>'}"
+            f" / 사용자 ID: `{scope.user_id}`"
+        ),
         "자동 장기 기억",
         f"최종 적용: **{memory['effective']}** (출처: {_SOURCE_LABELS[memory['source']]})",
         f"읽기: {'켜짐' if reads else '꺼짐'} / 쓰기: {'켜짐' if writes else '꺼짐'}",
