@@ -844,3 +844,14 @@ def test_historical_visual_cache_bounds_byte_usage():
     cache.put(("c", "2", False), [visual])
     assert cache.get(("c", "1", False)) is None
     assert cache.total_bytes <= 40
+
+
+def test_historical_visual_cache_invalidation_clears_both_reference_variants():
+    cache = VisionFetchCache()
+    cache.put((10, "42", False), ())
+    cache.put((10, "42", True), ())
+    cache.put((11, "42", False), ())
+    cache.invalidate(10, 42)
+    assert cache.get((10, "42", False)) is None
+    assert cache.get((10, "42", True)) is None
+    assert cache.get((11, "42", False)) == ()
