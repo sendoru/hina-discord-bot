@@ -28,6 +28,7 @@ from .note_context import NoteContextStore
 from .reference_gated_recall import plan_reference_gated_recall
 from .request_assembly import RequestAssembler
 from .retrieval_request import build_resolved_retrieval_request
+from .retrieval_v2_rollout import RetrievalV2Coordinator
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
 from .semantic_model_routing import (
@@ -70,6 +71,14 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         super().__init__(settings, client=client)
         self.ambient_weather = AmbientWeatherCache()
         self._routing_shadow_tasks: set[asyncio.Task] = set()
+        self._retrieval_v2_shadow_tasks: set[asyncio.Task] = set()
+        self.retrieval_v2 = RetrievalV2Coordinator(
+            settings,
+            self.usage,
+            self.lore,
+            self.runtime_lore,
+            self.story_context,
+        )
         self.routing_classifier_client = classifier_client
         if settings.routing_classifier_mode != "off":
             if self.routing_classifier_client is None:
@@ -97,6 +106,12 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     async def close(self):
         if self._routing_shadow_tasks:
             await asyncio.gather(*tuple(self._routing_shadow_tasks), return_exceptions=True)
+        if self._retrieval_v2_shadow_tasks:
+            await asyncio.gather(
+                *tuple(self._retrieval_v2_shadow_tasks),
+                return_exceptions=True,
+            )
+        await self.retrieval_v2.close()
         await self.ambient_weather.close()
         try:
             if self.routing_classifier_client is not None:
@@ -133,6 +148,120 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             return
         except Exception as exc:  # noqa: BLE001
             log.warning("Shadow model routing failed (%s)", type(exc).__name__)
+
+    def _finish_retrieval_v2_shadow(self, task: asyncio.Task) -> None:
+        self._retrieval_v2_shadow_tasks.discard(task)
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:  # noqa: BLE001 - shadow failures never fail answers
+            log.warning("Retrieval v2 shadow failed (%s)", type(exc).__name__)
+
+    async def _observe_retrieval_v2_shadow(self, prepared) -> None:
+        try:
+            run = await self.retrieval_v2.run_with_timeout(prepared)
+        except TimeoutError:
+            self.usage.routing_event(
+                "retrieval_v2.shadow",
+                status="timeout",
+                retrieval_v2_mode="shadow",
+                retrieval_v2_fallback_reason="shadow_timeout",
+            )
+            return
+        except Exception as exc:  # noqa: BLE001 - content-free failure telemetry only
+            self.usage.routing_event(
+                "retrieval_v2.shadow",
+                status="error",
+                retrieval_v2_mode="shadow",
+                retrieval_v2_error_type=type(exc).__name__,
+                retrieval_v2_fallback_reason="shadow_error",
+            )
+            return
+        self.usage.routing_event(
+            "retrieval_v2.shadow",
+            **self.retrieval_v2.telemetry(
+                prepared,
+                run,
+                mode="shadow",
+            ),
+        )
+
+    def _start_retrieval_v2_shadow(self, prepared) -> None:
+        # Keep shadow work from queuing behind itself and competing with interactive answers.
+        if self._retrieval_v2_shadow_tasks:
+            self.usage.routing_event(
+                "retrieval_v2.shadow",
+                status="skipped",
+                retrieval_v2_mode="shadow",
+                retrieval_v2_fallback_reason="shadow_busy",
+            )
+            return
+        task = asyncio.create_task(self._observe_retrieval_v2_shadow(prepared))
+        self._retrieval_v2_shadow_tasks.add(task)
+        task.add_done_callback(self._finish_retrieval_v2_shadow)
+
+    async def _apply_active_retrieval_v2(self, information, prepared):
+        try:
+            run = await self.retrieval_v2.run_with_timeout(prepared)
+        except TimeoutError:
+            self.usage.routing_event(
+                "retrieval_v2.active",
+                status="timeout",
+                retrieval_v2_mode="active",
+                retrieval_v2_fallback_reason="active_timeout_legacy_fallback",
+            )
+            return information
+        except Exception as exc:  # noqa: BLE001 - active rollout fails closed to legacy
+            self.usage.routing_event(
+                "retrieval_v2.active",
+                status="error",
+                retrieval_v2_mode="active",
+                retrieval_v2_error_type=type(exc).__name__,
+                retrieval_v2_fallback_reason="active_error_legacy_fallback",
+            )
+            return information
+
+        self.usage.routing_event(
+            "retrieval_v2.active",
+            **self.retrieval_v2.telemetry(
+                prepared,
+                run,
+                mode="active",
+            ),
+        )
+        sections = run.bundle.context_sections()
+        references = tuple([*sections["relations"], *sections["facts"]])
+        updated = replace(
+            information,
+            references=references,
+            knowledge_bundle=run.bundle,
+            retrieval_source="v2_active",
+        )
+        if information.route != InformationRoute.LOCAL_THEN_WEB:
+            return updated
+
+        request = classify_information_request(
+            information.routing.routing_query,
+            freshness=information.freshness,
+            call_prefixes=self._call_prefixes(),
+        )
+        web = search_decision(
+            request,
+            references,
+            enabled=self.settings.chat_web_search,
+            default_location=getattr(self.settings, "runtime_default_location", ""),
+            local_evidence=run.evidence,
+        )
+        updated = replace(
+            updated,
+            search_mode=web.mode,
+            search_baseline_mode=web.mode,
+            search_locked=web.locked,
+            search_reason=web.reason,
+            search_decision_source="retrieval_v2",
+        )
+        return self._with_search_provenance(updated)
 
     def _call_prefixes(self) -> tuple[str, ...] | None:
         return getattr(self.settings, "call_prefixes", None)
@@ -365,6 +494,25 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     ) -> str:
         routing = routing_plan or RoutingPlan(content, content)
         information = self.build_information_plan(routing)
+
+        retrieval_v2_mode = self.retrieval_v2.mode()
+        if retrieval_v2_mode != "off":
+            prepared = self.retrieval_v2.prepare(
+                routing,
+                information.references,
+                store=store,
+                scope=scope,
+                channel_context=channel_context or (),
+                use_memory=use_memory,
+                call_prefixes=self._call_prefixes(),
+            )
+            if retrieval_v2_mode == "shadow":
+                self._start_retrieval_v2_shadow(prepared)
+            elif retrieval_v2_mode == "active":
+                information = await self._apply_active_retrieval_v2(
+                    information,
+                    prepared,
+                )
 
         assembly_store = store
         assembly_public_context = public_context
