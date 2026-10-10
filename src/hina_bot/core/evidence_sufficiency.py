@@ -6,7 +6,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .entity_resolution import HINA_ENTITY_ID
+from .entity_resolution import EntityResolver, HINA_ENTITY_ID, normalize_alias
 from .evidence_claims import EvidenceClaim, EvidencePolarity
 from .knowledge_retrieval import (
     KnowledgeCandidate,
@@ -69,6 +69,38 @@ def _entity_pair(
     return None
 
 
+def _directed_pair(text: str, pair: tuple[str, str] | None) -> tuple[str, str] | None:
+    """Infer direction only from an explicit subject particle, not mention order.
+
+    A semantic hit may inform an answer, but ambiguous grammar must never prove
+    directional local sufficiency or suppress web fallback.
+    """
+    if pair is None or pair[0] == pair[1]:
+        return None
+    normalized = normalize_alias(text)
+    resolver = EntityResolver()
+    subjects: set[str] = set()
+    objects: set[str] = set()
+    for entity_id in pair:
+        entity = resolver.entities.get(entity_id)
+        if entity is None:
+            return None
+        aliases = {normalize_alias(value) for value in (entity.name, *entity.aliases)}
+        for alias in aliases:
+            prefix = rf"(?<![\w.@/]){re.escape(alias)}"
+            if re.search(prefix + r"(?:은|는|이|가)(?!\w)", normalized):
+                subjects.add(entity_id)
+            if re.search(prefix + r"(?:을|를)(?!\w)", normalized):
+                objects.add(entity_id)
+    if len(subjects) != 1:
+        return None
+    subject = next(iter(subjects))
+    obj = pair[1] if pair[0] == subject else pair[0]
+    if objects and objects != {obj}:
+        return None
+    return subject, obj
+
+
 def evidence_requirement(
     request: RetrievalRequest,
     *,
@@ -81,14 +113,10 @@ def evidence_requirement(
     """
     text = " ".join((request.anchor_text + " " + request.visible_text).split())
     pair = _entity_pair(request, rp_entity=rp_entity)
+    direction = _directed_pair(text, pair)
 
     if _BEFORE_MEETING.search(text) and _AWARENESS.search(text):
-        if len(request.entities) >= 2:
-            subject, obj = request.entities[0], request.entities[1]
-        elif pair is not None:
-            subject, obj = rp_entity, next(entity for entity in pair if entity != rp_entity)
-        else:
-            subject = obj = None
+        subject, obj = direction if direction is not None else (None, None)
         return EvidenceRequirement("awareness", subject, obj, "before_first_meeting")
 
     if _SCHOOL_RELATION.search(text):
@@ -96,13 +124,7 @@ def evidence_requirement(
         return EvidenceRequirement("school_year_relation", subject, obj, "profile")
 
     if _ADDRESSING.search(text):
-        if len(request.entities) >= 2:
-            subject, obj = request.entities[0], request.entities[1]
-        elif pair is not None:
-            other = next(entity for entity in pair if entity != rp_entity)
-            subject, obj = other, rp_entity
-        else:
-            subject = obj = None
+        subject, obj = direction if direction is not None else (None, None)
         scope = "current" if _CURRENT.search(text) else None
         return EvidenceRequirement("addressing", subject, obj, scope)
 
@@ -117,10 +139,7 @@ def evidence_requirement(
         return EvidenceRequirement("relationship_state", subject, obj, scope)
 
     if _AWARENESS.search(text) and pair is not None:
-        if len(request.entities) >= 2:
-            subject, obj = request.entities[0], request.entities[1]
-        else:
-            subject, obj = rp_entity, next(entity for entity in pair if entity != rp_entity)
+        subject, obj = direction if direction is not None else (None, None)
         return EvidenceRequirement("awareness", subject, obj)
 
     return None
