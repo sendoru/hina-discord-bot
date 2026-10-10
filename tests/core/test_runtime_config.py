@@ -69,6 +69,11 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "HISTORY_MAX_CHARS",
         "LORE_MAX_ITEMS",
         "LORE_MAX_CHARS",
+        "RETRIEVAL_V2_MODE",
+        "RETRIEVAL_V2_TIMEOUT_SECONDS",
+        "RETRIEVAL_V2_SEMANTIC_REJECT",
+        "RETRIEVAL_V2_SEMANTIC_STRONG",
+        "RETRIEVAL_V2_AMBIENT_MIN_SCORE",
         "RUNTIME_DEFAULT_LOCATION",
         "EVENT_LOG_PATH",
     ):
@@ -100,6 +105,11 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.history_max_chars == 12000
     assert settings.lore_max_items == 6
     assert settings.lore_max_chars == 3200
+    assert settings.retrieval_v2_mode == "off"
+    assert settings.retrieval_v2_timeout_seconds == pytest.approx(2.0)
+    assert settings.retrieval_v2_semantic_reject == pytest.approx(0.0)
+    assert settings.retrieval_v2_semantic_strong == pytest.approx(0.0)
+    assert settings.retrieval_v2_ambient_min_score == pytest.approx(0.75)
     assert settings.runtime_default_location == ""
     assert settings.event_log_path == "data/logs/events.jsonl"
 
@@ -232,6 +242,11 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
         assert settings.history_max_chars == 12000
         assert settings.lore_max_items == 6
         assert settings.lore_max_chars == 3200
+        assert settings.retrieval_v2_mode == "off"
+        assert settings.retrieval_v2_timeout_seconds == pytest.approx(2.0)
+        assert settings.retrieval_v2_semantic_reject == pytest.approx(0.0)
+        assert settings.retrieval_v2_semantic_strong == pytest.approx(0.0)
+        assert settings.retrieval_v2_ambient_min_score == pytest.approx(0.75)
         assert settings.runtime_default_location == ""
     finally:
         store.close()
@@ -585,3 +600,57 @@ def test_runtime_scalar_specs_expose_editor_constraints():
     assert classifier_budget.maximum == 1024
     assert stale.minimum == 60
     assert stale.maximum == 7 * 24 * 60 * 60
+
+def test_settings_loads_retrieval_v2_rollout_and_calibration(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("GEMINI_API_KEY", "key")
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("LLM_MODEL", "gemini-test")
+    monkeypatch.setenv("RETRIEVAL_V2_MODE", "shadow")
+    monkeypatch.setenv("RETRIEVAL_V2_TIMEOUT_SECONDS", "1.5")
+    monkeypatch.setenv("RETRIEVAL_V2_SEMANTIC_REJECT", "0.42")
+    monkeypatch.setenv("RETRIEVAL_V2_SEMANTIC_STRONG", "0.81")
+    monkeypatch.setenv("RETRIEVAL_V2_AMBIENT_MIN_SCORE", "0.9")
+
+    settings = Settings.load()
+    assert settings.retrieval_v2_mode == "shadow"
+    assert settings.retrieval_v2_timeout_seconds == pytest.approx(1.5)
+    assert settings.retrieval_v2_semantic_reject == pytest.approx(0.42)
+    assert settings.retrieval_v2_semantic_strong == pytest.approx(0.81)
+    assert settings.retrieval_v2_ambient_min_score == pytest.approx(0.9)
+
+
+@pytest.mark.parametrize(
+    ("reject", "strong"),
+    [("0.8", "0.7"), ("0.5", "0.5")],
+)
+def test_settings_rejects_invalid_retrieval_v2_calibration(
+    monkeypatch, tmp_path: Path, reject: str, strong: str
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("RETRIEVAL_V2_SEMANTIC_REJECT", reject)
+    monkeypatch.setenv("RETRIEVAL_V2_SEMANTIC_STRONG", strong)
+    with pytest.raises(ValueError, match="reject < strong"):
+        Settings.load()
+
+
+def test_runtime_retrieval_v2_rollout_switch_and_calibration_are_hot_reloadable(tmp_path: Path):
+    db = tmp_path / "runtime-retrieval.sqlite3"
+    store = Store(str(db))
+    try:
+        settings = RuntimeSettings(_base(), store)
+        assert settings.set_text("RETRIEVAL_V2_MODE", "shadow") == "shadow"
+        assert settings.set_text("RETRIEVAL_V2_TIMEOUT_SECONDS", "1.25") == pytest.approx(1.25)
+        assert settings.set_text("RETRIEVAL_V2_SEMANTIC_REJECT", "0.4") == pytest.approx(0.4)
+        assert settings.set_text("RETRIEVAL_V2_SEMANTIC_STRONG", "0.8") == pytest.approx(0.8)
+        assert settings.set_text("RETRIEVAL_V2_AMBIENT_MIN_SCORE", "0.85") == pytest.approx(0.85)
+        assert settings.set_text("RETRIEVAL_V2_MODE", "active") == "active"
+        with pytest.raises(ValueError):
+            settings.set_text("RETRIEVAL_V2_SEMANTIC_REJECT", "0.9")
+        assert settings.set_text("RETRIEVAL_V2_MODE", "off") == "off"
+    finally:
+        store.close()
+
