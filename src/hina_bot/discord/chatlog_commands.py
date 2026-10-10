@@ -8,6 +8,7 @@ from hina_bot.core.admin_list import MAX_DISCORD_TEXT, table_row
 from hina_bot.core.routing import Scope
 
 from .chatlog_capture import capture_mode_overrides, set_capture_mode_override
+from .scope_targets import command_target_scope
 
 log = logging.getLogger("hina")
 _TARGET_CHOICES = [
@@ -185,11 +186,21 @@ class ChatLogCommands(app_commands.Group):
         return "최근 채널 대화 문맥\n" + "\n".join(lines)
 
     @app_commands.command(name="mode", description="최근 대화 문맥 범위를 all/direct/off 또는 상속으로 설정")
-    @app_commands.describe(value="all/direct/off 또는 상위 설정 상속", target="적용 범위. 기본은 현재 채널")
+    @app_commands.describe(
+        value="all/direct/off 또는 상위 설정 상속",
+        target="적용 범위. 기본은 현재 채널",
+        channel="대상 서버 채널 (target:channel일 때만, 생략하면 현재 채널)",
+    )
     @app_commands.choices(value=_VALUE_CHOICES, target=_TARGET_CHOICES)
-    async def mode(self, interaction: discord.Interaction, value: str, target: str = "channel"):
+    async def mode(
+        self,
+        interaction: discord.Interaction,
+        value: str,
+        target: str = "channel",
+        channel: discord.TextChannel | discord.Thread | None = None,
+    ):
         try:
-            scope = self.scope(interaction)
+            scope = command_target_scope(interaction, target=target, channel=channel)
             key = self._target_key(scope, target)
             if value == "inherit" and target == "global":
                 raise ValueError("전역 chatlog 설정은 상속할 수 없어요. all/direct/off 중 하나를 선택해 주세요.")
@@ -208,8 +219,13 @@ class ChatLogCommands(app_commands.Group):
             else:
                 self.client.recent.clear_channel(scope)
         changed = {"channel": "채널", "server": "서버", "global": "전역"}[target]
+        if channel is not None:
+            changed = f"<#{scope.channel_id}> 채널"
         state = "상위 설정을 따르도록 변경" if value == "inherit" else f"{value}으로 변경"
-        await interaction.followup.send(f"{changed} 최근 대화 문맥 설정을 {state}했어요.\n\n{self._status_text(scope)}", ephemeral=True)
+        await interaction.followup.send(
+            f"{changed} 최근 대화 문맥 설정을 {state}했어요.\n\n{self._status_text(scope)}",
+            ephemeral=True,
+        )
 
     @app_commands.command(name="status", description="현재 채널의 최근 대화 문맥 설정 확인")
     async def status(self, interaction: discord.Interaction):
