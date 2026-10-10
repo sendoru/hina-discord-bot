@@ -100,3 +100,25 @@ def test_relation_web_fallback_uses_claim_metadata_not_reference_wording():
     assert decision.mode == "none"
     assert decision.reason == "local_evidence_sufficient"
 
+def test_unresolved_named_profile_cannot_use_hina_keyword_match_as_sufficient_evidence():
+    llm = object.__new__(LLM)
+    llm.settings = SimpleNamespace(
+        lore_max_items=6,
+        lore_max_chars=3200,
+        community_lore=True,
+        call_prefixes=("히나야",),
+        chat_web_search=True,
+        runtime_default_location="",
+    )
+    llm.runtime_lore = _empty_registry()
+    llm.story_context = _empty_registry()
+    llm.lore = LoreIndex.load()
+
+    content = "나기사 생일 언제야?"
+    references = llm.lore_references(content)
+    # Lexical retrieval can still nominate Hina's birthday on the generic "생일" term.
+    assert any(row.get("reference") == "canon.hina.birthday" for row in references)
+    decision = llm._web_search_decision(content, references)
+    assert decision.mode == "required"
+    assert decision.reason == "trusted_answerable_fact_missing"
+
