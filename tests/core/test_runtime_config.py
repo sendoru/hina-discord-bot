@@ -637,13 +637,27 @@ def test_settings_rejects_invalid_retrieval_v2_calibration(
         Settings.load()
 
 
+def test_settings_rejects_active_retrieval_without_live_calibration(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("RETRIEVAL_V2_MODE", "active")
+    with pytest.raises(ValueError, match="live semantic calibration"):
+        Settings.load()
+
+
 def test_runtime_retrieval_v2_rollout_switch_and_calibration_are_hot_reloadable(tmp_path: Path):
     db = tmp_path / "runtime-retrieval.sqlite3"
     store = Store(str(db))
     try:
         settings = RuntimeSettings(_base(), store)
         assert settings.set_text("RETRIEVAL_V2_MODE", "shadow") == "shadow"
+        with pytest.raises(ValueError, match="live semantic calibration"):
+            settings.set_text("RETRIEVAL_V2_MODE", "active")
         assert settings.set_text("RETRIEVAL_V2_TIMEOUT_SECONDS", "1.25") == pytest.approx(1.25)
+        # Thresholds are intentionally stageable one at a time while off/shadow.
         assert settings.set_text("RETRIEVAL_V2_SEMANTIC_REJECT", "0.4") == pytest.approx(0.4)
         assert settings.set_text("RETRIEVAL_V2_SEMANTIC_STRONG", "0.8") == pytest.approx(0.8)
         assert settings.set_text("RETRIEVAL_V2_AMBIENT_MIN_SCORE", "0.85") == pytest.approx(0.85)
