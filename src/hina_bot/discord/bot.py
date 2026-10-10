@@ -21,11 +21,11 @@ from hina_bot.core.observability import (
 )
 from hina_bot.core.recent import RecentMessages
 from hina_bot.core.routing import Scope, chunks, trigger_text
+from hina_bot.core.scope_overrides import MemoryMode
 from hina_bot.core.store import Store
 
 from .admin_commands import initialize_admin_commands, run_admin_command_once
 from .emoji_commands import EmojiRegistry
-from .memory_commands import MemoryCommands, MemoryMode
 from .output_safety import neutralize_mentions
 from .target_recent import CURRENT_CHANNEL_CONTEXT
 from .vision import message_has_visual
@@ -147,7 +147,6 @@ class HinaClient(discord.Client):
         self.emoji_registry = EmojiRegistry(self, self.store)
         self.emoji_admin_ids = set(settings.bot_admin_ids)
         self.tree = discord.app_commands.CommandTree(self)
-        self.tree.add_command(MemoryCommands(self))
         self.locks = weakref.WeakValueDictionary()
         self.cooldowns = {}
         self.bot_trigger_chains = {}

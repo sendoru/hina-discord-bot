@@ -155,7 +155,7 @@ def test_reset_deletes_only_raw_analysis_data_and_records_epoch(tmp_path):
             "memory_extraction_cursors": 1,
             "memory_modes": 1,
             "chat_log_modes": 1,
-            "notes": 1,
+            "notes": 2,  # Preserves user note plus the startup chatlog migration marker.
             "emoji_registry": 1,
             "runtime_config": 1,
             "instructions": 1,
