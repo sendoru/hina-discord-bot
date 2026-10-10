@@ -442,6 +442,10 @@ class RequestAssembler(BaseLLM):
             context_public_items=section_counts.get("public_server_context", 0),
             context_structured_items=section_counts.get("structured_memory", 0),
             context_lore_items=section_counts.get("lore_reference", 0),
+            context_character_insight_items=section_counts.get(
+                "character_insights", 0
+            ),
+            context_reaction_items=section_counts.get("optional_reactions", 0),
             context_visual_items=section_counts.get("visual_inputs", 0),
             context_adapter_blocked=(
                 int(adapter_egress.get("channel_blocked") or 0)
