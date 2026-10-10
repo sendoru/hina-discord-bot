@@ -166,9 +166,11 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         fields = {
             "status": status,
             "retrieval_v2_mode": mode,
-            "retrieval_semantic_gate": self.retrieval_v2.semantic_gate_reason,
-            "retrieval_selected_context": selected_context,
-            "retrieval_fallback_reason": fallback_reason,
+            "retrieval_v2_applied": selected_context == "v2",
+            "retrieval_v2_selected_context": selected_context,
+            "retrieval_v2_semantic_ready": self.retrieval_v2.semantic_ready,
+            "retrieval_v2_semantic_gate": self.retrieval_v2.semantic_gate_reason,
+            "retrieval_v2_fallback_reason": fallback_reason,
             **extra,
         }
         if run is not None and run.result is not None:
