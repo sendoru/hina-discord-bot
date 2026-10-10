@@ -76,7 +76,7 @@ class EvidenceClaim:
 
 def evidence_claim_from_mapping(raw: object) -> EvidenceClaim:
     if not isinstance(raw, dict):
-        raise ValueError("evidence claim must be an object")
+        raise TypeError("evidence claim must be an object")
     allowed = {"predicate", "subject", "object", "value", "time_scope", "polarity"}
     if set(raw) - allowed:
         raise ValueError("unknown evidence claim field")
