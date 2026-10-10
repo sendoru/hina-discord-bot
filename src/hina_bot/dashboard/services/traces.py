@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 
+from ..analytics import (
+    PREFLIGHT_LATENCY_STAGES,
+    TURN_LATENCY_STAGES,
+    critical_generation_api_rows,
+)
 from ..epochs import epoch_view, select_observability_epoch
 from ..filterutils import validate_filters
 from ..repository import AdminRepository
@@ -13,6 +18,95 @@ from ..timeutils import db_utc_timestamp, parse_local_time
 from .base import Page, ReadService, _as_int, _parse_time, _timestamp, _turn_id
 
 _TERMINAL_EVENTS = {"turn.completed", "turn.failed", "turn.dropped"}
+
+
+def _observed_latency(row: dict[str, object] | None, field: str) -> int | None:
+    value = row.get(field) if row else None
+    return value if type(value) is int else None
+
+
+def _trace_latency_breakdown(
+    events: tuple[dict[str, object], ...],
+    usage: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    """Expose observed stage timings without treating missing data as zero."""
+    preflight = next(
+        (row for row in reversed(events) if row.get("event") == "turn.preflight"),
+        None,
+    )
+    terminal = next(
+        (row for row in reversed(events) if row.get("event") in _TERMINAL_EVENTS),
+        None,
+    )
+    reply = next(
+        (row for row in reversed(events) if row.get("event") == "turn.reply_delivered"),
+        None,
+    )
+    preflight_stages = [
+        {"name": name, "value": _observed_latency(preflight, name)}
+        for name in PREFLIGHT_LATENCY_STAGES
+    ]
+    turn_stages = [
+        {
+            "name": name,
+            "value": (
+                _observed_latency(terminal, name)
+                if _observed_latency(terminal, name) is not None
+                else _observed_latency(reply, name) if name == "delivery_ms" else None
+            ),
+        }
+        for name in TURN_LATENCY_STAGES
+    ]
+
+    # Match the aggregate generation attribution: active routing + answer API
+    # calls, excluding shadow routing. All critical calls need timings.
+    critical_calls = critical_generation_api_rows(usage)
+    api_latencies = [
+        value
+        for row in critical_calls
+        if (value := _observed_latency(row, "elapsed_ms")) is not None
+    ]
+    generation_ms = _observed_latency(terminal, "generation_ms")
+    api_ms = (
+        sum(api_latencies)
+        if critical_calls and len(api_latencies) == len(critical_calls)
+        else None
+    )
+    residual_ms = (
+        max(0, generation_ms - api_ms)
+        if generation_ms is not None and api_ms is not None
+        else None
+    )
+    groups = (
+        {"label": "Web preflight", "event": "turn.preflight", "stages": preflight_stages},
+        {
+            "label": "Turn handling",
+            "event": str(terminal.get("event") or "") if terminal else "",
+            "stages": turn_stages,
+        },
+    )
+    return {
+        "groups": groups,
+        "has_stages": any(
+            stage["value"] is not None
+            for group in groups
+            for stage in group["stages"]
+        ),
+        "generation": {
+            "api_ms": api_ms,
+            "residual_ms": residual_ms,
+            "calls": [
+                {
+                    "operation": str(row.get("operation") or ""),
+                    "model": str(row.get("model") or ""),
+                    "status": str(row.get("status") or ""),
+                    "elapsed_ms": _observed_latency(row, "elapsed_ms"),
+                }
+                for row in critical_calls
+            ],
+        },
+    }
+
 
 
 def _group_trace_issues(candidates: list[dict[str, object]]) -> tuple[dict[str, object], ...]:
@@ -588,6 +682,7 @@ class TraceService(ReadService):
         return {
             "turn_id": trace_id,
             "summary": summary[0] if summary else None,
+            "latency": _trace_latency_breakdown(telemetry.events, telemetry.usage),
             "stored": stored,
             "memory_context": memory_context,
             "context_provenance": context_provenance,
