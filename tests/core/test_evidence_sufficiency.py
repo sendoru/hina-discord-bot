@@ -89,6 +89,31 @@ def test_builder_direction_does_not_depend_on_mention_order():
         ).sufficient, text
 
 
+def test_reciprocal_relation_does_not_prove_one_direction():
+    rows = by_id(packaged_candidates())
+    awareness = rows["canon.hina.knows_hoshino_past_before_meeting"]
+    text = "히나랑 호시노는 서로 만나기 전부터 알고 있었어?"
+    req = build_resolved_retrieval_request(RoutingPlan(text, text))
+    result = assess_local_evidence(
+        req, KnowledgeBundle(facts=(ranked(awareness),)),
+        supporting_candidates=rows.values(),
+    )
+    assert not result.sufficient
+    assert result.reason == "entity_context_missing"
+
+
+def test_builder_addressing_uses_grammatical_subject():
+    rows = by_id(packaged_candidates())
+    evidence = rows["canon.relationship_closer_after_fight_with_set_and_hoshino"]
+    text = "히나를 호시노가 뭐라고 불렀어?"
+    req = build_resolved_retrieval_request(RoutingPlan(text, text))
+    result = assess_local_evidence(
+        req, KnowledgeBundle(relations=(ranked(evidence),)),
+        supporting_candidates=rows.values(),
+    )
+    assert result.sufficient
+
+
 def test_first_meeting_evidence_does_not_answer_prior_awareness():
     rows = by_id(packaged_candidates())
     meeting = rows["canon.hina.first_meeting_with_hoshino_vol1"]
