@@ -10,6 +10,7 @@ from hina_bot.core.evidence_sufficiency import (
     selected_evidence_bundle,
 )
 from hina_bot.core.memory_context import CURRENT_MEMORY_CONTEXT, build_memory_context
+from hina_bot.core.retrieval_v2_runtime import comparison_metrics
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
 from .egress_policy import apply_context_policy
@@ -28,6 +29,7 @@ from .note_context import NoteContextStore
 from .reference_gated_recall import plan_reference_gated_recall
 from .request_assembly import RequestAssembler
 from .retrieval_request import build_resolved_retrieval_request
+from .retrieval_v2_rollout import RetrievalV2Controller, build_ambient_scene
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
 from .semantic_model_routing import (
@@ -70,6 +72,8 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         super().__init__(settings, client=client)
         self.ambient_weather = AmbientWeatherCache()
         self._routing_shadow_tasks: set[asyncio.Task] = set()
+        self._retrieval_shadow_tasks: set[asyncio.Task] = set()
+        self.retrieval_v2 = RetrievalV2Controller(settings, self.lore)
         self.routing_classifier_client = classifier_client
         if settings.routing_classifier_mode != "off":
             if self.routing_classifier_client is None:
@@ -97,12 +101,201 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     async def close(self):
         if self._routing_shadow_tasks:
             await asyncio.gather(*tuple(self._routing_shadow_tasks), return_exceptions=True)
+        if self._retrieval_shadow_tasks:
+            await asyncio.gather(*tuple(self._retrieval_shadow_tasks), return_exceptions=True)
         await self.ambient_weather.close()
         try:
             if self.routing_classifier_client is not None:
                 await self.routing_classifier_client.close()
+            await self.retrieval_v2.close()
         finally:
             await super().close()
+
+    def _retrieval_v2_candidates(self):
+        candidates = []
+        for registry in (self.runtime_lore, self.story_context):
+            try:
+                candidates.extend(registry.candidates())
+            except ValueError as exc:
+                log.warning(
+                    "Retrieval v2 runtime candidates ignored: %s",
+                    type(exc).__name__,
+                )
+        return tuple(candidates)
+
+    async def _run_retrieval_v2(
+        self,
+        routing,
+        *,
+        store,
+        scope,
+        channel_rows,
+        use_memory,
+    ):
+        request = build_resolved_retrieval_request(
+            routing,
+            call_prefixes=self._call_prefixes(),
+        )
+        scene = (
+            build_ambient_scene(
+                store,
+                scope,
+                channel_rows,
+                use_memory=use_memory,
+            )
+            if request.intent.value == "conversation"
+            else None
+        )
+        return await self.retrieval_v2.retrieve(
+            request,
+            runtime_candidates=self._retrieval_v2_candidates(),
+            scene=scene,
+        )
+
+    def _emit_retrieval_v2(
+        self,
+        mode,
+        status,
+        legacy_references,
+        run=None,
+        *,
+        selected_context="legacy",
+        fallback_reason="",
+        **extra,
+    ):
+        fields = {
+            "status": status,
+            "retrieval_v2_mode": mode,
+            "retrieval_v2_applied": selected_context == "v2",
+            "retrieval_v2_selected_context": selected_context,
+            "retrieval_v2_semantic_ready": bool(
+                getattr(self.retrieval_v2, "semantic_ready", False)
+            ),
+            "retrieval_v2_semantic_gate": str(
+                getattr(self.retrieval_v2, "semantic_gate_reason", "")
+            ),
+            "retrieval_v2_fallback_reason": fallback_reason,
+            **extra,
+        }
+        if run is not None and run.result is not None:
+            fields.update(comparison_metrics(legacy_references, run.result))
+        self.usage.routing_event("retrieval.v2", **fields)
+
+    async def _observe_retrieval_v2(
+        self,
+        routing,
+        legacy_references,
+        *,
+        store,
+        scope,
+        channel_rows,
+        use_memory,
+    ):
+        try:
+            run = await self._run_retrieval_v2(
+                routing,
+                store=store,
+                scope=scope,
+                channel_rows=channel_rows,
+                use_memory=use_memory,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - shadow must never affect the answer path
+            self._emit_retrieval_v2(
+                "shadow",
+                "failed",
+                legacy_references,
+                selected_context="legacy",
+                fallback_reason="preflight_error",
+                retrieval_v2_error_type=type(exc).__name__,
+            )
+            return
+        self._emit_retrieval_v2(
+            "shadow",
+            run.status,
+            legacy_references,
+            run,
+            selected_context="legacy",
+            fallback_reason=run.fallback_reason,
+        )
+
+    def _start_retrieval_v2_shadow(
+        self,
+        routing,
+        legacy_references,
+        *,
+        store,
+        scope,
+        channel_rows,
+        use_memory,
+    ):
+        if len(self._retrieval_shadow_tasks) >= 2:
+            self._emit_retrieval_v2(
+                "shadow",
+                "skipped_backpressure",
+                legacy_references,
+                selected_context="legacy",
+                fallback_reason="backpressure",
+            )
+            return
+        task = asyncio.create_task(self._observe_retrieval_v2(
+            routing,
+            legacy_references,
+            store=store,
+            scope=scope,
+            channel_rows=tuple(channel_rows or ()),
+            use_memory=use_memory,
+        ))
+        self._retrieval_shadow_tasks.add(task)
+        task.add_done_callback(self._finish_retrieval_v2_shadow)
+
+    def _finish_retrieval_v2_shadow(self, task):
+        self._retrieval_shadow_tasks.discard(task)
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:  # noqa: BLE001  # pragma: no cover - callback isolation
+            log.warning("Retrieval v2 shadow task failed (%s)", type(exc).__name__)
+
+    def _activate_retrieval_v2(self, information, result):
+        references = tuple(
+            {
+                **row.candidate.reference_item(),
+                "retrieval_usage": usage,
+            }
+            for usage, rows in (
+                ("relation", result.bundle.relations),
+                ("factual", result.bundle.facts),
+            )
+            for row in rows
+        )
+        search_mode = information.search_mode
+        search_reason = information.search_reason
+        search_locked = information.search_locked
+        if (
+            information.route == InformationRoute.LOCAL_THEN_WEB
+            and self.settings.chat_web_search
+            and information.search_reason != "in_world_present_state"
+        ):
+            search_mode = "none" if result.evidence.sufficient else "required"
+            search_reason = result.evidence.reason
+            search_locked = True
+        return replace(
+            information,
+            references=references,
+            search_mode=search_mode,
+            provenance=provenance_mode(
+                information.routing.routing_query,
+                web_search=search_mode == "required",
+            ),
+            search_locked=search_locked,
+            search_reason=search_reason,
+            search_decision_source="retrieval_v2",
+            retrieval_v2_applied=True,
+            retrieval_v2_bundle=result.bundle,
+        )
 
     def _start_shadow_classification(
         self,
@@ -376,6 +569,68 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             assembly_use_memory = True
 
         channel_rows = channel_context or ()
+        retrieval_mode = getattr(self.settings, "retrieval_v2_mode", "off")
+        if retrieval_mode == "shadow":
+            self._start_retrieval_v2_shadow(
+                routing,
+                information.references,
+                store=assembly_store,
+                scope=scope,
+                channel_rows=channel_rows,
+                use_memory=assembly_use_memory,
+            )
+        elif retrieval_mode == "active":
+            if not self.retrieval_v2.active_ready:
+                self._emit_retrieval_v2(
+                    "active",
+                    "gated",
+                    information.references,
+                    selected_context="legacy",
+                    fallback_reason=self.retrieval_v2.semantic_gate_reason,
+                )
+            else:
+                try:
+                    run = await self._run_retrieval_v2(
+                        routing,
+                        store=assembly_store,
+                        scope=scope,
+                        channel_rows=channel_rows,
+                        use_memory=assembly_use_memory,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - legacy is the rollback path
+                    self._emit_retrieval_v2(
+                        "active",
+                        "failed",
+                        information.references,
+                        selected_context="legacy",
+                        fallback_reason="preflight_error",
+                        retrieval_v2_error_type=type(exc).__name__,
+                    )
+                else:
+                    if run.result is None:
+                        self._emit_retrieval_v2(
+                            "active",
+                            run.status,
+                            information.references,
+                            run,
+                            selected_context="legacy",
+                            fallback_reason=run.fallback_reason,
+                        )
+                    else:
+                        self._emit_retrieval_v2(
+                            "active",
+                            "completed",
+                            information.references,
+                            run,
+                            selected_context="v2",
+                        )
+                        information = self._activate_retrieval_v2(
+                            information,
+                            run.result,
+                        )
+
         CURRENT_MEMORY_CONTEXT.set(tuple(build_memory_context(channel_rows, scope.user_id)))
         factual_recall_plan = plan_reference_gated_recall(
             assembly_store,
