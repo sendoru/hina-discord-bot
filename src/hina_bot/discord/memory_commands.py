@@ -8,7 +8,6 @@ from discord import app_commands
 from hina_bot.core.admin_list import MAX_DISCORD_TEXT, table_row
 from hina_bot.core.routing import Scope
 
-from .instruction_commands import InstructionCommands
 from .knowledge_commands import KnowledgeCommands
 
 log = logging.getLogger("hina")
@@ -78,8 +77,9 @@ class MemoryCommands(app_commands.Group):
     def __init__(self, client):
         super().__init__(name="memory", description="장기 기억 관리")
         self.client = client
+        # Full-scope listings have moved to the dashboard; preserve local status/mode/purge.
+        self.remove_command("overview")
         if hasattr(client, "tree") and hasattr(client, "settings"):
-            client.tree.add_command(InstructionCommands(client))
             client.tree.add_command(KnowledgeCommands(client))
 
     async def interaction_check(self, interaction):

@@ -69,6 +69,8 @@ class ConfigCommands(app_commands.Group):
     def __init__(self, client):
         super().__init__(name="config", description="런타임 설정 관리 (봇 관리자 전용)")
         self.client = client
+        # Full runtime setting inspection now belongs to the dashboard.
+        self.remove_command("status")
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id not in self.client.emoji_admin_ids:
