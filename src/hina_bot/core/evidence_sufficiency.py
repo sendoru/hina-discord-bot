@@ -6,7 +6,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .entity_resolution import EntityResolver, HINA_ENTITY_ID, normalize_alias
+from .entity_resolution import HINA_ENTITY_ID, EntityResolver, normalize_alias
 from .evidence_claims import EvidenceClaim, EvidencePolarity
 from .knowledge_retrieval import (
     KnowledgeCandidate,
