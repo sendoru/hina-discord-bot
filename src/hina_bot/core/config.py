@@ -12,6 +12,7 @@ EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 RETRIEVAL_V2_MODES = frozenset({"off", "shadow", "active"})
+RETRIEVAL_V2_MODES = frozenset({"off", "shadow", "active"})
 
 
 def _optional_unit_float(variable: str) -> float | None:
@@ -347,6 +348,73 @@ class Settings:
         chat_web_search = os.getenv("CHAT_WEB_SEARCH", "true").lower()
         if chat_web_search not in {"true", "false"}:
             raise ValueError("CHAT_WEB_SEARCH는 true 또는 false여야 합니다.")
+
+        retrieval_v2_mode = os.getenv("RETRIEVAL_V2_MODE", "off").strip().lower()
+        if retrieval_v2_mode not in RETRIEVAL_V2_MODES:
+            allowed = ", ".join(sorted(RETRIEVAL_V2_MODES))
+            raise ValueError(f"RETRIEVAL_V2_MODE은 {allowed} 중 하나여야 합니다.")
+        try:
+            retrieval_v2_timeout_seconds = float(
+                os.getenv("RETRIEVAL_V2_TIMEOUT_SECONDS", "2.5")
+            )
+            retrieval_v2_semantic_min = float(
+                os.getenv("RETRIEVAL_V2_SEMANTIC_MIN", "0.5")
+            )
+            retrieval_v2_ambient_min = float(
+                os.getenv("RETRIEVAL_V2_AMBIENT_MIN", "0.75")
+            )
+            retrieval_v2_embedding_dimensions = int(
+                os.getenv("RETRIEVAL_V2_EMBEDDING_DIMENSIONS", "768")
+            )
+        except ValueError as exc:
+            raise ValueError("Retrieval v2 숫자 설정 형식이 잘못되었습니다.") from exc
+        reject_raw = os.getenv("RETRIEVAL_V2_SEMANTIC_REJECT", "").strip()
+        strong_raw = os.getenv("RETRIEVAL_V2_SEMANTIC_STRONG", "").strip()
+        if bool(reject_raw) != bool(strong_raw):
+            raise ValueError(
+                "RETRIEVAL_V2_SEMANTIC_REJECT와 RETRIEVAL_V2_SEMANTIC_STRONG은 함께 설정해야 합니다."
+            )
+        try:
+            retrieval_v2_semantic_reject = float(reject_raw) if reject_raw else None
+            retrieval_v2_semantic_strong = float(strong_raw) if strong_raw else None
+        except ValueError as exc:
+            raise ValueError("Retrieval v2 calibration threshold는 숫자여야 합니다.") from exc
+        if retrieval_v2_semantic_reject is not None and not (
+            math.isfinite(retrieval_v2_semantic_reject)
+            and math.isfinite(retrieval_v2_semantic_strong)
+            and -1 <= retrieval_v2_semantic_reject < retrieval_v2_semantic_strong <= 1
+        ):
+            raise ValueError("Retrieval v2 calibration은 -1 <= reject < strong <= 1이어야 합니다.")
+        if not (
+            math.isfinite(retrieval_v2_timeout_seconds)
+            and 0.1 <= retrieval_v2_timeout_seconds <= 30
+            and math.isfinite(retrieval_v2_semantic_min)
+            and 0 < retrieval_v2_semantic_min <= 1
+            and math.isfinite(retrieval_v2_ambient_min)
+            and 0 < retrieval_v2_ambient_min <= 1
+            and 1 <= retrieval_v2_embedding_dimensions <= 3072
+        ):
+            raise ValueError("Retrieval v2 timeout/threshold/dimensions 범위가 잘못되었습니다.")
+        retrieval_v2_embedding_model = os.getenv(
+            "RETRIEVAL_V2_EMBEDDING_MODEL", "gemini-embedding-2"
+        ).strip()
+        retrieval_v2_embedding_revision = os.getenv(
+            "RETRIEVAL_V2_EMBEDDING_REVISION", "1"
+        ).strip()
+        for variable, value in (
+            ("RETRIEVAL_V2_EMBEDDING_MODEL", retrieval_v2_embedding_model),
+            ("RETRIEVAL_V2_EMBEDDING_REVISION", retrieval_v2_embedding_revision),
+        ):
+            if not value or len(value) > 100 or any(c in value for c in "\r\n\0"):
+                raise ValueError(f"{variable} 형식이 잘못되었습니다.")
+        if retrieval_v2_semantic_reject is not None and not keys["gemini"]:
+            raise ValueError(
+                "Retrieval v2 semantic calibration을 사용하려면 GEMINI_API_KEY가 필요합니다."
+            )
+        if retrieval_v2_mode == "active" and retrieval_v2_semantic_reject is None:
+            raise ValueError(
+                "RETRIEVAL_V2_MODE=active에는 live calibration threshold가 필요합니다."
+            )
 
         empty_call_reply = os.getenv("EMPTY_CALL_REPLY", "무슨 일이야?").strip()
         special_dm_empty_call_reply = os.getenv("SPECIAL_DM_EMPTY_CALL_REPLY", "").strip()
