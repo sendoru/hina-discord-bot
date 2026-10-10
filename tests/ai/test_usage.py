@@ -594,3 +594,32 @@ def test_context_size_event_keeps_only_numeric_attribution(tmp_path):
     assert row["request_input_chars"] == 900
     assert row["request_chars_total"] == 2300
     assert row["visible_input_chars"] == 30
+
+def test_retrieval_v2_routing_event_keeps_only_content_free_fields(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    logger.routing_event(
+        "retrieval_v2.shadow",
+        status="completed",
+        retrieval_v2_mode="shadow",
+        retrieval_v2_selected_ids=["a1b2c3d4e5f6"],
+        retrieval_v2_overlap_rate=0.5,
+        retrieval_v2_embedding_prompt_tokens=42,
+        retrieval_v2_evidence_reason="proposition_not_covered",
+        retrieval_v2_error_type="",
+        secret_query="must never be logged",
+        secret_content="must never be logged",
+    )
+    logger.close()
+
+    text = path.read_text()
+    row = json.loads(text)
+    assert row["operation"] == "retrieval_v2.shadow"
+    assert row["retrieval_v2_mode"] == "shadow"
+    assert row["retrieval_v2_selected_ids"] == ["a1b2c3d4e5f6"]
+    assert row["retrieval_v2_embedding_prompt_tokens"] == 42
+    assert row["retrieval_v2_evidence_reason"] == "proposition_not_covered"
+    assert "secret_query" not in row
+    assert "secret_content" not in row
+    assert "must never be logged" not in text
+
