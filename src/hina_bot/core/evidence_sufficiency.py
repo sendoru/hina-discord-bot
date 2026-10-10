@@ -77,6 +77,8 @@ def _directed_pair(text: str, pair: tuple[str, str] | None) -> tuple[str, str] |
     """
     if pair is None or pair[0] == pair[1]:
         return None
+    if re.search(r"(?:^|\s)서로(?:\s|$)", text):
+        return None
     normalized = normalize_alias(text)
     resolver = EntityResolver()
     subjects: set[str] = set()
