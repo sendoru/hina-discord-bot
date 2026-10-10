@@ -20,7 +20,14 @@ from .knowledge_retrieval import (
 from .lore import LoreIndex
 from .profile_retrieval import rank_profile
 from .relationship_grounding import RelationshipGrounder
-from .retrieval_v2 import BundleComposer, KnowledgeBundle, RetrievalRequest, UsageBudget
+from .retrieval_v2 import (
+    BundleComposer,
+    KnowledgeBundle,
+    RetrievalRequest,
+    UsageBudget,
+    candidate_identity,
+    reference_size,
+)
 from .semantic_retrieval import SemanticCalibration, SemanticIndex
 
 
@@ -59,6 +66,8 @@ class RetrievalV2Result:
     factual_invocation: str = "not_needed"
     factual_candidates: int = 0
     ambient_candidates: int = 0
+    relation_candidates: int = 0
+    reaction_candidates: int = 0
     lexical_selected: int = 0
     semantic_selected: int = 0
     semantic_rejected: int = 0
@@ -67,6 +76,11 @@ class RetrievalV2Result:
     embedding_requests: int = 0
     candidate_embedding_ms: float = 0.0
     query_embedding_ms: float = 0.0
+    composer_duplicate_count: int = 0
+    relation_chars: int = 0
+    factual_chars: int = 0
+    ambient_chars: int = 0
+    reaction_chars: int = 0
 
     @property
     def selected_ids(self) -> tuple[str, ...]:
@@ -174,6 +188,8 @@ def comparison_metrics(
         "retrieval_factual_invocation": result.factual_invocation,
         "retrieval_factual_candidates": result.factual_candidates,
         "retrieval_ambient_candidates": result.ambient_candidates,
+        "retrieval_relation_candidates": result.relation_candidates,
+        "retrieval_reaction_candidates": result.reaction_candidates,
         "retrieval_lexical_selected": result.lexical_selected,
         "retrieval_semantic_selected": result.semantic_selected,
         "retrieval_semantic_rejected": result.semantic_rejected,
@@ -182,6 +198,11 @@ def comparison_metrics(
         "retrieval_embedding_requests": result.embedding_requests,
         "retrieval_candidate_embedding_ms": round(result.candidate_embedding_ms),
         "retrieval_query_embedding_ms": round(result.query_embedding_ms),
+        "retrieval_composer_duplicate_count": result.composer_duplicate_count,
+        "retrieval_relation_chars": result.relation_chars,
+        "retrieval_factual_chars": result.factual_chars,
+        "retrieval_ambient_chars": result.ambient_chars,
+        "retrieval_reaction_chars": result.reaction_chars,
         "retrieval_factual_cache_hits": result.factual_cache_hits,
         "retrieval_factual_cache_misses": result.factual_cache_misses,
         "retrieval_ambient_cache_hits": result.ambient_cache_hits,
@@ -239,9 +260,14 @@ class RetrievalV2Engine:
         *,
         runtime_candidates: Sequence[KnowledgeCandidate] = (),
         scene: AmbientSceneContext | None = None,
+        include_community: bool = True,
     ) -> RetrievalV2Result:
         started = perf_counter()
-        candidates = [*runtime_candidates, *self._static]
+        static = [
+            candidate for candidate in self._static
+            if include_community or candidate.lane != "community_meme"
+        ]
+        candidates = [*runtime_candidates, *static]
 
         relation_rows = self.relationships.ground(request)
         invocation = _factual_invocation(request)
@@ -253,7 +279,7 @@ class RetrievalV2Engine:
             factual_result = await self.factual.retrieve(request, candidates)
 
         ambient_result = None
-        if scene is not None:
+        if scene is not None and request.intent.value == "conversation":
             ambient_result = await self.ambient.retrieve(request, scene, candidates)
 
         reaction_rows = rank_reactions(request, candidates)
@@ -282,6 +308,14 @@ class RetrievalV2Engine:
             bundle,
             supporting_candidates=[*self._supplemental, *candidates],
         )
+        admitted = (
+            *relation_rows,
+            *factual_result.rows,
+            *(ambient_result.rows if ambient_result is not None else ()),
+            *reaction_rows,
+        )
+        identities = [candidate_identity(row) for row in admitted]
+        duplicate_count = len(identities) - len(set(identities))
         return RetrievalV2Result(
             request=request,
             bundle=bundle,
@@ -307,6 +341,11 @@ class RetrievalV2Engine:
             factual_candidates=len(eligible_candidates(candidates)),
             ambient_candidates=sum(
                 KnowledgeUsage.AMBIENT in candidate.retrieval_usages
+                for candidate in candidates
+            ),
+            relation_candidates=len(relation_rows),
+            reaction_candidates=sum(
+                KnowledgeUsage.REACTION in candidate.retrieval_usages
                 for candidate in candidates
             ),
             lexical_selected=factual_result.lexical_admitted,
@@ -348,4 +387,11 @@ class RetrievalV2Engine:
                     if ambient_result is not None else 0.0
                 )
             ),
+            composer_duplicate_count=duplicate_count,
+            relation_chars=sum(reference_size(row) for row in bundle.relations),
+            factual_chars=sum(reference_size(row) for row in bundle.facts),
+            ambient_chars=sum(
+                reference_size(row) for row in bundle.character_insights
+            ),
+            reaction_chars=sum(reference_size(row) for row in bundle.reactions),
         )
