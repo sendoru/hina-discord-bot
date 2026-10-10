@@ -231,7 +231,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             ),
         )
         sections = run.bundle.context_sections()
-        references = tuple([*sections["relations"], *sections["facts"]])
+        references = (*sections["relations"], *sections["facts"])
         updated = replace(
             information,
             references=references,
