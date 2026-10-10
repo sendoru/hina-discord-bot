@@ -2,11 +2,11 @@
 
 from dataclasses import dataclass
 
+from hina_bot.core.retrieval_v2 import KnowledgeBundle
+
 from .freshness import FreshnessMode
 from .information_routing import InformationRoute
 from .routing_plan import RoutingPlan
-from hina_bot.core.retrieval_v2 import KnowledgeBundle
-
 from .rp_output_policy import ProvenanceMode
 
 
