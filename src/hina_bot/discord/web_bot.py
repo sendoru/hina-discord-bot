@@ -126,6 +126,16 @@ class HinaClient(BaseHinaClient):
         self.visual_cache = VisionFetchCache()
         install_slash_commands(self)
 
+    async def on_raw_message_edit(self, payload):
+        self.visual_cache.invalidate(payload.channel_id, payload.message_id)
+
+    async def on_raw_message_delete(self, payload):
+        self.visual_cache.invalidate(payload.channel_id, payload.message_id)
+
+    async def on_raw_bulk_message_delete(self, payload):
+        for message_id in payload.message_ids:
+            self.visual_cache.invalidate(payload.channel_id, message_id)
+
     async def public_sources(self, user_id: int, guild_id: int | None = None):
         enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
         if not enabled:
