@@ -177,9 +177,10 @@ def _claim_matches(claim: EvidenceClaim, requirement: EvidenceRequirement) -> bo
             return False
     elif claim.subject != requirement.subject or claim.object != requirement.object:
         return False
-    if requirement.time_scope is not None and claim.time_scope != requirement.time_scope:
-        return False
-    return True
+    return not (
+        requirement.time_scope is not None
+        and claim.time_scope != requirement.time_scope
+    )
 
 
 def _conflicting_claims(claims: Iterable[EvidenceClaim], predicate: str) -> bool:
