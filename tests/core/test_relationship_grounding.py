@@ -53,7 +53,7 @@ def test_hoshino_regression_has_profiles_positive_year_comparison_and_direct_rel
     bundle = relation_bundle(grounded)
     selected = {item.candidate.candidate_id: item.candidate for item in bundle.relations}
     assert not bundle.facts
-    assert len(selected) == 5
+    assert len(selected) == 7
     hina = selected["canon.hina.basic.profile"]
     hoshino = selected["canon.hoshino.basic.profile"]
     comparison = selected["canon.hina_hoshino.same_school_year"]
@@ -64,6 +64,8 @@ def test_hoshino_regression_has_profiles_positive_year_comparison_and_direct_rel
     assert comparison.fact_type == comparison.awareness == "inference"
     assert comparison.reference_item()["kind"] == "interpretation"
     assert selected["canon.hina.first_meeting_with_hoshino_vol1"].awareness == "direct_experience"
+    assert selected["canon.hina.knows_hoshino_past_before_meeting"].claims
+    assert selected["canon.hina.eden_exact_knowledge_of_hoshino_trauma"].fact_type == "unknown"
     addressing = selected["canon.relationship_closer_after_fight_with_set_and_hoshino"]
     original = next(c for c in LoreIndex.load().candidates() if c.candidate_id == addressing.candidate_id)
     assert addressing == original
