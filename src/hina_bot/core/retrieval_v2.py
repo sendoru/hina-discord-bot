@@ -164,11 +164,15 @@ class BundleComposer:
         budgets: Mapping[KnowledgeUsage, UsageBudget],
         *,
         max_total_chars: int | None = None,
+        max_total_items: int | None = None,
     ):
         if max_total_chars is not None and max_total_chars < 0:
             raise ValueError("max_total_chars must be non-negative")
+        if max_total_items is not None and max_total_items < 0:
+            raise ValueError("max_total_items must be non-negative")
         self.budgets = dict(budgets)
         self.max_total_chars = max_total_chars
+        self.max_total_items = max_total_items
 
     def compose(
         self,
@@ -179,16 +183,26 @@ class BundleComposer:
         }
         claimed: set[CandidateIdentity] = set()
         total_used = 0
+        total_items = 0
 
         for usage in _SECTION_ORDER:
             budget = self.budgets.get(usage)
             if budget is None:
                 continue
-            if self.max_total_chars is None:
-                effective = budget
-            else:
-                remaining = max(0, self.max_total_chars - total_used)
-                effective = UsageBudget(budget.max_items, min(budget.max_chars, remaining))
+            remaining_items = (
+                budget.max_items
+                if self.max_total_items is None
+                else max(0, self.max_total_items - total_items)
+            )
+            remaining_chars = (
+                budget.max_chars
+                if self.max_total_chars is None
+                else max(0, self.max_total_chars - total_used)
+            )
+            effective = UsageBudget(
+                min(budget.max_items, remaining_items),
+                min(budget.max_chars, remaining_chars),
+            )
             packed = pack_ranked(
                 rows.get(usage, ()),
                 effective,
@@ -198,6 +212,7 @@ class BundleComposer:
             for row in packed:
                 claimed.add(candidate_identity(row))
                 total_used += reference_size(row)
+                total_items += 1
 
         kwargs = {
             _SECTION_FIELD[usage]: selected[usage]
