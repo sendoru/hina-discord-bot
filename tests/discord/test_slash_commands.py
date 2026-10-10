@@ -26,7 +26,7 @@ def slash_bot():
 def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot):
     memory = slash_bot.tree.get_command("memory")
     assert memory is not None
-    for name in ("mode", "status", "overview", "purge", "show", "clear"):
+    for name in ("mode", "status", "purge", "show", "clear"):
         assert memory.get_command(name) is not None
     for removed in ("note", "note-clear", "server-show", "server-note", "server-clear"):
         assert memory.get_command(removed) is None
@@ -38,7 +38,7 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
 
     chatlog = slash_bot.tree.get_command("chatlog")
     assert chatlog is not None
-    for name in ("mode", "status", "overview", "clear"):
+    for name in ("mode", "status", "clear"):
         assert chatlog.get_command(name) is not None
 
     emoji = slash_bot.tree.get_command("emoji")
@@ -46,13 +46,18 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
     for name in ("add", "import", "list", "edit", "remove"):
         assert emoji.get_command(name) is not None
 
-    assert slash_bot.tree.get_command("instruction") is not None
-    assert slash_bot.tree.get_command("knowledge") is not None
+    assert slash_bot.tree.get_command("instruction") is None
+    knowledge = slash_bot.tree.get_command("knowledge")
+    assert knowledge is not None
+    assert {command.name for command in knowledge.commands} == {"ingest"}
     help_command = slash_bot.tree.get_command("help")
     assert help_command is not None
     assert "DM" in HELP_TEXT
     assert "메시지 보내기" in HELP_TEXT
     assert "`히나야`" in HELP_TEXT
+    assert "`/knowledge ingest`" in HELP_TEXT
+    assert "`/chatlog overview`" not in HELP_TEXT
+    assert "`/instruction" not in HELP_TEXT
 
 
 def test_emoji_import_items_parser():
@@ -134,7 +139,7 @@ async def test_memory_group_keeps_only_admin_memory_commands_admin_only(slash_bo
     show_interaction = NS(user=user, command=NS(name="show"), response=user_response)
     assert await memory.interaction_check(show_interaction) is True
 
-    for name in ("mode", "status", "overview", "purge"):
+    for name in ("mode", "status", "purge"):
         interaction = NS(user=user, command=NS(name=name), response=user_response)
         assert await memory.interaction_check(interaction) is False
     user_response.send_message.assert_awaited()

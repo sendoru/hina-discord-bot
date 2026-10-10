@@ -126,6 +126,8 @@ class ChatLogCommands(app_commands.Group):
     def __init__(self, client):
         super().__init__(name="chatlog", description="최근 채널 대화 문맥 관리 (봇 관리자 전용)")
         self.client = client
+        # Cross-server/whole-channel listings are available in the dashboard.
+        self.remove_command("overview")
         _migrate_legacy_settings(client.store)
 
     async def interaction_check(self, interaction):
