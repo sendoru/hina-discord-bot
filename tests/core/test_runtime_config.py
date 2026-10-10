@@ -601,28 +601,10 @@ def test_retrieval_v2_rollout_defaults_off_and_shadow_is_hot_reloadable():
         store.close()
 
 
-def test_retrieval_v2_active_runtime_switch_requires_calibrated_startup_config():
+def test_retrieval_v2_active_runtime_switch_is_hot_but_runtime_gate_is_separate():
     store = Store(":memory:")
     try:
         settings = RuntimeSettings(_base(), store)
-        with pytest.raises(ValueError, match="active"):
-            settings.set_text("RETRIEVAL_V2_MODE", "active")
-    finally:
-        store.close()
-
-    store = Store(":memory:")
-    try:
-        base = _base(
-            gemini_api_key="gemini-key",
-            retrieval_v2_calibration_backend_key=(
-                "gemini:gemini-embedding-2:1:768:search-document-v1"
-            ),
-            retrieval_v2_factual_reject=0.4,
-            retrieval_v2_factual_strong=0.8,
-            retrieval_v2_ambient_reject=0.5,
-            retrieval_v2_ambient_strong=0.9,
-        )
-        settings = RuntimeSettings(base, store)
         assert settings.set_text("RETRIEVAL_V2_MODE", "active") == "active"
         assert settings.retrieval_v2_mode == "active"
         assert settings.set_text("RETRIEVAL_V2_MODE", "off") == "off"
