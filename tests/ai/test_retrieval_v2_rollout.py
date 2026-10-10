@@ -241,15 +241,15 @@ def test_retrieval_telemetry_allowlist_keeps_metrics_but_drops_unknown_content(t
         status="completed",
         retrieval_v2_mode="shadow",
         retrieval_v2_selected_context="legacy",
-        retrieval_legacy_selected=2,
+        retrieval_v2_legacy_selected=2,
         retrieval_v2_selected=3,
-        retrieval_overlap_count=1,
-        retrieval_overlap_rate=0.25,
-        retrieval_embedding_requests=1,
-        retrieval_embedding_prompt_tokens=42,
-        retrieval_elapsed_ms=17,
-        retrieval_legacy_id_hashes=["abc123"],
-        retrieval_v2_id_hashes=["def456"],
+        retrieval_v2_overlap=1,
+        retrieval_v2_overlap_rate=0.25,
+        retrieval_v2_embedding_requests=1,
+        retrieval_v2_embedding_prompt_tokens=42,
+        retrieval_v2_elapsed_ms=17,
+        retrieval_v2_legacy_ids=["abc123"],
+        retrieval_v2_selected_ids=["def456"],
         content="must-not-log",
         query="must-not-log-either",
     )
@@ -261,5 +261,5 @@ def test_retrieval_telemetry_allowlist_keeps_metrics_but_drops_unknown_content(t
     assert row["operation"] == "retrieval.v2"
     assert row["retrieval_v2_mode"] == "shadow"
     assert row["retrieval_v2_selected_context"] == "legacy"
-    assert row["retrieval_embedding_prompt_tokens"] == 42
-    assert row["retrieval_legacy_id_hashes"] == ["abc123"]
+    assert row["retrieval_v2_embedding_prompt_tokens"] == 42
+    assert row["retrieval_v2_legacy_ids"] == ["abc123"]
