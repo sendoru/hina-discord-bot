@@ -243,19 +243,106 @@ def test_existing_active_superseded_constraint_migrates_for_retraction(tmp_path)
         ) VALUES (
             '100','Sendol','pre retract','fact','dm:100','10',0,'local','active'
         );
+        UPDATE memory_items SET revision=2,source_message_ids='["55"]',
+            confidence=0.75,created_at='2025-01-01 00:00:00',
+            updated_at='2025-01-02 00:00:00' WHERE id=1;
+        INSERT INTO memory_items(
+            user_id,user_name,content,kind,origin_realm,origin_channel_id,
+            origin_public_at_capture,disclosure,status,superseded_by
+        ) VALUES (
+            '100','Sendol','superseded memory','fact','dm:100','10',0,
+            'local','superseded',1
+        );
+        INSERT INTO memory_items(
+            user_id,user_name,content,kind,origin_realm,origin_channel_id,
+            origin_public_at_capture,disclosure,status
+        ) VALUES (
+            '100','Sendol','deleted memory','fact','dm:100','10',0,'local','active'
+        );
+        DELETE FROM memory_items WHERE id=3;
+        CREATE TABLE memory_item_edit_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            memory_item_id INTEGER NOT NULL,
+            revision INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            disclosure TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            relationship_evidence TEXT NOT NULL DEFAULT '{}',
+            edited_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            admin_command_id INTEGER
+        );
+        INSERT INTO memory_item_edit_history(
+            memory_item_id,revision,content,kind,disclosure,confidence
+        ) VALUES (1,1,'previous content','fact','local',0.9);
+        CREATE TABLE memory_reconciliation_proposals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            origin_realm TEXT NOT NULL,
+            origin_channel_id TEXT NOT NULL,
+            new_memory_item_id INTEGER NOT NULL,
+            target_memory_item_id INTEGER NOT NULL,
+            relation TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            source_message_ids TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO memory_reconciliation_proposals(
+            user_id,origin_realm,origin_channel_id,new_memory_item_id,
+            target_memory_item_id,relation,confidence
+        ) VALUES ('100','dm:100','10',2,1,'duplicate',0.99);
         """
     )
+    assert db.execute(
+        "SELECT seq FROM sqlite_sequence WHERE name='memory_items'"
+    ).fetchone()[0] == 3
     db.commit()
     db.close()
 
     store = Store(str(path))
     try:
         item = store.memory_items(100)[0]
-        retracted = store.retract_memory_item(item.id, expected_revision=0)
+        assert item.id == 1
+        assert item.revision == 2
+        assert item.source_message_ids == ("55",)
+        assert item.confidence == 0.75
+        assert item.user_name == "Sendol"
+        assert item.created_at == "2025-01-01 00:00:00"
+        assert item.updated_at == "2025-01-02 00:00:00"
+        superseded = store.memory_item(2)
+        assert superseded is not None
+        assert superseded.status == MemoryStatus.SUPERSEDED
+        assert superseded.superseded_by == 1
+        assert store.memory_item_edit_history(1)[0]["content"] == "previous content"
+        proposals = store.memory_reconciliation_proposals(100)
+        assert len(proposals) == 1
+        assert (proposals[0]["new_memory_item_id"], proposals[0]["target_memory_item_id"]) == (2, 1)
+
+        new_id = store.add_memory_item(
+            Scope(None, 10, 100),
+            "new memory after migration",
+            kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
+        assert new_id == 4  # The deleted ID 3 must never be reused.
+        retracted = store.retract_memory_item(item.id, expected_revision=2)
         assert retracted.status == MemoryStatus.RETRACTED
-        assert retracted.revision == 1
+        assert retracted.revision == 3
     finally:
         store.close()
+
+    # Opening the migrated DB again must not rebuild or lose prior history.
+    reopened = Store(str(path))
+    try:
+        assert reopened.memory_item(1).status == MemoryStatus.RETRACTED
+        assert reopened.memory_item_edit_history(1)[0]["content"] == "previous content"
+        assert len(reopened.memory_reconciliation_proposals(100)) == 1
+        assert reopened.memory_item(4).content == "new memory after migration"
+        assert reopened.db.execute(
+            "SELECT seq FROM sqlite_sequence WHERE name='memory_items'"
+        ).fetchone()[0] == 4
+    finally:
+        reopened.close()
 
 
 def test_retracted_item_is_excluded_from_runtime_and_retry_history():
