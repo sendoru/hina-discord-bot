@@ -4,10 +4,8 @@ import logging
 import discord
 from discord import app_commands
 
-from hina_bot.core.chatlog_modes import (
-    set_unified_chatlog_mode as _set_mode_override,
-    unified_chatlog_chain as _mode_chain,
-)
+from hina_bot.core.chatlog_modes import set_unified_chatlog_mode as _set_mode_override
+from hina_bot.core.chatlog_modes import unified_chatlog_chain as _mode_chain
 from hina_bot.core.routing import Scope
 from hina_bot.core.scope_overrides import scope_target_key
 
@@ -26,7 +24,6 @@ _VALUE_CHOICES = [
     app_commands.Choice(name="inherit — 상위 설정 따르기", value="inherit"),
 ]
 _SOURCE_LABEL = {"channel": "채널", "server": "서버", "global": "전역", "default": "기본값"}
-_MIGRATION_MARKER = "config:chatlog_unified_v1"
 
 
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
@@ -35,7 +32,6 @@ class ChatLogCommands(app_commands.Group):
     def __init__(self, client):
         super().__init__(name="chatlog", description="최근 채널 대화 문맥 관리 (봇 관리자 전용)")
         self.client = client
-        self.remove_command("status")
 
     async def interaction_check(self, interaction):
         if interaction.user.id not in self.client.emoji_admin_ids:
