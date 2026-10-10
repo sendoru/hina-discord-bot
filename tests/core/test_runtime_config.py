@@ -585,3 +585,78 @@ def test_runtime_scalar_specs_expose_editor_constraints():
     assert classifier_budget.maximum == 1024
     assert stale.minimum == 60
     assert stale.maximum == 7 * 24 * 60 * 60
+
+def test_retrieval_v2_rollout_defaults_off_and_shadow_is_hot_reloadable():
+    store = Store(":memory:")
+    try:
+        settings = RuntimeSettings(_base(), store)
+        assert settings.retrieval_v2_mode == "off"
+        assert settings.retrieval_v2_timeout_seconds == pytest.approx(3.0)
+        assert settings.set_text("RETRIEVAL_V2_MODE", "shadow") == "shadow"
+        assert settings.set_text("RETRIEVAL_V2_TIMEOUT_SECONDS", "2.5") == pytest.approx(2.5)
+        assert settings.retrieval_v2_mode == "shadow"
+        assert settings.retrieval_v2_timeout_seconds == pytest.approx(2.5)
+        assert settings.set_text("RETRIEVAL_V2_MODE", "off") == "off"
+    finally:
+        store.close()
+
+
+def test_retrieval_v2_active_runtime_switch_requires_calibrated_startup_config():
+    store = Store(":memory:")
+    try:
+        settings = RuntimeSettings(_base(), store)
+        with pytest.raises(ValueError, match="active"):
+            settings.set_text("RETRIEVAL_V2_MODE", "active")
+    finally:
+        store.close()
+
+    store = Store(":memory:")
+    try:
+        base = _base(
+            gemini_api_key="gemini-key",
+            retrieval_v2_calibration_backend_key=(
+                "gemini:gemini-embedding-2:1:768:search-document-v1"
+            ),
+            retrieval_v2_factual_reject=0.4,
+            retrieval_v2_factual_strong=0.8,
+            retrieval_v2_ambient_reject=0.5,
+            retrieval_v2_ambient_strong=0.9,
+        )
+        settings = RuntimeSettings(base, store)
+        assert settings.set_text("RETRIEVAL_V2_MODE", "active") == "active"
+        assert settings.retrieval_v2_mode == "active"
+        assert settings.set_text("RETRIEVAL_V2_MODE", "off") == "off"
+    finally:
+        store.close()
+
+
+def test_settings_load_retrieval_v2_active_requires_matching_live_calibration(
+    monkeypatch, tmp_path: Path,
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "answer-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "embedding-key")
+    monkeypatch.setenv("RETRIEVAL_V2_MODE", "active")
+    monkeypatch.setenv("RETRIEVAL_V2_FACTUAL_REJECT", "0.4")
+    monkeypatch.setenv("RETRIEVAL_V2_FACTUAL_STRONG", "0.8")
+    monkeypatch.setenv("RETRIEVAL_V2_AMBIENT_REJECT", "0.5")
+    monkeypatch.setenv("RETRIEVAL_V2_AMBIENT_STRONG", "0.9")
+
+    monkeypatch.delenv("RETRIEVAL_V2_CALIBRATION_BACKEND_KEY", raising=False)
+    with pytest.raises(ValueError, match="backend key"):
+        Settings.load()
+
+    monkeypatch.setenv("RETRIEVAL_V2_CALIBRATION_BACKEND_KEY", "wrong")
+    with pytest.raises(ValueError, match="backend key"):
+        Settings.load()
+
+    monkeypatch.setenv(
+        "RETRIEVAL_V2_CALIBRATION_BACKEND_KEY",
+        "gemini:gemini-embedding-2:1:768:search-document-v1",
+    )
+    loaded = Settings.load()
+    assert loaded.retrieval_v2_mode == "active"
+    assert loaded.retrieval_v2_factual_reject == pytest.approx(0.4)
+    assert loaded.retrieval_v2_ambient_strong == pytest.approx(0.9)
+
