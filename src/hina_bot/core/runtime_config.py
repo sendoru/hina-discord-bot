@@ -422,6 +422,9 @@ def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
         "structured_memory_every": (
             value if attr == "structured_memory_every" else settings.structured_memory_every
         ),
+        "retrieval_v2_mode": (
+            value if attr == "retrieval_v2_mode" else settings.retrieval_v2_mode
+        ),
         "retrieval_v2_semantic_reject": (
             value
             if attr == "retrieval_v2_semantic_reject"
@@ -443,9 +446,10 @@ def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
     reject = effective["retrieval_v2_semantic_reject"]
     strong = effective["retrieval_v2_semantic_strong"]
     disabled = reject == 0.0 and strong == 0.0
-    if not disabled and reject >= strong:
+    valid_calibration = not disabled and reject < strong
+    if effective["retrieval_v2_mode"] == "active" and not valid_calibration:
         raise ValueError(
-            "RETRIEVAL_V2_SEMANTIC_REJECT는 STRONG보다 작아야 해요."
+            "RETRIEVAL_V2_MODE=active에는 먼저 live semantic calibration을 설정해야 해요."
         )
 
 
