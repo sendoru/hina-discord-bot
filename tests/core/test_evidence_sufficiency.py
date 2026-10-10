@@ -1,6 +1,8 @@
 from dataclasses import replace
 from importlib.resources import files
 
+from hina_bot.ai.retrieval_request import build_resolved_retrieval_request
+from hina_bot.ai.routing_plan import RoutingPlan
 from hina_bot.core.evidence_sufficiency import (
     assess_local_evidence,
     evidence_requirement,
