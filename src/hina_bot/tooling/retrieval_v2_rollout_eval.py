@@ -55,7 +55,7 @@ def validate_cases(cases, candidate_ids):
             raise ValueError("rollout fixture ids must be lists")
         if not set(expected + forbidden) <= candidate_ids:
             raise ValueError("rollout fixture references missing candidate ids")
-        if case.get("expect_zero") and expected:
+        if (case.get("expect_zero") or case.get("expect_section_zero")) and expected:
             raise ValueError("zero-result case cannot require a selected id")
         if "expected_evidence_state" in case and case["expected_evidence_state"] not in {
             "missing", "supported", "derived", "unknown", "conflict",
@@ -126,12 +126,21 @@ async def evaluate(
         expected_ok = bool(expected & set(target)) if expected else True
         forbidden_ok = not bool(forbidden & all_selected)
         zero_ok = (not all_selected) if case.get("expect_zero") else True
+        section_zero_ok = (
+            not target if case.get("expect_section_zero") else True
+        )
         evidence_ok = (
             run.evidence.answer_state == case["expected_evidence_state"]
             if "expected_evidence_state" in case
             else True
         )
-        passed = expected_ok and forbidden_ok and zero_ok and evidence_ok
+        passed = (
+            expected_ok
+            and forbidden_ok
+            and zero_ok
+            and section_zero_ok
+            and evidence_ok
+        )
         reports.append({
             "id": case["id"],
             "category": case["category"],
