@@ -84,7 +84,7 @@ class VisionFetchCache:
         entry = self.entries.get(key)
         if entry is None:
             return None
-        added_at, visuals, size = entry
+        added_at, visuals, _size = entry
         ttl = self.ttl_seconds if visuals else self.empty_ttl_seconds
         if time.monotonic() - added_at >= ttl:
             self._remove(key)
