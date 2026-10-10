@@ -49,6 +49,13 @@ class HybridResult:
     cache_hits: int = 0
     cache_misses: int = 0
     elapsed_ms: float = 0.0
+    lexical_admitted: int = 0
+    semantic_admitted: int = 0
+    semantic_rejected: int = 0
+    embedding_prompt_tokens: int | None = 0
+    embedding_requests: int = 0
+    candidate_embedding_ms: float = 0.0
+    query_embedding_ms: float = 0.0
 
 
 def eligible_candidates(
@@ -137,6 +144,9 @@ class HybridRetriever:
         status = "unavailable"
         semantic_hits = None
         hits = misses = 0
+        embedding_prompt_tokens: int | None = 0
+        embedding_requests = 0
+        candidate_embedding_ms = query_embedding_ms = 0.0
 
         if strong:
             status = "lexical_short_circuit"
@@ -150,15 +160,50 @@ class HybridRetriever:
                         result = await self.index.search(query, rows, top_k=len(rows))
                     semantic_hits = result.hits
                     hits, misses = result.cache_hits, result.cache_misses
+                    candidate_embedding_ms = result.candidate_warmup_ms
+                    query_embedding_ms = result.query_embedding_ms
+                    embedding_requests = (
+                        result.candidate_usage.request_count
+                        + result.query_usage.request_count
+                    )
+                    if (
+                        result.candidate_usage.prompt_token_count is None
+                        or result.query_usage.prompt_token_count is None
+                    ):
+                        embedding_prompt_tokens = None
+                    else:
+                        embedding_prompt_tokens = (
+                            result.candidate_usage.prompt_token_count
+                            + result.query_usage.prompt_token_count
+                        )
                     status = "available"
                 except Exception:  # noqa: BLE001 - optional backend must never fail an answer
                     status = "failed"
 
         ranked = rank_factual(request, rows, config, semantic_hits=semantic_hits)
+        lexical_admitted = sum(row.score >= config.lexical_min for row in lexical)
+        semantic_admitted = max(0, len(ranked) - lexical_admitted)
+        semantic_rejected = 0
+        if semantic_hits is not None and config.calibration is not None:
+            lexical_orders = {
+                row.order for row in lexical if row.score >= config.lexical_min
+            }
+            semantic_rejected = sum(
+                hit.order not in lexical_orders
+                and config.calibration.score(hit.cosine) < config.semantic_min
+                for hit in semantic_hits
+            )
         return HybridResult(
             tuple(ranked),
             status,
             hits,
             misses,
             (perf_counter() - started) * 1000,
+            lexical_admitted,
+            semantic_admitted,
+            semantic_rejected,
+            embedding_prompt_tokens,
+            embedding_requests,
+            candidate_embedding_ms,
+            query_embedding_ms,
         )
