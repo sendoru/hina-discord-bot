@@ -46,17 +46,12 @@ def _trace_latency_breakdown(
         {"name": name, "value": _observed_latency(preflight, name)}
         for name in PREFLIGHT_LATENCY_STAGES
     ]
-    turn_stages = [
-        {
-            "name": name,
-            "value": (
-                _observed_latency(terminal, name)
-                if _observed_latency(terminal, name) is not None
-                else _observed_latency(reply, name) if name == "delivery_ms" else None
-            ),
-        }
-        for name in TURN_LATENCY_STAGES
-    ]
+    turn_stages = []
+    for name in TURN_LATENCY_STAGES:
+        value = _observed_latency(terminal, name)
+        if value is None and name == "delivery_ms":
+            value = _observed_latency(reply, name)
+        turn_stages.append({"name": name, "value": value})
 
     # Match the aggregate generation attribution: active routing + answer API
     # calls, excluding shadow routing. All critical calls need timings.
