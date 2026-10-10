@@ -25,7 +25,7 @@ _AWARENESS = re.compile(r"(?:알고\s*있|알았|인지|파악|주시|이력|과
 _DIRECT_MEETING = re.compile(r"(?:직접.{0,8}만나|만나본|만난\s*적|첫\s*만남|처음.{0,8}만나)")
 _SCHOOL_RELATION = re.compile(r"(?:선배|후배|동급생|같은\s*학년)")
 _ADDRESSING = re.compile(
-    r"(?:호칭|뭐라고\\s*(?:부르|불러)|어떻게\\s*(?:부르|불러)|이름으로\\s*(?:부르|불러))"
+    r"(?:호칭|뭐라고\s*(?:부르|불러)|어떻게\s*(?:부르|불러)|이름으로\s*(?:부르|불러))"
 )
 _RELATIONSHIP = re.compile(r"(?:무슨\s*사이|어떤\s*관계|친분|친했|가까운\s*사이)")
 _CURRENT = re.compile(r"(?:지금|현재|요즘)")
