@@ -51,8 +51,8 @@ async def test_conversation_without_calibration_stays_local_and_does_not_invent_
         RoutingPlan("오늘 좀 피곤하네", "오늘 좀 피곤하네"),
     )
     result = await engine.retrieve(request)
-    assert result.factual_invocation == "not_needed"
-    assert result.factual_status == "not_needed"
+    assert result.factual_invocation == "conversation_semantic"
+    assert result.factual_status == "unavailable"
     assert result.ambient_status == "not_invoked"
     assert not result.bundle.character_insights
 
@@ -211,7 +211,8 @@ async def test_end_to_end_ambient_and_reaction_lanes_share_total_budget():
         scene=scene,
     )
 
-    assert result.factual_invocation == "not_needed"
+    assert result.factual_invocation == "conversation_semantic"
+    assert result.factual_status == "available"
     assert result.ambient_status == "available"
     assert 1 <= len(result.bundle.character_insights) <= 2
     assert [row.candidate.candidate_id for row in result.bundle.reactions] == [
