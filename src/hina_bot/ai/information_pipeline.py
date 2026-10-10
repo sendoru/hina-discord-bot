@@ -448,10 +448,14 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             ),
         )
 
-    def build_information_plan(self, routing: RoutingPlan) -> InformationPlan:
+    def build_information_plan(
+        self, routing: RoutingPlan, *, use_lore: bool = True
+    ) -> InformationPlan:
         query = routing.routing_query
         request = classify_information_request(query, call_prefixes=self._call_prefixes())
-        references = self.lore_references(query)
+        # In off/v2 mode do not execute the legacy lore or runtime-knowledge
+        # retrieval pipeline. Web/freshness routing remains independent of RAG.
+        references = self.lore_references(query) if use_lore else []
         freshness = request.freshness
         fact_question = self._looks_like_world_fact_question(query) and not (
             freshness == FreshnessMode.REQUIRED and is_live_domain(query)
@@ -557,7 +561,15 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         routing_plan: RoutingPlan | None = None,
     ) -> str:
         routing = routing_plan or RoutingPlan(content, content)
-        information = self.build_information_plan(routing)
+        legacy_mode = getattr(self.settings, "retrieval_v2_mode", "off")
+        rag_mode = getattr(self.settings, "rag_mode", None)
+        if rag_mode is None:
+            rag_mode = {"off": "v1", "shadow": "shadow",
+                        "active": "v2"}.get(legacy_mode, "v1")
+        information = self.build_information_plan(
+            routing, use_lore=rag_mode in {"v1", "shadow"}
+        )
+        selected_rag = "v1" if rag_mode in {"v1", "shadow"} else "none"
 
         assembly_store = store
         assembly_public_context = public_context
@@ -569,8 +581,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             assembly_use_memory = True
 
         channel_rows = channel_context or ()
-        retrieval_mode = getattr(self.settings, "retrieval_v2_mode", "off")
-        if retrieval_mode == "shadow":
+        if rag_mode == "shadow":
             self._start_retrieval_v2_shadow(
                 routing,
                 information.references,
@@ -579,13 +590,13 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 channel_rows=channel_rows,
                 use_memory=assembly_use_memory,
             )
-        elif retrieval_mode == "active":
+        elif rag_mode == "v2":
             if not self.retrieval_v2.active_ready:
                 self._emit_retrieval_v2(
-                    "active",
+                    "v2",
                     "gated",
                     information.references,
-                    selected_context="legacy",
+                    selected_context="none",
                     fallback_reason=self.retrieval_v2.semantic_gate_reason,
                 )
             else:
@@ -601,26 +612,26 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                     raise
                 except Exception as exc:  # noqa: BLE001 - legacy is the rollback path
                     self._emit_retrieval_v2(
-                        "active",
+                        "v2",
                         "failed",
                         information.references,
-                        selected_context="legacy",
+                        selected_context="none",
                         fallback_reason="preflight_error",
                         retrieval_v2_error_type=type(exc).__name__,
                     )
                 else:
                     if run.result is None:
                         self._emit_retrieval_v2(
-                            "active",
+                            "v2",
                             run.status,
                             information.references,
                             run,
-                            selected_context="legacy",
+                            selected_context="none",
                             fallback_reason=run.fallback_reason,
                         )
                     else:
                         self._emit_retrieval_v2(
-                            "active",
+                            "v2",
                             "completed",
                             information.references,
                             run,
@@ -630,7 +641,11 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                             information,
                             run.result,
                         )
+                        selected_rag = "v2"
 
+        self.usage.routing_event(
+            "rag.mode", rag_mode=rag_mode, rag_selected_context=selected_rag,
+        )
         CURRENT_MEMORY_CONTEXT.set(tuple(build_memory_context(channel_rows, scope.user_id)))
         factual_recall_plan = plan_reference_gated_recall(
             assembly_store,

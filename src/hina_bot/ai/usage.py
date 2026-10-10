@@ -518,6 +518,7 @@ class UsageLogger:
             "instruction_tools_chars", "instruction_dynamic_chars",
             "instruction_response_chars", "instruction_separator_chars",
             "request_input_chars", "request_chars_total", "visible_input_chars",
+            "rag_mode", "rag_selected_context",
             "retrieval_v2_mode", "retrieval_v2_applied",
             "retrieval_v2_selected_context", "retrieval_v2_semantic_ready",
             "retrieval_v2_semantic_gate", "retrieval_v2_fallback_reason",
