@@ -7,7 +7,6 @@ import discord
 from discord import app_commands
 
 from hina_bot.core.routing import Scope
-
 from hina_bot.core.runtime_config import RuntimeSettings
 
 from .chatlog_commands import ChatLogCommands

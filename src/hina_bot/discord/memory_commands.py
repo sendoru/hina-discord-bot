@@ -36,7 +36,6 @@ class MemoryCommands(app_commands.Group):
     def __init__(self, client):
         super().__init__(name="memory", description="장기 기억 관리")
         self.client = client
-        self.remove_command("status")
 
     async def interaction_check(self, interaction):
         if interaction.user.id not in self.client.emoji_admin_ids:

@@ -5,9 +5,7 @@ import logging
 import discord
 from discord import app_commands
 
-from hina_bot.core.runtime_config import (
-    RuntimeSettings,
-)
+from hina_bot.core.runtime_config import RuntimeSettings
 
 from .scope_targets import command_target_scope
 
@@ -101,6 +99,60 @@ class AlwaysReplyCommands(app_commands.Group):
         channel: discord.TextChannel | discord.Thread | None = None,
     ):
         await self._mutate(interaction, channel, enabled=False)
+
+    @app_commands.command(name="status", description="현재/선택 채널의 자동 응답 상태")
+    @app_commands.describe(channel="다른 서버 채널 선택 (생략하면 현재 채널)")
+    async def status(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | discord.Thread | None = None,
+    ):
+        try:
+            scope = self._scope(interaction, channel)
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+        enabled = scope.channel_id in self.client.settings.always_reply_channel_ids
+        source = self.client.settings.source("always_reply_channel_ids")
+        await interaction.response.send_message(
+            f"<#{scope.channel_id}> 채널 자동 응답: "
+            f"**{'켜짐' if enabled else '꺼짐'}** [설정 출처: {source}]",
+            ephemeral=True,
+        )
+
+
+
+@app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+@app_commands.allowed_installs(guilds=True, users=True)
+class ConfigCommands(app_commands.Group):
+    def __init__(self, client):
+        super().__init__(name="config", description="런타임 설정 관리 (봇 관리자 전용)")
+        self.client = client
+        self.add_command(AlwaysReplyCommands(client))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id not in self.client.emoji_admin_ids:
+            await interaction.response.send_message(
+                "봇 소유자 또는 지정된 관리자만 사용할 수 있어요.", ephemeral=True
+            )
+            return False
+        if not isinstance(self.client.settings, RuntimeSettings):
+            await interaction.response.send_message(
+                "이 실행 방식에서는 런타임 설정 변경을 사용할 수 없어요.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def on_error(self, interaction: discord.Interaction, error):
+        log.warning("Config command failed (%s)", type(error).__name__)
+        text = "런타임 설정을 처리하지 못했어요. Dashboard /admin/runtime에서 확인해 주세요."
+        if interaction.response.is_done():
+            await interaction.followup.send(text, ephemeral=True)
+        else:
+            await interaction.response.send_message(text, ephemeral=True)
+
+    def _apply_side_effects(self, key: str) -> None:
+        apply_runtime_setting_side_effects(self.client, key)
 
     @app_commands.command(name="privacy", description="외부 LLM에 보낼 대화 문맥의 프라이버시 경계 설정")
     @app_commands.describe(value="외부 모델 문맥 정책 또는 startup 기본값으로 복귀")

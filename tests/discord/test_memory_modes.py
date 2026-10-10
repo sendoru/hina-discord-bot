@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock
 
 from hina_bot.core.recent import RecentMessages
 from hina_bot.core.routing import Scope
-from hina_bot.core.store import Store
 from hina_bot.core.scope_overrides import MemoryMode
+from hina_bot.core.store import Store
 from hina_bot.discord.memory_commands import MemoryCommands
 
 
