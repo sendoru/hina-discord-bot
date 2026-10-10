@@ -96,10 +96,34 @@ def test_runtime_mode_is_immediate_rollback_switch():
         assert settings.retrieval_v2_mode == "off"
         assert settings.set_text("RETRIEVAL_V2_MODE", "shadow") == "shadow"
         assert settings.retrieval_v2_mode == "shadow"
-        assert settings.set_text("RETRIEVAL_V2_MODE", "active") == "active"
+        with pytest.raises(ValueError, match="active"):
+            settings.set_text("RETRIEVAL_V2_MODE", "active")
         assert settings.set_text("RETRIEVAL_V2_MODE", "off") == "off"
         assert settings.retrieval_v2_mode == "off"
         with pytest.raises(ValueError):
             settings.set_text("RETRIEVAL_V2_MODE", "canary")
+    finally:
+        store.close()
+
+    store = Store(":memory:")
+    try:
+        settings = RuntimeSettings(
+            Settings(
+                discord_token="token",
+                openai_api_key="key",
+                gemini_api_key="gemini-key",
+                retrieval_v2_calibration_backend_key=(
+                    retrieval_v2_expected_backend_key(768)
+                ),
+                retrieval_v2_factual_reject=0.5,
+                retrieval_v2_factual_strong=0.9,
+                retrieval_v2_ambient_reject=0.55,
+                retrieval_v2_ambient_strong=0.92,
+            ),
+            store,
+        )
+        assert settings.set_text("RETRIEVAL_V2_MODE", "active") == "active"
+        assert settings.retrieval_v2_mode == "active"
+        assert settings.set_text("RETRIEVAL_V2_MODE", "off") == "off"
     finally:
         store.close()
