@@ -227,8 +227,8 @@ def test_rollout_telemetry_has_gate_and_no_reference_content():
 
     operation, fields = events[0]
     assert operation == "retrieval.v2"
-    assert fields["retrieval_selected_context"] == "legacy"
-    assert fields["retrieval_semantic_gate"] == "calibration_thresholds_missing"
+    assert fields["retrieval_v2_selected_context"] == "legacy"
+    assert fields["retrieval_v2_semantic_gate"] == "calibration_thresholds_missing"
     assert "RAW SECRET" not in repr(fields)
     assert "canon.secret" not in repr(fields)
 
@@ -240,7 +240,7 @@ def test_retrieval_telemetry_allowlist_keeps_metrics_but_drops_unknown_content(t
         "retrieval.v2",
         status="completed",
         retrieval_v2_mode="shadow",
-        retrieval_selected_context="legacy",
+        retrieval_v2_selected_context="legacy",
         retrieval_legacy_selected=2,
         retrieval_v2_selected=3,
         retrieval_overlap_count=1,
@@ -260,6 +260,6 @@ def test_retrieval_telemetry_allowlist_keeps_metrics_but_drops_unknown_content(t
     row = json.loads(text)
     assert row["operation"] == "retrieval.v2"
     assert row["retrieval_v2_mode"] == "shadow"
-    assert row["retrieval_selected_context"] == "legacy"
+    assert row["retrieval_v2_selected_context"] == "legacy"
     assert row["retrieval_embedding_prompt_tokens"] == 42
     assert row["retrieval_legacy_id_hashes"] == ["abc123"]
