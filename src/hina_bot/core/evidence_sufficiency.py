@@ -164,11 +164,13 @@ def _entities_compatible(
     candidate: KnowledgeCandidate,
     request: RetrievalRequest,
 ) -> bool:
-    if not candidate.entities:
-        return not request.entities
-    if not request.entities:
+    candidate_entities = set(candidate.entities)
+    request_entities = set(request.entities)
+    if not candidate_entities:
+        return not request_entities
+    if not request_entities:
         return False
-    return bool(set(candidate.entities) & set(request.entities))
+    return candidate_entities == request_entities
 
 
 def _claim_matches(claim: EvidenceClaim, requirement: EvidenceRequirement) -> bool:
