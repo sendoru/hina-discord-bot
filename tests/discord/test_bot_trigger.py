@@ -16,10 +16,11 @@ from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.store import Store
 from hina_bot.discord.bot import (
     BOT_TRIGGER_CHAIN_LIMIT,
+    CURRENT_TYPING_ACTIVE,
     _timed_channel_lock,
     _timed_memory_lock,
 )
-from hina_bot.discord.bot import CURRENT_TYPING_ACTIVE, HinaClient as BaseHinaClient
+from hina_bot.discord.bot import HinaClient as BaseHinaClient
 from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.target_context import TARGET_CONTEXT
 from hina_bot.discord.turn_provenance import build_turn_provenance
