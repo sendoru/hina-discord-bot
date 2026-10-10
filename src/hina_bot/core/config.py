@@ -11,6 +11,7 @@ GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
+RETRIEVAL_V2_MODES = frozenset({"off", "shadow", "active"})
 
 
 def parse_call_prefixes(value: str) -> tuple[str, ...]:
@@ -119,6 +120,11 @@ class Settings:
     lore_max_chars: int = 3200
     community_lore: bool = True
     chat_web_search: bool = True
+    retrieval_v2_mode: str = "off"
+    retrieval_v2_timeout_seconds: float = 2.0
+    retrieval_v2_semantic_reject: float = 0.0
+    retrieval_v2_semantic_strong: float = 0.0
+    retrieval_v2_ambient_min_score: float = 0.75
     runtime_timezone: str = "Asia/Seoul"
     runtime_locale: str = "ko-KR"
     runtime_default_location: str = ""
@@ -286,6 +292,26 @@ class Settings:
         if chat_web_search not in {"true", "false"}:
             raise ValueError("CHAT_WEB_SEARCH는 true 또는 false여야 합니다.")
 
+        retrieval_v2_mode = os.getenv("RETRIEVAL_V2_MODE", "off").strip().lower()
+        if retrieval_v2_mode not in RETRIEVAL_V2_MODES:
+            allowed = ", ".join(sorted(RETRIEVAL_V2_MODES))
+            raise ValueError(f"RETRIEVAL_V2_MODE는 {allowed} 중 하나여야 합니다.")
+        try:
+            retrieval_v2_timeout_seconds = float(
+                os.getenv("RETRIEVAL_V2_TIMEOUT_SECONDS", "2.0")
+            )
+            retrieval_v2_semantic_reject = float(
+                os.getenv("RETRIEVAL_V2_SEMANTIC_REJECT", "0.0")
+            )
+            retrieval_v2_semantic_strong = float(
+                os.getenv("RETRIEVAL_V2_SEMANTIC_STRONG", "0.0")
+            )
+            retrieval_v2_ambient_min_score = float(
+                os.getenv("RETRIEVAL_V2_AMBIENT_MIN_SCORE", "0.75")
+            )
+        except ValueError as exc:
+            raise ValueError("Retrieval v2 숫자 설정은 유효한 숫자여야 합니다.") from exc
+
         empty_call_reply = os.getenv("EMPTY_CALL_REPLY", "무슨 일이야?").strip()
         special_dm_empty_call_reply = os.getenv("SPECIAL_DM_EMPTY_CALL_REPLY", "").strip()
         empty_response_reply = os.getenv("EMPTY_RESPONSE_REPLY", "...").strip()
@@ -381,6 +407,11 @@ class Settings:
             lore_max_chars=int(os.getenv("LORE_MAX_CHARS", "3200")),
             community_lore=community_lore == "true",
             chat_web_search=chat_web_search == "true",
+            retrieval_v2_mode=retrieval_v2_mode,
+            retrieval_v2_timeout_seconds=retrieval_v2_timeout_seconds,
+            retrieval_v2_semantic_reject=retrieval_v2_semantic_reject,
+            retrieval_v2_semantic_strong=retrieval_v2_semantic_strong,
+            retrieval_v2_ambient_min_score=retrieval_v2_ambient_min_score,
             runtime_timezone=runtime_timezone,
             runtime_locale=runtime_locale,
             runtime_default_location=runtime_default_location,
@@ -407,6 +438,10 @@ class Settings:
                 and (s.structured_memory_sweep_interval_seconds == 0
                      or 60 <= s.structured_memory_sweep_interval_seconds <= 24 * 60 * 60)
                 and 0 <= s.lore_max_items <= 20 and 0 <= s.lore_max_chars <= 12000
+                and 0.1 <= s.retrieval_v2_timeout_seconds <= 30.0
+                and -1.0 <= s.retrieval_v2_semantic_reject <= 1.0
+                and -1.0 <= s.retrieval_v2_semantic_strong <= 1.0
+                and 0.0 < s.retrieval_v2_ambient_min_score <= 1.0
                 and 0 <= s.vision_max_attachments <= 32
                 and 0 <= s.vision_max_emojis <= 32
                 and 0 <= s.vision_max_stickers <= 32
@@ -420,4 +455,15 @@ class Settings:
                              "structured memory stale은 60초~7일, sweep interval은 0 또는 60초~24시간, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하")
+        calibration_disabled = (
+            s.retrieval_v2_semantic_reject == 0.0
+            and s.retrieval_v2_semantic_strong == 0.0
+        )
+        if (
+            not calibration_disabled
+            and s.retrieval_v2_semantic_reject >= s.retrieval_v2_semantic_strong
+        ):
+            raise ValueError(
+                "Retrieval v2 semantic calibration은 reject < strong이어야 합니다."
+            )
         return s
