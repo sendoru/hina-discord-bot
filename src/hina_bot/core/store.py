@@ -240,9 +240,13 @@ class Store:
         ).fetchone()
         memory_schema_sql = str(memory_schema["sql"] or "") if memory_schema is not None else ""
         if "'retracted'" not in memory_schema_sql:
-            # SQLite cannot widen an existing CHECK constraint in place. Rebuild only this
-            # table after all legacy columns above have been added, preserving IDs/provenance.
+            # SQLite cannot widen an existing CHECK constraint in place. Preserve the
+            # AUTOINCREMENT high-water mark as well as rows and provenance: copying only
+            # surviving IDs would otherwise allow a previously deleted ID to be reused.
             with self.db:
+                previous_sequence = self.db.execute(
+                    "SELECT seq FROM sqlite_sequence WHERE name='memory_items'"
+                ).fetchone()
                 self.db.execute("ALTER TABLE memory_items RENAME TO memory_items_pre_retract")
                 self.db.execute(
                     """CREATE TABLE memory_items (
@@ -286,6 +290,18 @@ class Store:
                        FROM memory_items_pre_retract"""
                 )
                 self.db.execute("DROP TABLE memory_items_pre_retract")
+                if previous_sequence is not None:
+                    # A newly rebuilt AUTOINCREMENT table takes MAX(surviving IDs).
+                    # Restore the old high-water mark before any new item is inserted.
+                    self.db.execute(
+                        "DELETE FROM sqlite_sequence WHERE name='memory_items'"
+                    )
+                    self.db.execute(
+                        """INSERT INTO sqlite_sequence(name,seq)
+                           SELECT 'memory_items', MAX(?, COALESCE(MAX(id), 0))
+                           FROM memory_items""",
+                        (int(previous_sequence["seq"]),),
+                    )
                 self.db.execute(
                     "CREATE INDEX memory_items_owner ON memory_items(user_id,id)"
                 )
