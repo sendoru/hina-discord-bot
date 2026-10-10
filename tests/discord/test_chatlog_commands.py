@@ -170,49 +170,6 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(store.note("config:chatlog_unified_v1"), "1")
         store.close()
 
-    def test_overview_lists_one_unified_policy_column(self):
-        store = Store(":memory:")
-        guild = NS(
-            id=1,
-            name="테스트 서버",
-            text_channels=[NS(id=10, name="일반"), NS(id=11, name="봇")],
-            threads=[],
-        )
-        inherited_guild = NS(
-            id=2,
-            name="상속 서버",
-            text_channels=[NS(id=20, name="일반")],
-            threads=[],
-        )
-        client = NS(
-            store=store,
-            guilds=[guild, inherited_guild],
-            settings=NS(allowed_guild_ids=frozenset()),
-            emoji_admin_ids={100},
-        )
-        group = ChatLogCommands(client)
-        _set_mode_override(store, "global", "direct")
-        _set_mode_override(store, "guild:1", "all")
-        _set_mode_override(store, "guild:1:channel:11", "off")
-
-        rows = group._overview_rows(100, "all")
-        self.assertIn(["전역", "GLOBAL", "direct", "direct"], rows)
-        self.assertIn(["서버", "테스트 서버", "all", "all"], rows)
-        self.assertIn(["채널", "테스트 서버/#일반", "상속", "all"], rows)
-        self.assertIn(["채널", "테스트 서버/#봇", "off", "off"], rows)
-        self.assertIn(["서버", "상속 서버", "상속", "direct"], rows)
-
-        compact = group._overview_rows(100, "overrides")
-        self.assertEqual(
-            compact,
-            [
-                ["전역", "GLOBAL", "direct", "direct"],
-                ["서버", "테스트 서버", "all", "all"],
-                ["채널", "테스트 서버/#봇", "off", "off"],
-            ],
-        )
-        store.close()
-
     async def test_clear_only_drops_current_channel_recent_buffer(self):
         store, recent = Store(":memory:"), RecentMessages()
         scope, other = Scope(1, 10, 100), Scope(1, 20, 100)

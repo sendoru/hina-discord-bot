@@ -5,7 +5,6 @@ from enum import Enum
 import discord
 from discord import app_commands
 
-from hina_bot.core.admin_list import MAX_DISCORD_TEXT, table_row
 from hina_bot.core.routing import Scope
 from hina_bot.core.scope_overrides import scope_target_key
 
@@ -24,10 +23,6 @@ _VALUE_CHOICES = [
     app_commands.Choice(name="write_only — 쓰기만", value="write_only"),
     app_commands.Choice(name="off — 읽기/쓰기 끄기", value="off"),
     app_commands.Choice(name="inherit — 상위 설정 따르기", value="inherit"),
-]
-_VIEW_CHOICES = [
-    app_commands.Choice(name="직접 설정만 (기본)", value="overrides"),
-    app_commands.Choice(name="전체 상속 결과", value="all"),
 ]
 _PURGE_TARGET_CHOICES = [
     app_commands.Choice(name="현재 채널의 모든 사용자 기억", value="channel"),
@@ -51,34 +46,12 @@ class MemoryMode(str, Enum):
         return self in (MemoryMode.normal, MemoryMode.write_only)
 
 
-def _table_pages(title: str, columns: list[str], rows: list[list[str]], widths: list[int]) -> list[str]:
-    heading = [table_row(columns, widths), table_row(["-" * width for width in widths], widths)]
-    groups: list[list[str]] = []
-    current: list[str] = []
-    budget = MAX_DISCORD_TEXT - len(title) - 40
-    for values in rows:
-        line = table_row(values, widths)
-        candidate = "\n".join(heading + current + [line])
-        if current and len(candidate) > budget:
-            groups.append(current)
-            current = []
-        current.append(line)
-    groups.append(current)
-    count = len(groups)
-    return [
-        f"{title} ({index}/{count})\n```text\n" + "\n".join(heading + lines) + "\n```"
-        for index, lines in enumerate(groups, 1)
-    ]
-
-
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 @app_commands.allowed_installs(guilds=True, users=True)
 class MemoryCommands(app_commands.Group):
     def __init__(self, client):
         super().__init__(name="memory", description="장기 기억 관리")
         self.client = client
-        # Full-scope listings have moved to the dashboard; preserve local status/mode/purge.
-        self.remove_command("overview")
         self.remove_command("status")
 
     async def interaction_check(self, interaction):
@@ -161,78 +134,6 @@ class MemoryCommands(app_commands.Group):
         state = "상위 설정을 따르도록 변경" if value == "inherit" else f"{value}로 변경"
         await interaction.followup.send(
             f"{changed} 장기 기억 설정을 {state}했어요.\n\n{self._status_text(scope)}", ephemeral=True)
-
-    @app_commands.command(name="status", description="현재 채널의 장기 기억 설정 확인")
-    async def status(self, interaction: discord.Interaction):
-        try:
-            text = self._status_text(self.scope(interaction))
-        except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
-            return
-        await interaction.response.send_message(text, ephemeral=True)
-
-    def _overview_rows(self, user_id: int, view: str) -> list[list[str]]:
-        store = self.client.store
-        overrides = store.memory_mode_overrides()
-        global_mode = overrides.get("global")
-        rows = [["전역", "GLOBAL", global_mode or "기본(normal)", global_mode or "normal"]]
-        known = {"global"}
-        settings = getattr(self.client, "settings", None)
-        allowed = getattr(settings, "allowed_guild_ids", frozenset()) if settings else frozenset()
-        guilds = sorted(getattr(self.client, "guilds", []), key=lambda guild: guild.name.casefold())
-        for guild in guilds:
-            if allowed and guild.id not in allowed:
-                continue
-            server_key = f"guild:{guild.id}"
-            server_mode = overrides.get(server_key)
-            server_effective = server_mode or global_mode or "normal"
-            known.add(server_key)
-            if view == "all" or server_mode is not None:
-                rows.append(["서버", guild.name, server_mode or "상속", server_effective])
-
-            channels = list(getattr(guild, "text_channels", [])) + list(getattr(guild, "threads", []))
-            channels = sorted(
-                {channel.id: channel for channel in channels}.values(),
-                key=lambda channel: channel.name.casefold(),
-            )
-            for channel in channels:
-                scope = Scope(guild.id, channel.id, user_id)
-                direct = overrides.get(scope.channel)
-                known.add(scope.channel)
-                if view == "overrides" and direct is None:
-                    continue
-                rows.append([
-                    "채널", f"{guild.name}/#{channel.name}",
-                    direct or "상속", direct or server_effective,
-                ])
-
-        for key in sorted(set(overrides) - known):
-            mode = overrides[key]
-            rows.append(["미확인", key, mode, mode])
-        return rows
-
-    @app_commands.command(name="overview", description="장기 기억 설정을 한눈에 보기")
-    @app_commands.describe(view="기본은 직접 설정만 표시하며, 필요하면 전체 상속 결과를 볼 수 있어요")
-    @app_commands.choices(view=_VIEW_CHOICES)
-    async def overview(self, interaction: discord.Interaction, view: str = "overrides"):
-        if view not in {choice.value for choice in _VIEW_CHOICES}:
-            await interaction.response.send_message("알 수 없는 보기 방식이에요.", ephemeral=True)
-            return
-        rows = self._overview_rows(interaction.user.id, view)
-        title = (
-            "장기 기억 설정 · 직접 override만 표시 (상속 항목 숨김)"
-            if view == "overrides"
-            else "장기 기억 설정 · 전체 상속 결과"
-        )
-        pages = _table_pages(
-            title,
-            ["범위", "서버/채널", "직접", "적용"],
-            rows,
-            [6, 40, 14, 14],
-        )
-        await interaction.response.send_message(pages[0], ephemeral=True)
-        for page in pages[1:]:
-            await interaction.followup.send(page, ephemeral=True)
 
     @app_commands.command(name="purge", description="선택한 범위의 모든 사용자 장기 기억 삭제")
     @app_commands.describe(
