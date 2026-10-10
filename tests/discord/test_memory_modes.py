@@ -279,7 +279,7 @@ class ModeCommandTests(unittest.IsolatedAsyncioTestCase):
                          response=NS(defer=AsyncMock(), send_message=AsyncMock()),
                          followup=NS(send=AsyncMock()))
 
-        await group.purge.callback(group, interaction, "global", False)
+        await group.purge.callback(group, interaction, "channel", False)
         self.assertIn("confirm", interaction.response.send_message.call_args.args[0])
         interaction.response.send_message.reset_mock()
         await group.purge.callback(group, interaction, "server", True)
