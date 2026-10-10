@@ -80,7 +80,9 @@ Conversation semantic recall does **not** admit lexical-only factual hits:
 embedding failure or absent calibration yields no conversational factual
 references. Explicit information intents retain lexical-first retrieval and
 lexical fallback. All semantic admission remains gated by the measured
-thresholds, and unrelated turns may return zero results.
+thresholds, and unrelated turns may return zero results. A conversation-only
+semantic fact is contextual reference, **not** an automatic local-evidence
+sufficiency result; recognized relation propositions are assessed separately.
 
 Conversation composition gives scene-aware ambient insight and reaction guides
 slots ahead of optional semantic factual recall. Explicit information requests
