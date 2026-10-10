@@ -123,7 +123,7 @@ def validate_record(record: dict, *, accepted: bool = False) -> dict:
             raise LoreValidationError(f"{record['id']}: claims must be a non-empty list")
         try:
             parsed_claims = tuple(evidence_claim_from_mapping(raw) for raw in claims)
-        except ValueError as exc:
+        except (TypeError, ValueError) as exc:
             raise LoreValidationError(f"{record['id']}: invalid evidence claim") from exc
         if len(parsed_claims) != len(set(parsed_claims)):
             raise LoreValidationError(f"{record['id']}: duplicate evidence claim")
