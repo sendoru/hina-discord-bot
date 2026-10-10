@@ -9,7 +9,7 @@ from hina_bot.core.evidence_sufficiency import (
     assess_local_evidence,
     selected_evidence_bundle,
 )
-from hina_bot.core.retrieval_v2_runtime import bundle_references, comparison_metrics
+from hina_bot.core.retrieval_v2_runtime import comparison_metrics
 from hina_bot.core.memory_context import CURRENT_MEMORY_CONTEXT, build_memory_context
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
@@ -241,7 +241,17 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             log.warning("Retrieval v2 shadow task failed (%s)", type(exc).__name__)
 
     def _activate_retrieval_v2(self, information, result):
-        references = bundle_references(result.bundle)
+        references = tuple(
+            {
+                **row.candidate.reference_item(),
+                "retrieval_usage": usage,
+            }
+            for usage, rows in (
+                ("relation", result.bundle.relations),
+                ("factual", result.bundle.facts),
+            )
+            for row in rows
+        )
         search_mode = information.search_mode
         search_reason = information.search_reason
         search_locked = information.search_locked
@@ -264,6 +274,8 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             search_locked=search_locked,
             search_reason=search_reason,
             search_decision_source="retrieval_v2",
+            retrieval_v2_applied=True,
+            retrieval_v2_bundle=result.bundle,
         )
 
     def _start_shadow_classification(
