@@ -450,12 +450,14 @@ def test_individual_trace_latency_uses_observed_stages_and_active_api_calls(tmp_
             {
                 "turn_id": "trace-1",
                 "operation": "model_route_classify",
+                "model": "classifier-model",
                 "elapsed_ms": 150,
             },
             {
                 "turn_id": "trace-1",
                 "operation": "model_route_classify",
                 "semantic_route_mode": "shadow",
+                "model": "classifier-model",
                 "elapsed_ms": 9999,
             },
         ):
@@ -518,8 +520,8 @@ def test_individual_trace_latency_keeps_unobserved_values_unknown():
             {"event": "turn.failed", "generation_ms": 0, "memory_ms": True},
         ),
         (
-            {"operation": "answer", "elapsed_ms": 100},
-            {"operation": "model_route_classify"},  # missing critical call time
+            {"operation": "answer", "model": "answer-model", "elapsed_ms": 100},
+            {"operation": "model_route_classify", "model": "classifier-model"},
         ),
     )
 
