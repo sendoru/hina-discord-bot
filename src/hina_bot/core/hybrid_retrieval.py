@@ -60,11 +60,21 @@ class HybridResult:
 
 def eligible_candidates(
     candidates: Sequence[KnowledgeCandidate],
+    *,
+    entities: Sequence[str] = (),
 ) -> list[KnowledgeCandidate]:
+    """Keep unknown metadata, but reject explicit entity contradictions."""
+    query_entities = set(entities)
     seen = set()
     result = []
     for row in candidates:
         if KnowledgeUsage.FACTUAL not in row.retrieval_usages:
+            continue
+        if (
+            query_entities
+            and row.entities
+            and query_entities.isdisjoint(row.entities)
+        ):
             continue
         identity = (row.source, row.candidate_id)
         if identity in seen:
@@ -125,7 +135,7 @@ class HybridRetriever:
     ) -> HybridResult:
         started = perf_counter()
         config = self.config
-        rows = eligible_candidates(candidates)
+        rows = eligible_candidates(candidates, entities=request.entities)
 
         # Profile retrieval has its own deterministic exact/lexical path. Keep accidental
         # calls safe and cheap rather than invoking semantic retrieval.
