@@ -51,6 +51,8 @@ async def test_ambient_calibration_report_accounts_for_query_and_candidate_usage
     report = await evaluate(
         backend,
         cases,
+        reject=0.2,
+        strong=0.9,
         usd_per_million_tokens=2.0,
     )
 
