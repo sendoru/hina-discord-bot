@@ -10,10 +10,11 @@ from hina_bot.core.routing import Scope
 
 from .chatlog_commands import ChatLogCommands
 from .note_commands import NoteCommands
+from .state_commands import StateCommands
 
 log = logging.getLogger("hina")
 
-_ADMIN_MEMORY_COMMANDS = {"mode", "status", "purge"}
+_ADMIN_MEMORY_COMMANDS = {"mode", "purge"}
 _EMOJI_ALIAS_RE = re.compile(r"[a-z][a-z0-9_]{1,31}")
 
 HELP_TEXT = """히나와 DM으로 대화하려면 이 도움말 메시지의 히나 프로필을 눌러 `메시지 보내기`를 선택해 주세요.
@@ -25,7 +26,7 @@ DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니�
 자동 장기 기억
 `/memory show` — 현재 서버 또는 DM에서 형성된 내 구조화 장기 기억 확인
 `/memory clear` — 현재 서버 또는 DM에서 내 자동 대화 기억 삭제
-`/memory mode` / `status` — 봇 관리자용 자동 기억 설정
+`/memory mode` — 봇 관리자용 자동 기억 설정
 `/memory purge` — 봇 관리자용 범위별 자동 기억 초기화
 
 수동 메모
@@ -36,7 +37,7 @@ DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니�
 
 최근 대화 문맥
 `/chatlog mode` — 최근 채널 대화 사용 여부 설정
-`/chatlog status` — 현재 채널 설정 확인
+`/state show` — 현재 채널의 기억·최근 문맥 설정과 상속 출처 통합 확인
 `/chatlog clear` — 현재 채널의 임시 최근 대화 문맥 비우기
 
 관리
@@ -319,6 +320,7 @@ def install_slash_commands(client):
     upgrade_memory_group(client)
     client.tree.add_command(NoteCommands(client))
     client.tree.add_command(ChatLogCommands(client))
+    client.tree.add_command(StateCommands(client))
     client.tree.add_command(EmojiSlashCommands(client))
 
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)

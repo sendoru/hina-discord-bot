@@ -129,6 +129,7 @@ class ChatLogCommands(app_commands.Group):
         self.client = client
         # Cross-server/whole-channel listings are available in the dashboard.
         self.remove_command("overview")
+        self.remove_command("status")
         _migrate_legacy_settings(client.store)
 
     async def interaction_check(self, interaction):
@@ -145,7 +146,7 @@ class ChatLogCommands(app_commands.Group):
 
     async def on_error(self, interaction, error):
         log.warning("Chatlog command failed (%s)", type(error).__name__)
-        text = "최근 대화 문맥 설정을 처리하지 못했어요. /chatlog status로 현재 상태를 확인해 주세요."
+        text = "최근 대화 문맥 설정을 처리하지 못했어요. /state show로 현재 상태를 확인해 주세요."
         if interaction.response.is_done():
             await interaction.followup.send(text, ephemeral=True)
         else:
