@@ -10,11 +10,11 @@ from hina_bot.core.admin_commands import (
     mark_interrupted_admin_commands,
 )
 from hina_bot.core.routing import Scope
+from hina_bot.core.chatlog_modes import set_unified_chatlog_mode
 from hina_bot.core.runtime_config import RuntimeSettings, format_runtime_value
+from hina_bot.core.scope_overrides import scope_target_key
 
-from .chatlog_commands import _set_mode_override
 from .config_commands import apply_runtime_setting_side_effects
-from .memory_commands import MemoryCommands
 
 log = logging.getLogger("hina")
 
@@ -148,7 +148,7 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
             mode = str(payload.get("mode") or "")
             if mode not in {"normal", "read_only", "write_only", "off", "inherit"}:
                 raise ValueError("invalid memory mode")
-            key = MemoryCommands._target_key(scope, target)
+            key = scope_target_key(scope, target)
             if target == "global" and mode == "inherit":
                 raise ValueError("global memory mode cannot inherit")
             async with client.channel_lock(scope):
@@ -188,7 +188,7 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
             if target == "global" and mode == "inherit":
                 raise ValueError("global chatlog mode cannot inherit")
             async with client.channel_lock(scope):
-                _set_mode_override(
+                set_unified_chatlog_mode(
                     client.store,
                     key,
                     None if mode == "inherit" else mode,

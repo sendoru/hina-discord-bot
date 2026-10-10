@@ -37,6 +37,19 @@ def resolve_scope_chain(
     }
 
 
+def scope_target_key(scope: Scope, target: str) -> str:
+    """Resolve a global/server/channel target identically for Discord and Dashboard."""
+    if target == "global":
+        return "global"
+    if target == "server":
+        if scope.guild_id is None:
+            raise ValueError("DM에서는 서버 설정을 변경할 수 없어요.")
+        return scope.realm
+    if target == "channel":
+        return scope.channel
+    raise ValueError("알 수 없는 설정 범위예요.")
+
+
 def memory_mode_capabilities(mode: str) -> tuple[bool, bool]:
     """Return (reads, writes) for one effective automatic-memory mode."""
 
@@ -74,4 +87,5 @@ __all__ = [
     "effective_recent_context_mode",
     "memory_mode_capabilities",
     "resolve_scope_chain",
+    "scope_target_key",
 ]

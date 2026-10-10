@@ -7,8 +7,8 @@ from discord import app_commands
 
 from hina_bot.core.admin_list import MAX_DISCORD_TEXT, table_row
 from hina_bot.core.routing import Scope
+from hina_bot.core.scope_overrides import scope_target_key
 
-from .knowledge_commands import KnowledgeCommands
 from .scope_targets import command_target_scope
 
 log = logging.getLogger("hina")
@@ -80,8 +80,6 @@ class MemoryCommands(app_commands.Group):
         # Full-scope listings have moved to the dashboard; preserve local status/mode/purge.
         self.remove_command("overview")
         self.remove_command("status")
-        if hasattr(client, "tree") and hasattr(client, "settings"):
-            client.tree.add_command(KnowledgeCommands(client))
 
     async def interaction_check(self, interaction):
         if interaction.user.id not in self.client.emoji_admin_ids:
@@ -103,18 +101,6 @@ class MemoryCommands(app_commands.Group):
             await interaction.followup.send(text, ephemeral=True)
         else:
             await interaction.response.send_message(text, ephemeral=True)
-
-    @staticmethod
-    def _target_key(scope: Scope, target: str) -> str:
-        if target == "global":
-            return "global"
-        if target == "server":
-            if scope.guild_id is None:
-                raise ValueError("DM에서는 서버 설정을 변경할 수 없어요.")
-            return scope.realm
-        if target == "channel":
-            return scope.channel
-        raise ValueError("알 수 없는 설정 범위예요.")
 
     @staticmethod
     def _chain_lines(chain: dict, default: str, *, include_server: bool) -> list[str]:
@@ -157,7 +143,7 @@ class MemoryCommands(app_commands.Group):
     ):
         try:
             scope = command_target_scope(interaction, target=target, channel=channel)
-            key = self._target_key(scope, target)
+            key = scope_target_key(scope, target)
             if value == "inherit" and target == "global":
                 raise ValueError("전역 설정은 상속할 상위 범위가 없어요. normal 등 실제 모드를 선택해 주세요.")
             if value not in {choice.value for choice in _VALUE_CHOICES}:
