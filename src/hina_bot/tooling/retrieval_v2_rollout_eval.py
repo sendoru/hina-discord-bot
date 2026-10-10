@@ -52,7 +52,7 @@ def validate_cases(cases, candidate_ids):
         expected = case.get("expected_any", [])
         forbidden = case.get("forbidden", [])
         if not isinstance(expected, list) or not isinstance(forbidden, list):
-            raise ValueError("rollout fixture ids must be lists")
+            raise TypeError("rollout fixture ids must be lists")
         if not set(expected + forbidden) <= candidate_ids:
             raise ValueError("rollout fixture references missing candidate ids")
         if (case.get("expect_zero") or case.get("expect_section_zero")) and expected:
