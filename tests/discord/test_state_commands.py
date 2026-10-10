@@ -240,9 +240,10 @@ def test_mixed_legacy_overrides_match_dashboard_and_runtime(
     assert f"로컬 최근 문맥: **{dashboard_effective}**" in text
     assert f"활성화 설정: **{on_off}** (출처: 전역)" in text
     assert f"수집 범위 설정: **{capture}** (출처: 채널)" in text
-    assert "전송 가능 범위: 없음" in text if expected == "off" else (
-        "전송 가능 범위: 로컬 문맥 중 다른 전송 경계에서도 허용된 항목" in text
-    )
+    if expected == "off":
+        assert "전송 가능 범위: 없음" in text
+    else:
+        assert "전송 가능 범위: 로컬 문맥 중 다른 전송 경계에서도 허용된 항목" in text
 
 
 @pytest.mark.asyncio
@@ -273,10 +274,8 @@ async def test_egress_boundary_is_explicitly_not_channel_recent_when_off(state_c
     store, group = state_context
     _set_mode_override(store, "global", "off")
     group.client.settings.external_context_policy = "bot_interactions_only"
-    await group.show.callback(group, _interaction())
-    text = group.client  # Verify via the pure formatter as well.
-    rendered = effective_state_text(
-        store, Scope(1, 10, 100), external_context_policy="bot_interactions_only"
-    )
+    interaction = _interaction()
+    await group.show.callback(group, interaction)
+    rendered = interaction.response.send_message.call_args.args[0]
     assert "로컬 최근 문맥: **off**" in rendered
     assert "전송 가능 범위: 없음 (채널 recent buffer 미사용)" in rendered
