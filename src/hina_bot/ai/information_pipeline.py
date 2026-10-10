@@ -5,13 +5,22 @@ import logging
 import re
 from dataclasses import replace
 
+from hina_bot.core.ambient_retrieval import AmbientSceneContext
 from hina_bot.core.evidence_sufficiency import (
     assess_local_evidence,
     selected_evidence_bundle,
 )
+from hina_bot.core.retrieval_v2_runtime import (
+    RetrievalV2Budgets,
+    RetrievalV2Engine,
+    bundle_references,
+    comparison_metrics,
+)
+from hina_bot.core.semantic_retrieval import SemanticCalibration, SemanticIndex
 from hina_bot.core.memory_context import CURRENT_MEMORY_CONTEXT, build_memory_context
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
+from .embedding_backend import GeminiEmbeddingBackend, GeminiEmbeddingConfig
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode, is_live_domain
 from .information_evidence import SearchDecision, search_decision
@@ -70,6 +79,9 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         super().__init__(settings, client=client)
         self.ambient_weather = AmbientWeatherCache()
         self._routing_shadow_tasks: set[asyncio.Task] = set()
+        self._retrieval_shadow_tasks: set[asyncio.Task] = set()
+        self._retrieval_embedding_backend = None
+        self.retrieval_v2 = self._build_retrieval_v2_engine()
         self.routing_classifier_client = classifier_client
         if settings.routing_classifier_mode != "off":
             if self.routing_classifier_client is None:
@@ -97,12 +109,231 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     async def close(self):
         if self._routing_shadow_tasks:
             await asyncio.gather(*tuple(self._routing_shadow_tasks), return_exceptions=True)
+        if self._retrieval_shadow_tasks:
+            await asyncio.gather(*tuple(self._retrieval_shadow_tasks), return_exceptions=True)
         await self.ambient_weather.close()
         try:
             if self.routing_classifier_client is not None:
                 await self.routing_classifier_client.close()
+            if self._retrieval_embedding_backend is not None:
+                await self._retrieval_embedding_backend.close()
         finally:
             await super().close()
+
+    @staticmethod
+    def _semantic_calibration(reject, strong, backend):
+        if reject is None or strong is None or backend is None:
+            return None
+        return SemanticCalibration(backend.cache_key, reject, strong)
+
+    def _build_retrieval_v2_engine(self):
+        factual_pair = (
+            self.settings.retrieval_v2_factual_reject,
+            self.settings.retrieval_v2_factual_strong,
+        )
+        ambient_pair = (
+            self.settings.retrieval_v2_ambient_reject,
+            self.settings.retrieval_v2_ambient_strong,
+        )
+        semantic_requested = any(value is not None for value in (*factual_pair, *ambient_pair))
+        index = None
+        backend = None
+        if semantic_requested and self.settings.gemini_api_key.strip():
+            backend = GeminiEmbeddingBackend(
+                self.settings.gemini_api_key,
+                config=GeminiEmbeddingConfig(
+                    dimensions=self.settings.retrieval_v2_embedding_dimensions,
+                ),
+            )
+            index = SemanticIndex(backend)
+            self._retrieval_embedding_backend = backend
+        elif semantic_requested:
+            log.warning("Retrieval v2 calibration configured without GEMINI_API_KEY; semantic disabled")
+
+        return RetrievalV2Engine(
+            self.lore,
+            semantic_index=index,
+            factual_calibration=self._semantic_calibration(*factual_pair, backend),
+            ambient_calibration=self._semantic_calibration(*ambient_pair, backend),
+            budgets=RetrievalV2Budgets(
+                max_items=self.settings.lore_max_items,
+                max_chars=self.settings.lore_max_chars,
+            ),
+        )
+
+    def _retrieval_v2_candidates(self):
+        candidates = []
+        for registry in (self.runtime_lore, self.story_context):
+            try:
+                candidates.extend(registry.candidates())
+            except ValueError as exc:
+                log.warning("Retrieval v2 runtime candidates ignored: %s", type(exc).__name__)
+        return tuple(candidates)
+
+    @staticmethod
+    def _recent_same_speaker(channel_rows, user_id):
+        current = str(user_id)
+        rows = []
+        for row in reversed(channel_rows or ()):
+            author = str(row.get("author_user_id") or row.get("user_id") or "")
+            content = row.get("content")
+            if row.get("role") != "user" or author != current or not isinstance(content, str):
+                continue
+            if content.strip():
+                rows.append(content)
+            if len(rows) >= 2:
+                break
+        return tuple(reversed(rows))
+
+    @staticmethod
+    def _relationship_signal(store, scope, *, use_memory):
+        if not use_memory:
+            return ""
+        try:
+            context = structured_memory_context(
+                store,
+                scope,
+                use_memory=True,
+                allow_cross_space=True,
+            )
+        except (TypeError, ValueError):
+            return ""
+        profile = (
+            context.get("owner_relationship_profile")
+            if scope.guild_id is None
+            else context.get("cross_space_relationship")
+        ) or {}
+        if not isinstance(profile, dict):
+            return ""
+        parts = [
+            f"{key} {value}/4"
+            for key, value in sorted(profile.items())
+            if isinstance(key, str) and type(value) is int and 0 < value <= 4
+        ]
+        return ", ".join(parts)[:240]
+
+    async def _run_retrieval_v2(
+        self,
+        routing,
+        *,
+        store,
+        scope,
+        channel_rows,
+        use_memory,
+    ):
+        request = build_resolved_retrieval_request(
+            routing,
+            call_prefixes=self._call_prefixes(),
+        )
+        scene = AmbientSceneContext(
+            rp_entity="character.hina",
+            recent_same_speaker=self._recent_same_speaker(channel_rows, scope.user_id),
+            relationship_signal=self._relationship_signal(
+                store, scope, use_memory=use_memory,
+            ),
+        )
+        async with asyncio.timeout(self.settings.retrieval_v2_timeout_seconds):
+            return await self.retrieval_v2.retrieve(
+                request,
+                runtime_candidates=self._retrieval_v2_candidates(),
+                scene=scene,
+            )
+
+    def _emit_retrieval_v2(self, mode, status, legacy_references, result=None, **extra):
+        fields = {
+            "status": status,
+            "retrieval_v2_mode": mode,
+            **extra,
+        }
+        if result is not None:
+            fields.update(comparison_metrics(legacy_references, result))
+        self.usage.routing_event("retrieval.v2", **fields)
+
+    async def _observe_retrieval_v2(
+        self,
+        routing,
+        legacy_references,
+        *,
+        store,
+        scope,
+        channel_rows,
+        use_memory,
+    ):
+        try:
+            result = await self._run_retrieval_v2(
+                routing,
+                store=store,
+                scope=scope,
+                channel_rows=channel_rows,
+                use_memory=use_memory,
+            )
+        except TimeoutError:
+            self._emit_retrieval_v2("shadow", "timeout", legacy_references)
+            return
+        except Exception as exc:  # noqa: BLE001 - shadow must never affect answer path
+            self._emit_retrieval_v2(
+                "shadow", "failed", legacy_references,
+                retrieval_error_type=type(exc).__name__,
+            )
+            return
+        self._emit_retrieval_v2("shadow", "completed", legacy_references, result)
+
+    def _start_retrieval_v2_shadow(
+        self,
+        routing,
+        legacy_references,
+        *,
+        store,
+        scope,
+        channel_rows,
+        use_memory,
+    ):
+        if len(self._retrieval_shadow_tasks) >= 2:
+            self._emit_retrieval_v2(
+                "shadow", "skipped_backpressure", legacy_references,
+            )
+            return
+        task = asyncio.create_task(self._observe_retrieval_v2(
+            routing,
+            legacy_references,
+            store=store,
+            scope=scope,
+            channel_rows=tuple(channel_rows or ()),
+            use_memory=use_memory,
+        ))
+        self._retrieval_shadow_tasks.add(task)
+        task.add_done_callback(self._finish_retrieval_v2_shadow)
+
+    def _finish_retrieval_v2_shadow(self, task):
+        self._retrieval_shadow_tasks.discard(task)
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:  # pragma: no cover - defensive callback isolation
+            log.warning("Retrieval v2 shadow task failed (%s)", type(exc).__name__)
+
+    def _activate_retrieval_v2(self, information, result):
+        references = bundle_references(result.bundle)
+        search_mode = information.search_mode
+        search_reason = information.search_reason
+        search_locked = information.search_locked
+        if information.route == InformationRoute.LOCAL_THEN_WEB:
+            search_mode = "none" if result.evidence.sufficient else "required"
+            search_reason = result.evidence.reason
+            search_locked = True
+        return replace(
+            information,
+            references=references,
+            search_mode=search_mode,
+            provenance=provenance_mode(
+                information.routing.routing_query,
+                web_search=search_mode == "required",
+            ),
+            search_locked=search_locked,
+            search_reason=search_reason,
+            search_decision_source="retrieval_v2",
+        )
 
     def _start_shadow_classification(
         self,
