@@ -283,7 +283,7 @@ class RetrievalV2Engine:
             ambient_result = await self.ambient.retrieve(request, scene, candidates)
 
         reaction_rows = rank_reactions(request, candidates)
-        budget = self.budgets
+        budget = budgets or self.budgets
         bundle = BundleComposer(
             {
                 KnowledgeUsage.RELATION: UsageBudget(budget.relation_items, budget.max_chars),
