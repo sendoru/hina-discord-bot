@@ -13,7 +13,7 @@ from hina_bot.core.scope_overrides import (
 )
 from hina_bot.core.store import Store
 from hina_bot.discord.chatlog_capture import capture_mode_overrides
-from hina_bot.discord.chatlog_commands import ChatLogCommands, _set_mode_override
+from hina_bot.discord.chatlog_commands import _set_mode_override
 from hina_bot.discord.state_commands import StateCommands, effective_state_text
 
 
@@ -37,8 +37,7 @@ def _interaction(*, guild_id=1, channel_id=10, user_id=100):
 @pytest.fixture
 def state_context():
     store = Store(":memory:")
-    # Migrate chatlog config before reading effective policies, as the runtime does.
-    ChatLogCommands(NS(store=store, emoji_admin_ids={100}))
+    # Store initialization performs the legacy chatlog migration independently of commands.
     client = NS(store=store, emoji_admin_ids={100})
     yield store, StateCommands(client)
     store.close()
