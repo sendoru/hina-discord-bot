@@ -5,6 +5,10 @@ import logging
 import re
 from dataclasses import replace
 
+from hina_bot.core.evidence_sufficiency import (
+    assess_local_evidence,
+    selected_evidence_bundle,
+)
 from hina_bot.core.memory_context import CURRENT_MEMORY_CONTEXT, build_memory_context
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
@@ -23,6 +27,7 @@ from .model_routing import baseline_route_state, build_model_plan
 from .note_context import NoteContextStore
 from .reference_gated_recall import plan_reference_gated_recall
 from .request_assembly import RequestAssembler
+from .retrieval_request import build_resolved_retrieval_request
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
 from .semantic_model_routing import (
@@ -157,11 +162,68 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         request = classify_information_request(content, call_prefixes=self._call_prefixes())
         return super().lore_references(request.lore_query)
 
+    def _selected_local_evidence_candidates(self, references):
+        identifiers = [
+            row.get("reference")
+            for row in references
+            if isinstance(row.get("reference"), str)
+        ]
+        if not identifiers:
+            return (), ()
+
+        candidates = []
+        try:
+            for name in ("runtime_lore", "story_context"):
+                registry = getattr(self, name, None)
+                reader = getattr(registry, "candidates", None)
+                if callable(reader):
+                    candidates.extend(reader())
+            lore = getattr(self, "lore", None)
+            reader = getattr(lore, "candidates", None)
+            if callable(reader):
+                candidates.extend(reader(
+                    include_community=getattr(self.settings, "community_lore", True),
+                ))
+        except ValueError as exc:
+            log.warning("Structured local evidence ignored: %s", type(exc).__name__)
+            return (), ()
+
+        by_reference = {
+            candidate.reference or candidate.candidate_id: candidate
+            for candidate in candidates
+        }
+        selected = tuple(
+            by_reference[identifier]
+            for identifier in identifiers
+            if identifier in by_reference
+        )
+        return selected, tuple(candidates)
+
+    def _local_evidence_assessment(
+        self,
+        content,
+        references,
+        *,
+        routing: RoutingPlan | None = None,
+    ):
+        selected, supporting = self._selected_local_evidence_candidates(references)
+        request = build_resolved_retrieval_request(
+            routing or RoutingPlan(content, content),
+            call_prefixes=self._call_prefixes(),
+        )
+        return assess_local_evidence(
+            request,
+            selected_evidence_bundle(selected),
+            supporting_candidates=supporting,
+        )
+
     def _web_search_decision(
         self,
         content,
         references,
         freshness=None,
+        *,
+        routing: RoutingPlan | None = None,
     ) -> SearchDecision:
         request = classify_information_request(
             content,
@@ -170,11 +232,17 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         )
         if self._looks_like_in_world_present_state(content, references, request.freshness):
             return SearchDecision("none", True, "in_world_present_state")
+        local_evidence = (
+            self._local_evidence_assessment(content, references, routing=routing)
+            if request.route == InformationRoute.LOCAL_THEN_WEB
+            else None
+        )
         return search_decision(
             request,
             references,
             enabled=self.settings.chat_web_search,
             default_location=getattr(self.settings, "runtime_default_location", ""),
+            local_evidence=local_evidence,
         )
 
     @staticmethod
@@ -195,7 +263,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         fact_question = self._looks_like_world_fact_question(query) and not (
             freshness == FreshnessMode.REQUIRED and is_live_domain(query)
         )
-        web = self._web_search_decision(query, references, freshness)
+        web = self._web_search_decision(query, references, freshness, routing=routing)
         return InformationPlan(
             routing=routing,
             route=request.route,
