@@ -5,7 +5,7 @@ import re
 from datetime import UTC, datetime
 
 from .admin_db import AdminDatabase
-from .knowledge_retrieval import KnowledgeCandidate, lexical_search
+from .knowledge_retrieval import KnowledgeCandidate, KnowledgeUsage, lexical_search
 
 KNOWLEDGE_LEVELS = {
     "self", "direct_experience", "reported", "public_knowledge", "inference",
@@ -298,6 +298,10 @@ class RuntimeKnowledgeRegistry:
                 awareness=row["awareness"],
                 time=row["timeline"],
                 metadata=metadata,
+                usages=(KnowledgeUsage.FACTUAL,),
+                # Runtime schema has no reviewed confidence, canonical entities or source lane.
+                # Do not synthesize official evidence from admin ownership or kind=world_fact.
+                fact_type="inference" if self.kind == "interpretation" else None,
             ))
         return candidates
 

@@ -71,11 +71,19 @@ memory/chatlog 설정 자체는 유지합니다.
 | `/config set key:<설정> value:<값>` | 일반 runtime DB override 저장 후 즉시 적용 |
 | `/config reset key:<설정>` | 일반 runtime DB override 삭제 후 시작 시 값으로 복귀 |
 
-`/config set/reset` 대상은 `LLM_MODEL`, `LLM_FAST_MODEL`, `LLM_SMART_MODEL`,
-`GEMINI_THINKING_LEVEL`, `GEMINI_FAST_THINKING_LEVEL`, `GEMINI_SMART_THINKING_LEVEL`,
-`GEMINI_STORE_INTERACTIONS`, `CALL_PREFIXES`, `DM_ALWAYS_REPLY`, `ALWAYS_REPLY_CHANNEL_IDS`, `PUBLIC_SERVER_MEMORY_IN_DM`,
-`CHAT_WEB_SEARCH`, `COMMUNITY_LORE`, `MAX_OUTPUT_TOKENS`, `CHANNEL_CONTEXT_CHARS`,
-`HISTORY_MAX_CHARS`, `LORE_MAX_ITEMS`, `LORE_MAX_CHARS`, `RUNTIME_DEFAULT_LOCATION`입니다.
+`/config set/reset` 대상은 `MODEL_ROUTING_MODE`, `LLM_MODEL`, `LLM_FAST_MODEL`,
+`LLM_SMART_MODEL`, `MAX_OUTPUT_TOKENS`, `FAST_MAX_OUTPUT_TOKENS`,
+`SMART_MAX_OUTPUT_TOKENS`, `MEMORY_MAX_OUTPUT_TOKENS`,
+`ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS`, `GEMINI_THINKING_LEVEL`,
+`GEMINI_FAST_THINKING_LEVEL`, `GEMINI_SMART_THINKING_LEVEL`,
+`GEMINI_STORE_INTERACTIONS`, `GEMINI_STORE_CLASSIFIER_INTERACTIONS`, `CALL_PREFIXES`,
+`EMPTY_CALL_REPLY`, `SPECIAL_DM_EMPTY_CALL_REPLY`, `EMPTY_RESPONSE_REPLY`,
+`DM_ALWAYS_REPLY`, `ALWAYS_REPLY_CHANNEL_IDS`, `COOLDOWN_SECONDS`,
+`PUBLIC_SERVER_MEMORY_IN_DM`, `CHAT_WEB_SEARCH`, `COMMUNITY_LORE`,
+`CHANNEL_CONTEXT_CHARS`, `HISTORY_MAX_CHARS`, `SUMMARY_EVERY`,
+`STRUCTURED_MEMORY_EVERY`, `STRUCTURED_MEMORY_STALE_AFTER_SECONDS`,
+`LORE_MAX_ITEMS`, `LORE_MAX_CHARS`, `RUNTIME_TIMEZONE`, `RUNTIME_LOCALE`,
+`RUNTIME_DEFAULT_LOCATION`입니다.
 `EXTERNAL_CONTEXT_POLICY`는 프라이버시 경계라는 의미가 드러나도록 `/config privacy`에서 별도로
 관리합니다.
 
@@ -83,10 +91,15 @@ memory/chatlog 설정 자체는 유지합니다.
 값은 여전히 배포 기본값으로 사용할 수 있고, `/config reset`은 해당 DB override만 지웁니다.
 `RUNTIME_DEFAULT_LOCATION`을 명시적으로 비우려면 `/config set`의 value에 `none`을 사용합니다.
 `CALL_PREFIXES`는 쉼표 구분 문자열, `ALWAYS_REPLY_CHANNEL_IDS`는 쉼표 구분 Discord 채널 ID 목록,
-불리언 값은 `on/off` 또는 `true/false`를 받습니다. `GEMINI_STORE_INTERACTIONS`는 기본적으로
-꺼져 있으며, 켜면 일반 채팅 answer뿐 아니라 classifier, memory summary, identity resolution 등
-Gemini adapter를 거치는 모든 요청의 interaction이 provider 측에 저장되어 AI Studio Logs에서
-디버깅할 수 있습니다.
+불리언 값은 `on/off` 또는 `true/false`를 받습니다. 설정 수가 Discord의 정적 choice
+한도를 넘기므로 `/config set/reset`의 key는 autocomplete로 검색합니다. `FAST_MAX_OUTPUT_TOKENS`는
+항상 `SMART_MAX_OUTPUT_TOKENS` 이하여야 하고, `SUMMARY_EVERY`와
+`STRUCTURED_MEMORY_EVERY`는 시작 시 `HISTORY_TURNS` 이하여야 합니다.
+`SPECIAL_DM_EMPTY_CALL_REPLY`를 비우려면 value에 `none`을 사용할 수 있습니다.
+`GEMINI_STORE_INTERACTIONS`는 기본적으로
+꺼져 있으며, 켜면 일반 채팅 answer interaction만 provider 측에 저장됩니다.
+semantic/web routing classifier 저장은 `GEMINI_STORE_CLASSIFIER_INTERACTIONS`로 별도 제어하며,
+기본값은 꺼짐입니다. memory summary·identity resolution 같은 다른 내부 보조 호출은 저장하지 않습니다.
 
 `ALWAYS_REPLY_CHANNEL_IDS` 지정 채널에서는 사람의 일반 메시지도 직접 대화 턴으로 취급하지만,
 다른 봇은 호출어 또는 멘션/답장 핑이 있을 때만 응답합니다. 이 목록을

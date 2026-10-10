@@ -1,3 +1,4 @@
+import asyncio
 import json
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
@@ -5,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hina_bot.ai.providers import ProviderAPIError
-from hina_bot.ai.usage import UsageLogger
+from hina_bot.ai.usage import ModelResponseError, UsageLogger
 from hina_bot.core.observability import CURRENT_TURN_ID
 
 
@@ -69,6 +70,96 @@ async def test_usage_success_and_error_do_not_log_content(tmp_path):
     assert first['web_search_used'] is False
     assert second['error_type'] == 'ValueError'
     assert 'total_tokens' not in second
+
+
+@pytest.mark.asyncio
+async def test_request_deadline_logs_timeout_without_failed_api_call(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    started = asyncio.Event()
+
+    async def blocked_request(**_kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    client = NS(responses=NS(create=AsyncMock(side_effect=blocked_request)))
+
+    with logger.exchange("guild"), pytest.raises(TimeoutError):
+        await logger.request(
+            client,
+            "model_route_classify",
+            model="classifier",
+            input="secret",
+            deadline_seconds=0.01,
+        )
+    logger.close()
+
+    await started.wait()
+    detail = json.loads(path.read_text())
+    assert detail["status"] == "timeout"
+    assert detail["timeout_source"] == "request_deadline"
+    assert detail["timeout_seconds"] == pytest.approx(0.01)
+    assert "error_type" not in detail
+
+    exchange = json.loads((tmp_path / "discord-usage.jsonl").read_text())
+    assert exchange["status"] == "completed"
+    assert exchange["failed_calls"] == 0
+    assert exchange["operations"]["model_route_classify"]["failed_calls"] == 0
+
+
+@pytest.mark.asyncio
+async def test_request_deadline_does_not_swallow_real_task_cancellation(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    started = asyncio.Event()
+
+    async def blocked_request(**_kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    client = NS(responses=NS(create=AsyncMock(side_effect=blocked_request)))
+    task = asyncio.create_task(
+        logger.request(
+            client,
+            "model_route_classify",
+            model="classifier",
+            input="secret",
+            deadline_seconds=10,
+        )
+    )
+    await started.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    logger.close()
+
+    row = json.loads(path.read_text())
+    assert row["status"] == "error"
+    assert row["error_type"] == "CancelledError"
+    assert "timeout_source" not in row
+
+
+@pytest.mark.asyncio
+async def test_provider_timeout_remains_an_api_error_with_request_deadline(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    client = NS(responses=NS(create=AsyncMock(side_effect=TimeoutError())))
+
+    with pytest.raises(TimeoutError):
+        await logger.request(
+            client,
+            "model_route_classify",
+            model="classifier",
+            input="secret",
+            deadline_seconds=10,
+        )
+    logger.close()
+
+    row = json.loads(path.read_text())
+    assert row["status"] == "error"
+    assert row["error_type"] == "TimeoutError"
+    assert "timeout_source" not in row
 
 
 @pytest.mark.asyncio
@@ -139,7 +230,12 @@ async def test_missing_usage_is_unknown(tmp_path):
     path = tmp_path / 'usage.jsonl'
     logger = UsageLogger(str(path))
     incomplete = NS(
-        status='incomplete', output=[], _hina_error_codes=['budget_exceeded'], usage=None)
+        status='incomplete',
+        output_text='',
+        output=[],
+        _hina_error_codes=['budget_exceeded'],
+        usage=None,
+    )
     client = NS(responses=NS(create=AsyncMock(return_value=incomplete)))
     await logger.request(client, 'answer', model='test')
     logger.close()
@@ -147,6 +243,61 @@ async def test_missing_usage_is_unknown(tmp_path):
     assert row['input_tokens'] is None
     assert row['status'] == 'incomplete'
     assert row['response_error_codes'] == ['budget_exceeded']
+    assert row['response_has_visible_text'] is False
+    assert row['response_output_types'] == []
+
+
+@pytest.mark.asyncio
+async def test_incomplete_response_diagnostics_reach_exchange_without_content(tmp_path):
+    path = tmp_path / 'usage.jsonl'
+    logger = UsageLogger(str(path))
+    incomplete = NS(
+        status='incomplete',
+        output_text='',
+        output=[NS(type='thought'), NS(type='message')],
+        _hina_error_codes=['budget_exceeded'],
+        usage=NS(
+            input_tokens=7173,
+            output_tokens=81,
+            total_tokens=8169,
+            input_tokens_details=NS(cached_tokens=0),
+            output_tokens_details=NS(reasoning_tokens=915),
+        ),
+    )
+    client = NS(provider_name='gemini', responses=NS(create=AsyncMock(return_value=incomplete)))
+
+    with pytest.raises(ModelResponseError), logger.exchange('guild'):
+        response_value = await logger.request(
+            client,
+            'answer',
+            model='gemini-test',
+            input='secret user message',
+        )
+        raise ModelResponseError('gemini', response_value, has_visible_text=False)
+    logger.close()
+
+    detail = json.loads(path.read_text())
+    assert detail['status'] == 'incomplete'
+    assert detail['response_error_codes'] == ['budget_exceeded']
+    assert detail['response_output_types'] == ['thought', 'message']
+    assert detail['response_has_visible_text'] is False
+    assert detail['input_tokens'] == 7173
+    assert detail['output_tokens'] == 81
+    assert detail['reasoning_tokens'] == 915
+
+    exchange = json.loads((tmp_path / 'discord-usage.jsonl').read_text())
+    assert exchange['status'] == 'error'
+    assert exchange['error_type'] == 'ModelResponseError'
+    assert exchange['provider'] == 'gemini'
+    assert exchange['provider_response_status'] == 'incomplete'
+    assert exchange['provider_error_code'] == 'NON_COMPLETED_RESPONSE'
+    assert exchange['provider_response_error_codes'] == ['budget_exceeded']
+    assert exchange['provider_output_types'] == ['thought', 'message']
+    assert exchange['provider_has_visible_text'] is False
+    assert exchange['provider_input_tokens'] == 7173
+    assert exchange['provider_output_tokens'] == 81
+    assert exchange['provider_reasoning_tokens'] == 915
+    assert 'secret user message' not in json.dumps(exchange)
 
 
 @pytest.mark.asyncio
@@ -408,6 +559,7 @@ def test_context_size_event_keeps_only_numeric_attribution(tmp_path):
             instruction_base_chars=300,
             instruction_reference_chars=200,
             instruction_identity_chars=150,
+            instruction_world_core_chars=45,
             instruction_character_chars=250,
             instruction_relationship_chars=100,
             instruction_runtime_chars=80,
@@ -435,6 +587,7 @@ def test_context_size_event_keeps_only_numeric_attribution(tmp_path):
     assert row["operation"] == "context.size"
     assert row["context_chars_total"] == 1200
     assert row["instruction_chars"] == 1400
+    assert row["instruction_world_core_chars"] == 45
     assert row["instruction_character_chars"] == 250
     assert row["instruction_search_chars"] == 60
     assert row["instruction_separator_chars"] == 10

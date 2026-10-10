@@ -5,7 +5,7 @@
 {% for row in data.rows %}
 <article class="mobile-result-card">
   {% if kind == "traces" %}
-  <div class="mobile-result-head">{{ status_badge(row.status) }}<time>{{ row.at | localtime }}</time></div>
+  <div class="mobile-result-head"><span class="trace-status">{{ status_badge(row.status, row.degraded, row.issue_count) }}</span><time>{{ row.at | localtime }}</time></div>
   <a class="mobile-result-title" href="{{ detail_url('/traces/' ~ row.turn_id, request, '/traces') }}">Trace <code>{{ row.turn_id }}</code></a>
   <p>{{ row.scope or "—" }} · {{ row.models | join(", ") or "—" }}</p>
   <details><summary>메타데이터</summary>
@@ -15,7 +15,7 @@
       <div><dt>Reply latency</dt><dd>{{ row.reply_latency_ms ~ " ms" if row.reply_latency_ms is not none else "—" }}</dd></div>
       <div><dt>Turn total</dt><dd>{{ row.turn_latency_ms ~ " ms" if row.turn_latency_ms is not none else "—" }}</dd></div>
       <div><dt>Search</dt><dd>{{ row.web_search_calls if row.web_search else "—" }}</dd></div>
-      <div><dt>Error</dt><dd><code>{{ row.error_fingerprint or ("yes" if row.error else "—") }}</code></dd></div>
+      <div><dt>Issues</dt><dd>{{ row.issue_count or "—" }}</dd></div>
       <div><dt>Memory failures</dt><dd>{{ row.memory_failures }}</dd></div>
       <div><dt>Stored</dt><dd>{{ "yes" if row.stored else "no" }}</dd></div>
     </dl>

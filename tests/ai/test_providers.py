@@ -693,7 +693,7 @@ async def test_gemini_non_search_requests_stay_on_interactions():
 
 
 @pytest.mark.asyncio
-async def test_gemini_store_setting_overrides_per_request_false_for_all_endpoints():
+async def test_gemini_respects_per_request_store_for_all_endpoints():
     seen = []
 
     async def handler(request: httpx.Request):
@@ -714,52 +714,20 @@ async def test_gemini_store_setting_overrides_per_request_false_for_all_endpoint
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
-        responses = _GeminiResponses(http, store_interactions=True)
-        await responses.create(
-            model="gemini-test",
-            input="plain",
-            store=False,
-        )
+        responses = _GeminiResponses(http)
+        await responses.create(model="gemini-test", input="plain", store=False)
         await responses.create(
             model="gemini-test",
             input="search",
-            store=False,
+            store=True,
             tools=[{"type": "web_search"}],
         )
     finally:
         await http.aclose()
 
-    assert [payload["store"] for _, payload in seen] == [True, True]
+    assert [payload["store"] for _, payload in seen] == [False, True]
     assert seen[0][0].endswith("/v1beta/interactions")
     assert seen[1][0].endswith("/v1beta/models/gemini-test:generateContent")
-
-
-@pytest.mark.asyncio
-async def test_gemini_store_setting_callable_is_read_for_each_request():
-    seen = []
-    state = {"enabled": False}
-
-    async def handler(request: httpx.Request):
-        seen.append(__import__("json").loads(request.content))
-        return httpx.Response(200, json={
-            "status": "completed",
-            "steps": [],
-            "usage": {},
-        })
-
-    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    try:
-        responses = _GeminiResponses(
-            http,
-            store_interactions=lambda: state["enabled"],
-        )
-        await responses.create(model="gemini-test", input="first", store=False)
-        state["enabled"] = True
-        await responses.create(model="gemini-test", input="second", store=False)
-    finally:
-        await http.aclose()
-
-    assert [payload["store"] for payload in seen] == [False, True]
 
 
 @pytest.mark.asyncio

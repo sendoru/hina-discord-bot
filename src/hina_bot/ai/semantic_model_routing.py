@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from dataclasses import dataclass, replace
 
@@ -132,7 +131,9 @@ def _classifier_input(payload: dict, visual_inputs) -> str | list[dict]:
         })
         content.append({
             "type": "input_image",
-            "image_url": visual.input_url(),
+            # Classifier latency is bounded tightly. Reuse the already-validated bytes
+            # instead of making the provider fetch the Discord CDN URL again.
+            "image_url": visual.data_url(),
             "detail": "auto",
         })
     return [{"role": "user", "content": content}]
@@ -309,7 +310,10 @@ class SemanticModelRouter:
             "instructions": _CLASSIFIER_POLICY,
             "input": _classifier_input(payload, visual_inputs),
             "max_output_tokens": self.settings.routing_classifier_max_output_tokens,
-            "store": False,
+            "store": (
+                self.settings.routing_classifier_provider == "gemini"
+                and self.settings.gemini_store_classifier_interactions
+            ),
         }
         if self.settings.routing_classifier_provider == "gemini":
             request["thinking_level"] = "minimal"
@@ -333,15 +337,13 @@ class SemanticModelRouter:
             "search_route_reason": information.search_reason,
         }
         try:
-            response = await asyncio.wait_for(
-                self.usage.request(
-                    self.client,
-                    "model_route_classify",
-                    route_metadata=metadata,
-                    accumulate=self.settings.routing_classifier_mode != "shadow",
-                    **request,
-                ),
-                timeout=self.settings.routing_classifier_timeout_seconds,
+            response = await self.usage.request(
+                self.client,
+                "model_route_classify",
+                route_metadata=metadata,
+                accumulate=self.settings.routing_classifier_mode != "shadow",
+                deadline_seconds=self.settings.routing_classifier_timeout_seconds,
+                **request,
             )
         except TimeoutError:
             return ClassificationOutcome("timeout")

@@ -225,9 +225,10 @@ async def test_classifier_receives_task_linked_visuals_but_not_ambient_visuals()
 
     image_blocks = [block for block in content if block["type"] == "input_image"]
     assert [block["image_url"] for block in image_blocks] == [
-        "https://cdn.discordapp.com/attachments/1/10/current.png?ex=signed",
-        "https://cdn.discordapp.com/attachments/1/11/thread.png?ex=signed",
+        visuals[0].data_url(),
+        visuals[1].data_url(),
     ]
+    assert all("cdn.discordapp.com" not in block["image_url"] for block in image_blocks)
     assert all(block["detail"] == "auto" for block in image_blocks)
     metadata_blocks = [
         json.loads(block["text"].removeprefix("Untrusted visual evidence metadata(JSON):"))
@@ -250,7 +251,7 @@ async def test_classifier_receives_task_linked_visuals_but_not_ambient_visuals()
 
 
 @pytest.mark.asyncio
-async def test_classifier_visual_without_uri_falls_back_to_inline_base64():
+async def test_classifier_visual_with_uri_still_uses_inline_base64():
     config = settings()
     classifier_client = client(response(classification()))
     router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
@@ -261,6 +262,7 @@ async def test_classifier_visual_without_uri_falls_back_to_inline_base64():
         source="attachment",
         context_kind="current_message",
         reference_strength="current_message",
+        uri="https://cdn.discordapp.com/attachments/1/12/fallback.png?ex=signed",
     )
 
     outcome = await router.classify(
@@ -273,7 +275,8 @@ async def test_classifier_visual_without_uri_falls_back_to_inline_base64():
     request = classifier_client.responses.create.await_args.kwargs
     content = request["input"][0]["content"]
     image = next(block for block in content if block["type"] == "input_image")
-    assert image["image_url"].startswith("data:image/png;base64,")
+    assert image["image_url"] == visual.data_url()
+    assert "cdn.discordapp.com" not in image["image_url"]
     assert image["detail"] == "auto"
 
 

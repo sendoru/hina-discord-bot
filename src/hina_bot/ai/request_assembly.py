@@ -29,6 +29,7 @@ from .structured_memory_context import (
     structured_memory_context,
     structured_memory_provenance,
 )
+from .usage import ModelResponseError
 from .vision import CURRENT_VISUAL_INPUTS
 from .web_search_runtime import tool_config
 from .web_search_text import response_text
@@ -99,6 +100,8 @@ def _reference_instruction_parts(context: dict) -> tuple[str, ...]:
 CURRENT_SPEAKER_POLICY = load_prompt("current_speaker.md")
 
 CURRENT_INTERACTION_POLICY = load_prompt("current_interaction.md")
+
+WORLD_CORE_POLICY = load_prompt("world_core.md")
 
 TURN_RESPONSE_POLICY = load_prompt("turn_response.md")
 
@@ -516,6 +519,7 @@ class RequestAssembler(BaseLLM):
             reference_policies[0],
             CURRENT_SPEAKER_POLICY,
             CURRENT_INTERACTION_POLICY,
+            WORLD_CORE_POLICY,
             self.character,
             relationship_policy,
             capability_policy,
@@ -528,6 +532,7 @@ class RequestAssembler(BaseLLM):
             "instruction_identity_chars": (
                 len(CURRENT_SPEAKER_POLICY) + len(CURRENT_INTERACTION_POLICY)
             ),
+            "instruction_world_core_chars": len(WORLD_CORE_POLICY),
             "instruction_character_chars": len(self.character),
             "instruction_relationship_chars": len(relationship_policy),
             "instruction_runtime_chars": len(runtime_policy) + len(capability_policy),
@@ -711,7 +716,11 @@ class RequestAssembler(BaseLLM):
 
         text = response_text(response, hide_citations=hide_web_citations(provenance))
         if response.status != "completed" or not text:
-            raise ValueError("No completed model response")
+            raise ModelResponseError(
+                self.settings.provider,
+                response,
+                has_visible_text=bool(text.strip()),
+            )
         return text[:3500]
 
 
