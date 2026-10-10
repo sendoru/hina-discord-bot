@@ -49,6 +49,10 @@ class HybridResult:
     cache_hits: int = 0
     cache_misses: int = 0
     elapsed_ms: float = 0.0
+    lexical_selected: int = 0
+    semantic_only_selected: int = 0
+    embedding_prompt_tokens: int | None = 0
+    embedding_requests: int = 0
 
 
 def eligible_candidates(
@@ -137,6 +141,8 @@ class HybridRetriever:
         status = "unavailable"
         semantic_hits = None
         hits = misses = 0
+        prompt_tokens: int | None = 0
+        embedding_requests = 0
 
         if strong:
             status = "lexical_short_circuit"
@@ -150,10 +156,14 @@ class HybridRetriever:
                         result = await self.index.search(query, rows, top_k=len(rows))
                     semantic_hits = result.hits
                     hits, misses = result.cache_hits, result.cache_misses
+                    usage = result.candidate_usage + result.query_usage
+                    prompt_tokens = usage.prompt_token_count
+                    embedding_requests = usage.request_count
                     status = "available"
                 except Exception:  # noqa: BLE001 - optional backend must never fail an answer
                     status = "failed"
 
+        lexical_ranked = rank_factual(request, rows, config, semantic_hits=None)
         ranked = rank_factual(request, rows, config, semantic_hits=semantic_hits)
         return HybridResult(
             tuple(ranked),
@@ -161,4 +171,8 @@ class HybridRetriever:
             hits,
             misses,
             (perf_counter() - started) * 1000,
+            len(lexical_ranked),
+            max(0, len(ranked) - len(lexical_ranked)),
+            prompt_tokens,
+            embedding_requests,
         )
