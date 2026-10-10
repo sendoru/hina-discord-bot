@@ -4,6 +4,7 @@ import sys
 import time
 import weakref
 from contextlib import ExitStack, asynccontextmanager, nullcontext
+from contextvars import ContextVar
 from datetime import timedelta
 
 import discord
@@ -39,6 +40,8 @@ USER_ONLY_ALLOWED_MENTIONS = discord.AllowedMentions(
 )
 BOT_TRIGGER_CHAIN_LIMIT = 2
 BOT_TRIGGER_CHAIN_WINDOW_SECONDS = 15.0
+# The production wrapper owns typing across preflight and generation.
+CURRENT_TYPING_ACTIVE = ContextVar("current_typing_active", default=False)
 
 
 @asynccontextmanager
@@ -705,7 +708,11 @@ class HinaClient(discord.Client):
                             timings["slot_wait_ms"] = round(
                                 (time.perf_counter() - slot_started) * 1000
                             )
-                            async with message.channel.typing():
+                            async with (
+                                nullcontext()
+                                if CURRENT_TYPING_ACTIVE.get()
+                                else message.channel.typing()
+                            ):
                                 stage = "context"
                                 context_started = time.perf_counter()
                                 sources = (
