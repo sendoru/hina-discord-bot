@@ -35,6 +35,9 @@ class KnowledgeCommands(app_commands.Group):
         self.context_registry = getattr(
             client.llm, "story_context", RuntimeKnowledgeRegistry(None, kind="interpretation"))
         self.ingestor = KnowledgeIngestor(client.llm)
+        # Dashboard owns knowledge browsing and CRUD. Ingest remains until #333.
+        for name in ("list", "show", "enable", "disable", "remove"):
+            self.remove_command(name)
 
     async def interaction_check(self, interaction):
         if interaction.user.id not in self.client.emoji_admin_ids:

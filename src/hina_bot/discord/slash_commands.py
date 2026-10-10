@@ -13,19 +13,19 @@ from .note_commands import NoteCommands
 
 log = logging.getLogger("hina")
 
-_ADMIN_MEMORY_COMMANDS = {"mode", "status", "overview", "purge"}
+_ADMIN_MEMORY_COMMANDS = {"mode", "status", "purge"}
 _EMOJI_ALIAS_RE = re.compile(r"[a-z][a-z0-9_]{1,31}")
 
 HELP_TEXT = """히나와 DM으로 대화하려면 이 도움말 메시지의 히나 프로필을 눌러 `메시지 보내기`를 선택해 주세요.
 DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니다.
 
 서버에서는 @멘션, 답장 핑, 또는 메시지 맨 앞의 `히나야`로 호출해 주세요.
-관리·설정 기능은 Discord 슬래시 명령으로만 사용합니다.
+현재 서버·채널을 빠르게 조정할 때는 슬래시 명령을, 전체 조회·편집에는 Dashboard를 사용합니다.
 
 자동 장기 기억
 `/memory show` — 현재 서버 또는 DM에서 형성된 내 구조화 장기 기억 확인
 `/memory clear` — 현재 서버 또는 DM에서 내 자동 대화 기억 삭제
-`/memory mode` / `status` / `overview` — 봇 관리자용 자동 기억 설정
+`/memory mode` / `status` — 봇 관리자용 자동 기억 설정
 `/memory purge` — 봇 관리자용 범위별 자동 기억 초기화
 
 수동 메모
@@ -37,12 +37,11 @@ DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니�
 최근 대화 문맥
 `/chatlog mode` — 최근 채널 대화 사용 여부 설정
 `/chatlog status` — 현재 채널 설정 확인
-`/chatlog overview` — 전체 서버/채널 설정 확인
 `/chatlog clear` — 현재 채널의 임시 최근 대화 문맥 비우기
 
 관리
-`/instruction ...` — 동적 캐릭터 지침 관리
-`/knowledge ...` — runtime knowledge 관리
+Dashboard — 동적 캐릭터 지침 및 runtime knowledge 조회·편집
+`/knowledge ingest` — 조사 메모를 knowledge로 구조화·반영
 `/emoji add|import|list|edit|remove` — 봇 관리자용 이모지 관리
 
 현재 호출 메시지에 포함된 지원 이미지 첨부·커스텀 이모지·래스터 스티커는 직접 볼 수 있습니다.
