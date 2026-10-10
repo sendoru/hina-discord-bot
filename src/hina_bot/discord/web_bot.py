@@ -2,8 +2,8 @@ import asyncio
 import logging
 import re
 import time
-from contextvars import ContextVar
 from contextlib import nullcontext
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 
 import discord
@@ -16,7 +16,8 @@ from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 
-from .bot import CURRENT_TYPING_ACTIVE, HinaClient as BaseHinaClient
+from .bot import CURRENT_TYPING_ACTIVE
+from .bot import HinaClient as BaseHinaClient
 from .chatlog_capture import capture_mode
 from .interaction_context import build_interaction_context
 from .member_directory import channel_member_tool_registry
