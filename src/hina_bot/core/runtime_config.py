@@ -39,6 +39,8 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
+    "retrieval_v2_mode": "Retrieval v2 rollout 모드입니다. off는 legacy만, shadow는 legacy 답변과 비동기 비교, active는 v2 context를 사용하고 실패 시 legacy로 즉시 fallback합니다.",
+    "retrieval_v2_timeout_seconds": "Retrieval v2 shadow/active 한 턴의 전체 실행 시간 상한(초)입니다.",
     "retrieval_v2_mode": "Retrieval v2를 끄거나(off), 비동기 비교만 하거나(shadow), 실제 답변 context에 적용(active)합니다.",
     "retrieval_v2_timeout_seconds": "Retrieval v2 active/shadow 한 번의 전체 실행 제한 시간(초)입니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
@@ -113,6 +115,19 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         choices=tuple(sorted(EXTERNAL_CONTEXT_POLICIES)),
     ),
     "chat_web_search": _runtime_spec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
+    "retrieval_v2_mode": _runtime_spec(
+        "retrieval_v2_mode",
+        "RETRIEVAL_V2_MODE",
+        "string",
+        choices=tuple(sorted(RETRIEVAL_V2_MODES)),
+    ),
+    "retrieval_v2_timeout_seconds": _runtime_spec(
+        "retrieval_v2_timeout_seconds",
+        "RETRIEVAL_V2_TIMEOUT_SECONDS",
+        "float",
+        minimum=0.25,
+        maximum=30.0,
+    ),
     "retrieval_v2_mode": _runtime_spec(
         "retrieval_v2_mode",
         "RETRIEVAL_V2_MODE",
@@ -426,6 +441,26 @@ def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
         raise ValueError("SUMMARY_EVERY는 HISTORY_TURNS 이하여야 해요.")
     if effective["structured_memory_every"] > history_turns:
         raise ValueError("STRUCTURED_MEMORY_EVERY는 HISTORY_TURNS 이하여야 해요.")
+
+    retrieval_mode = (
+        value if attr == "retrieval_v2_mode" else settings.retrieval_v2_mode
+    )
+    if retrieval_mode == "active":
+        if not settings.gemini_api_key:
+            raise ValueError("Retrieval v2 active에는 GEMINI_API_KEY가 필요해요.")
+        if not settings.retrieval_v2_calibration_backend_key:
+            raise ValueError(
+                "Retrieval v2 active에는 calibration backend key가 필요해요."
+            )
+        if any(item is None for item in (
+            settings.retrieval_v2_factual_reject,
+            settings.retrieval_v2_factual_strong,
+            settings.retrieval_v2_ambient_reject,
+            settings.retrieval_v2_ambient_strong,
+        )):
+            raise ValueError(
+                "Retrieval v2 active에는 factual/ambient calibration threshold가 모두 필요해요."
+            )
 
 
 class RuntimeSettings:
