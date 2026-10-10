@@ -1053,3 +1053,55 @@ async def test_bare_prefix_in_always_reply_dm_keeps_llm_path(tmp_path):
         forwarded.assert_awaited_once()
     finally:
         await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_typing_stops_at_reply_before_post_reply_memory_work(tmp_path):
+    order = []
+
+    async def reply(*args, **kwargs):
+        order.append("reply")
+        return NS(id=500, created_at=None)
+
+    async def memory(*args, **kwargs):
+        order.append("memory")
+
+    async def entered(*args):
+        order.append("typing-start")
+
+    async def exited(*args):
+        order.append("typing-end")
+
+    store = Store(":memory:")
+    store.set_chat_log_mode_override("global", "off")
+    llm = NS(
+        answer=AsyncMock(return_value="응"),
+        extract_structured_memory=AsyncMock(side_effect=memory),
+        summarize_shared=AsyncMock(side_effect=memory),
+        close=AsyncMock(),
+    )
+    bot = ProductionHinaClient(
+        Settings(discord_token="test", openai_api_key="test", cooldown=0,
+                 event_log_path=str(tmp_path / "events.jsonl")),
+        store=store, llm=llm,
+    )
+    bot._connection.user = NS(id=99)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 10
+    channel.send = AsyncMock(side_effect=reply)
+    channel.typing.return_value.__aenter__ = AsyncMock(side_effect=entered)
+    channel.typing.return_value.__aexit__ = AsyncMock(side_effect=exited)
+    channel.permissions_for.return_value = NS(view_channel=True, read_message_history=True)
+    guild = NS(id=1, default_role=NS(), unavailable=False, me=NS(), emojis=[])
+    author = NS(id=100, bot=False, display_name="사용자")
+    message = make_message(channel, guild, message_id=330, author=author, text="히나야 안녕")
+
+    try:
+        with patch("hina_bot.discord.web_bot.collect_visual_inputs",
+                   new=AsyncMock(return_value=[])):
+            await bot.on_message(message)
+        assert order[:3] == ["typing-start", "reply", "typing-end"]
+        assert "memory" in order[3:]
+        channel.typing.return_value.__aexit__.assert_awaited_once()
+    finally:
+        await bot.close()
