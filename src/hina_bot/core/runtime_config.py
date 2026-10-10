@@ -17,6 +17,7 @@ from .config import (
     parse_call_prefixes,
     parse_discord_id_set,
     parse_external_context_policy,
+    retrieval_v2_expected_backend_key,
 )
 
 
@@ -406,6 +407,30 @@ def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
         raise ValueError("SUMMARY_EVERY는 HISTORY_TURNS 이하여야 해요.")
     if effective["structured_memory_every"] > history_turns:
         raise ValueError("STRUCTURED_MEMORY_EVERY는 HISTORY_TURNS 이하여야 해요.")
+
+    retrieval_mode = (
+        value if attr == "retrieval_v2_mode" else settings.retrieval_v2_mode
+    )
+    if retrieval_mode == "active":
+        if not settings.gemini_api_key:
+            raise ValueError("Retrieval v2 active에는 GEMINI_API_KEY가 필요해요.")
+        expected_backend = retrieval_v2_expected_backend_key(
+            settings.retrieval_v2_embedding_dimensions
+        )
+        if settings.retrieval_v2_calibration_backend_key != expected_backend:
+            raise ValueError(
+                "Retrieval v2 active의 calibration backend key가 현재 embedding 설정과 "
+                "일치해야 해요."
+            )
+        if any(item is None for item in (
+            settings.retrieval_v2_factual_reject,
+            settings.retrieval_v2_factual_strong,
+            settings.retrieval_v2_ambient_reject,
+            settings.retrieval_v2_ambient_strong,
+        )):
+            raise ValueError(
+                "Retrieval v2 active에는 factual/ambient calibration threshold가 모두 필요해요."
+            )
 
 
 
