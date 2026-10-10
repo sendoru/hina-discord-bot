@@ -94,7 +94,7 @@ def effective_state_text(
         "",
         "수동 메모 (본문 비공개)",
         f"개인 메모: {'있음' if user_note else '없음'}",
-    ]
+    ])
     if scope.guild_id is not None:
         lines.append(f"서버 공통 메모: {'있음' if server_note else '없음'}")
     return "\n".join(lines)
