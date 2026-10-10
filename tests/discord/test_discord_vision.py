@@ -9,6 +9,7 @@ from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.discord.vision import (
+    VisionFetchCache,
     VisionLimits,
     VisualContextRef,
     collect_visual_inputs,
@@ -769,3 +770,88 @@ async def test_passive_recent_visual_alone_does_not_turn_bare_call_into_image_re
         assert message.content == "히나야"
     finally:
         await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_historical_visual_cache_reuses_bytes_but_not_request_provenance():
+    attachment = NS(
+        size=len(PNG), content_type="image/png", filename="cached.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    author = NS(id=100, display_name="사용자", bot=False)
+    old = NS(id=100, content="이 그림", author=author,
+             attachments=[attachment], stickers=[])
+    channel = NS(id=10, fetch_message=AsyncMock(return_value=old))
+    message = NS(id=120, content="히나야 이건?", author=author,
+                 channel=channel, attachments=[], stickers=[])
+    cache = VisionFetchCache()
+    weak = VisualContextRef("100", "speaker_thread", "same_speaker")
+    strong = VisualContextRef("100", "reply_origin_source", "prior_explicit_reply")
+
+    first = await collect_visual_inputs(message, context_refs=[weak], cache=cache)
+    second = await collect_visual_inputs(message, context_refs=[strong], cache=cache)
+
+    channel.fetch_message.assert_awaited_once_with(100)
+    attachment.read.assert_awaited_once()
+    assert first[0].data == second[0].data == PNG
+    assert first[0].reference_strength == "same_speaker"
+    assert second[0].reference_strength == "prior_explicit_reply"
+    assert second[0].context_kind == "reply_origin_source"
+
+
+@pytest.mark.asyncio
+async def test_passive_emoji_only_visual_ref_is_briefly_negative_cached():
+    author = NS(id=100, display_name="사용자", bot=False)
+    old = NS(id=100, content="<:smile:123456789>", author=author,
+             attachments=[], stickers=[])
+    channel = NS(id=10, fetch_message=AsyncMock(return_value=old))
+    message = NS(id=120, content="히나야 안녕", author=author,
+                 channel=channel, attachments=[], stickers=[])
+    ref = VisualContextRef("100", "channel_ambient")
+    cache = VisionFetchCache()
+
+    assert await collect_visual_inputs(message, context_refs=[ref], cache=cache) == []
+    assert await collect_visual_inputs(message, context_refs=[ref], cache=cache) == []
+    channel.fetch_message.assert_awaited_once_with(100)
+
+
+@pytest.mark.asyncio
+async def test_historical_visual_cache_ttl_expiration_refetches():
+    attachment = NS(
+        size=len(PNG), content_type="image/png", filename="cached.png",
+        read=AsyncMock(return_value=PNG),
+    )
+    author = NS(id=100, display_name="사용자", bot=False)
+    old = NS(id=100, content="", author=author,
+             attachments=[attachment], stickers=[])
+    channel = NS(id=10, fetch_message=AsyncMock(return_value=old))
+    message = NS(id=120, content="히나야", author=author,
+                 channel=channel, attachments=[], stickers=[])
+    cache = VisionFetchCache(ttl_seconds=0)
+    ref = VisualContextRef("100", "speaker_thread")
+
+    await collect_visual_inputs(message, context_refs=[ref], cache=cache)
+    await collect_visual_inputs(message, context_refs=[ref], cache=cache)
+    assert channel.fetch_message.await_count == 2
+
+
+def test_historical_visual_cache_bounds_byte_usage():
+    from hina_bot.ai.vision import VisualInput
+
+    cache = VisionFetchCache(max_entries=2, max_bytes=40)
+    visual = VisualInput(PNG, "image/png", "attachment")
+    cache.put(("c", "1", False), [visual])
+    cache.put(("c", "2", False), [visual])
+    assert cache.get(("c", "1", False)) is None
+    assert cache.total_bytes <= 40
+
+
+def test_historical_visual_cache_invalidation_clears_both_reference_variants():
+    cache = VisionFetchCache()
+    cache.put((10, "42", False), ())
+    cache.put((10, "42", True), ())
+    cache.put((11, "42", False), ())
+    cache.invalidate(10, 42)
+    assert cache.get((10, "42", False)) is None
+    assert cache.get((10, "42", True)) is None
+    assert cache.get((11, "42", False)) == ()
