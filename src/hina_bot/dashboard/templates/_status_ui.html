@@ -8,7 +8,7 @@
   {% set tone = "success" %}
 {% elif "fail" in normalized or "error" in normalized or normalized == "blocked" %}
   {% set tone = "danger" %}
-{% elif normalized in ["pending", "incomplete", "partial", "ambiguous", "superseded", "requested", "no_candidates"] %}
+{% elif normalized in ["pending", "incomplete", "partial", "ambiguous", "superseded", "retracted", "requested", "no_candidates"] %}
   {% set tone = "warning" %}
 {% else %}
   {% set tone = "neutral" %}

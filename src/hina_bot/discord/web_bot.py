@@ -2,8 +2,9 @@ import asyncio
 import logging
 import re
 import time
+from contextlib import nullcontext
 from contextvars import ContextVar
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import discord
 
@@ -15,6 +16,7 @@ from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 
+from .bot import CURRENT_TYPING_ACTIVE, CURRENT_TYPING_STOP
 from .bot import HinaClient as BaseHinaClient
 from .chatlog_capture import capture_mode
 from .interaction_context import build_interaction_context
@@ -25,6 +27,7 @@ from .target_context import TARGET_CONTEXT, collect, retrieval_mode
 from .target_recent import CURRENT_CHANNEL_CONTEXT, TargetAwareRecentMessages
 from .turn_provenance import CURRENT_TURN_PROVENANCE, build_turn_provenance
 from .vision import (
+    VisionFetchCache,
     VisionLimits,
     collect_visual_inputs,
     message_has_visual,
@@ -37,6 +40,27 @@ CURRENT_PUBLIC_CONTEXT_REQUEST = ContextVar(
     "current_public_context_request",
     default=(False, ()),
 )
+
+
+class _ManagedTyping:
+    """End the typing indicator on delivery, not after post-reply memory work."""
+
+    def __init__(self, context):
+        self.context = context
+        self.active = False
+
+    async def __aenter__(self):
+        await self.context.__aenter__()
+        self.active = True
+        return self
+
+    async def stop(self):
+        if self.active:
+            self.active = False
+            await self.context.__aexit__(None, None, None)
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.stop()
 
 
 async def _timed(awaitable):
@@ -120,7 +144,18 @@ class HinaClient(BaseHinaClient):
             external_context_policy=settings.external_context_policy,
         )
         self.vision_limits = VisionLimits.from_settings(settings)
+        self.visual_cache = VisionFetchCache()
         install_slash_commands(self)
+
+    async def on_raw_message_edit(self, payload):
+        self.visual_cache.invalidate(payload.channel_id, payload.message_id)
+
+    async def on_raw_message_delete(self, payload):
+        self.visual_cache.invalidate(payload.channel_id, payload.message_id)
+
+    async def on_raw_bulk_message_delete(self, payload):
+        for message_id in payload.message_ids:
+            self.visual_cache.invalidate(payload.channel_id, message_id)
 
     async def public_sources(self, user_id: int, guild_id: int | None = None):
         enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
@@ -290,9 +325,76 @@ class HinaClient(BaseHinaClient):
                 )
             return
 
-        preflight_started = time.perf_counter() if text is not None else None
-        preflight_turn_id = new_turn_id() if text is not None else None
+        if text == "" and getattr(message, "reference", None) is None and not message_has_visual(message):
+            # A bare call without a current or explicit-reply visual always takes
+            # the fixed-reply path. Do not fetch old visual context for it.
+            token = CURRENT_TURN_ID.set(new_turn_id())
+            try:
+                self.events.emit(
+                    "turn.preflight",
+                    scope="guild" if scope.guild_id is not None else "dm",
+                    preflight_ms=0,
+                    preflight_fast_path=True,
+                    typing_start_ms=None,
+                    gateway_lag_ms=self._gateway_lag_ms(message),
+                    target_context_ms=0,
+                    reply_context_ms=0,
+                    visual_context_ms=0,
+                    history_hydration_ms=0,
+                    history_hydration_needed=False,
+                    channel_context_select_ms=0,
+                    channel_context_count=0,
+                    visual_ref_select_ms=0,
+                    visual_ref_count=0,
+                    visual_fetch_ms=0,
+                    visual_input_count=0,
+                )
+                return await super().on_message(message)
+            finally:
+                CURRENT_TURN_ID.reset(token)
 
+        preflight_started = time.perf_counter() if text is not None else None
+        should_type = (
+            text is not None
+            and not self.stopping
+            and (
+                scope.guild_id is None
+                or not self.settings.allowed_guild_ids
+                or scope.guild_id in self.settings.allowed_guild_ids
+            )
+        )
+        typing_factory = getattr(message.channel, "typing", None)
+        use_typing = should_type and callable(typing_factory)
+        managed = _ManagedTyping(typing_factory()) if use_typing else nullcontext()
+        async with managed as session:
+            typing_start_ms = (
+                round((time.perf_counter() - preflight_started) * 1000)
+                if use_typing and preflight_started is not None
+                else None
+            )
+            token = CURRENT_TYPING_ACTIVE.set(True) if use_typing else None
+            stop_token = CURRENT_TYPING_STOP.set(session.stop) if use_typing else None
+            try:
+                return await self._preflight_on_message(
+                    message, text, scope, preflight_started, typing_start_ms
+                )
+            finally:
+                if stop_token is not None:
+                    CURRENT_TYPING_STOP.reset(stop_token)
+                if token is not None:
+                    CURRENT_TYPING_ACTIVE.reset(token)
+
+    @staticmethod
+    def _gateway_lag_ms(message):
+        created_at = getattr(message, "created_at", None)
+        if not isinstance(created_at, datetime) or created_at.tzinfo is None:
+            return None
+        return max(0, round((datetime.now(UTC) - created_at).total_seconds() * 1000))
+
+    async def _preflight_on_message(
+        self, message, text, scope, preflight_started, typing_start_ms
+    ):
+        preflight_turn_id = new_turn_id() if text is not None else None
         strict_egress = strict_policy(self.settings.external_context_policy)
         third_party_mention = any(
             getattr(user, "id", None) not in {self.user.id, scope.user_id}
@@ -374,6 +476,7 @@ class HinaClient(BaseHinaClient):
                 message,
                 context_refs=visual_refs,
                 limits=self.vision_limits,
+                cache=self.visual_cache,
             )
             if text is not None
             else []
@@ -401,6 +504,9 @@ class HinaClient(BaseHinaClient):
                     "turn.preflight",
                     scope="guild" if scope.guild_id is not None else "dm",
                     preflight_ms=round((time.perf_counter() - preflight_started) * 1000),
+                    preflight_fast_path=False,
+                    typing_start_ms=typing_start_ms,
+                    gateway_lag_ms=self._gateway_lag_ms(message),
                     target_context_ms=target_context_ms,
                     reply_context_ms=reply_context_ms,
                     visual_context_ms=visual_context_ms,
