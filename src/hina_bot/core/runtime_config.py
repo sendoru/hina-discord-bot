@@ -41,10 +41,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
     "retrieval_v2_mode": "Retrieval v2 rollout 모드입니다. off는 legacy만, shadow는 legacy 답변과 비동기 비교, active는 v2 context를 사용하고 실패 시 legacy로 즉시 fallback합니다.",
     "retrieval_v2_timeout_seconds": "Retrieval v2 shadow/active 한 턴의 전체 실행 시간 상한(초)입니다.",
-    "retrieval_v2_mode": "Retrieval v2를 끄거나(off), 비동기 비교만 하거나(shadow), 실제 답변 context에 적용(active)합니다.",
-    "retrieval_v2_timeout_seconds": "Retrieval v2 active/shadow 한 번의 전체 실행 제한 시간(초)입니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
-    "retrieval_v2_mode": "Retrieval v2를 끄거나 shadow 비교하거나 answer context에 활성화합니다. active에서 문제 발생 시 off로 즉시 rollback할 수 있습니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
     "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
     "fast_model": "adaptive routing의 fast tier에서 사용할 모델 이름입니다.",
@@ -128,26 +125,7 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         minimum=0.25,
         maximum=30.0,
     ),
-    "retrieval_v2_mode": _runtime_spec(
-        "retrieval_v2_mode",
-        "RETRIEVAL_V2_MODE",
-        "string",
-        choices=tuple(sorted(RETRIEVAL_V2_MODES)),
-    ),
-    "retrieval_v2_timeout_seconds": _runtime_spec(
-        "retrieval_v2_timeout_seconds",
-        "RETRIEVAL_V2_TIMEOUT_SECONDS",
-        "float",
-        minimum=0.1,
-        maximum=30.0,
-    ),
     "community_lore": _runtime_spec("community_lore", "COMMUNITY_LORE", "bool"),
-    "retrieval_v2_mode": _runtime_spec(
-        "retrieval_v2_mode",
-        "RETRIEVAL_V2_MODE",
-        "string",
-        choices=tuple(sorted(RETRIEVAL_V2_MODES)),
-    ),
     "model_routing_mode": _runtime_spec(
         "model_routing_mode",
         "MODEL_ROUTING_MODE",
@@ -413,19 +391,6 @@ def format_runtime_value(value: Any) -> str:
 
 
 def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
-    if (
-        attr == "retrieval_v2_mode"
-        and value == "active"
-        and (
-            settings.retrieval_v2_semantic_reject is None
-            or settings.retrieval_v2_semantic_strong is None
-            or not settings.gemini_api_key.strip()
-        )
-    ):
-        raise ValueError(
-            "Retrieval v2 active 모드는 startup live calibration threshold와 "
-            "GEMINI_API_KEY가 있어야 해요."
-        )
     effective = {
         "fast_output_tokens": value if attr == "fast_output_tokens" else settings.fast_output_tokens,
         "smart_output_tokens": value if attr == "smart_output_tokens" else settings.smart_output_tokens,
