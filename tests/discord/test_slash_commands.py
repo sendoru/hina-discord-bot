@@ -26,7 +26,7 @@ def slash_bot():
 def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot):
     memory = slash_bot.tree.get_command("memory")
     assert memory is not None
-    for name in ("mode", "status", "purge", "show", "clear"):
+    for name in ("mode", "purge", "show", "clear"):
         assert memory.get_command(name) is not None
     for removed in ("note", "note-clear", "server-show", "server-note", "server-clear"):
         assert memory.get_command(removed) is None
@@ -38,8 +38,14 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
 
     chatlog = slash_bot.tree.get_command("chatlog")
     assert chatlog is not None
-    for name in ("mode", "status", "clear"):
+    for name in ("mode", "clear"):
         assert chatlog.get_command(name) is not None
+
+    assert memory.get_command("status") is None
+    assert chatlog.get_command("status") is None
+    state = slash_bot.tree.get_command("state")
+    assert state is not None
+    assert {command.name for command in state.commands} == {"show"}
 
     emoji = slash_bot.tree.get_command("emoji")
     assert emoji is not None
@@ -56,6 +62,8 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
     assert "메시지 보내기" in HELP_TEXT
     assert "`히나야`" in HELP_TEXT
     assert "`/knowledge ingest`" in HELP_TEXT
+    assert "`/state show`" in HELP_TEXT
+    assert "`/chatlog status`" not in HELP_TEXT
     assert "`/chatlog overview`" not in HELP_TEXT
     assert "`/instruction" not in HELP_TEXT
 
@@ -139,7 +147,7 @@ async def test_memory_group_keeps_only_admin_memory_commands_admin_only(slash_bo
     show_interaction = NS(user=user, command=NS(name="show"), response=user_response)
     assert await memory.interaction_check(show_interaction) is True
 
-    for name in ("mode", "status", "purge"):
+    for name in ("mode", "purge"):
         interaction = NS(user=user, command=NS(name=name), response=user_response)
         assert await memory.interaction_check(interaction) is False
     user_response.send_message.assert_awaited()
