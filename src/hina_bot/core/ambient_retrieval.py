@@ -68,6 +68,8 @@ class AmbientResult:
     cache_hits: int = 0
     cache_misses: int = 0
     elapsed_ms: float = 0.0
+    embedding_prompt_tokens: int | None = 0
+    embedding_requests: int = 0
 
 
 def _bounded(value: str, limit: int) -> str:
@@ -172,10 +174,13 @@ class AmbientRetriever:
             if score < config.semantic_min:
                 continue
             ranked.append(RankedKnowledgeCandidate(score, hit.order, rows[hit.order]))
+        usage = search.candidate_usage + search.query_usage
         return AmbientResult(
             tuple(ranked),
             "available",
             search.cache_hits,
             search.cache_misses,
             (perf_counter() - started) * 1000,
+            usage.prompt_token_count,
+            usage.request_count,
         )
