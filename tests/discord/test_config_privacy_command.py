@@ -48,3 +48,8 @@ def test_generic_config_key_autocomplete_scales_past_discord_choice_limit():
     group = ConfigCommands(NS(settings=NS(), recent=NS(), emoji_admin_ids={100}))
     assert group.get_command("set")._params["key"].autocomplete is not None
     assert group.get_command("reset")._params["key"].autocomplete is not None
+
+
+def test_config_group_retains_context_controls_without_full_status_dump():
+    group = ConfigCommands(NS())
+    assert {command.name for command in group.commands} == {"privacy", "set", "reset"}
