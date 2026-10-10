@@ -10,7 +10,7 @@ from time import perf_counter
 
 from .ambient_retrieval import AmbientConfig, AmbientRetriever, AmbientSceneContext
 from .evidence_sufficiency import EvidenceAssessment, assess_local_evidence
-from .hybrid_retrieval import HybridConfig, HybridResult, HybridRetriever
+from .hybrid_retrieval import HybridConfig, HybridResult, HybridRetriever, eligible_candidates
 from .knowledge_retrieval import (
     KnowledgeCandidate,
     KnowledgeUsage,
@@ -57,6 +57,16 @@ class RetrievalV2Result:
     ambient_elapsed_ms: float = 0.0
     elapsed_ms: float = 0.0
     factual_invocation: str = "not_needed"
+    factual_candidates: int = 0
+    ambient_candidates: int = 0
+    lexical_selected: int = 0
+    semantic_selected: int = 0
+    semantic_rejected: int = 0
+    ambient_rejected: int = 0
+    embedding_prompt_tokens: int | None = 0
+    embedding_requests: int = 0
+    candidate_embedding_ms: float = 0.0
+    query_embedding_ms: float = 0.0
 
     @property
     def selected_ids(self) -> tuple[str, ...]:
@@ -153,6 +163,16 @@ def comparison_metrics(
         "factual_status": result.factual_status,
         "ambient_status": result.ambient_status,
         "factual_invocation": result.factual_invocation,
+        "factual_candidates": result.factual_candidates,
+        "ambient_candidates": result.ambient_candidates,
+        "lexical_selected": result.lexical_selected,
+        "semantic_selected": result.semantic_selected,
+        "semantic_rejected": result.semantic_rejected,
+        "ambient_rejected": result.ambient_rejected,
+        "embedding_prompt_tokens": result.embedding_prompt_tokens,
+        "embedding_requests": result.embedding_requests,
+        "candidate_embedding_ms": round(result.candidate_embedding_ms),
+        "query_embedding_ms": round(result.query_embedding_ms),
         "factual_cache_hits": result.factual_cache_hits,
         "factual_cache_misses": result.factual_cache_misses,
         "ambient_cache_hits": result.ambient_cache_hits,
@@ -275,4 +295,48 @@ class RetrievalV2Engine:
             ),
             elapsed_ms=(perf_counter() - started) * 1000,
             factual_invocation=invocation,
+            factual_candidates=len(eligible_candidates(candidates)),
+            ambient_candidates=sum(
+                KnowledgeUsage.AMBIENT in candidate.retrieval_usages
+                for candidate in candidates
+            ),
+            lexical_selected=factual_result.lexical_admitted,
+            semantic_selected=factual_result.semantic_admitted,
+            semantic_rejected=factual_result.semantic_rejected,
+            ambient_rejected=(
+                ambient_result.semantic_rejected if ambient_result is not None else 0
+            ),
+            embedding_prompt_tokens=(
+                None
+                if (
+                    factual_result.embedding_prompt_tokens is None
+                    or (
+                        ambient_result is not None
+                        and ambient_result.embedding_prompt_tokens is None
+                    )
+                )
+                else factual_result.embedding_prompt_tokens
+                + (
+                    ambient_result.embedding_prompt_tokens
+                    if ambient_result is not None else 0
+                )
+            ),
+            embedding_requests=(
+                factual_result.embedding_requests
+                + (ambient_result.embedding_requests if ambient_result is not None else 0)
+            ),
+            candidate_embedding_ms=(
+                factual_result.candidate_embedding_ms
+                + (
+                    ambient_result.candidate_embedding_ms
+                    if ambient_result is not None else 0.0
+                )
+            ),
+            query_embedding_ms=(
+                factual_result.query_embedding_ms
+                + (
+                    ambient_result.query_embedding_ms
+                    if ambient_result is not None else 0.0
+                )
+            ),
         )
