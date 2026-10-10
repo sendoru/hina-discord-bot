@@ -345,7 +345,7 @@ class RetrievalV2Engine:
             ),
             elapsed_ms=(perf_counter() - started) * 1000,
             factual_invocation=invocation,
-            factual_candidates=len(eligible_candidates(candidates)),
+            factual_candidates=len(eligible_candidates(candidates, entities=request.entities)),
             ambient_candidates=sum(
                 KnowledgeUsage.AMBIENT in candidate.retrieval_usages
                 for candidate in candidates
