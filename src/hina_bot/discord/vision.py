@@ -92,6 +92,11 @@ class VisionFetchCache:
         self.entries.move_to_end(key)
         return visuals
 
+    def invalidate(self, channel_id, message_id):
+        for key in list(self.entries):
+            if key[0] == channel_id and key[1] == str(message_id):
+                self._remove(key)
+
     def put(self, key, visuals):
         visuals = tuple(visuals)
         size = sum(len(item.data) for item in visuals)
