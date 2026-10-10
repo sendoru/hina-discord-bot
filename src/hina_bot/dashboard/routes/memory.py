@@ -164,4 +164,39 @@ def build_router(
             status_code=303,
         )
 
+    @router.post("/memory/{item_id}/retract")
+    async def retract_memory_item(request: Request, item_id: int):
+        form = await writer.form(request)
+        if form.get("confirm") != "yes":
+            raise HTTPException(status_code=422, detail="retract confirmation is required")
+        data = service.memory_item(item_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Memory item not found")
+        item = data["item"]
+        if str(item.get("status") or "active") != "active":
+            raise HTTPException(status_code=409, detail="only active memory items can be retracted")
+
+        try:
+            expected_revision = int(form.get("expected_revision", ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="invalid memory revision") from exc
+        if expected_revision < 0:
+            raise HTTPException(status_code=422, detail="invalid memory revision")
+        if int(item.get("revision") or 0) != expected_revision:
+            raise HTTPException(status_code=409, detail="memory item changed; reload before retracting")
+
+        command_id, _ = writer.enqueue(
+            request_id=form.get("_request_id", ""),
+            action="memory.item.retract",
+            target=str(item_id),
+            payload={
+                "item_id": item_id,
+                "expected_revision": expected_revision,
+            },
+        )
+        return RedirectResponse(
+            url=f"/memory/{item_id}?queued={command_id}",
+            status_code=303,
+        )
+
     return router

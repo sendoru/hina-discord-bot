@@ -86,8 +86,28 @@
     </div>
   </form>
 </details>
-{% elif data.item.status != "active" %}
-<section class="notice warning">Superseded memory는 편집하지 않습니다. lifecycle 변경은 별도 action으로 다룹니다.</section>
+{% elif data.item.status == "superseded" %}
+<section class="notice warning">Superseded memory는 편집하지 않습니다.</section>
+{% elif data.item.status == "retracted" %}
+<section class="notice warning">Retracted memory는 runtime retrieval과 reconciliation에서 제외되며, provenance 확인을 위해 이 dashboard에는 남아 있습니다.</section>
+{% endif %}
+
+{% if data.schema.has_revision and data.item.status == "active" %}
+<section class="panel">
+  <h2>Lifecycle</h2>
+  <p class="muted">Retract는 row를 삭제하지 않고 active memory에서 제외합니다. 실제 데이터 삭제는 기존 forget/purge 경로를 사용합니다.</p>
+  <form method="post" action="/memory/{{ data.item.id }}/retract" data-memory-retract-form>
+    <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
+    <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
+    <input type="hidden" name="expected_revision" value="{{ data.item.revision }}">
+    <div class="prompt-actions">
+      <button type="submit"
+              class="danger"
+              data-confirm-retract="Memory #{{ data.item.id }}"
+              {% if not dashboard_write_enabled %}disabled{% endif %}>Retract memory</button>
+    </div>
+  </form>
+</section>
 {% endif %}
 
 <section class="panel">
