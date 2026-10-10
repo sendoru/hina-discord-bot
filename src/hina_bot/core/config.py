@@ -27,6 +27,10 @@ def _optional_unit_float(variable: str) -> float | None:
     return value
 
 
+def retrieval_v2_expected_backend_key(dimensions: int) -> str:
+    return f"gemini:gemini-embedding-2:1:{dimensions}:search-document-v1"
+
+
 def parse_call_prefixes(value: str) -> tuple[str, ...]:
     """Parse a comma-separated, ordered set of message prefixes."""
     prefixes = tuple(dict.fromkeys(part.strip() for part in value.split(",") if part.strip()))
@@ -308,10 +312,13 @@ class Settings:
                 raise ValueError(
                     "RETRIEVAL_V2_MODE=active에는 GEMINI_API_KEY가 필요합니다."
                 )
-            if not retrieval_v2_calibration_backend_key:
+            expected_backend = retrieval_v2_expected_backend_key(
+                retrieval_v2_embedding_dimensions
+            )
+            if retrieval_v2_calibration_backend_key != expected_backend:
                 raise ValueError(
-                    "RETRIEVAL_V2_MODE=active에는 "
-                    "RETRIEVAL_V2_CALIBRATION_BACKEND_KEY가 필요합니다."
+                    "RETRIEVAL_V2_MODE=active의 calibration backend key가 "
+                    "현재 Gemini embedding 설정과 일치해야 합니다."
                 )
             if any(value is None for value in (
                 retrieval_v2_factual_reject,
