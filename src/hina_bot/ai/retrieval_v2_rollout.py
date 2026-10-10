@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from importlib.resources import files
 
 from hina_bot.core.ambient_retrieval import AmbientSceneContext
-from .embedding_backend import GeminiEmbeddingBackend, GeminiEmbeddingConfig
 from hina_bot.core.lore import LoreIndex
 from hina_bot.core.relationship_grounding import RelationshipGrounder
 from hina_bot.core.relationship_profile import (
@@ -22,6 +21,7 @@ from hina_bot.core.retrieval_v2_runtime import (
 )
 from hina_bot.core.semantic_retrieval import SemanticCalibration, SemanticIndex
 
+from .embedding_backend import GeminiEmbeddingBackend, GeminiEmbeddingConfig
 from .retrieval_request import build_resolved_retrieval_request
 from .routing_plan import RoutingPlan
 
@@ -150,7 +150,7 @@ class RetrievalV2Coordinator:
             include_community=bool(getattr(self.settings, "community_lore", True)),
         )
         supplemental = self._supplement.candidates(include_community=False)
-        return tuple([*dynamic, *supplemental, *static])
+        return (*dynamic, *supplemental, *static)
 
     @staticmethod
     def _legacy_ids(references, candidates) -> tuple[str, ...]:
