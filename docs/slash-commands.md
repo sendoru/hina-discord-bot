@@ -1,6 +1,7 @@
 # Discord slash command interface
 
-운영 중 사용하는 관리·설정 명령은 Discord native slash command로 통일합니다.
+현재 서버·채널·사용자를 대상으로 하는 즉시 조작은 Discord native slash command로 제공하고,
+전체 조회·검색·편집은 Dashboard를 사용합니다.
 `히나야 /메모`, `히나야 /기억`, `히나야 /이모지 ...` 같은 prefix+slash 메시지 명령은
 production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 호출은 기존처럼 `히나야`, 멘션,
 답장 핑을 사용합니다.
@@ -49,12 +50,10 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 | --- | --- |
 | `/memory mode` | 전역/서버/채널 자동 장기 기억 읽기·쓰기 모드 설정 |
 | `/memory status` | 현재 채널의 전역 → 서버 → 채널 상속 체인과 최종 적용값 확인 |
-| `/memory overview` | 기본적으로 직접 override된 범위만 표시. `view:전체 상속 결과`로 전체 확인 |
 | `/memory purge` | 채널/서버/전역 범위의 자동 사용자 기억 초기화 |
 
-`/memory overview`의 기본 화면에서는 상속만 받는 서버·채널을 숨깁니다. 현재 위치의 자세한 상속
-경로가 필요하면 `/memory status`, 모든 범위의 계산 결과가 필요하면 overview의
-`전체 상속 결과` 보기를 사용합니다.
+현재 위치의 상속 경로는 `/memory status`로 확인할 수 있습니다. 여러 서버·채널의 직접 설정과
+전체 상속 결과는 Dashboard `/state`에서 확인합니다.
 
 `/memory purge`는 자동 대화 기록·요약·공유 요약만 범위에 맞게 삭제합니다. 개인/서버 수동 메모와
 memory/chatlog 설정 자체는 유지합니다.
@@ -66,10 +65,12 @@ memory/chatlog 설정 자체는 유지합니다.
 
 | 명령 | 기능 |
 | --- | --- |
-| `/config status` | 현재 effective 값과 DB override 여부 확인 |
 | `/config privacy value:<정책>` | 외부 LLM으로 보낼 대화 문맥의 최종 프라이버시 경계 설정 |
 | `/config set key:<설정> value:<값>` | 일반 runtime DB override 저장 후 즉시 적용 |
 | `/config reset key:<설정>` | 일반 runtime DB override 삭제 후 시작 시 값으로 복귀 |
+
+전체 runtime effective 값과 DB override 여부는 Dashboard `/admin/runtime`에서 확인합니다.
+`/config set/reset`은 Stage 2의 채널 ID 목록 전용 명령이 준비되기 전까지 유지합니다.
 
 `/config set/reset` 대상은 `MODEL_ROUTING_MODE`, `LLM_MODEL`, `LLM_FAST_MODEL`,
 `LLM_SMART_MODEL`, `MAX_OUTPUT_TOKENS`, `FAST_MAX_OUTPUT_TOKENS`,
@@ -142,7 +143,6 @@ cross-user public memory 조회는 막습니다.
 | --- | --- |
 | `/chatlog mode value:<all|direct|off|inherit>` | 전역/서버/채널의 최근 채널 문맥 수집·사용 범위 설정 |
 | `/chatlog status` | 현재 채널의 상속 체인과 최종 적용값 확인 |
-| `/chatlog overview` | 기본적으로 직접 override된 범위만 표시. 필요하면 전체 상속 결과 확인 |
 | `/chatlog clear` | 현재 채널의 메모리 내 최근 대화 문맥 비우기 |
 
 `/chatlog mode`는 예전의 on/off와 capture 설정을 하나의 정책으로 합칩니다.
@@ -155,7 +155,7 @@ cross-user public memory 조회는 막습니다.
 
 상속 우선순위는 `channel → server → global → 기본(all)`입니다. 예전 DB에 `mode(on/off)`와
 `capture(all/direct)`가 따로 저장되어 있으면 최초 명령 그룹 초기화 때 현재 effective 동작을 보존하는
-형태로 통합합니다. `/chatlog overview`도 통합된 직접값과 최종 적용값만 한 열씩 보여줍니다.
+형태로 통합합니다. 여러 서버·채널의 직접 설정과 최종 적용값 목록은 Dashboard `/state`에서 확인합니다.
 
 `all/direct/off/inherit` 중 어떤 실질적인 정책 변경이든 해당 범위의 메모리 내 recent buffer와
 hydration 상태를 즉시 비웁니다. 따라서 `all → direct`에서 넓게 수집한 문맥이 남지 않고,
@@ -212,22 +212,11 @@ alias가 됩니다. 오른쪽 설명은 모델이 해당 이모지를 사용할 
 
 ## 동적 prompt / knowledge
 
-`/instruction`, `/knowledge` 그룹은 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자 전용입니다. 긴 본문을
-Discord 메시지 폭에 맞춰 잘라 보여주지 않고 UTF-8 텍스트 파일로 첨부합니다.
+동적 instruction과 runtime knowledge의 목록·검색 및 CRUD는 Dashboard `/admin/prompts`에서 관리합니다.
+Discord `/instruction` 그룹과 `/knowledge`의 일반 조회·편집 명령은 등록하지 않습니다.
 
-| 명령 | 기능 |
-| --- | --- |
-| `/instruction list` | 검색·정렬된 instruction 전체를 `instructions*.txt`로 받기 |
-| `/instruction show identifier:<ID>` | instruction 한 항목을 `instruction-<ID>.txt`로 받기 |
-| `/instruction add/edit/enable/disable/remove` | 동적 캐릭터 보조 지침 관리 |
-| `/knowledge list` | 검색·정렬된 knowledge 전체와 메타데이터를 `knowledge*.txt`로 받기 |
-| `/knowledge show identifier:<ID>` | knowledge 한 항목을 `knowledge-<ID>.txt`로 받기 |
-| `/knowledge ingest` | 조사 메모를 사실/해석 knowledge로 분해·조정해 반영 |
-| `/knowledge enable/disable/remove` | runtime knowledge 상태·항목 관리 |
-
-첨부 파일의 `created_at`/`updated_at`은 Discord 전용 `<t:...>` markup이 아니라 사람이 읽을 수 있는
-UTC 시각으로 기록됩니다. `knowledge` 파일에는 종류, ON/OFF, awareness, timeline, subjects,
-keywords와 본문 전체가 포함됩니다.
+`/knowledge ingest`는 봇 관리자 전용으로 계속 제공합니다. 긴 조사 메모를 기존 knowledge와 조정해
+사실/해석 항목으로 자동 반영하는 기능이며, Dashboard로 이전하는 후속 작업은 #333에서 진행합니다.
 
 ## 도움말
 
