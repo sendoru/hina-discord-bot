@@ -1,0 +1,196 @@
+"""Stage 3: /state show policy chains, note privacy, and scope permissions."""
+
+from types import SimpleNamespace as NS
+from unittest.mock import AsyncMock
+
+import pytest
+
+from hina_bot.core.routing import Scope
+from hina_bot.core.scope_overrides import (
+    effective_recent_context_mode,
+    memory_mode_capabilities,
+    resolve_scope_chain,
+)
+from hina_bot.core.store import Store
+from hina_bot.discord.chatlog_capture import capture_mode_overrides
+from hina_bot.discord.chatlog_commands import ChatLogCommands, _set_mode_override
+from hina_bot.discord.state_commands import StateCommands, effective_state_text
+
+
+def _channel(channel_id, *, guild_id=1, visible=True):
+    return NS(
+        id=channel_id,
+        guild=NS(id=guild_id),
+        permissions_for=lambda _user: NS(view_channel=visible),
+    )
+
+
+def _interaction(*, guild_id=1, channel_id=10, user_id=100):
+    return NS(
+        guild_id=guild_id,
+        channel_id=channel_id,
+        user=NS(id=user_id),
+        response=NS(send_message=AsyncMock(), is_done=lambda: False),
+    )
+
+
+@pytest.fixture
+def state_context():
+    store = Store(":memory:")
+    # Migrate chatlog config before reading effective policies, as the runtime does.
+    ChatLogCommands(NS(store=store, emoji_admin_ids={100}))
+    client = NS(store=store, emoji_admin_ids={100})
+    yield store, StateCommands(client)
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_state_command_is_admin_only_and_ephemeral(state_context):
+    _, group = state_context
+    denied = _interaction(user_id=200)
+    assert not await group.interaction_check(denied)
+    assert denied.response.send_message.call_args.kwargs["ephemeral"] is True
+    admin = _interaction()
+    assert await group.interaction_check(admin)
+    await group.show.callback(group, admin)
+    assert admin.response.send_message.call_args.kwargs["ephemeral"] is True
+    assert "자동 장기 기억" in admin.response.send_message.call_args.args[0]
+    assert "최근 채널 대화 문맥" in admin.response.send_message.call_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_state_shows_effective_precedence_and_memory_capabilities(state_context):
+    store, group = state_context
+    store.set_memory_mode_override("global", "off")
+    store.set_memory_mode_override("guild:1", "read_only")
+    store.set_memory_mode_override("guild:1:channel:20", "write_only")
+    _set_mode_override(store, "global", "direct")
+    _set_mode_override(store, "guild:1", "all")
+    _set_mode_override(store, "guild:1:channel:20", "off")
+
+    interaction = _interaction()
+    await group.show.callback(group, interaction, _channel(20))
+    result = interaction.response.send_message.call_args.args[0]
+
+    assert "<#20>" in result
+    assert "최종 적용: **write_only** (출처: 채널)" in result
+    assert "읽기: 꺼짐 / 쓰기: 켜짐" in result
+    assert "전역: `off`" in result
+    assert "서버: `read_only`" in result
+    assert "채널: `write_only`" in result
+    assert "설정 모드: **off** (출처: 채널)" in result
+    assert "실제 사용: **off**" in result
+
+    # Same underlying override chains and capability logic as Dashboard /state.
+    scope = Scope(1, 20, 100)
+    from_dashboard_memory = resolve_scope_chain(
+        store.memory_mode_overrides(), scope, default="normal"
+    )
+    from_dashboard_enabled = resolve_scope_chain(
+        store.chat_log_mode_overrides(), scope, default="on"
+    )
+    from_dashboard_capture = resolve_scope_chain(
+        capture_mode_overrides(store), scope, default="all"
+    )
+    assert from_dashboard_memory["effective"] == "write_only"
+    assert memory_mode_capabilities(from_dashboard_memory["effective"]) == (False, True)
+    assert effective_recent_context_mode(
+        scope,
+        chat_log_mode=from_dashboard_enabled["effective"],
+        capture_mode=from_dashboard_capture["effective"],
+    ) == "off"
+
+
+@pytest.mark.asyncio
+async def test_inheritance_and_default_source_are_reported(state_context):
+    store, group = state_context
+    store.set_memory_mode_override("global", "read_only")
+    _set_mode_override(store, "global", "direct")
+    interaction = _interaction()
+    await group.show.callback(group, interaction)
+    result = interaction.response.send_message.call_args.args[0]
+    assert "최종 적용: **read_only** (출처: 전역)" in result
+    assert "설정 모드: **direct** (출처: 전역)" in result
+    assert "상속 → read_only" in result
+    assert "상속 → direct" in result
+
+    store.set_memory_mode_override("global", None)
+    _set_mode_override(store, "global", None)
+    interaction = _interaction()
+    await group.show.callback(group, interaction)
+    result = interaction.response.send_message.call_args.args[0]
+    assert "최종 적용: **normal** (출처: 기본값)" in result
+    assert "설정 모드: **all** (출처: 기본값)" in result
+
+
+@pytest.mark.asyncio
+async def test_manual_note_contents_are_never_exposed(state_context):
+    store, group = state_context
+    scope = Scope(1, 10, 100)
+    store.set_note(scope.user_note, "super secret user note")
+    store.set_note(scope.realm, "private server instruction")
+    interaction = _interaction()
+    await group.show.callback(group, interaction)
+    result = interaction.response.send_message.call_args.args[0]
+    assert "개인 메모: 있음" in result
+    assert "서버 공통 메모: 있음" in result
+    assert "super secret user note" not in result
+    assert "private server instruction" not in result
+
+
+@pytest.mark.asyncio
+async def test_other_user_selection_changes_note_presence_not_channel_policy(state_context):
+    store, group = state_context
+    store.set_note(Scope(1, 10, 200).user_note, "a confidential user note")
+    store.set_memory_mode_override("guild:1", "off")
+    interaction = _interaction()
+    selected_member = NS(id=200, guild=NS(id=1))
+    await group.show.callback(group, interaction, None, selected_member)
+    result = interaction.response.send_message.call_args.args[0]
+    assert "사용자 ID: `200`" in result
+    assert "개인 메모: 있음" in result
+    assert "최종 적용: **off** (출처: 서버)" in result
+    assert "confidential" not in result
+
+
+@pytest.mark.parametrize("channel,user,error", [
+    (_channel(20, guild_id=2), None, "현재 서버"),
+    (_channel(20, visible=False), None, "조회 권한"),
+    (None, NS(id=200, guild=NS(id=2)), "현재 서버"),
+])
+@pytest.mark.asyncio
+async def test_invalid_scopes_do_not_reveal_any_state(state_context, channel, user, error):
+    store, group = state_context
+    store.set_note("guild:1:user:200", "secret")
+    interaction = _interaction()
+    await group.show.callback(group, interaction, channel, user)
+    reply = interaction.response.send_message.call_args.args[0]
+    assert error in reply
+    assert "secret" not in reply
+    assert "자동 장기 기억" not in reply
+
+
+@pytest.mark.asyncio
+async def test_dm_recent_context_is_effectively_off_and_other_user_is_forbidden(state_context):
+    store, group = state_context
+    _set_mode_override(store, "global", "all")
+    interaction = _interaction(guild_id=None, channel_id=99)
+    await group.show.callback(group, interaction)
+    result = interaction.response.send_message.call_args.args[0]
+    assert "설정 모드: **all**" in result
+    assert "실제 사용: **off** (DM에서는 사용하지 않음)" in result
+    assert "서버 공통 메모" not in result
+
+    await group.show.callback(group, interaction, None, NS(id=200, guild=NS(id=1)))
+    assert "DM에서는 다른 사용자" in interaction.response.send_message.call_args.args[0]
+
+
+def test_pure_render_matches_current_store_effective_policy(state_context):
+    store, _ = state_context
+    scope = Scope(1, 55, 100)
+    store.set_memory_mode_override(scope.channel, "normal")
+    _set_mode_override(store, scope.channel, "direct")
+    result = effective_state_text(store, scope)
+    assert "최종 적용: **normal** (출처: 채널)" in result
+    assert "설정 모드: **direct** (출처: 채널)" in result
+    assert "실제 사용: **direct**" in result
