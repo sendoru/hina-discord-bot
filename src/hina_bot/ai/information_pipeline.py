@@ -237,6 +237,10 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 request,
                 runtime_candidates=self._retrieval_v2_candidates(),
                 scene=scene,
+                budgets=RetrievalV2Budgets(
+                    max_items=self.settings.lore_max_items,
+                    max_chars=self.settings.lore_max_chars,
+                ),
             )
 
     def _emit_retrieval_v2(self, mode, status, legacy_references, result=None, **extra):
