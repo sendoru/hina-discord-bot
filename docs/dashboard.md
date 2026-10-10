@@ -310,9 +310,9 @@ to resolve each source message ID against the currently retained `turns` rows an
 correlated trace when available. A missing raw source is displayed as expired bounded retention,
 not as missing provenance.
 
-Structured memory now has an `active` / `superseded` lifecycle and an optional
+Structured memory has `active`, `superseded`, and `retracted` lifecycle states plus an optional
 `superseded_by` link. Normal bot retrieval uses active rows only, while the dashboard intentionally
-queries the full table so operators can inspect superseded history and follow replacement links.
+queries the full table so operators can inspect superseded/retracted history and follow replacement links.
 The repository still detects these columns dynamically so older/pre-migration read-only database copies
 remain viewable without dashboard-side schema writes.
 
@@ -323,8 +323,10 @@ authoritative owner/origin scope. The bot reloads the stored item, reconstructs 
 memory lock, and updates the row in place. Each successful change stores the previous editable snapshot
 in `memory_item_edit_history` and increments `memory_items.revision`; stale revisions are rejected.
 This preserves item IDs, creation/source provenance, relationship-recency ordering, and reconciliation
-references. Superseded items remain read-only, and add/remove/undo/pinning are intentionally separate
-lifecycle features.
+references. Active items also expose a separate confirmed `memory.item.retract` action. Retraction
+keeps the row and provenance but removes it from runtime/reconciliation candidates; actual deletion
+continues to use the existing forget/purge paths. Superseded and retracted items remain read-only.
+Manual add, restore/undo, and pinning remain separate follow-up features.
 
 ### Effective relationship profiles
 
