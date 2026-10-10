@@ -90,6 +90,7 @@ def rank_factual(
     config: HybridConfig,
     *,
     semantic_hits: Sequence[SemanticHit] | None = None,
+    lexical_enabled: bool = True,
 ) -> list[RankedKnowledgeCandidate]:
     """Preserve qualifying lexical order, then append semantic-only recall.
 
@@ -97,7 +98,10 @@ def rank_factual(
     candidate gate and no weighted/RRF runtime policy. A row admitted lexically is never
     reordered or vetoed by semantic similarity.
     """
-    lexical = rank_lexical_candidates(request.retrieval_text, candidates)
+    lexical = (
+        rank_lexical_candidates(request.retrieval_text, candidates)
+        if lexical_enabled else ()
+    )
     lexical_rows = [
         row for row in lexical
         if row.score >= config.lexical_min
@@ -132,6 +136,8 @@ class HybridRetriever:
         self,
         request: RetrievalRequest,
         candidates: Sequence[KnowledgeCandidate],
+        *,
+        lexical_enabled: bool = True,
     ) -> HybridResult:
         started = perf_counter()
         config = self.config
@@ -145,7 +151,10 @@ class HybridRetriever:
         if not query or not rows:
             return HybridResult((), "not_needed")
 
-        lexical = rank_lexical_candidates(request.retrieval_text, rows)
+        lexical = (
+            rank_lexical_candidates(request.retrieval_text, rows)
+            if lexical_enabled else ()
+        )
         strong = (
             config.skip_semantic_at_lexical is not None
             and lexical
@@ -190,7 +199,11 @@ class HybridRetriever:
                 except Exception:  # noqa: BLE001 - optional backend must never fail an answer
                     status = "failed"
 
-        ranked = rank_factual(request, rows, config, semantic_hits=semantic_hits)
+        ranked = rank_factual(
+            request, rows, config,
+            semantic_hits=semantic_hits,
+            lexical_enabled=lexical_enabled,
+        )
         lexical_admitted = sum(row.score >= config.lexical_min for row in lexical)
         semantic_admitted = max(0, len(ranked) - lexical_admitted)
         semantic_rejected = 0
