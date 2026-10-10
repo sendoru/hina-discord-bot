@@ -5,6 +5,7 @@ import pytest
 
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
+from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
 from hina_bot.discord.slash_commands import HELP_TEXT, EmojiSlashCommands, _parse_emoji_import_items
 from hina_bot.discord.web_bot import HinaClient
@@ -53,6 +54,7 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
         assert emoji.get_command(name) is not None
 
     assert slash_bot.tree.get_command("instruction") is None
+    assert slash_bot.tree.get_command("config") is None  # RuntimeSettings-only group
     knowledge = slash_bot.tree.get_command("knowledge")
     assert knowledge is not None
     assert {command.name for command in knowledge.commands} == {"ingest"}
@@ -66,6 +68,36 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
     assert "`/chatlog status`" not in HELP_TEXT
     assert "`/chatlog overview`" not in HELP_TEXT
     assert "`/instruction" not in HELP_TEXT
+
+
+def test_production_composition_registers_only_expected_commands_and_contexts():
+    store = Store(":memory:")
+    settings = RuntimeSettings(
+        Settings(discord_token="test", openai_api_key="test", bot_admin_ids=frozenset({100})),
+        store,
+    )
+    bot = HinaClient(settings, store=store, llm=NS(close=AsyncMock()))
+    try:
+        commands = {command.name for command in bot.tree.get_commands()}
+        assert commands == {
+            "memory", "note", "chatlog", "state", "emoji", "knowledge", "help", "config",
+        }
+        assert {c.name for c in bot.tree.get_command("memory").commands} == {
+            "mode", "purge", "show", "clear",
+        }
+        assert {c.name for c in bot.tree.get_command("chatlog").commands} == {"mode", "clear"}
+        assert {c.name for c in bot.tree.get_command("state").commands} == {"show"}
+        assert {c.name for c in bot.tree.get_command("knowledge").commands} == {"ingest"}
+        config = bot.tree.get_command("config")
+        assert {c.name for c in config.commands} == {"privacy", "always-reply"}
+        assert {c.name for c in config.get_command("always-reply").commands} == {
+            "enable", "disable", "status",
+        }
+        assert config.allowed_contexts.guild and config.allowed_contexts.dm_channel
+        assert config.allowed_installs.guild and config.allowed_installs.user
+        assert bot.tree.get_command("instruction") is None
+    finally:
+        store.close()
 
 
 def test_emoji_import_items_parser():

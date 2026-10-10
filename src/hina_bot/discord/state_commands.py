@@ -5,10 +5,10 @@ import logging
 import discord
 from discord import app_commands
 
+from hina_bot.core.chatlog_modes import unified_chatlog_chain
 from hina_bot.core.routing import Scope
 from hina_bot.core.scope_overrides import memory_mode_capabilities
 
-from .chatlog_commands import _mode_chain
 from .scope_targets import command_target_scope
 
 log = logging.getLogger("hina")
@@ -31,7 +31,7 @@ def _chain_details(chain: dict, *, default: str, include_server: bool) -> list[s
 def effective_state_text(store, scope: Scope) -> str:
     """Use the same SQLite overrides and hierarchy as the Dashboard's /state."""
     memory = store.memory_mode_chain(scope)
-    chat = _mode_chain(store, scope)
+    chat = unified_chatlog_chain(store, scope)
     reads, writes = memory_mode_capabilities(str(memory["effective"]))
     # Recent server-channel context is never collected/used inside DMs, even when
     # the inherited settings read 'all' or 'direct'.

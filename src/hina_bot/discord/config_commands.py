@@ -5,39 +5,11 @@ import logging
 import discord
 from discord import app_commands
 
-from hina_bot.core.runtime_config import (
-    RUNTIME_SETTING_SPECS,
-    RuntimeSettings,
-    format_runtime_value,
-)
+from hina_bot.core.runtime_config import RuntimeSettings
 
 from .scope_targets import command_target_scope
 
 log = logging.getLogger("hina")
-
-def _setting_key_choices(current: str) -> list[app_commands.Choice[str]]:
-    needle = current.strip().lower()
-    matches = [
-        app_commands.Choice(name=spec.env_name, value=attr)
-        for attr, spec in RUNTIME_SETTING_SPECS.items()
-        if (
-            attr != "external_context_policy"
-            and (
-                not needle
-                or needle in attr.lower()
-                or needle in spec.env_name.lower()
-            )
-        )
-    ]
-    return matches[:25]
-
-
-async def _setting_key_autocomplete(
-    interaction: discord.Interaction,
-    current: str,
-) -> list[app_commands.Choice[str]]:
-    del interaction
-    return _setting_key_choices(current)
 
 _PRIVACY_CHOICES = [
     app_commands.Choice(
@@ -149,17 +121,13 @@ class AlwaysReplyCommands(app_commands.Group):
         )
 
 
+
 @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 @app_commands.allowed_installs(guilds=True, users=True)
 class ConfigCommands(app_commands.Group):
     def __init__(self, client):
         super().__init__(name="config", description="런타임 설정 관리 (봇 관리자 전용)")
         self.client = client
-        # Full runtime setting inspection now belongs to the dashboard.
-        self.remove_command("status")
-        # Bulk runtime edits belong to the Dashboard; keep direct privacy and ID controls.
-        self.remove_command("set")
-        self.remove_command("reset")
         self.add_command(AlwaysReplyCommands(client))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -185,18 +153,6 @@ class ConfigCommands(app_commands.Group):
 
     def _apply_side_effects(self, key: str) -> None:
         apply_runtime_setting_side_effects(self.client, key)
-
-    @app_commands.command(name="status", description="현재 런타임 설정과 DB override 확인")
-    async def status(self, interaction: discord.Interaction):
-        lines = [
-            "런타임 설정",
-            "`DB`가 있으면 즉시 적용되고, 없으면 시작 시 읽은 .env/.env.local 또는 코드 기본값을 사용해요.",
-            "",
-        ]
-        for spec, value, source in self.client.settings.rows():
-            label = "DB" if source == "db" else "startup"
-            lines.append(f"`{spec.env_name}` = `{format_runtime_value(value)}`  [{label}]")
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
     @app_commands.command(name="privacy", description="외부 LLM에 보낼 대화 문맥의 프라이버시 경계 설정")
     @app_commands.describe(value="외부 모델 문맥 정책 또는 startup 기본값으로 복귀")
@@ -234,46 +190,3 @@ class ConfigCommands(app_commands.Group):
             ephemeral=True,
         )
 
-    @app_commands.command(name="set", description="런타임 설정을 DB에 저장하고 즉시 적용")
-    @app_commands.describe(
-        key="변경할 설정",
-        value="새 값. bool=on/off, 접두어/채널 ID=쉼표 구분, 추론=minimal/low/medium/high, 위치=none",
-    )
-    @app_commands.autocomplete(key=_setting_key_autocomplete)
-    async def set_config(self, interaction: discord.Interaction, key: str, value: str):
-        if key == "external_context_policy":
-            await interaction.response.send_message(
-                "외부 모델 문맥 정책은 `/config privacy`에서 변경해 주세요.", ephemeral=True
-            )
-            return
-        try:
-            parsed = self.client.settings.set_text(key, value)
-            self._apply_side_effects(key)
-        except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
-            return
-        spec = RUNTIME_SETTING_SPECS[key]
-        await interaction.response.send_message(
-            f"`{spec.env_name}`을 `{format_runtime_value(parsed)}`로 변경했어요. "
-            "DB override라 재시작 후에도 유지돼요.",
-            ephemeral=True,
-        )
-
-    @app_commands.command(name="reset", description="DB override를 삭제하고 시작 시 기본값으로 복귀")
-    @app_commands.describe(key="초기화할 설정")
-    @app_commands.autocomplete(key=_setting_key_autocomplete)
-    async def reset(self, interaction: discord.Interaction, key: str):
-        if key == "external_context_policy":
-            await interaction.response.send_message(
-                "외부 모델 문맥 정책은 `/config privacy value:startup`으로 초기화해 주세요.",
-                ephemeral=True,
-            )
-            return
-        value = self.client.settings.reset(key)
-        self._apply_side_effects(key)
-        spec = RUNTIME_SETTING_SPECS[key]
-        await interaction.response.send_message(
-            f"`{spec.env_name}`의 DB override를 삭제했어요. "
-            f"이제 시작 시 값 `{format_runtime_value(value)}`을 사용해요.",
-            ephemeral=True,
-        )

@@ -164,11 +164,9 @@ shared summary는 공개 경계에 맞는 입력만 사용합니다.
 `MEMORY_ROUTING_SMART_THRESHOLD` 기본값은 `2.0`, 허용 범위는 `0.1`~`10.0`입니다. 채팅 score와 기억
 score의 의미가 다르므로 threshold는 계속 분리합니다.
 
-```text
-/config set MODEL_ROUTING_SMART_THRESHOLD 1.8
-/config set MEMORY_ROUTING_SMART_THRESHOLD 1.9
-/config reset MEMORY_ROUTING_SMART_THRESHOLD
-```
+두 threshold는 Dashboard `/admin/runtime`의 `MODEL_ROUTING_SMART_THRESHOLD` 및
+`MEMORY_ROUTING_SMART_THRESHOLD` 항목에서 수정하거나 DB override를 초기화할 수 있습니다.
+범용 `/config set/reset` 슬래시 명령은 제거됐습니다.
 
 `MODEL_ROUTING_MODE=fixed`가 호환 기본값입니다. 이 경우 답변과 기억 모두 `LLM_MODEL`을 사용하고,
 기억 요약에는 `MEMORY_MAX_OUTPUT_TOKENS`가 적용됩니다.

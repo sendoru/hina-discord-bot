@@ -6,7 +6,6 @@ from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
 
 from . import web_bot
-from .config_commands import ConfigCommands
 from .shutdown import run_client
 
 
@@ -22,5 +21,4 @@ def main():
     settings = RuntimeSettings(base_settings, store)
     llm = LLM(settings)
     bot = web_bot.HinaClient(settings, store=store, llm=llm)
-    bot.tree.add_command(ConfigCommands(bot))
     run_client(bot, settings.discord_token)

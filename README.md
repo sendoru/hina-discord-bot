@@ -199,37 +199,44 @@ recent chatlog는 장기 요약 입력에 포함되지 않습니다. 현재 턴 
 
 ## 관리 명령
 
-production runtime의 관리·설정 기능은 Discord native slash command를 사용합니다.
+Discord에서는 현재 서버·채널을 대상으로 하는 즉시 조작을 제공하고,
+여러 서버에 걸친 관리·검색·일반 runtime 설정 편집은 Dashboard에서 수행합니다.
 
-### 기억
+### 자동 기억 및 수동 메모
 
 ```text
 /memory show
-/memory note
-/memory note-clear
 /memory clear
-/memory server-show
-/memory server-note
-/memory server-clear
 /memory mode
-/memory status
-/memory overview
 /memory purge
+/note show
+/note set
+/note clear
+/state show
 ```
 
-`show/note/note-clear/clear`는 사용자 자신의 장기 기억 관리이고, `mode/status/overview/purge`는 봇
-관리자용입니다. 서버 공통 메모 변경에는 Discord `Manage Server` 권한이 필요합니다.
+`/memory show/clear`는 본인의 자동 기억을 관리하며, `/memory mode/purge`와
+`/state show`는 봇 관리자 전용입니다. `/memory purge`는 채널·현재 서버 범위만
+허용하며 전역 purge는 Discord에서 제공하지 않습니다. `/note`의 사용자 메모는
+자신이 관리하고, 서버 공통 메모의 변경에는 `Manage Server` 권한이 필요합니다.
 
-### 최근 채널 문맥
+### 최근 채널 문맥과 자동 응답
 
 ```text
 /chatlog mode
-/chatlog status
-/chatlog overview
 /chatlog clear
+/config always-reply enable
+/config always-reply disable
+/config always-reply status
+/config privacy
 ```
 
-### 이모지
+`/chatlog mode`는 관리자용이며, `/chatlog clear`는 해당 채널의 임시 문맥을
+초기화합니다. `/config always-reply`는 현재/선택 서버 채널의 자동 응답
+opt-in만 바꾸며 `/config privacy`는 외부 LLM 전송 경계를 관리합니다.
+범용 런타임 설정 편집은 Dashboard `/admin/runtime`에서 수행합니다.
+
+### 이모지 및 knowledge ingest
 
 ```text
 /emoji add
@@ -237,19 +244,15 @@ production runtime의 관리·설정 기능은 Discord native slash command를 �
 /emoji list
 /emoji edit
 /emoji remove
+/knowledge ingest
+/help
 ```
 
-`/emoji`로 관리하는 출력용 catalog와 사용자가 현재 메시지에 넣어 vision input으로 전달되는 커스텀
-이모지는 역할이 다릅니다.
+동적 instruction 및 runtime knowledge CRUD는 Dashboard `/admin/prompts`에서
+관리합니다. `/knowledge ingest`는 Dashboard 이전 작업 #333이 완료될 때까지
+Discord에서 계속 제공합니다.
 
-### 동적 prompt / knowledge
-
-```text
-/instruction ...
-/knowledge ...
-```
-
-전체 명령과 권한은 [`docs/slash-commands.md`](docs/slash-commands.md)를 참고하세요.
+전체 명령·권한·scope 설정 예시는 [`docs/slash-commands.md`](docs/slash-commands.md)를 참고하세요.
 
 ## Lore와 runtime knowledge
 
