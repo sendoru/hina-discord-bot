@@ -64,3 +64,61 @@ async def test_lore_followup_uses_previous_entity_but_keeps_visible_message():
     finally:
         await llm.close()
         store.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "expect_lore"),
+    [("off", False), ("v1", True), ("shadow", True), ("v2", False)],
+)
+async def test_rag_mode_controls_actual_lore_execution_and_context(mode, expect_lore):
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={
+            "id": "resp_rag",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "test-model",
+            "output": [{
+                "type": "message",
+                "id": "msg_rag",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": "응.", "annotations": []}],
+            }],
+        })
+
+    client = AsyncOpenAI(
+        api_key="test-key",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    llm = LLM(
+        Settings(
+            discord_token="test",
+            openai_api_key="test",
+            model="test-model",
+            usage_log_path="",
+            chat_web_search=False,
+            rag_mode=mode,
+        ),
+        client=client,
+    )
+    if not expect_lore:
+        def forbidden_retrieval(_content):
+            raise AssertionError("legacy lore retrieval ran when RAG was disabled")
+        llm.lore_references = forbidden_retrieval
+
+    store = Store(":memory:")
+    scope = Scope(None, 20, 100)
+    try:
+        await llm.answer(store, scope, "사용자", "히나야 생일 언제야?")
+        payload = seen[-1]
+        context = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        refs = {row.get("reference") for row in context["lore_reference"]}
+        assert ("canon.hina.birthday" in refs) is expect_lore
+    finally:
+        await llm.close()
+        store.close()

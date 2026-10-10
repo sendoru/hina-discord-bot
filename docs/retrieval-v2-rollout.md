@@ -7,22 +7,48 @@ kept as the rollback path in this milestone.
 
 ## Modes
 
-`RETRIEVAL_V2_MODE` is hot-reloadable:
+`RAG_MODE` is hot-reloadable and controls the entire knowledge RAG path.
+The startup default is `v1` so existing deployments keep their current behavior.
 
-- `off`: only the legacy answer-context path runs.
-- `shadow`: the legacy plan is authoritative. Retrieval v2 runs in a detached task and
-  only emits comparison telemetry.
-- `active`: a successfully completed v2 bundle replaces the legacy lore context for that
-  turn. Timeout, failure or calibration gating keeps the already-built legacy plan.
+| Mode | V1 retrieval | V2 retrieval | Reply context |
+|---|---|---|---|
+| `off` | skipped | skipped | none |
+| `v1` | yes | skipped | v1 |
+| `shadow` | yes | detached comparison | v1 |
+| `v2` | skipped | yes | v2 on success, none on failure |
 
-Immediate rollback:
+`off` disables canonical lore, runtime knowledge and retrieval-based ambient/
+reaction references, **not** structured long-term memory, recent conversation,
+base character instructions or independently permitted web search.
+
+Immediate emergency rollback (no knowledge RAG):
 
 ```text
-/config set RETRIEVAL_V2_MODE off
+/config set RAG_MODE off
 ```
 
-Shadow tasks have bounded concurrency. Backpressure skips the extra shadow run instead of
-delaying the answer. The whole v2 run also has `RETRIEVAL_V2_TIMEOUT_SECONDS`.
+Restore familiar behavior:
+
+```text
+/config set RAG_MODE v1
+```
+
+The previous `RETRIEVAL_V2_MODE=off/shadow/active` is accepted as an environment
+fallback when `RAG_MODE` is unset and maps to `v1/shadow/v2`.
+Old SQLite runtime overrides are migrated to `rag_mode` on startup. Legacy
+`/config set RETRIEVAL_V2_MODE ...` is also accepted as an alias; its
+`off` means **v1**, not `RAG_MODE=off`. Prefer the new key to avoid ambiguity.
+A configured `RAG_MODE` takes precedence over the legacy environment key.
+
+The V2 controller still requires matching live calibration. A rejected V2 mode
+cannot be enabled through runtime settings. If a V2 turn later fails,
+times out or encounters an unavailable backend, it **does not invoke V1**:
+the answer proceeds without knowledge RAG, with a fallback reason recorded.
+Web routing is independent and follows its existing policy.
+
+Shadow tasks have bounded concurrency. Backpressure skips extra comparison
+instead of delaying the answer. The whole v2 run also has
+`RETRIEVAL_V2_TIMEOUT_SECONDS`.
 
 ## Active calibration gate
 
