@@ -127,13 +127,12 @@ class RetrievalV2Controller:
     ) -> RetrievalV2Run:
         try:
             async with asyncio.timeout(float(self.settings.retrieval_v2_timeout_seconds)):
-                # Budgets are hot-reloadable, so set the per-turn snapshot just before run.
-                self.engine.budgets = self.budgets()
                 result = await self.engine.retrieve(
                     request,
                     runtime_candidates=runtime_candidates,
                     scene=scene,
                     include_community=bool(self.settings.community_lore),
+                    budgets=self.budgets(),
                 )
             return RetrievalV2Run(result, "completed")
         except TimeoutError:
