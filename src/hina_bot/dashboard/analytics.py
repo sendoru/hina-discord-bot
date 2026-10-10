@@ -561,6 +561,8 @@ def build_analytics(
         "post_reply": _distribution(post_reply_values, total=len(completed_rows)),
         "stages": {
             "preflight_ms": _field_latency(preflight_rows, "preflight_ms"),
+            "typing_start_ms": _field_latency(preflight_rows, "typing_start_ms"),
+            "gateway_lag_ms": _field_latency(preflight_rows, "gateway_lag_ms"),
             "target_context_ms": _field_latency(preflight_rows, "target_context_ms"),
             "reply_context_ms": _field_latency(preflight_rows, "reply_context_ms"),
             "visual_context_ms": _field_latency(preflight_rows, "visual_context_ms"),
