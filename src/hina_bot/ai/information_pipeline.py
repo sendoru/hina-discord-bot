@@ -607,6 +607,42 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             assembly_use_memory = True
 
         channel_rows = channel_context or ()
+        retrieval_mode = getattr(self.settings, "retrieval_v2_mode", "off")
+        if retrieval_mode == "shadow":
+            self._start_retrieval_v2_shadow(
+                routing,
+                information.references,
+                store=assembly_store,
+                scope=scope,
+                channel_rows=channel_rows,
+                use_memory=assembly_use_memory,
+            )
+        elif retrieval_mode == "active":
+            try:
+                retrieval_result = await self._run_retrieval_v2(
+                    routing,
+                    store=assembly_store,
+                    scope=scope,
+                    channel_rows=channel_rows,
+                    use_memory=assembly_use_memory,
+                )
+            except TimeoutError:
+                self._emit_retrieval_v2(
+                    "active", "fallback_timeout", information.references,
+                )
+            except Exception as exc:  # noqa: BLE001 - legacy remains the rollback path
+                self._emit_retrieval_v2(
+                    "active",
+                    "fallback_failed",
+                    information.references,
+                    retrieval_error_type=type(exc).__name__,
+                )
+            else:
+                self._emit_retrieval_v2(
+                    "active", "completed", information.references, retrieval_result,
+                )
+                information = self._activate_retrieval_v2(information, retrieval_result)
+
         CURRENT_MEMORY_CONTEXT.set(tuple(build_memory_context(channel_rows, scope.user_id)))
         factual_recall_plan = plan_reference_gated_recall(
             assembly_store,
