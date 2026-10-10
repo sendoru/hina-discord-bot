@@ -207,3 +207,49 @@ def test_structured_memory_provenance_matches_owner_and_relationship_projection(
         assert fact_id not in by_id
     finally:
         store.close()
+
+def test_context_provenance_tracks_v2_insight_sections_without_content():
+    scope = Scope(1, 10, 100, True)
+    context = {
+        "server_note": "",
+        "user_note": "",
+        "personal_recent_conversation": [],
+        "conversation_history": [],
+        "public_server_context": [],
+        "channel_recent_messages": [],
+        "active_reply_chain": [],
+        "lore_reference": [],
+        "character_insights": [{
+            "reference": "canon.insight",
+            "kind": "interpretation",
+            "content": "secret psychology wording",
+        }],
+        "optional_reactions": [{
+            "reference": "canon.reaction",
+            "kind": "optional_reaction",
+            "content": "secret reaction wording",
+        }],
+    }
+
+    result = build_context_provenance(
+        context,
+        scope,
+        egress_policy="full",
+        adapter_egress={},
+        provider_boundary={},
+        use_memory=False,
+        current_channel_only=False,
+        cross_channel_memory=False,
+        structured={"items": [], "relationship_axes": []},
+    )
+
+    sections = {row["name"]: row for row in result["sections"]}
+    assert sections["character_insights"]["count"] == 1
+    assert sections["optional_reactions"]["count"] == 1
+    assert {
+        row["source_type"] for row in result["sources"]
+    } >= {"character_insight", "optional_reaction"}
+    serialized = repr(result)
+    assert "secret psychology wording" not in serialized
+    assert "secret reaction wording" not in serialized
+
