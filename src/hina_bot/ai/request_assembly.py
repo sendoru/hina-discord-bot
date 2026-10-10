@@ -146,8 +146,6 @@ TARGET_HISTORY_POLICY = load_prompt("target_history.md")
 
 STRUCTURED_MEMORY_POLICY = load_prompt("structured_memory.md")
 
-RETRIEVAL_V2_CONTEXT_POLICY = load_prompt("retrieval_v2_context.md")
-
 _CURRENT_CHANNEL_SCOPE_QUERY = re.compile(
     r"(?:이|현재|지금)\s*(?:채널|방)(?=\s|$|에서|에|의|은|는|이|가|을|를|만|으로|부터|내|안|[,.!?])",
     re.IGNORECASE,
@@ -591,14 +589,6 @@ class RequestAssembler(BaseLLM):
             instruction_parts.append(STRUCTURED_MEMORY_POLICY)
             instruction_group_chars["instruction_memory_chars"] += len(
                 STRUCTURED_MEMORY_POLICY
-            )
-        if any(
-            isinstance(row, dict) and row.get("retrieval_usage")
-            for row in references
-        ):
-            instruction_parts.append(RETRIEVAL_V2_CONTEXT_POLICY)
-            instruction_group_chars["instruction_world_chars"] += len(
-                RETRIEVAL_V2_CONTEXT_POLICY
             )
         if current_channel_only:
             instruction_parts.append(CURRENT_CHANNEL_SCOPE_POLICY)
