@@ -97,7 +97,7 @@ def test_runtime_mode_is_immediate_rollback_switch():
         assert settings.retrieval_v2_mode == "off"
         assert settings.set_text("RETRIEVAL_V2_MODE", "shadow") == "shadow"
         assert settings.retrieval_v2_mode == "shadow"
-        with pytest.raises(ValueError, match="active"):
+        with pytest.raises(ValueError, match="RAG_MODE=v2"):
             settings.set_text("RETRIEVAL_V2_MODE", "active")
         assert settings.set_text("RETRIEVAL_V2_MODE", "off") == "off"
         assert settings.retrieval_v2_mode == "off"
