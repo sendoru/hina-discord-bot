@@ -12,6 +12,7 @@ from .config import (
     EXTERNAL_CONTEXT_POLICIES,
     GEMINI_THINKING_LEVELS,
     MODEL_ROUTING_MODES,
+    RETRIEVAL_V2_MODES,
     Settings,
     parse_call_prefixes,
     parse_discord_id_set,
@@ -38,6 +39,11 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
+    "retrieval_v2_mode": "Retrieval v2를 끄거나 shadow 비교만 하거나 answer context에 활성화합니다.",
+    "retrieval_v2_timeout_seconds": "Retrieval v2 active/shadow 작업 한 번의 최대 실행 시간(초)입니다.",
+    "retrieval_v2_semantic_reject": "실측 calibration의 semantic reject cosine입니다. reject/strong이 둘 다 0이면 semantic lane을 비활성화합니다.",
+    "retrieval_v2_semantic_strong": "실측 calibration의 semantic strong cosine입니다. reject보다 커야 합니다.",
+    "retrieval_v2_ambient_min_score": "calibrated ambient insight의 최소 admission score입니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
     "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
@@ -109,6 +115,40 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         choices=tuple(sorted(EXTERNAL_CONTEXT_POLICIES)),
     ),
     "chat_web_search": _runtime_spec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
+    "retrieval_v2_mode": _runtime_spec(
+        "retrieval_v2_mode",
+        "RETRIEVAL_V2_MODE",
+        "string",
+        choices=tuple(sorted(RETRIEVAL_V2_MODES)),
+    ),
+    "retrieval_v2_timeout_seconds": _runtime_spec(
+        "retrieval_v2_timeout_seconds",
+        "RETRIEVAL_V2_TIMEOUT_SECONDS",
+        "float",
+        minimum=0.1,
+        maximum=30.0,
+    ),
+    "retrieval_v2_semantic_reject": _runtime_spec(
+        "retrieval_v2_semantic_reject",
+        "RETRIEVAL_V2_SEMANTIC_REJECT",
+        "float",
+        minimum=-1.0,
+        maximum=1.0,
+    ),
+    "retrieval_v2_semantic_strong": _runtime_spec(
+        "retrieval_v2_semantic_strong",
+        "RETRIEVAL_V2_SEMANTIC_STRONG",
+        "float",
+        minimum=-1.0,
+        maximum=1.0,
+    ),
+    "retrieval_v2_ambient_min_score": _runtime_spec(
+        "retrieval_v2_ambient_min_score",
+        "RETRIEVAL_V2_AMBIENT_MIN_SCORE",
+        "float",
+        minimum=0.01,
+        maximum=1.0,
+    ),
     "community_lore": _runtime_spec("community_lore", "COMMUNITY_LORE", "bool"),
     "model_routing_mode": _runtime_spec(
         "model_routing_mode",
@@ -382,6 +422,16 @@ def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
         "structured_memory_every": (
             value if attr == "structured_memory_every" else settings.structured_memory_every
         ),
+        "retrieval_v2_semantic_reject": (
+            value
+            if attr == "retrieval_v2_semantic_reject"
+            else settings.retrieval_v2_semantic_reject
+        ),
+        "retrieval_v2_semantic_strong": (
+            value
+            if attr == "retrieval_v2_semantic_strong"
+            else settings.retrieval_v2_semantic_strong
+        ),
     }
     if effective["fast_output_tokens"] > effective["smart_output_tokens"]:
         raise ValueError("FAST_MAX_OUTPUT_TOKENS는 SMART_MAX_OUTPUT_TOKENS 이하여야 해요.")
@@ -390,6 +440,13 @@ def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
         raise ValueError("SUMMARY_EVERY는 HISTORY_TURNS 이하여야 해요.")
     if effective["structured_memory_every"] > history_turns:
         raise ValueError("STRUCTURED_MEMORY_EVERY는 HISTORY_TURNS 이하여야 해요.")
+    reject = effective["retrieval_v2_semantic_reject"]
+    strong = effective["retrieval_v2_semantic_strong"]
+    disabled = reject == 0.0 and strong == 0.0
+    if not disabled and reject >= strong:
+        raise ValueError(
+            "RETRIEVAL_V2_SEMANTIC_REJECT는 STRONG보다 작아야 해요."
+        )
 
 
 class RuntimeSettings:
