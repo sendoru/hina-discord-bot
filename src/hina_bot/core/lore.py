@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 
+from .evidence_claims import evidence_claim_from_mapping
 from .knowledge_retrieval import KnowledgeCandidate, KnowledgeUsage, lexical_search
 
 LANES = {"canon", "community_meme"}
@@ -116,6 +117,21 @@ def validate_record(record: dict, *, accepted: bool = False) -> dict:
                        or not re.fullmatch(r"[a-z0-9_.-]{3,100}", value) for value in values)
                 or len(values) != len(set(values))):
             raise LoreValidationError(f"{record['id']}: invalid {key}")
+    if "claims" in record:
+        claims = record["claims"]
+        if not isinstance(claims, list) or not claims or len(claims) > 20:
+            raise LoreValidationError(f"{record['id']}: claims must be a non-empty list")
+        try:
+            parsed_claims = tuple(evidence_claim_from_mapping(raw) for raw in claims)
+        except (TypeError, ValueError) as exc:
+            raise LoreValidationError(f"{record['id']}: invalid evidence claim") from exc
+        if len(parsed_claims) != len(set(parsed_claims)):
+            raise LoreValidationError(f"{record['id']}: duplicate evidence claim")
+        entities = set(record.get("entities", ()))
+        if not entities:
+            raise LoreValidationError(f"{record['id']}: claims require canonical entities")
+        if any(not claim.entity_set() <= entities for claim in parsed_claims):
+            raise LoreValidationError(f"{record['id']}: claim entities must be declared")
     if "semantic_text" in record:
         value = record["semantic_text"]
         if not isinstance(value, str) or not 1 <= len(value.strip()) <= 600:
@@ -176,6 +192,10 @@ class LoreIndex:
                 "source_metadata": tuple(sorted(record.get("source", {}).items())),
                 "semantic_text": record.get("semantic_text"),
                 "evidence_ids": tuple(record.get("evidence_ids", ())),
+                "claims": tuple(
+                    evidence_claim_from_mapping(raw)
+                    for raw in record.get("claims", ())
+                ),
             }
             if (
                 record["lane"] == "canon"
