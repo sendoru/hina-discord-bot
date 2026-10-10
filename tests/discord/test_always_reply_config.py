@@ -102,7 +102,7 @@ async def test_mutations_reject_foreign_or_inaccessible_channels(
 
 @pytest.mark.asyncio
 async def test_admin_group_permission_guard_and_ephemeral_responses(config_context):
-    _, client, group = config_context
+    _, _, group = config_context
     denied = _interaction(user_id=200)
     assert await group.interaction_check(denied) is False
     assert denied.response.send_message.call_args.kwargs["ephemeral"]
