@@ -42,6 +42,28 @@ class LoreValidationTests(unittest.TestCase):
         # Existing community meme rows remain valid even though their implicit fact type is fandom.
         validate_record(record("meme.test", "community_meme"), accepted=True)
 
+    def test_evidence_claims_require_declared_entities_and_valid_structure(self):
+        base = record(
+            "canon.claim",
+            entities=["character.hina", "character.hoshino"],
+            claims=[{
+                "predicate": "awareness",
+                "subject": "character.hina",
+                "object": "character.hoshino",
+                "time_scope": "before_first_meeting",
+            }],
+        )
+        validate_record(base, accepted=True)
+        for overrides in (
+            {"entities": ["character.hina"]},
+            {"claims": [{"predicate": "unsupported", "subject": "character.hina"}]},
+            {"claims": [{"predicate": "awareness", "subject": "hina"}]},
+            {"claims": [{"predicate": "awareness", "subject": "character.hina",
+                         "unexpected": "field"}]},
+        ):
+            with self.assertRaises(LoreValidationError):
+                validate_record(base | overrides, accepted=True)
+
     def test_load_rejects_duplicate_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "lore.jsonl"
