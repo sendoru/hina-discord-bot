@@ -129,6 +129,27 @@ It must not contain:
 
 Do not remove the legacy retrieval implementation in this milestone.
 
+## Regression/eval fixtures
+
+The end-to-end deterministic fixture is:
+
+```text
+evals/retrieval_v2_rollout.jsonl
+```
+
+It covers exact factual/profile, exact relation, explicit entity mismatch, ambient scene,
+community reaction and unrelated ordinary-chat zero-result behavior. The test suite executes
+that fixture through the complete request-builder → retrieval lanes → BundleComposer →
+#315 sufficiency chain with a deterministic fake embedding backend.
+
+Semantic distribution approval remains split into the dedicated live-calibration fixtures:
+
+- `evals/retrieval_v2_calibration.jsonl` for factual semantic recall/hard negatives;
+- `evals/retrieval_v2_ambient.jsonl` for ambient insight scenes/hard negatives.
+
+CI validates the integration contract without external credentials; live Gemini reports are
+the operator gate before active rollout.
+
 ## Representative review set
 
 Before active rollout, include examples for:
