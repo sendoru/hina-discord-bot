@@ -261,6 +261,7 @@ class RetrievalV2Engine:
         runtime_candidates: Sequence[KnowledgeCandidate] = (),
         scene: AmbientSceneContext | None = None,
         include_community: bool = True,
+        budgets: RetrievalV2Budgets | None = None,
     ) -> RetrievalV2Result:
         started = perf_counter()
         static = [
