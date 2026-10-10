@@ -166,6 +166,17 @@ Missing sources are expected. Rotation can remove telemetry before a raw turn ex
 raw retention can remove the stored message before telemetry rotates. The UI shows correlation
 availability rather than treating either case as corruption.
 
+On a single trace, **Latency breakdown** shows the measured preflight and turn-stage
+durations instead of analytics averages. Failed turn events can also contribute any
+stage timings they retained; the delivery stage falls back to reply telemetry when
+it is absent from the terminal event. Unrecorded stages display as `—`, never zero.
+
+Generation attribution follows the aggregate analytics definition: answer calls
+and active model-route classifier calls, excluding shadow routing. It is only
+computed when all critical API calls and the generation stage have measured times.
+Stages may overlap, so their durations are not additive. No new telemetry is stored.
+
+
 ### Context / provenance
 
 Each successfully stored turn may include a bounded `context_provenance` snapshot describing the
