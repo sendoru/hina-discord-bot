@@ -50,7 +50,7 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 | --- | --- |
 | `/memory mode` | 전역/서버/채널 자동 장기 기억 읽기·쓰기 모드 설정. 선택적 `channel`로 같은 서버의 다른 텍스트 채널/스레드 지정 |
 | `/memory status` | 현재 채널의 전역 → 서버 → 채널 상속 체인과 최종 적용값 확인 |
-| `/memory purge` | 채널/서버/전역 범위의 자동 사용자 기억 초기화. `target:channel`에서 선택적 `channel` 지원 |
+| `/memory purge` | 현재 채널·같은 서버의 다른 채널 또는 현재 서버 전체의 자동 사용자 기억 삭제. **전역 삭제는 Discord에서 제공하지 않음** |
 
 설정·삭제 명령의 `channel`은 생략하면 실행 중인 채널을 사용하며, 명시하면 같은 서버에서
 조회 권한이 있는 텍스트 채널/스레드만 선택할 수 있습니다. `target:server/global`과
@@ -72,11 +72,20 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 장기 기억 모드는 `channel → server → global → 기본(normal)` 순서로
 우선 적용됩니다. 전역 값을 변경해도 서버·채널에 설정된 override는 유지됩니다.
 
-`/memory purge`도 `target:channel/server/global`을 사용합니다. 기본은 현재
-채널이며 `target:server`는 현재 서버, `target:global`은 모든 서버·DM의
-자동 기억을 삭제합니다. 다른 채널만 삭제할 때는
-`/memory purge target:channel channel:#general confirm:true`처럼 지정합니다.
-어느 범위든 실제 삭제에는 `confirm:true`가 필요합니다.
+`/memory purge`는 **채널 및 서버 대상만** 지원합니다. 실행 위치가 기본 채널이고,
+같은 서버의 다른 텍스트 채널·스레드를 `channel`에서 선택할 수 있습니다.
+
+```text
+/memory purge target:channel confirm:true
+/memory purge target:channel channel:#general confirm:true
+/memory purge target:server confirm:true
+```
+
+`target:server`는 **현재 서버의 모든 채널·모든 사용자**의 자동 기억을 삭제합니다.
+삭제 범위를 반드시 확인하고 실행해 주세요. `confirm:true`를 지정하지 않으면
+삭제하지 않고 대상을 안내합니다. **`target:global`은 Discord에서 제공하지 않습니다.**
+모든 서버·DM의 자동 기억을 삭제하는 전역 purge는 사고 방지를 위해 Dashboard의
+별도 관리 기능에서만 수행할 수 있습니다.
 
 현재 위치의 상속 경로는 `/memory status`로 확인할 수 있습니다. 여러 서버·채널의 직접 설정과
 전체 상속 결과는 Dashboard `/state`에서 확인합니다.

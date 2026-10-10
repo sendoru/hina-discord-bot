@@ -149,6 +149,28 @@ async def test_purge_selected_channel_requires_confirmation_and_preserves_other_
 
 
 @pytest.mark.asyncio
+async def test_discord_global_purge_is_unavailable_even_when_invoked_directly():
+    store = Store(":memory:")
+    try:
+        current, other_server = Scope(1, 10, 100), Scope(2, 20, 200)
+        store.add(current, 1, "current", "reply")
+        store.add(other_server, 2, "other server", "reply")
+        group = MemoryCommands(NS(store=store, channel_lock=lambda _: asyncio.Lock()))
+        assert {choice.value for choice in group.get_command("purge")._params["target"].choices} == {
+            "channel", "server",
+        }
+
+        interaction = _interaction()
+        await group.purge.callback(group, interaction, "global", True)
+        assert "알 수 없는 삭제 범위" in interaction.response.send_message.call_args.args[0]
+        interaction.response.defer.assert_not_awaited()
+        assert len(store.history(current)) == 1
+        assert len(store.history(other_server)) == 1
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
 async def test_purge_rejects_selected_channel_for_server_operation():
     store = Store(":memory:")
     try:

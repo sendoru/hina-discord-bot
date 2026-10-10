@@ -32,7 +32,6 @@ _VIEW_CHOICES = [
 _PURGE_TARGET_CHOICES = [
     app_commands.Choice(name="현재 채널의 모든 사용자 기억", value="channel"),
     app_commands.Choice(name="현재 서버의 모든 사용자 기억", value="server"),
-    app_commands.Choice(name="모든 서버/DM의 사용자 기억", value="global"),
 ]
 _SOURCE_LABEL = {"channel": "채널", "server": "서버", "global": "전역", "default": "기본값"}
 
@@ -272,9 +271,14 @@ class MemoryCommands(app_commands.Group):
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
         if not confirm:
+            label = (
+                f"<#{scope.channel_id}> 채널" if channel is not None
+                else "현재 서버" if target == "server"
+                else "현재 채널"
+            )
             await interaction.response.send_message(
-                "삭제하지 않았어요. 실제로 삭제하려면 confirm을 true로 선택해 주세요."
-                + (f" 대상: <#{scope.channel_id}>." if channel is not None else ""),
+                f"삭제하지 않았어요. 대상: {label}. "
+                "모든 사용자의 자동 기억을 삭제하려면 confirm을 true로 선택해 주세요.",
                 ephemeral=True,
             )
             return
@@ -284,12 +288,10 @@ class MemoryCommands(app_commands.Group):
             if target == "channel":
                 deleted = self.client.store.purge_channel_memory(scope)
                 label = f"<#{scope.channel_id}> 채널" if channel is not None else "현재 채널"
-            elif target == "server":
+            else:
+                # Only channel/server targets are admitted above. Global purge is Dashboard-only.
                 deleted = self.client.store.purge_realm_memory(scope)
                 label = "현재 서버"
-            else:
-                deleted = self.client.store.purge_all_memory()
-                label = "전체"
         await interaction.followup.send(
             f"{label}의 사용자 장기 기억을 초기화했어요. 삭제된 저장 항목: {deleted}개. "
             "서버 공통 메모, 기억 모드 설정, 최근 채널 로그는 유지돼요.",
