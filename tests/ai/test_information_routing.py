@@ -1,9 +1,9 @@
 from hina_bot.ai.information_evidence import search_decision
-from hina_bot.core.evidence_sufficiency import EvidenceAssessment
 from hina_bot.ai.information_routing import (
     InformationRoute,
     classify_information_request,
 )
+from hina_bot.core.evidence_sufficiency import EvidenceAssessment
 
 
 def fact(reference, content, awareness="direct_experience"):
