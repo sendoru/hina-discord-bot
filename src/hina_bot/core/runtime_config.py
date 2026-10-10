@@ -12,6 +12,7 @@ from .config import (
     EXTERNAL_CONTEXT_POLICIES,
     GEMINI_THINKING_LEVELS,
     MODEL_ROUTING_MODES,
+    RETRIEVAL_V2_MODES,
     Settings,
     parse_call_prefixes,
     parse_discord_id_set,
@@ -39,6 +40,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
+    "retrieval_v2_mode": "Retrieval v2를 끄거나 shadow 비교하거나 answer context에 활성화합니다. active에서 문제 발생 시 off로 즉시 rollback할 수 있습니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
     "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
     "fast_model": "adaptive routing의 fast tier에서 사용할 모델 이름입니다.",
@@ -110,6 +112,12 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     ),
     "chat_web_search": _runtime_spec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
     "community_lore": _runtime_spec("community_lore", "COMMUNITY_LORE", "bool"),
+    "retrieval_v2_mode": _runtime_spec(
+        "retrieval_v2_mode",
+        "RETRIEVAL_V2_MODE",
+        "string",
+        choices=tuple(sorted(RETRIEVAL_V2_MODES)),
+    ),
     "model_routing_mode": _runtime_spec(
         "model_routing_mode",
         "MODEL_ROUTING_MODE",
