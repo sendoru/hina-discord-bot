@@ -11,6 +11,24 @@ GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
+RETRIEVAL_V2_MODES = frozenset({"off", "shadow", "active"})
+
+
+def _optional_unit_float(variable: str) -> float | None:
+    raw = os.getenv(variable, "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{variable}는 0~1 사이 숫자여야 합니다.") from exc
+    if not math.isfinite(value) or not 0 <= value <= 1:
+        raise ValueError(f"{variable}는 0~1 사이 유한한 숫자여야 합니다.")
+    return value
+
+
+def retrieval_v2_expected_backend_key(dimensions: int) -> str:
+    return f"gemini:gemini-embedding-2:1:{dimensions}:search-document-v1"
 
 
 def parse_call_prefixes(value: str) -> tuple[str, ...]:
@@ -119,6 +137,14 @@ class Settings:
     lore_max_chars: int = 3200
     community_lore: bool = True
     chat_web_search: bool = True
+    retrieval_v2_mode: str = "off"
+    retrieval_v2_timeout_seconds: float = 3.0
+    retrieval_v2_factual_reject: float | None = None
+    retrieval_v2_factual_strong: float | None = None
+    retrieval_v2_ambient_reject: float | None = None
+    retrieval_v2_ambient_strong: float | None = None
+    retrieval_v2_embedding_dimensions: int = 768
+    retrieval_v2_calibration_backend_key: str = ""
     runtime_timezone: str = "Asia/Seoul"
     runtime_locale: str = "ko-KR"
     runtime_default_location: str = ""
@@ -150,6 +176,57 @@ class Settings:
             raise ValueError(".env.local에 DISCORD_TOKEN을 설정해 주세요.")
 
         provider = _provider(os.getenv("LLM_PROVIDER", "openai"), "LLM_PROVIDER")
+
+        retrieval_v2_mode = os.getenv(
+            "RETRIEVAL_V2_MODE", "off"
+        ).strip().lower()
+        if retrieval_v2_mode not in RETRIEVAL_V2_MODES:
+            allowed = ", ".join(sorted(RETRIEVAL_V2_MODES))
+            raise ValueError(f"RETRIEVAL_V2_MODE은 {allowed} 중 하나여야 합니다.")
+        try:
+            retrieval_v2_timeout_seconds = float(
+                os.getenv("RETRIEVAL_V2_TIMEOUT_SECONDS", "3.0")
+            )
+            retrieval_v2_embedding_dimensions = int(
+                os.getenv("RETRIEVAL_V2_EMBEDDING_DIMENSIONS", "768")
+            )
+        except ValueError as exc:
+            raise ValueError("Retrieval v2 timeout/dimensions 설정이 잘못되었습니다.") from exc
+        retrieval_v2_factual_reject = _optional_unit_float(
+            "RETRIEVAL_V2_FACTUAL_REJECT"
+        )
+        retrieval_v2_factual_strong = _optional_unit_float(
+            "RETRIEVAL_V2_FACTUAL_STRONG"
+        )
+        retrieval_v2_ambient_reject = _optional_unit_float(
+            "RETRIEVAL_V2_AMBIENT_REJECT"
+        )
+        retrieval_v2_ambient_strong = _optional_unit_float(
+            "RETRIEVAL_V2_AMBIENT_STRONG"
+        )
+        retrieval_v2_calibration_backend_key = os.getenv(
+            "RETRIEVAL_V2_CALIBRATION_BACKEND_KEY", ""
+        ).strip()
+        if (
+            len(retrieval_v2_calibration_backend_key) > 200
+            or any(char in retrieval_v2_calibration_backend_key for char in "\r\n\0")
+        ):
+            raise ValueError(
+                "RETRIEVAL_V2_CALIBRATION_BACKEND_KEY는 줄바꿈 없이 200자 이하여야 합니다."
+            )
+        for prefix, reject, strong in (
+            ("FACTUAL", retrieval_v2_factual_reject, retrieval_v2_factual_strong),
+            ("AMBIENT", retrieval_v2_ambient_reject, retrieval_v2_ambient_strong),
+        ):
+            if (reject is None) != (strong is None):
+                raise ValueError(
+                    f"RETRIEVAL_V2_{prefix}_REJECT/STRONG은 함께 설정해야 합니다."
+                )
+            if reject is not None and reject >= strong:
+                raise ValueError(
+                    f"RETRIEVAL_V2_{prefix}_REJECT는 STRONG보다 작아야 합니다."
+                )
+
 
         # OPENAI_MODEL remains a backwards-compatible alias for existing deployments.
         model = (os.getenv("LLM_MODEL", "").strip()
@@ -230,6 +307,30 @@ class Settings:
         }
         if not keys[provider]:
             raise ValueError(f"{_env_key(provider)}를 설정해 주세요.")
+        if retrieval_v2_mode == "active":
+            if not keys["gemini"]:
+                raise ValueError(
+                    "RETRIEVAL_V2_MODE=active에는 GEMINI_API_KEY가 필요합니다."
+                )
+            expected_backend = retrieval_v2_expected_backend_key(
+                retrieval_v2_embedding_dimensions
+            )
+            if retrieval_v2_calibration_backend_key != expected_backend:
+                raise ValueError(
+                    "RETRIEVAL_V2_MODE=active의 calibration backend key가 "
+                    "현재 Gemini embedding 설정과 일치해야 합니다."
+                )
+            if any(value is None for value in (
+                retrieval_v2_factual_reject,
+                retrieval_v2_factual_strong,
+                retrieval_v2_ambient_reject,
+                retrieval_v2_ambient_strong,
+            )):
+                raise ValueError(
+                    "RETRIEVAL_V2_MODE=active에는 factual/ambient live calibration "
+                    "threshold가 모두 필요합니다."
+                )
+
         routing_classifier_api_key = os.getenv("ROUTING_CLASSIFIER_API_KEY", "").strip()
         if (routing_classifier_mode != "off"
                 and not routing_classifier_api_key
@@ -381,6 +482,14 @@ class Settings:
             lore_max_chars=int(os.getenv("LORE_MAX_CHARS", "3200")),
             community_lore=community_lore == "true",
             chat_web_search=chat_web_search == "true",
+            retrieval_v2_mode=retrieval_v2_mode,
+            retrieval_v2_timeout_seconds=retrieval_v2_timeout_seconds,
+            retrieval_v2_factual_reject=retrieval_v2_factual_reject,
+            retrieval_v2_factual_strong=retrieval_v2_factual_strong,
+            retrieval_v2_ambient_reject=retrieval_v2_ambient_reject,
+            retrieval_v2_ambient_strong=retrieval_v2_ambient_strong,
+            retrieval_v2_embedding_dimensions=retrieval_v2_embedding_dimensions,
+            retrieval_v2_calibration_backend_key=retrieval_v2_calibration_backend_key,
             runtime_timezone=runtime_timezone,
             runtime_locale=runtime_locale,
             runtime_default_location=runtime_default_location,
@@ -407,6 +516,8 @@ class Settings:
                 and (s.structured_memory_sweep_interval_seconds == 0
                      or 60 <= s.structured_memory_sweep_interval_seconds <= 24 * 60 * 60)
                 and 0 <= s.lore_max_items <= 20 and 0 <= s.lore_max_chars <= 12000
+                and 0.25 <= s.retrieval_v2_timeout_seconds <= 30.0
+                and 1 <= s.retrieval_v2_embedding_dimensions <= 3072
                 and 0 <= s.vision_max_attachments <= 32
                 and 0 <= s.vision_max_emojis <= 32
                 and 0 <= s.vision_max_stickers <= 32
@@ -419,5 +530,6 @@ class Settings:
                              "structured_memory_every와 summary_every는 각각 2 <= cadence <= history_turns <= 30, "
                              "structured memory stale은 60초~7일, sweep interval은 0 또는 60초~24시간, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
+                             "retrieval v2 timeout 0.25~30초, embedding dimensions 1~3072, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하")
         return s
