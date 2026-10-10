@@ -5,10 +5,20 @@ import pytest
 from hina_bot.ai.retrieval_request import build_resolved_retrieval_request
 from hina_bot.ai.retrieval_v2_rollout import RetrievalV2Controller
 from hina_bot.ai.routing_plan import RoutingPlan
+from hina_bot.core.ambient_retrieval import AmbientSceneContext
+from hina_bot.core.knowledge_retrieval import KnowledgeCandidate, KnowledgeUsage
 from hina_bot.core.lore import LoreIndex
+from hina_bot.core.retrieval_v2 import RetrievalIntent, RetrievalRequest
 from hina_bot.core.retrieval_v2_runtime import (
+    RetrievalV2Budgets,
     RetrievalV2Engine,
     comparison_metrics,
+)
+from hina_bot.core.semantic_retrieval import (
+    EmbeddingResult,
+    EmbeddingUsage,
+    SemanticCalibration,
+    SemanticIndex,
 )
 
 
@@ -62,8 +72,8 @@ def test_comparison_metrics_are_content_free_and_hash_ids():
         [{"reference": "canon.hina.birthday", "content": "sensitive raw content"}],
         result,
     )
-    assert metrics["retrieval_legacy_selected"] == 1
-    assert metrics["retrieval_legacy_id_hashes"]
+    assert metrics["retrieval_v2_legacy_selected"] == 1
+    assert metrics["retrieval_v2_legacy_ids"]
     rendered = repr(metrics)
     assert "sensitive raw content" not in rendered
     assert "canon.hina.birthday" not in rendered
@@ -132,3 +142,81 @@ async def test_rollout_controller_active_gate_accepts_matching_calibration_ident
         assert controller.semantic_gate_reason == "ready"
     finally:
         await controller.close()
+
+class _FakeEmbedding:
+    cache_key = "fake:rollout:v1:2"
+    dimensions = 2
+
+    def __init__(self):
+        self.documents = []
+        self.queries = []
+
+    async def embed_candidates(self, texts):
+        self.documents.extend(texts)
+        return EmbeddingResult(
+            tuple((1.0, 0.0) for _ in texts),
+            EmbeddingUsage(len(texts) * 3, 1),
+        )
+
+    async def embed_query(self, text):
+        self.queries.append(text)
+        return EmbeddingResult(((1.0, 0.0),), EmbeddingUsage(5, 1))
+
+
+def _reaction_candidate():
+    return KnowledgeCandidate(
+        candidate_id="community.test.reaction",
+        source="runtime_knowledge",
+        kind="optional_reaction",
+        content="머리 크기 놀림에 반응",
+        search_text="머리 크기 놀림",
+        subjects=("머리",),
+        keywords=("머리", "크기", "놀림"),
+        usages=(KnowledgeUsage.REACTION,),
+        lane="community_meme",
+    )
+
+
+async def test_end_to_end_ambient_and_reaction_lanes_share_total_budget():
+    backend = _FakeEmbedding()
+    calibration = SemanticCalibration(backend.cache_key, 0.5, 0.9)
+    engine = RetrievalV2Engine(
+        LoreIndex.load(),
+        semantic_index=SemanticIndex(backend),
+        factual_calibration=calibration,
+        ambient_calibration=calibration,
+        budgets=RetrievalV2Budgets(
+            max_items=3,
+            max_chars=3200,
+            relation_items=2,
+            ambient_items=2,
+            ambient_chars=900,
+            reaction_items=1,
+        ),
+    )
+    request = RetrievalRequest(
+        "머리 크기 놀리지 말고 오늘은 좀 쉬어.",
+        "머리 크기 놀림",
+        intent=RetrievalIntent.CONVERSATION,
+    )
+    scene = AmbientSceneContext(
+        "character.hina",
+        recent_same_speaker=("오늘은 일 그만해.",),
+        relationship_signal="편안함 3/4",
+    )
+
+    result = await engine.retrieve(
+        request,
+        runtime_candidates=(_reaction_candidate(),),
+        scene=scene,
+    )
+
+    assert result.factual_invocation == "not_needed"
+    assert result.ambient_status == "available"
+    assert 1 <= len(result.bundle.character_insights) <= 2
+    assert [row.candidate.candidate_id for row in result.bundle.reactions] == [
+        "community.test.reaction"
+    ]
+    assert len(result.selected_ids) <= 3
+    assert result.embedding_requests >= 1
+
