@@ -314,6 +314,12 @@ def assess_local_evidence(
     }:
         return EvidenceAssessment(False, "unclassified_proposition")
 
+    # Conversational semantic recall is context, not evidence that an ordinary
+    # message poses an answerable factual question. A selected direct lore row
+    # must not arbitrarily make such a turn locally sufficient.
+    if request.intent == RetrievalIntent.CONVERSATION:
+        return EvidenceAssessment(False, "not_factual_query")
+
     factual_rows = tuple(bundle.facts)
     for row in factual_rows:
         candidate = row.candidate
