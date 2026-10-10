@@ -9,8 +9,8 @@ from hina_bot.core.evidence_sufficiency import (
     assess_local_evidence,
     selected_evidence_bundle,
 )
-from hina_bot.core.retrieval_v2_runtime import comparison_metrics
 from hina_bot.core.memory_context import CURRENT_MEMORY_CONTEXT, build_memory_context
+from hina_bot.core.retrieval_v2_runtime import comparison_metrics
 
 from .ambient_weather import CURRENT_AMBIENT_WEATHER, AmbientWeatherCache
 from .egress_policy import apply_context_policy
@@ -252,7 +252,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             task.result()
         except asyncio.CancelledError:
             return
-        except Exception as exc:  # pragma: no cover - defensive callback isolation
+        except Exception as exc:  # noqa: BLE001  # pragma: no cover - callback isolation
             log.warning("Retrieval v2 shadow task failed (%s)", type(exc).__name__)
 
     def _activate_retrieval_v2(self, information, result):
