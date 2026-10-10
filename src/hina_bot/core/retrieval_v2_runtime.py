@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -138,6 +139,13 @@ def reference_ids(references: Iterable[dict]) -> tuple[str, ...]:
     )
 
 
+def _id_hashes(values: Iterable[str]) -> list[str]:
+    return [
+        hashlib.sha256(value.encode()).hexdigest()[:12]
+        for value in values
+    ]
+
+
 def comparison_metrics(
     legacy_references: Iterable[dict],
     result: RetrievalV2Result,
@@ -151,6 +159,8 @@ def comparison_metrics(
     return {
         "legacy_selected": len(legacy),
         "v2_selected": len(v2),
+        "legacy_id_hashes": _id_hashes(legacy),
+        "v2_id_hashes": _id_hashes(v2),
         "overlap_count": overlap,
         "overlap_rate": overlap / union if union else 1.0,
         "legacy_zero": not legacy,
