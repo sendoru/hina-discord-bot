@@ -12,7 +12,6 @@ EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 RETRIEVAL_V2_MODES = frozenset({"off", "shadow", "active"})
-RETRIEVAL_V2_MODES = frozenset({"off", "shadow", "active"})
 
 
 def _optional_unit_float(variable: str) -> float | None:
@@ -141,6 +140,7 @@ class Settings:
     retrieval_v2_ambient_reject: float | None = None
     retrieval_v2_ambient_strong: float | None = None
     retrieval_v2_embedding_dimensions: int = 768
+    retrieval_v2_calibration_backend_key: str = ""
     runtime_timezone: str = "Asia/Seoul"
     runtime_locale: str = "ko-KR"
     runtime_default_location: str = ""
@@ -200,6 +200,16 @@ class Settings:
         retrieval_v2_ambient_strong = _optional_unit_float(
             "RETRIEVAL_V2_AMBIENT_STRONG"
         )
+        retrieval_v2_calibration_backend_key = os.getenv(
+            "RETRIEVAL_V2_CALIBRATION_BACKEND_KEY", ""
+        ).strip()
+        if (
+            len(retrieval_v2_calibration_backend_key) > 200
+            or any(char in retrieval_v2_calibration_backend_key for char in "\r\n\0")
+        ):
+            raise ValueError(
+                "RETRIEVAL_V2_CALIBRATION_BACKEND_KEY는 줄바꿈 없이 200자 이하여야 합니다."
+            )
         for prefix, reject, strong in (
             ("FACTUAL", retrieval_v2_factual_reject, retrieval_v2_factual_strong),
             ("AMBIENT", retrieval_v2_ambient_reject, retrieval_v2_ambient_strong),
@@ -293,6 +303,27 @@ class Settings:
         }
         if not keys[provider]:
             raise ValueError(f"{_env_key(provider)}를 설정해 주세요.")
+        if retrieval_v2_mode == "active":
+            if not keys["gemini"]:
+                raise ValueError(
+                    "RETRIEVAL_V2_MODE=active에는 GEMINI_API_KEY가 필요합니다."
+                )
+            if not retrieval_v2_calibration_backend_key:
+                raise ValueError(
+                    "RETRIEVAL_V2_MODE=active에는 "
+                    "RETRIEVAL_V2_CALIBRATION_BACKEND_KEY가 필요합니다."
+                )
+            if any(value is None for value in (
+                retrieval_v2_factual_reject,
+                retrieval_v2_factual_strong,
+                retrieval_v2_ambient_reject,
+                retrieval_v2_ambient_strong,
+            )):
+                raise ValueError(
+                    "RETRIEVAL_V2_MODE=active에는 factual/ambient live calibration "
+                    "threshold가 모두 필요합니다."
+                )
+
         routing_classifier_api_key = os.getenv("ROUTING_CLASSIFIER_API_KEY", "").strip()
         if (routing_classifier_mode != "off"
                 and not routing_classifier_api_key
@@ -518,6 +549,7 @@ class Settings:
             retrieval_v2_ambient_reject=retrieval_v2_ambient_reject,
             retrieval_v2_ambient_strong=retrieval_v2_ambient_strong,
             retrieval_v2_embedding_dimensions=retrieval_v2_embedding_dimensions,
+            retrieval_v2_calibration_backend_key=retrieval_v2_calibration_backend_key,
             runtime_timezone=runtime_timezone,
             runtime_locale=runtime_locale,
             runtime_default_location=runtime_default_location,
