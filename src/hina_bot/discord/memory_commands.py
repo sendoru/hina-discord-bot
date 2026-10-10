@@ -8,6 +8,8 @@ from discord import app_commands
 from hina_bot.core.admin_list import MAX_DISCORD_TEXT, table_row
 from hina_bot.core.routing import Scope
 
+from .scope_targets import command_target_scope
+
 from .knowledge_commands import KnowledgeCommands
 
 log = logging.getLogger("hina")
@@ -144,6 +146,7 @@ class MemoryCommands(app_commands.Group):
     @app_commands.describe(
         value="적용할 모드. inherit는 상위 범위 설정을 따릅니다",
         target="적용 범위. 기본은 현재 채널",
+        channel="대상 서버 채널 (target:channel일 때만, 생략하면 현재 채널)",
     )
     @app_commands.choices(value=_VALUE_CHOICES, target=_TARGET_CHOICES)
     async def mode(
@@ -151,9 +154,10 @@ class MemoryCommands(app_commands.Group):
         interaction: discord.Interaction,
         value: str,
         target: str = "channel",
+        channel: discord.TextChannel | discord.Thread | None = None,
     ):
         try:
-            scope = self.scope(interaction)
+            scope = command_target_scope(interaction, target=target, channel=channel)
             key = self._target_key(scope, target)
             if value == "inherit" and target == "global":
                 raise ValueError("전역 설정은 상속할 상위 범위가 없어요. normal 등 실제 모드를 선택해 주세요.")
@@ -167,6 +171,8 @@ class MemoryCommands(app_commands.Group):
         async with self.client.channel_lock(scope):
             self.client.store.set_memory_mode_override(key, None if value == "inherit" else value)
         changed = {"channel": "채널", "server": "서버", "global": "전역"}[target]
+        if channel is not None:
+            changed = f"<#{scope.channel_id}> 채널"
         state = "상위 설정을 따르도록 변경" if value == "inherit" else f"{value}로 변경"
         await interaction.followup.send(
             f"{changed} 장기 기억 설정을 {state}했어요.\n\n{self._status_text(scope)}", ephemeral=True)
@@ -247,6 +253,7 @@ class MemoryCommands(app_commands.Group):
     @app_commands.describe(
         target="삭제 범위",
         confirm="실제 삭제를 확인하려면 true",
+        channel="삭제할 서버 채널 (target:channel일 때만, 생략하면 현재 채널)",
     )
     @app_commands.choices(target=_PURGE_TARGET_CHOICES)
     async def purge(
@@ -254,9 +261,10 @@ class MemoryCommands(app_commands.Group):
         interaction: discord.Interaction,
         target: str = "channel",
         confirm: bool = False,
+        channel: discord.TextChannel | discord.Thread | None = None,
     ):
         try:
-            scope = self.scope(interaction)
+            scope = command_target_scope(interaction, target=target, channel=channel)
             if target not in {choice.value for choice in _PURGE_TARGET_CHOICES}:
                 raise ValueError("알 수 없는 삭제 범위예요.")
             if target == "server" and scope.guild_id is None:
@@ -266,14 +274,17 @@ class MemoryCommands(app_commands.Group):
             return
         if not confirm:
             await interaction.response.send_message(
-                "삭제하지 않았어요. 실제로 삭제하려면 confirm을 true로 선택해 주세요.", ephemeral=True)
+                "삭제하지 않았어요. 실제로 삭제하려면 confirm을 true로 선택해 주세요."
+                + (f" 대상: <#{scope.channel_id}>." if channel is not None else ""),
+                ephemeral=True,
+            )
             return
 
         await interaction.response.defer(ephemeral=True)
         async with self.client.channel_lock(scope):
             if target == "channel":
                 deleted = self.client.store.purge_channel_memory(scope)
-                label = "현재 채널"
+                label = f"<#{scope.channel_id}> 채널" if channel is not None else "현재 채널"
             elif target == "server":
                 deleted = self.client.store.purge_realm_memory(scope)
                 label = "현재 서버"
