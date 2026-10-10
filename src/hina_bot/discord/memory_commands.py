@@ -79,6 +79,7 @@ class MemoryCommands(app_commands.Group):
         self.client = client
         # Full-scope listings have moved to the dashboard; preserve local status/mode/purge.
         self.remove_command("overview")
+        self.remove_command("status")
         if hasattr(client, "tree") and hasattr(client, "settings"):
             client.tree.add_command(KnowledgeCommands(client))
 
@@ -97,7 +98,7 @@ class MemoryCommands(app_commands.Group):
 
     async def on_error(self, interaction, error):
         log.warning("Memory command failed (%s)", type(error).__name__)
-        text = "기억 설정을 처리하지 못했어요. /memory status로 현재 상태를 확인해 주세요."
+        text = "기억 설정을 처리하지 못했어요. /state show로 현재 상태를 확인해 주세요."
         if interaction.response.is_done():
             await interaction.followup.send(text, ephemeral=True)
         else:

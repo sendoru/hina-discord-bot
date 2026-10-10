@@ -21,7 +21,7 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(await group.interaction_check(interaction))
             self.assertEqual(
                 {command.name for command in group.commands},
-                {"mode", "status", "clear"},
+                {"mode", "clear"},
             )
             self.assertIsNone(group.get_command("capture"))
         finally:
