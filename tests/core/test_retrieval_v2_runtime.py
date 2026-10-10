@@ -1,11 +1,5 @@
 from dataclasses import replace
-from math import sqrt
-
-import pytest
-
 from hina_bot.core.ambient_retrieval import AmbientSceneContext
-from hina_bot.core.evidence_sufficiency import EvidenceAssessment
-from hina_bot.core.hybrid_retrieval import HybridConfig
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate, KnowledgeUsage
 from hina_bot.core.relationship_grounding import RelationshipGrounder
 from hina_bot.core.retrieval_v2 import RetrievalIntent, RetrievalRequest
