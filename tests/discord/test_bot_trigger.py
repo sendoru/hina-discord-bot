@@ -1056,7 +1056,8 @@ async def test_bare_prefix_in_always_reply_dm_keeps_llm_path(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_typing_stops_at_reply_before_post_reply_memory_work(tmp_path):
+@pytest.mark.parametrize("answer_text", ["응", "응" * 2100])
+async def test_typing_stops_before_reply_send_and_post_reply_memory_work(tmp_path, answer_text):
     order = []
 
     async def reply(*args, **kwargs):
@@ -1075,7 +1076,7 @@ async def test_typing_stops_at_reply_before_post_reply_memory_work(tmp_path):
     store = Store(":memory:")
     store.set_chat_log_mode_override("global", "off")
     llm = NS(
-        answer=AsyncMock(return_value="응"),
+        answer=AsyncMock(return_value=answer_text),
         extract_structured_memory=AsyncMock(side_effect=memory),
         summarize_shared=AsyncMock(side_effect=memory),
         close=AsyncMock(),
@@ -1100,8 +1101,59 @@ async def test_typing_stops_at_reply_before_post_reply_memory_work(tmp_path):
         with patch("hina_bot.discord.web_bot.collect_visual_inputs",
                    new=AsyncMock(return_value=[])):
             await bot.on_message(message)
-        assert order[:3] == ["typing-start", "reply", "typing-end"]
-        assert "memory" in order[3:]
+        assert order[:2] == ["typing-start", "typing-end"]
+        sent_count = channel.send.await_count
+        assert sent_count == (2 if len(answer_text) > 1900 else 1)
+        assert order[2:2 + sent_count] == ["reply"] * sent_count
+        assert "memory" in order[2 + sent_count:]
+        channel.typing.assert_called_once()
+        channel.typing.return_value.__aexit__.assert_awaited_once()
+    finally:
+        await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_typing_stops_before_fallback_reply_send(tmp_path):
+    order = []
+
+    async def reply(*args, **kwargs):
+        order.append("fallback-reply")
+        return NS(id=501, created_at=None)
+
+    async def entered(*args):
+        order.append("typing-start")
+
+    async def exited(*args):
+        order.append("typing-end")
+
+    store = Store(":memory:")
+    store.set_chat_log_mode_override("global", "off")
+    llm = NS(
+        answer=AsyncMock(side_effect=RuntimeError("generation failed")),
+        close=AsyncMock(),
+    )
+    bot = ProductionHinaClient(
+        Settings(discord_token="test", openai_api_key="test", cooldown=0,
+                 event_log_path=str(tmp_path / "events.jsonl")),
+        store=store, llm=llm,
+    )
+    bot._connection.user = NS(id=99)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = 10
+    channel.send = AsyncMock(side_effect=reply)
+    channel.typing.return_value.__aenter__ = AsyncMock(side_effect=entered)
+    channel.typing.return_value.__aexit__ = AsyncMock(side_effect=exited)
+    channel.permissions_for.return_value = NS(view_channel=True, read_message_history=True)
+    guild = NS(id=1, default_role=NS(), unavailable=False, me=NS(), emojis=[])
+    author = NS(id=100, bot=False, display_name="사용자")
+    message = make_message(channel, guild, message_id=331, author=author, text="히나야 안녕")
+
+    try:
+        with patch("hina_bot.discord.web_bot.collect_visual_inputs",
+                   new=AsyncMock(return_value=[])):
+            await bot.on_message(message)
+        assert order == ["typing-start", "typing-end", "fallback-reply"]
+        channel.typing.assert_called_once()
         channel.typing.return_value.__aexit__.assert_awaited_once()
     finally:
         await bot.close()

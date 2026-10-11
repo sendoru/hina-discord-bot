@@ -43,7 +43,7 @@ CURRENT_PUBLIC_CONTEXT_REQUEST = ContextVar(
 
 
 class _ManagedTyping:
-    """End the typing indicator on delivery, not after post-reply memory work."""
+    """Stop typing before the first reply send, or on request exit."""
 
     def __init__(self, context):
         self.context = context
