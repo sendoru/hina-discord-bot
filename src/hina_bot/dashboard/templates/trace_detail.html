@@ -14,6 +14,7 @@
 <nav class="section-nav" aria-label="Trace sections">
   {% if data.summary %}<a href="#trace-summary">Summary</a>{% endif %}
   {% if data.summary and data.summary.issues %}<a href="#trace-issues">Issues</a>{% endif %}
+  <a href="#trace-latency">Latency</a>
   <a href="#stored-turn">{% if data.stored and data.stored.record_type == "failed" %}Failed record{% else %}Stored turn{% endif %}</a>
   {% if data.context_provenance or data.context_telemetry %}<a href="#context-provenance">Context</a>{% endif %}
   <a href="#trace-timeline">Timeline</a>
@@ -59,6 +60,63 @@
 </section>
 {% endif %}
 {% endif %}
+
+<section class="panel section-anchor" id="trace-latency">
+  <div class="panel-heading">
+    <div>
+      <h2>Latency breakdown</h2>
+      <p class="muted">이 trace에서 직접 관측된 단계별 시간입니다. 중첩되는 구간이 있으므로 행의 시간을 모두 합산하지 마세요. 미관측 값은 —로 표시합니다.</p>
+    </div>
+  </div>
+  {% if not data.latency.has_stages %}
+  <p class="muted">이 trace에는 단계별 latency telemetry가 남아 있지 않습니다.</p>
+  {% endif %}
+  <div class="grid-2">
+    {% for group in data.latency.groups %}
+    <div>
+      <h3>{{ group.label }}</h3>
+      <p class="muted"><code>{{ group.event or "No event" }}</code>{% if group.label == "Turn handling" %} · delivery_ms는 종료 이벤트에 없으면 reply_delivered에서 가져옵니다.{% endif %}</p>
+      <table>
+        <thead><tr><th>Stage</th><th>Time</th></tr></thead>
+        <tbody>
+          {% for stage in group.stages %}
+          <tr>
+            <td><code>{{ stage.name }}</code></td>
+            <td class="numeric">{{ stage.value ~ " ms" if stage.value is not none else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+  </div>
+  <h3>Generation attribution</h3>
+  <p class="muted">Analytics와 동일하게 answer 및 활성 model_route_classify 호출 시간을 합산한 추정치입니다. 병렬·중첩 호출이 있을 수 있으며 residual은 음수를 0으로 보정합니다.</p>
+  <dl class="metadata">
+    <div><dt>Critical API time</dt><dd>{{ data.latency.generation.api_ms ~ " ms" if data.latency.generation.api_ms is not none else "—" }}</dd></div>
+    <div><dt>Generation residual</dt><dd>{{ data.latency.generation.residual_ms ~ " ms" if data.latency.generation.residual_ms is not none else "—" }}</dd></div>
+  </dl>
+  {% if data.latency.generation.calls %}
+  <details>
+    <summary>Critical API calls ({{ data.latency.generation.calls | length }})</summary>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Critical API call timings">
+      <table>
+        <thead><tr><th>Operation</th><th>Model</th><th>Status</th><th>Time</th></tr></thead>
+        <tbody>
+          {% for call in data.latency.generation.calls %}
+          <tr>
+            <td><code>{{ call.operation }}</code></td>
+            <td>{{ call.model or "—" }}</td>
+            <td>{{ call.status or "—" }}</td>
+            <td class="numeric">{{ call.elapsed_ms ~ " ms" if call.elapsed_ms is not none else "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+</section>
 
 {% if data.stored %}
 <section class="panel section-anchor" id="stored-turn">

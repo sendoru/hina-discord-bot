@@ -12,6 +12,7 @@ from hina_bot.dashboard.services import (
     ReconciliationService,
     TraceService,
 )
+from hina_bot.dashboard.services.traces import _trace_latency_breakdown
 from hina_bot.dashboard.telemetry import TelemetryReader
 
 
@@ -439,6 +440,105 @@ def test_trace_summary_separates_reply_and_total_latency(tmp_path):
     assert summary["turn_latency_ms"] == 1100
     assert summary["post_reply_ms"] == 300
     assert summary["exchange_elapsed_ms"] == 900
+
+
+def test_individual_trace_latency_uses_observed_stages_and_active_api_calls(tmp_path):
+    service = build_service(tmp_path)
+    assert service.telemetry.usage_path is not None
+    with service.telemetry.usage_path.open("a", encoding="utf-8") as handle:
+        for row in (
+            {
+                "turn_id": "trace-1",
+                "operation": "model_route_classify",
+                "model": "classifier-model",
+                "elapsed_ms": 150,
+            },
+            {
+                "turn_id": "trace-1",
+                "operation": "model_route_classify",
+                "semantic_route_mode": "shadow",
+                "model": "classifier-model",
+                "elapsed_ms": 9999,
+            },
+        ):
+            handle.write(json.dumps(row) + "\n")
+    assert service.telemetry.event_path is not None
+    with service.telemetry.event_path.open("a", encoding="utf-8") as handle:
+        for row in (
+            {
+                "turn_id": "trace-1",
+                "event": "turn.preflight",
+                "preflight_ms": 0,
+                "target_context_ms": 17,
+                "gateway_lag_ms": True,
+            },
+            {
+                "turn_id": "trace-1",
+                "event": "turn.reply_delivered",
+                "delivery_ms": 0,
+            },
+            {
+                "turn_id": "trace-1",
+                "event": "turn.completed",
+                "lock_wait_ms": 0,
+                "context_ms": 90,
+                "generation_ms": 1200,
+            },
+        ):
+            handle.write(json.dumps(row) + "\n")
+
+    data = service.trace("trace-1")
+
+    assert data is not None
+    latency = data["latency"]
+    assert latency["has_stages"] is True
+    preflight, turn = latency["groups"]
+    assert preflight["event"] == "turn.preflight"
+    assert turn["event"] == "turn.completed"
+    assert {field["name"]: field["value"] for field in preflight["stages"]}[
+        "preflight_ms"
+    ] == 0
+    assert {field["name"]: field["value"] for field in preflight["stages"]}[
+        "gateway_lag_ms"
+    ] is None
+    turn_values = {field["name"]: field["value"] for field in turn["stages"]}
+    assert turn_values["lock_wait_ms"] == 0
+    assert turn_values["context_ms"] == 90
+    assert turn_values["delivery_ms"] == 0  # from reply event
+    assert latency["generation"]["api_ms"] == 950
+    assert latency["generation"]["residual_ms"] == 250
+    assert [call["operation"] for call in latency["generation"]["calls"]] == [
+        "answer",
+        "model_route_classify",
+    ]
+
+
+def test_individual_trace_latency_keeps_unobserved_values_unknown():
+    latency = _trace_latency_breakdown(
+        (
+            {"event": "turn.preflight", "preflight_ms": False},
+            {"event": "turn.failed", "generation_ms": 0, "memory_ms": True},
+        ),
+        (
+            {"operation": "answer", "model": "answer-model", "elapsed_ms": 100},
+            {"operation": "model_route_classify", "model": "classifier-model"},
+        ),
+    )
+
+    assert latency["groups"][0]["stages"][0]["value"] is None
+    turn_values = {
+        stage["name"]: stage["value"] for stage in latency["groups"][1]["stages"]
+    }
+    assert latency["groups"][1]["event"] == "turn.failed"
+    assert turn_values["generation_ms"] == 0
+    assert turn_values["memory_ms"] is None
+    assert latency["generation"]["api_ms"] is None
+    assert latency["generation"]["residual_ms"] is None
+    assert latency["has_stages"] is True
+
+    missing = _trace_latency_breakdown((), ())
+    assert missing["has_stages"] is False
+    assert missing["generation"]["api_ms"] is None
 
 
 def test_failed_trace_keeps_content_free_context_telemetry(tmp_path):

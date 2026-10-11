@@ -3,6 +3,7 @@ import sqlite3
 from pathlib import Path
 
 from .admin_commands import ensure_admin_command_schema
+from .chatlog_modes import migrate_legacy_chatlog_settings
 from .memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_CONTEXT
 from .memory_items import (
     MemoryDisclosure,
@@ -314,6 +315,9 @@ class Store:
                 "CREATE INDEX IF NOT EXISTS memory_items_owner_status "
                 "ON memory_items(user_id,status,id)"
             )
+        # Apply legacy config migration when the store is opened, even for runtimes
+        # that do not construct the Discord /chatlog command group.
+        migrate_legacy_chatlog_settings(self)
 
     def close(self):
         try:

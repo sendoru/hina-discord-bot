@@ -26,6 +26,47 @@ _MEMORY_OPERATIONS = {
 }
 _NEAR_THRESHOLD = 0.25
 
+# Shared stage definitions for aggregate analytics and per-trace diagnostics.
+PREFLIGHT_LATENCY_STAGES = (
+    "preflight_ms",
+    "typing_start_ms",
+    "gateway_lag_ms",
+    "target_context_ms",
+    "reply_context_ms",
+    "visual_context_ms",
+    "history_hydration_ms",
+    "channel_context_select_ms",
+    "visual_ref_select_ms",
+    "visual_fetch_ms",
+)
+TURN_LATENCY_STAGES = (
+    "lock_wait_ms",
+    "channel_lock_wait_ms",
+    "memory_lock_wait_ms",
+    "slot_wait_ms",
+    "recent_history_ms",
+    "context_ms",
+    "generation_ms",
+    "delivery_ms",
+    "memory_ms",
+)
+
+
+def critical_generation_api_rows(
+    rows: Iterable[dict[str, object]],
+) -> list[dict[str, object]]:
+    """API calls used by the existing generation attribution calculation."""
+    return [
+        row
+        for row in rows
+        if row.get("operation") == "answer"
+        or (
+            row.get("operation") == "model_route_classify"
+            and row.get("semantic_route_mode") != "shadow"
+        )
+    ]
+
+
 
 def _parse_time(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
@@ -484,15 +525,7 @@ def build_analytics(
             post_reply_values.append(base_elapsed - reply_elapsed)
 
         generation_ms = row.get("generation_ms")
-        critical_api = [
-            api_row
-            for api_row in usage_by_turn.get(turn_id, ())
-            if api_row.get("operation") == "answer"
-            or (
-                api_row.get("operation") == "model_route_classify"
-                and api_row.get("semantic_route_mode") != "shadow"
-            )
-        ]
+        critical_api = critical_generation_api_rows(usage_by_turn.get(turn_id, ()))
         api_latencies = [
             value
             for api_row in critical_api
@@ -560,31 +593,14 @@ def build_analytics(
         ),
         "post_reply": _distribution(post_reply_values, total=len(completed_rows)),
         "stages": {
-            "preflight_ms": _field_latency(preflight_rows, "preflight_ms"),
-            "typing_start_ms": _field_latency(preflight_rows, "typing_start_ms"),
-            "gateway_lag_ms": _field_latency(preflight_rows, "gateway_lag_ms"),
-            "target_context_ms": _field_latency(preflight_rows, "target_context_ms"),
-            "reply_context_ms": _field_latency(preflight_rows, "reply_context_ms"),
-            "visual_context_ms": _field_latency(preflight_rows, "visual_context_ms"),
-            "history_hydration_ms": _field_latency(preflight_rows, "history_hydration_ms"),
-            "channel_context_select_ms": _field_latency(
-                preflight_rows, "channel_context_select_ms"
-            ),
-            "visual_ref_select_ms": _field_latency(preflight_rows, "visual_ref_select_ms"),
-            "visual_fetch_ms": _field_latency(preflight_rows, "visual_fetch_ms"),
-            "lock_wait_ms": _field_latency(completed_rows, "lock_wait_ms"),
-            "channel_lock_wait_ms": _field_latency(
-                completed_rows, "channel_lock_wait_ms"
-            ),
-            "memory_lock_wait_ms": _field_latency(
-                completed_rows, "memory_lock_wait_ms"
-            ),
-            "slot_wait_ms": _field_latency(completed_rows, "slot_wait_ms"),
-            "recent_history_ms": _field_latency(completed_rows, "recent_history_ms"),
-            "context_ms": _field_latency(completed_rows, "context_ms"),
-            "generation_ms": _field_latency(completed_rows, "generation_ms"),
-            "delivery_ms": _field_latency(completed_rows, "delivery_ms"),
-            "memory_ms": _field_latency(completed_rows, "memory_ms"),
+            **{
+                field: _field_latency(preflight_rows, field)
+                for field in PREFLIGHT_LATENCY_STAGES
+            },
+            **{
+                field: _field_latency(completed_rows, field)
+                for field in TURN_LATENCY_STAGES
+            },
         },
         "generation": {
             "api_time": _distribution(

@@ -5,6 +5,7 @@ import pytest
 
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
+from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
 from hina_bot.discord.slash_commands import HELP_TEXT, EmojiSlashCommands, _parse_emoji_import_items
 from hina_bot.discord.web_bot import HinaClient
@@ -26,7 +27,7 @@ def slash_bot():
 def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot):
     memory = slash_bot.tree.get_command("memory")
     assert memory is not None
-    for name in ("mode", "status", "overview", "purge", "show", "clear"):
+    for name in ("mode", "purge", "show", "clear"):
         assert memory.get_command(name) is not None
     for removed in ("note", "note-clear", "server-show", "server-note", "server-clear"):
         assert memory.get_command(removed) is None
@@ -38,21 +39,67 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
 
     chatlog = slash_bot.tree.get_command("chatlog")
     assert chatlog is not None
-    for name in ("mode", "status", "overview", "clear"):
+    for name in ("mode", "clear"):
         assert chatlog.get_command(name) is not None
+
+    assert memory.get_command("status") is None
+    assert chatlog.get_command("status") is None
+    state = slash_bot.tree.get_command("state")
+    assert state is not None
+    assert {command.name for command in state.commands} == {"show"}
 
     emoji = slash_bot.tree.get_command("emoji")
     assert emoji is not None
     for name in ("add", "import", "list", "edit", "remove"):
         assert emoji.get_command(name) is not None
 
-    assert slash_bot.tree.get_command("instruction") is not None
-    assert slash_bot.tree.get_command("knowledge") is not None
+    assert slash_bot.tree.get_command("instruction") is None
+    assert slash_bot.tree.get_command("config") is None  # RuntimeSettings-only group
+    knowledge = slash_bot.tree.get_command("knowledge")
+    assert knowledge is not None
+    assert {command.name for command in knowledge.commands} == {"ingest"}
     help_command = slash_bot.tree.get_command("help")
     assert help_command is not None
     assert "DM" in HELP_TEXT
     assert "메시지 보내기" in HELP_TEXT
     assert "`히나야`" in HELP_TEXT
+    assert "`/knowledge ingest`" in HELP_TEXT
+    assert "`/state show`" in HELP_TEXT
+    assert "`/config always-reply enable|disable|status`" in HELP_TEXT
+    assert "`/config privacy`" in HELP_TEXT
+    assert "`/chatlog status`" not in HELP_TEXT
+    assert "`/chatlog overview`" not in HELP_TEXT
+    assert "`/instruction" not in HELP_TEXT
+
+
+def test_production_composition_registers_only_expected_commands_and_contexts():
+    store = Store(":memory:")
+    settings = RuntimeSettings(
+        Settings(discord_token="test", openai_api_key="test", bot_admin_ids=frozenset({100})),
+        store,
+    )
+    bot = HinaClient(settings, store=store, llm=NS(close=AsyncMock()))
+    try:
+        commands = {command.name for command in bot.tree.get_commands()}
+        assert commands == {
+            "memory", "note", "chatlog", "state", "emoji", "knowledge", "help", "config",
+        }
+        assert {c.name for c in bot.tree.get_command("memory").commands} == {
+            "mode", "purge", "show", "clear",
+        }
+        assert {c.name for c in bot.tree.get_command("chatlog").commands} == {"mode", "clear"}
+        assert {c.name for c in bot.tree.get_command("state").commands} == {"show"}
+        assert {c.name for c in bot.tree.get_command("knowledge").commands} == {"ingest"}
+        config = bot.tree.get_command("config")
+        assert {c.name for c in config.commands} == {"privacy", "always-reply"}
+        assert {c.name for c in config.get_command("always-reply").commands} == {
+            "enable", "disable", "status",
+        }
+        assert config.allowed_contexts.guild and config.allowed_contexts.dm_channel
+        assert config.allowed_installs.guild and config.allowed_installs.user
+        assert bot.tree.get_command("instruction") is None
+    finally:
+        store.close()
 
 
 def test_emoji_import_items_parser():
@@ -134,7 +181,7 @@ async def test_memory_group_keeps_only_admin_memory_commands_admin_only(slash_bo
     show_interaction = NS(user=user, command=NS(name="show"), response=user_response)
     assert await memory.interaction_check(show_interaction) is True
 
-    for name in ("mode", "status", "overview", "purge"):
+    for name in ("mode", "purge"):
         interaction = NS(user=user, command=NS(name=name), response=user_response)
         assert await memory.interaction_check(interaction) is False
     user_response.send_message.assert_awaited()
