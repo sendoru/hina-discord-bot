@@ -3,6 +3,7 @@ from hina_bot.ai.information_routing import (
     InformationRoute,
     classify_information_request,
 )
+from hina_bot.core.evidence_sufficiency import EvidenceAssessment
 
 
 def fact(reference, content, awareness="direct_experience"):
@@ -50,7 +51,10 @@ def test_named_character_profile_stays_local_when_lore_matches():
     request = classify_information_request("히나 생일 언제야?")
     refs = [fact("canon.hina.basic.profile", "히나의 생일은 2월 19일이다.", "self")]
     assert request.route == InformationRoute.LOCAL_THEN_WEB
-    assert search_decision(request, refs, enabled=True).mode == "none"
+    assert search_decision(
+        request, refs, enabled=True,
+        local_evidence=EvidenceAssessment(True, "trusted_direct_fact"),
+    ).mode == "none"
 
 
 def test_personal_memory_has_priority_over_profile_words():
@@ -71,13 +75,19 @@ def test_relation_query_uses_matching_local_event_evidence():
     refs = [fact("canon.hina.nagisa.meeting", "히나는 나기사와 직접 만난 적이 있다.")]
     assert request.route == InformationRoute.LOCAL_THEN_WEB
     assert "만남" in request.lore_query
-    assert search_decision(request, refs, enabled=True).mode == "none"
+    assert search_decision(
+        request, refs, enabled=True,
+        local_evidence=EvidenceAssessment(True, "matched_direct_claim"),
+    ).mode == "none"
 
 
 def test_relation_query_rejects_unrelated_profile_fact():
     request = classify_information_request("나기사 직접 만나본 적 있어?")
     refs = [fact("canon.nagisa.profile", "나기사는 티파티의 호스트다.", "public_knowledge")]
-    assert search_decision(request, refs, enabled=True).mode == "required"
+    assert search_decision(
+        request, refs, enabled=True,
+        local_evidence=EvidenceAssessment(False, "proposition_not_covered"),
+    ).mode == "required"
 
 
 def test_ambiguous_temporal_question_only_offers_search():
