@@ -1,6 +1,7 @@
 # Discord slash command interface
 
-운영 중 사용하는 관리·설정 명령은 Discord native slash command로 통일합니다.
+현재 서버·채널·사용자를 대상으로 하는 즉시 조작은 Discord native slash command로 제공하고,
+전체 조회·검색·편집은 Dashboard를 사용합니다.
 `히나야 /메모`, `히나야 /기억`, `히나야 /이모지 ...` 같은 prefix+slash 메시지 명령은
 production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 호출은 기존처럼 `히나야`, 멘션,
 답장 핑을 사용합니다.
@@ -47,63 +48,121 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 
 | 명령 | 기능 |
 | --- | --- |
-| `/memory mode` | 전역/서버/채널 자동 장기 기억 읽기·쓰기 모드 설정 |
-| `/memory status` | 현재 채널의 전역 → 서버 → 채널 상속 체인과 최종 적용값 확인 |
-| `/memory overview` | 기본적으로 직접 override된 범위만 표시. `view:전체 상속 결과`로 전체 확인 |
-| `/memory purge` | 채널/서버/전역 범위의 자동 사용자 기억 초기화 |
+| `/memory mode` | 전역/서버/채널 자동 장기 기억 읽기·쓰기 모드 설정. 선택적 `channel`로 같은 서버의 다른 텍스트 채널/스레드 지정 |
+| `/memory purge` | 현재 채널·같은 서버의 다른 채널 또는 현재 서버 전체의 자동 사용자 기억 삭제. **전역 삭제는 Discord에서 제공하지 않음** |
 
-`/memory overview`의 기본 화면에서는 상속만 받는 서버·채널을 숨깁니다. 현재 위치의 자세한 상속
-경로가 필요하면 `/memory status`, 모든 범위의 계산 결과가 필요하면 overview의
-`전체 상속 결과` 보기를 사용합니다.
+설정·삭제 명령의 `channel`은 생략하면 실행 중인 채널을 사용하며, 명시하면 같은 서버에서
+조회 권한이 있는 텍스트 채널/스레드만 선택할 수 있습니다. `target:server/global`과
+`channel`을 동시에 지정할 수는 없습니다. DM에서는 다른 채널 지정이 허용되지 않습니다.
+
+`/memory mode` 사용 예시:
+
+```text
+/memory mode value:off
+/memory mode value:off target:channel channel:#general
+/memory mode value:read_only target:server
+/memory mode value:off target:global
+/memory mode value:inherit target:server
+```
+
+`target`은 `channel`(기본, 현재 채널), `server`(현재 서버), `global`(전역) 중에서
+선택합니다. `value`는 `normal/read_only/write_only/off/inherit`이며,
+`inherit`는 채널·서버에서만 가능하고 전역에서는 사용할 수 없습니다.
+장기 기억 모드는 `channel → server → global → 기본(normal)` 순서로
+우선 적용됩니다. 전역 값을 변경해도 서버·채널에 설정된 override는 유지됩니다.
+
+`/memory purge`는 **채널 및 서버 대상만** 지원합니다. 실행 위치가 기본 채널이고,
+같은 서버의 다른 텍스트 채널·스레드를 `channel`에서 선택할 수 있습니다.
+
+```text
+/memory purge target:channel confirm:true
+/memory purge target:channel channel:#general confirm:true
+/memory purge target:server confirm:true
+```
+
+`target:server`는 **현재 서버의 모든 채널·모든 사용자**의 자동 기억을 삭제합니다.
+삭제 범위를 반드시 확인하고 실행해 주세요. `confirm:true`를 지정하지 않으면
+삭제하지 않고 대상을 안내합니다. **`target:global`은 Discord에서 제공하지 않습니다.**
+모든 서버·DM의 자동 기억을 삭제하는 전역 purge는 사고 방지를 위해 Dashboard의
+별도 관리 기능에서만 수행할 수 있습니다.
+
+현재 위치 또는 같은 서버의 다른 채널에서 memory/chatlog 상속 경로를 함께 확인하려면
+`/state show`를 사용합니다. 여러 서버·채널의 직접 설정과 전체 상속 결과는
+Dashboard `/state`에서 확인합니다.
 
 `/memory purge`는 자동 대화 기록·요약·공유 요약만 범위에 맞게 삭제합니다. 개인/서버 수동 메모와
 memory/chatlog 설정 자체는 유지합니다.
 
-## 런타임 설정
+## 현재 컨텍스트 상태 조회
 
-`/config` 그룹 전체는 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자 전용입니다. 아래 설정은 봇을
-재시작하지 않고 바꿀 수 있으며 SQLite에 override로 저장됩니다.
+`/state show`는 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자만 사용할 수 있습니다.
 
 | 명령 | 기능 |
 | --- | --- |
-| `/config status` | 현재 effective 값과 DB override 여부 확인 |
+| `/state show` | 현재 채널의 장기 기억·최근 대화 문맥 최종 설정 및 각 상속 범위 확인 |
+| `/state show channel:#general` | 같은 서버의 다른 채널 설정 조회 (조회 권한 필요) |
+| `/state show user:@멤버` | 현재 서버 멤버의 수동 개인 메모 **존재 여부만** 확인 |
+
+자동 기억 및 chatlog 정책은 사용자별이 아닌 **global → server → channel**
+설정입니다. `user`를 지정해도 유효 정책은 달라지지 않습니다.
+`user`를 생략하면 명령 호출자가 기본이며, 다른 서버 사용자나 DM에서 다른 사용자
+지정은 허용하지 않습니다.
+
+출력에는 memory 모드와 읽기/쓰기 가능 여부, chatlog 활성화(on/off)와 수집
+범위(all/direct)의 **독립적인 상속 경로**, 실제 로컬 recent-context 동작
+(특히 DM에서 off)을 포함합니다. Dashboard `/state`와 동일한 계산으로 표시하며,
+기존 데이터에서 두 override의 출처가 달라도 로컬 최종 동작은 일치합니다.
+
+`EXTERNAL_CONTEXT_POLICY`와 외부 LLM으로 전송 가능한 최근 문맥도 별도로
+안내합니다. 로컬 설정이 `all`이더라도
+`bot_interactions_only`이면 일반 채널 잡담은 외부 모델에 전송되지 않습니다.
+다른 문맥의 전송 여부는 별도의 egress 규칙도 따릅니다.
+
+수동 메모는 채널·서버·개인별 **존재 여부만** 표시하며 본문은 공개하지 않습니다.
+모든 응답은 관리자 전용·ephemeral입니다.
+
+기존 상태 조회 명령은 `/state show`로 대체되어 Discord command tree에서 등록 해제됐습니다.
+서버·채널별 설정의 전체 목록이나 설정값 편집은 Dashboard `/state`에서
+계속 제공합니다.
+
+## 런타임 설정
+
+`/config` 그룹은 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자 전용입니다.
+서버 내의 빠른 채널 설정과 긴급 privacy 변경만 Discord에서 제공하며,
+다른 런타임 설정의 목록 조회·편집·override 초기화는 Dashboard `/admin/runtime`에서 합니다.
+
+| 명령 | 기능 |
+| --- | --- |
 | `/config privacy value:<정책>` | 외부 LLM으로 보낼 대화 문맥의 최종 프라이버시 경계 설정 |
-| `/config set key:<설정> value:<값>` | 일반 runtime DB override 저장 후 즉시 적용 |
-| `/config reset key:<설정>` | 일반 runtime DB override 삭제 후 시작 시 값으로 복귀 |
+| `/config always-reply enable [channel]` | 현재/선택 채널의 자동 응답 켜기 |
+| `/config always-reply disable [channel]` | 현재/선택 채널의 자동 응답 끄기 |
+| `/config always-reply status [channel]` | 해당 채널의 자동 응답 상태와 설정 출처 확인 |
 
-`/config set/reset` 대상은 `MODEL_ROUTING_MODE`, `LLM_MODEL`, `LLM_FAST_MODEL`,
-`LLM_SMART_MODEL`, `MAX_OUTPUT_TOKENS`, `FAST_MAX_OUTPUT_TOKENS`,
-`SMART_MAX_OUTPUT_TOKENS`, `MEMORY_MAX_OUTPUT_TOKENS`,
-`ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS`, `GEMINI_THINKING_LEVEL`,
-`GEMINI_FAST_THINKING_LEVEL`, `GEMINI_SMART_THINKING_LEVEL`,
-`GEMINI_STORE_INTERACTIONS`, `GEMINI_STORE_CLASSIFIER_INTERACTIONS`, `CALL_PREFIXES`,
-`EMPTY_CALL_REPLY`, `SPECIAL_DM_EMPTY_CALL_REPLY`, `EMPTY_RESPONSE_REPLY`,
-`DM_ALWAYS_REPLY`, `ALWAYS_REPLY_CHANNEL_IDS`, `COOLDOWN_SECONDS`,
-`PUBLIC_SERVER_MEMORY_IN_DM`, `CHAT_WEB_SEARCH`, `COMMUNITY_LORE`,
-`CHANNEL_CONTEXT_CHARS`, `HISTORY_MAX_CHARS`, `SUMMARY_EVERY`,
-`STRUCTURED_MEMORY_EVERY`, `STRUCTURED_MEMORY_STALE_AFTER_SECONDS`,
-`LORE_MAX_ITEMS`, `LORE_MAX_CHARS`, `RUNTIME_TIMEZONE`, `RUNTIME_LOCALE`,
-`RUNTIME_DEFAULT_LOCATION`입니다.
-`EXTERNAL_CONTEXT_POLICY`는 프라이버시 경계라는 의미가 드러나도록 `/config privacy`에서 별도로
-관리합니다.
+```text
+/config always-reply enable
+/config always-reply status
+/config always-reply disable channel:#general
+```
 
-우선순위는 **SQLite override → 시작 시 `.env.local`/`.env` 값 → 코드 기본값**입니다. 따라서 env의
-값은 여전히 배포 기본값으로 사용할 수 있고, `/config reset`은 해당 DB override만 지웁니다.
-`RUNTIME_DEFAULT_LOCATION`을 명시적으로 비우려면 `/config set`의 value에 `none`을 사용합니다.
-`CALL_PREFIXES`는 쉼표 구분 문자열, `ALWAYS_REPLY_CHANNEL_IDS`는 쉼표 구분 Discord 채널 ID 목록,
-불리언 값은 `on/off` 또는 `true/false`를 받습니다. 설정 수가 Discord의 정적 choice
-한도를 넘기므로 `/config set/reset`의 key는 autocomplete로 검색합니다. `FAST_MAX_OUTPUT_TOKENS`는
-항상 `SMART_MAX_OUTPUT_TOKENS` 이하여야 하고, `SUMMARY_EVERY`와
-`STRUCTURED_MEMORY_EVERY`는 시작 시 `HISTORY_TURNS` 이하여야 합니다.
-`SPECIAL_DM_EMPTY_CALL_REPLY`를 비우려면 value에 `none`을 사용할 수 있습니다.
-`GEMINI_STORE_INTERACTIONS`는 기본적으로
-꺼져 있으며, 켜면 일반 채팅 answer interaction만 provider 측에 저장됩니다.
-semantic/web routing classifier 저장은 `GEMINI_STORE_CLASSIFIER_INTERACTIONS`로 별도 제어하며,
-기본값은 꺼짐입니다. memory summary·identity resolution 같은 다른 내부 보조 호출은 저장하지 않습니다.
+`channel`을 생략하면 현재 채널, 선택하면 **같은 서버에서 조회 가능한**
+텍스트 채널이나 스레드를 대상으로 합니다. DM이나 다른 서버 채널은 지정할 수 없습니다.
+이 명령은 `ALWAYS_REPLY_CHANNEL_IDS`의 **effective 목록에서 해당 채널 하나만
+추가·삭제**하며 다른 등록 채널은 보존합니다. 이미 원하는 상태라면 새 DB override를
+만들거나 recent buffer를 비우지 않습니다.
+
+변경 시에는 SQLite override에 즉시 저장되고, direct-trigger 판정이 바뀌므로
+기존 recent buffer와 hydration 상태를 초기화합니다. 처음 상태가 startup `.env`에서
+온 경우에도 하나를 삭제하면 나머지 채널을 포함한 새 목록이 DB override가 되며
+재시작 후에도 유지됩니다. 채널 등록은 최대 100개입니다.
+
+Dashboard에서는 같은 `ALWAYS_REPLY_CHANNEL_IDS` 목록과 기타 모든 runtime 설정을
+계속 편집할 수 있습니다. 두 인터페이스 모두 동일한 런타임 검증·저장 경로를 사용합니다.
+설정값의 우선순위는 **SQLite override → 시작 시 `.env.local`/`.env` → 코드 기본값**이고,
+Dashboard에서 DB override를 reset하면 시작 시 기본값으로 돌아갑니다.
+`EXTERNAL_CONTEXT_POLICY`는 Discord의 `/config privacy`에서도 즉시 변경 가능합니다.
 
 `ALWAYS_REPLY_CHANNEL_IDS` 지정 채널에서는 사람의 일반 메시지도 직접 대화 턴으로 취급하지만,
-다른 봇은 호출어 또는 멘션/답장 핑이 있을 때만 응답합니다. 이 목록을
-바꾸면 direct-trigger 판정이 바뀌므로 기존 recent buffer도 즉시 비웁니다.
+다른 봇은 호출어 또는 멘션/답장 핑이 있을 때만 응답합니다.
 
 ### 외부 모델 전송 경계
 
@@ -140,10 +199,24 @@ cross-user public memory 조회는 막습니다.
 
 | 명령 | 기능 |
 | --- | --- |
-| `/chatlog mode value:<all|direct|off|inherit>` | 전역/서버/채널의 최근 채널 문맥 수집·사용 범위 설정 |
-| `/chatlog status` | 현재 채널의 상속 체인과 최종 적용값 확인 |
-| `/chatlog overview` | 기본적으로 직접 override된 범위만 표시. 필요하면 전체 상속 결과 확인 |
+| `/chatlog mode value:<all|direct|off|inherit>` | 전역/서버/채널의 최근 채널 문맥 수집·사용 범위 설정. 선택적 `channel`로 같은 서버의 다른 텍스트 채널/스레드 지정 |
 | `/chatlog clear` | 현재 채널의 메모리 내 최근 대화 문맥 비우기 |
+
+`/chatlog mode` 사용 예시:
+
+```text
+/chatlog mode value:direct
+/chatlog mode value:direct target:channel channel:#general
+/chatlog mode value:off target:server
+/chatlog mode value:direct target:global
+/chatlog mode value:inherit target:channel
+```
+
+`target`은 `channel`(기본, 현재 채널), `server`(현재 서버), `global`(전역)이고,
+선택적 `channel`은 `target:channel`일 때 같은 서버의 다른 텍스트 채널/스레드만
+지정할 수 있습니다. `inherit`는 채널·서버에서만 가능하며, 전역 기본값에서는
+사용할 수 없습니다. 전역 값을 바꿔도 기존 서버·채널 override가 우선합니다.
+DM에서는 최근 **서버 채널** 대화 문맥을 사용하지 않습니다.
 
 `/chatlog mode`는 예전의 on/off와 capture 설정을 하나의 정책으로 합칩니다.
 
@@ -155,7 +228,7 @@ cross-user public memory 조회는 막습니다.
 
 상속 우선순위는 `channel → server → global → 기본(all)`입니다. 예전 DB에 `mode(on/off)`와
 `capture(all/direct)`가 따로 저장되어 있으면 최초 명령 그룹 초기화 때 현재 effective 동작을 보존하는
-형태로 통합합니다. `/chatlog overview`도 통합된 직접값과 최종 적용값만 한 열씩 보여줍니다.
+형태로 통합합니다. 여러 서버·채널의 직접 설정과 최종 적용값 목록은 Dashboard `/state`에서 확인합니다.
 
 `all/direct/off/inherit` 중 어떤 실질적인 정책 변경이든 해당 범위의 메모리 내 recent buffer와
 hydration 상태를 즉시 비웁니다. 따라서 `all → direct`에서 넓게 수집한 문맥이 남지 않고,
@@ -212,22 +285,11 @@ alias가 됩니다. 오른쪽 설명은 모델이 해당 이모지를 사용할 
 
 ## 동적 prompt / knowledge
 
-`/instruction`, `/knowledge` 그룹은 앱 소유자 또는 `BOT_ADMIN_IDS` 사용자 전용입니다. 긴 본문을
-Discord 메시지 폭에 맞춰 잘라 보여주지 않고 UTF-8 텍스트 파일로 첨부합니다.
+동적 instruction과 runtime knowledge의 목록·검색 및 CRUD는 Dashboard `/admin/prompts`에서 관리합니다.
+Discord `/instruction` 그룹과 `/knowledge`의 일반 조회·편집 명령은 등록하지 않습니다.
 
-| 명령 | 기능 |
-| --- | --- |
-| `/instruction list` | 검색·정렬된 instruction 전체를 `instructions*.txt`로 받기 |
-| `/instruction show identifier:<ID>` | instruction 한 항목을 `instruction-<ID>.txt`로 받기 |
-| `/instruction add/edit/enable/disable/remove` | 동적 캐릭터 보조 지침 관리 |
-| `/knowledge list` | 검색·정렬된 knowledge 전체와 메타데이터를 `knowledge*.txt`로 받기 |
-| `/knowledge show identifier:<ID>` | knowledge 한 항목을 `knowledge-<ID>.txt`로 받기 |
-| `/knowledge ingest` | 조사 메모를 사실/해석 knowledge로 분해·조정해 반영 |
-| `/knowledge enable/disable/remove` | runtime knowledge 상태·항목 관리 |
-
-첨부 파일의 `created_at`/`updated_at`은 Discord 전용 `<t:...>` markup이 아니라 사람이 읽을 수 있는
-UTC 시각으로 기록됩니다. `knowledge` 파일에는 종류, ON/OFF, awareness, timeline, subjects,
-keywords와 본문 전체가 포함됩니다.
+`/knowledge ingest`는 봇 관리자 전용으로 계속 제공합니다. 긴 조사 메모를 기존 knowledge와 조정해
+사실/해석 항목으로 자동 반영하는 기능이며, Dashboard로 이전하는 후속 작업은 #333에서 진행합니다.
 
 ## 도움말
 

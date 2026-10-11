@@ -7,25 +7,30 @@ import discord
 from discord import app_commands
 
 from hina_bot.core.routing import Scope
+from hina_bot.core.runtime_config import RuntimeSettings
 
 from .chatlog_commands import ChatLogCommands
+from .config_commands import ConfigCommands
+from .knowledge_commands import KnowledgeCommands
+from .memory_commands import MemoryCommands
 from .note_commands import NoteCommands
+from .state_commands import StateCommands
 
 log = logging.getLogger("hina")
 
-_ADMIN_MEMORY_COMMANDS = {"mode", "status", "overview", "purge"}
+_ADMIN_MEMORY_COMMANDS = {"mode", "purge"}
 _EMOJI_ALIAS_RE = re.compile(r"[a-z][a-z0-9_]{1,31}")
 
 HELP_TEXT = """히나와 DM으로 대화하려면 이 도움말 메시지의 히나 프로필을 눌러 `메시지 보내기`를 선택해 주세요.
 DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니다.
 
 서버에서는 @멘션, 답장 핑, 또는 메시지 맨 앞의 `히나야`로 호출해 주세요.
-관리·설정 기능은 Discord 슬래시 명령으로만 사용합니다.
+현재 서버·채널을 빠르게 조정할 때는 슬래시 명령을, 전체 조회·편집에는 Dashboard를 사용합니다.
 
 자동 장기 기억
 `/memory show` — 현재 서버 또는 DM에서 형성된 내 구조화 장기 기억 확인
 `/memory clear` — 현재 서버 또는 DM에서 내 자동 대화 기억 삭제
-`/memory mode` / `status` / `overview` — 봇 관리자용 자동 기억 설정
+`/memory mode` — 봇 관리자용 자동 기억 설정
 `/memory purge` — 봇 관리자용 범위별 자동 기억 초기화
 
 수동 메모
@@ -36,13 +41,16 @@ DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니�
 
 최근 대화 문맥
 `/chatlog mode` — 최근 채널 대화 사용 여부 설정
-`/chatlog status` — 현재 채널 설정 확인
-`/chatlog overview` — 전체 서버/채널 설정 확인
+`/state show` — 현재 채널의 기억·최근 문맥 설정과 상속 출처 통합 확인
 `/chatlog clear` — 현재 채널의 임시 최근 대화 문맥 비우기
 
+자동 응답 및 프라이버시
+`/config always-reply enable|disable|status` — 봇 관리자용 채널 자동 응답 관리
+`/config privacy` — 봇 관리자용 외부 모델 전송 정책 변경
+
 관리
-`/instruction ...` — 동적 캐릭터 지침 관리
-`/knowledge ...` — runtime knowledge 관리
+Dashboard — 동적 캐릭터 지침 및 runtime knowledge 조회·편집
+`/knowledge ingest` — 조사 메모를 knowledge로 구조화·반영
 `/emoji add|import|list|edit|remove` — 봇 관리자용 이모지 관리
 
 현재 호출 메시지에 포함된 지원 이미지 첨부·커스텀 이모지·래스터 스티커는 직접 볼 수 있습니다.
@@ -317,10 +325,16 @@ class EmojiSlashCommands(app_commands.Group):
 
 def install_slash_commands(client):
     """Install the slash-only user/admin command surface on a production client."""
+    client.tree.add_command(MemoryCommands(client))
     upgrade_memory_group(client)
+    client.tree.add_command(KnowledgeCommands(client))
     client.tree.add_command(NoteCommands(client))
     client.tree.add_command(ChatLogCommands(client))
+    client.tree.add_command(StateCommands(client))
     client.tree.add_command(EmojiSlashCommands(client))
+    # Runtime-only settings commands share this explicit registration root.
+    if isinstance(client.settings, RuntimeSettings):
+        client.tree.add_command(ConfigCommands(client))
 
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.allowed_installs(guilds=True, users=True)

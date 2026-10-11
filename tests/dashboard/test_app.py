@@ -215,12 +215,21 @@ def dashboard_client(tmp_path):
                 "scope": "dm",
             },
             {
+                "at": "2026-09-21T00:00:00.100000+00:00",
+                "turn_id": "trace-ui",
+                "event": "turn.preflight",
+                "preflight_ms": 0,
+                "target_context_ms": 15,
+            },
+            {
                 "at": "2026-09-21T00:00:02+00:00",
                 "turn_id": "trace-ui",
                 "event": "turn.completed",
                 "scope": "dm",
                 "status": "completed",
                 "elapsed_ms": 100,
+                "generation_ms": 75,
+                "delivery_ms": 0,
             },
             {
                 "at": "2026-09-21T00:00:03+00:00",
@@ -373,6 +382,18 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "Egress policy" in detail.text
     assert "degraded completion" in detail.text
     assert 'id="trace-issues"' in detail.text
+    assert 'href="#trace-latency"' in detail.text
+    assert 'id="trace-latency"' in detail.text
+    assert "Latency breakdown" in detail.text
+    assert "<code>preflight_ms</code>" in detail.text
+    assert "<code>target_context_ms</code>" in detail.text
+    assert "<code>generation_ms</code>" in detail.text
+    assert '<td class="numeric">15 ms</td>' in detail.text
+    assert '<td class="numeric">0 ms</td>' in detail.text
+    assert "Generation attribution" in detail.text
+    assert "Critical API calls (2)" in detail.text
+    assert 'id="trace-latency"' in failed_detail.text
+    assert "단계별 latency telemetry가 남아 있지 않습니다." in failed_detail.text
     assert "model_route_classify · CancelledError" in detail.text
     assert "api_error" in detail.text
     assert failed_detail.status_code == 200
@@ -639,7 +660,7 @@ def test_keyboard_and_filter_accessibility_markup(tmp_path):
 def test_trace_sections_and_mobile_results_are_available(tmp_path):
     client = dashboard_client(tmp_path)
     response = client.get("/traces/trace-ui")
-    for section in ("trace-summary", "stored-turn", "context-provenance", "trace-timeline"):
+    for section in ("trace-summary", "trace-latency", "stored-turn", "context-provenance", "trace-timeline"):
         assert f'href="#{section}"' in response.text
         assert f'id="{section}"' in response.text
     for path in ("/traces", "/memory", "/reconciliation"):
