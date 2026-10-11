@@ -619,12 +619,12 @@ class HinaClient(discord.Client):
                     inflight_registered = True
                     if len(text) > 4000:
                         stage = "delivery"
+                        await _stop_active_typing()
                         await self.send_text(
                             message.channel,
                             "한 번에 4000자 이내로 이야기해 주세요.",
                         )
                         reply_delivered = True
-                        await _stop_active_typing()
                         self.events.emit(
                             "turn.dropped",
                             scope=scope_kind,
@@ -657,6 +657,7 @@ class HinaClient(discord.Client):
                         raw_turn_persistence = "skipped"
                         raw_turn_persistence_reason = "fixed_reply_no_raw_turn"
                         stage = "delivery"
+                        await _stop_active_typing()
                         delivery_started = time.perf_counter()
                         await self.send_text(
                             message.channel,
@@ -668,7 +669,6 @@ class HinaClient(discord.Client):
                             ),
                         )
                         reply_delivered = True
-                        await _stop_active_typing()
                         timings["delivery_ms"] = round(
                             (time.perf_counter() - delivery_started) * 1000
                         )
@@ -771,6 +771,7 @@ class HinaClient(discord.Client):
                                 parts = list(chunks(answer))
 
                                 stage = "delivery"
+                                await _stop_active_typing()
                                 delivery_started = time.perf_counter()
                                 sent = await message.channel.send(
                                     parts[0],
@@ -782,7 +783,6 @@ class HinaClient(discord.Client):
                                         allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
                                     )
                                 reply_delivered = True
-                                await _stop_active_typing()
                                 timings["delivery_ms"] = round(
                                     (time.perf_counter() - delivery_started) * 1000
                                 )
@@ -946,11 +946,11 @@ class HinaClient(discord.Client):
             fallback_reply = ""
             if not reply_delivered:
                 fallback_reply = "지금은 답변을 이어가기 어렵네요. 잠시 후 다시 불러 주세요."
-                fallback_started = time.perf_counter()
                 try:
+                    await _stop_active_typing()
+                    fallback_started = time.perf_counter()
                     await self.send_text(message.channel, fallback_reply)
                     reply_delivered = True
-                    await _stop_active_typing()
                     timings["fallback_delivery_ms"] = round(
                         (time.perf_counter() - fallback_started) * 1000
                     )
