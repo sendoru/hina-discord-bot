@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
+from .evidence_claims import EvidenceClaim
+
 
 class KnowledgeUsage(StrEnum):
     """Retrieval purpose, independent of storage source and lore's canon/meme lane."""
@@ -72,6 +74,7 @@ class KnowledgeCandidate:
     source_metadata: tuple[tuple[str, str], ...] = ()
     semantic_text: str | None = None
     evidence_ids: tuple[str, ...] = ()
+    claims: tuple[EvidenceClaim, ...] = ()
 
     @property
     def retrieval_usages(self) -> tuple[KnowledgeUsage, ...]:
