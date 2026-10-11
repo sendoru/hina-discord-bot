@@ -1,0 +1,6 @@
+{"id":"profile-hina-birthday","lane":"factual","visible_text":"히나야 생일 언제야?","call_prefixes":["히나야"],"expected_ids":["canon.hina.birthday"],"forbidden_ids":[],"expect_sufficient":true}
+{"id":"relation-hoshino-school-year","lane":"relation","visible_text":"호시노는 선배야?","expected_ids":["canon.hina_hoshino.same_school_year"],"forbidden_ids":[],"expect_sufficient":true}
+{"id":"entity-mismatch-hoshino-birthday","lane":"factual","visible_text":"호시노 생일 언제야?","expected_ids":[],"forbidden_ids":["canon.hina.birthday"],"expect_sufficient":false}
+{"id":"ambient-rest-scene","lane":"ambient","visible_text":"오늘은 일 좀 내려놓고 쉬어도 돼.","expected_nonzero":true,"expect_sufficient":false}
+{"id":"reaction-community-trigger","lane":"reaction","visible_text":"머리 크기 놀림","inject_reaction":true,"expected_ids":["community.eval.reaction"],"forbidden_ids":[],"expect_sufficient":false}
+{"id":"unrelated-ordinary-chat","lane":"ambient","visible_text":"오늘 점심 뭐 먹을래?","expected_nonzero":false,"expect_sufficient":false}

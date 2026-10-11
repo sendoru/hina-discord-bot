@@ -1,9 +1,11 @@
 # Retrieval v2 contracts (#311)
 
-This milestone is an **opt-in contract and lexical adapter**, not a production rollout.
-`LLM.lore_references()`, runtime-first packing, `lore_reference`, and `enough_local()`
-continue to use the legacy path. Entity grounding, hybrid ranking, ambient activation,
-structured sufficiency, and shadow comparison follow in #312–#316.
+This milestone began as an **opt-in contract and lexical adapter**, not a production
+rollout. `LLM.lore_references()`, runtime-first packing and `lore_reference` still use
+the legacy answer-context path until #316. #312–#315 now provide entity grounding, hybrid
+ranking, ambient activation and structured evidence sufficiency behind those contracts;
+#315 also replaces the legacy relation-wording web-fallback heuristic while preserving the
+legacy selected references. #316 owns the final v2 retrieval rollout.
 
 ## Inputs
 
@@ -15,8 +17,9 @@ memory, sample channel history, or change egress policy. Inputs contain user con
 the request must not be serialized into telemetry.
 
 `entities` carries resolved canonical entity ids, never aliases or subject strings.
-`required_entities` specifies the evidence constraint, including a pair when needed.
-Both are empty until supplied by an entity resolver; this milestone does not guess them.
+`relation_pair` is an optional complete, unambiguous two-entity constraint owned by the
+exact relationship lane. Factual/ambient retrieval must not reinterpret it as a generic
+candidate filter. It is `None` until supplied by the entity bridge.
 The request's intent describes the query; candidate usage describes eligible purposes.
 They are independent so a conversation can later retrieve ambient insight.
 
@@ -44,7 +47,8 @@ this milestone's adapter has only existing integer lexical scores.
 | `time`, `kr_release` | Existing timeline and release provenance |
 | `source_metadata` | Original source type/title/locator/url, separate from storage source |
 | `semantic_text` | Optional reviewed meaning text; fallback is summary/content `search_text` |
-| `evidence_ids` | Linked fact ids, not automatically expanded or validated for existence |
+| `evidence_ids` | Linked fact ids used to support reviewed derived claims |
+| `claims` | Optional typed propositions for sufficiency: predicate, canonical direction, value, time scope and polarity |
 
 Neither storage source nor corpus lane is a ranking priority in the adapter. Runtime
 rows have no review-confidence/source-lane fields: absent values stay `None` / empty.
@@ -60,9 +64,10 @@ and unknown guards) and reaction for community memes. Ambient eligibility requir
 
 The lore ingestion queue already uses `evidence` for a **text excerpt**, and strips it
 when publishing reviewed rows. Linked facts therefore use `evidence_ids` to avoid
-reinterpreting that existing field. No corpus reclassification or editorial changes are
-included here. New metadata is preserved by `LoreIndex.candidates()` but is not added to
-the legacy reference serializer or used by legacy ranking. CLI authoring UI is deferred.
+reinterpreting that existing field. #315 adds optional `claims` for proposition-level
+sufficiency; claims are typed metadata and are never inferred from summary wording.
+`LoreIndex.candidates()` preserves them while the model-facing legacy reference serializer
+does not expose them. CLI authoring UI remains deferred.
 
 ## Bundle and lexical adapter
 
@@ -79,13 +84,15 @@ Insight need not be spoken aloud, remains interpretation, and yields to direct c
 conversation evidence. Adding an insight or reaction must never satisfy factual/relation
 web fallback. Bundle membership alone is not a local-sufficiency verdict.
 
-`lexical_bundle(request, candidates, budgets=...)` ranks once with the existing scorer,
-then selects per usage. Each explicitly enabled retrieval usage has its own `UsageBudget`
-(items, serialized reference characters, strict score threshold). Omitted or non-positive
-budgets disable a section. Oversized rows are skipped; weak or absent matches leave
-slots empty. A multi-usage candidate may appear in both sections. Stable ties preserve
-input order. Thresholds are in the ranker's scale; parity uses the legacy `score > 0`.
-No final production thresholds or weights are implied by this baseline.
+`UsageBudget` now contains only packing limits (`max_items`, `max_chars`). Admission and
+score thresholds belong to each retriever/ranker before composition. `pack_ranked()` is
+the common packing primitive for already-admitted rows.
+
+`BundleComposer` is the single section-packing and cross-section deduplication boundary.
+It packs in relation → factual → ambient → reaction ownership order; when a duplicate is
+claimed by an earlier/more specific section, the later section can refill from its next
+ranked row. An optional total character cap can sit above section budgets. `lexical_bundle`
+remains a compatibility adapter that performs lexical admission then uses this composer.
 
 `context_sections()` is an explicit model-serialization boundary, reusing legacy item
 semantics while retaining all four sections. It does not flatten them or serialize
@@ -103,11 +110,17 @@ is deliberately not invoked from the production answer path yet.
 - #312: canonical resolver, exact profile/entity-pair grounding and ambiguity guards.
 - #313: lexical/semantic union, calibration, fusion eval and lexical fallback. No
   provider, vector database or external infrastructure is part of these contracts.
-- #314: reviewed ambient eligibility, small scene budget, activation and model semantics.
-- #315: evidence sufficiency from metadata, intent and required entity matches.
+- #314: implemented opt-in scene-aware semantic ambient retrieval, reviewed Hina inference
+  eligibility, high-threshold zero-result behavior and model consumption semantics. See
+  [Scene-aware ambient character insights](retrieval-v2-ambient.md).
+- #315: implemented structured proposition-level evidence sufficiency and web-fallback routing; see [Structured local evidence sufficiency](retrieval-v2-evidence-sufficiency.md).
 - #316: production shadow wiring, content-free diagnostics and reversible rollout.
 
 Tests cover single-usage lexical parity (including packaged corpus), independent retrieval
-usage budgets, zero results, thresholds, stable ties, source neutrality, additive validation,
+usage budgets, zero results, shared packing/deduplication, stable ties, source neutrality, additive validation,
 runtime compatibility, interpretation/unknown guards, reaction serialization, and causal
 request wiring. They do not pin model prompt prose or claim live-answer quality gains.
+
+The opt-in resolver and exact relation implementation from #312 are documented in
+[Canonical entity and relationship grounding](retrieval-v2-entity-grounding.md).
+The original lexical adapter and production behavior remain unchanged.
