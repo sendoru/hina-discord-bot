@@ -301,10 +301,17 @@ class MemorySummaryMixin:
             return True
         return False
 
-    async def summarize_shared(self, store, scope):
+    async def summarize_shared(self, store, scope, *, min_turns: int | None = None) -> bool:
+        """Summarize a batch; an explicit min_turns permits offline flushing of a short tail."""
+
+        threshold = (
+            self.settings.summary_every
+            if min_turns is None
+            else max(1, min(int(min_turns), self.settings.summary_every))
+        )
         pending = store.pending_shared(scope)
-        if len(pending) < self.settings.summary_every:
-            return
+        if len(pending) < threshold:
+            return False
         old = store.shared_summary(scope)[0]
         direct_calls = [
             {"at": turn["created_at"], "user": turn["content"]}
@@ -347,6 +354,8 @@ class MemorySummaryMixin:
                 text,
                 pending[-1]["id"],
             )
+            return True
+        return False
 
 
 __all__ = [
