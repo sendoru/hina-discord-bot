@@ -1222,6 +1222,20 @@ class Store:
                               (scope.conversation,)).fetchone()
         return (row[0], row[1]) if row else ("", 0)
 
+    def latest_conversation_reset_cutoff(self) -> int:
+        """Discord snowflake boundary for historical auto-backfill after offline reset."""
+        table = self.db.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='conversation_reset_epochs'"""
+        ).fetchone()
+        if table is None:
+            return 0
+        row = self.db.execute(
+            """SELECT cutoff_message_id FROM conversation_reset_epochs
+               ORDER BY id DESC LIMIT 1"""
+        ).fetchone()
+        return int(row[0]) if row is not None else 0
+
     def pending_shared(self, scope):
         return self.db.execute("SELECT * FROM shared_calls WHERE scope=? AND id>? ORDER BY id",
                                (scope.conversation, self.shared_summary(scope)[1])).fetchall()
