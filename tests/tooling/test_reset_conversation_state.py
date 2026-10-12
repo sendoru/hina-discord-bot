@@ -60,7 +60,7 @@ def _counts(db):
 
 def test_reset_preserves_memory_and_settings_and_backups_all_original_rows(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    dm, guild, memory_id, old_turn, old_shared = _seed(path)
+    dm, _guild, memory_id, old_turn, old_shared = _seed(path)
     log = tmp_path / "events.jsonl"
     log.write_text("old trace\n", encoding="utf-8")
 
@@ -209,7 +209,7 @@ def test_backup_failure_prevents_reset_and_preserves_original_rows(tmp_path):
 
 def test_repeat_reset_records_monotonic_cutoffs_and_preserves_backups(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    dm, _, _, old_turn, _ = _seed(path)
+    _dm, _, _, old_turn, _ = _seed(path)
     _, a = reset_conversation_state(path, apply=True, offline_confirmed=True)
     _, b = reset_conversation_state(path, apply=True, offline_confirmed=True)
     assert a is not None and b is not None
