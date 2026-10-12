@@ -224,9 +224,11 @@ async def test_other_users_taunt_cannot_become_current_speakers_personal_continu
         assert taunt["is_current_speaker"] is False
         assert reply["reply_target_is_current_speaker"] is False
         assert reference["current_speaker"]["user_id"] == "222"
-        assert "개인\n연속성 표현" in payload["instructions"]
-        assert "주변 대화의 흐름을 이해" in payload["instructions"]
-        assert "현재 화자가 같은 행동을\n했다고 말하지 마세요" in payload["instructions"]
+        # Policy formatting must not affect the behavioral assertions.
+        instructions = " ".join(payload["instructions"].split())
+        assert "개인 연속성 표현" in instructions
+        assert "주변 대화의 흐름을 이해" in instructions
+        assert "현재 화자가 같은 행동을 했다고 말하지 마세요" in instructions
     finally:
         await llm.close()
         store.close()
