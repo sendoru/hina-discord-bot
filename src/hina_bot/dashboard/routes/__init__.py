@@ -40,7 +40,7 @@ def build_routers(
     return (
         admin_runtime.build_router(repository, admin_writer, templates),
         admin_prompts.build_router(repository, admin_writer, templates),
-        overview.build_router(trace_service, templates),
+        overview.build_router(trace_service, context_state_service, templates),
         analytics.build_router(
             repository,
             telemetry,

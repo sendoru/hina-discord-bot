@@ -84,6 +84,56 @@ class ContextStateService(ReadService):
             "user_name": user_name,
         }
 
+    @staticmethod
+    def _global_policy_from_maps(
+        memory_overrides: dict[str, str],
+        chat_overrides: dict[str, str],
+        capture_overrides: dict[str, str],
+    ) -> dict[str, object]:
+        """Summarize global defaults without claiming they apply to every scope."""
+        memory_mode = memory_overrides.get("global", "normal")
+        memory_reads, memory_writes = memory_mode_capabilities(memory_mode)
+        recent_enabled = chat_overrides.get("global", "on")
+        recent_capture = capture_overrides.get("global", "all")
+        return {
+            "memory_mode": memory_mode,
+            "memory_reads": memory_reads,
+            "memory_writes": memory_writes,
+            "memory_source": "global override" if "global" in memory_overrides else "default",
+            "recent_enabled": recent_enabled,
+            "recent_capture": recent_capture,
+            "recent_mode": recent_capture if recent_enabled != "off" else "off",
+            "recent_context_on": recent_enabled != "off",
+            "recent_enabled_source": "global override" if "global" in chat_overrides else "default",
+            "recent_capture_source": (
+                "global override" if "global" in capture_overrides else "default"
+            ),
+            "memory_scope_overrides": sum(
+                key != "global" for key in memory_overrides
+            ),
+            "recent_scope_overrides": len(
+                (chat_overrides.keys() | capture_overrides.keys()) - {"global"}
+            ),
+        }
+
+    def global_policy(self) -> dict[str, object]:
+        """Read the baseline policy for Overview, including capture-note overrides."""
+        memory_overrides = self._mode_map(
+            self.repository.scope_mode_overrides("memory_modes")
+        )
+        chat_overrides = self._mode_map(
+            self.repository.scope_mode_overrides("chat_log_modes")
+        )
+        capture_overrides = {
+            str(row["scope"])[len(CHATLOG_CAPTURE_NOTE_PREFIX):]: str(row["text"])
+            for row in self.repository.note_rows()
+            if str(row.get("scope") or "").startswith(CHATLOG_CAPTURE_NOTE_PREFIX)
+            and row.get("text") in {"all", "direct"}
+        }
+        return self._global_policy_from_maps(
+            memory_overrides, chat_overrides, capture_overrides
+        )
+
     def context_state(
         self,
         *,
@@ -278,6 +328,9 @@ class ContextStateService(ReadService):
             chat_override_inventory.append(row)
 
         return {
+            "global_policy": self._global_policy_from_maps(
+                memory_overrides, chat_overrides, capture_overrides
+            ),
             "effective": effective,
             "target_error": target_error,
             "filters": {

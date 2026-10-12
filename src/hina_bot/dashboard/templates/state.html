@@ -2,7 +2,8 @@
 {% from "_scope_picker.html" import scope_picker %}
 {% from "_scope_ui.html" import scope_realm, scope_channel, scope_user, scope_raw, scope_metadata %}
 {% from "_status_ui.html" import status_badge %}
-{% block title %}State · Hina Dashboard{% endblock %}
+{% from "_policy_status.html" import global_policy_cards %}
+{% block title %}Memory &amp; Context · Hina Dashboard{% endblock %}
 {% block content %}
 {% macro admin_scope_fields() -%}
 <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
@@ -23,10 +24,12 @@
 
 <section class="page-heading">
   <div>
-    <h1>Memory &amp; Context State</h1>
+    <h1>Memory &amp; Context</h1>
     <p>적용된 메모리·최근 대화 정책과 수동 메모를 확인하고, 로컬 write mode에서는 같은 화면에서 관리합니다.</p>
   </div>
 </section>
+
+{{ global_policy_cards(data.global_policy) }}
 
 <section class="panel">
   <div class="panel-heading">
@@ -62,7 +65,7 @@
   {% endif %}
 </section>
 
-<section class="state-query-panel" aria-label="State lookup controls">
+<section id="state-target" class="state-query-panel" aria-label="State lookup controls">
   {% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="state-control-section state-scope-form" method="get" aria-labelledby="state-scope-title">
     {% if data.filters.q %}<input type="hidden" name="q" value="{{ data.filters.q }}">{% endif %}
@@ -175,15 +178,16 @@
     </article>
     <article class="card">
       <span>Memory reads</span>
-      <strong>{{ "yes" if data.effective.memory.reads else "no" }}</strong>
+      <strong>{{ "ON" if data.effective.memory.reads else "OFF" }}</strong>
     </article>
     <article class="card">
       <span>Memory writes</span>
-      <strong>{{ "yes" if data.effective.memory.writes else "no" }}</strong>
+      <strong>{{ "ON" if data.effective.memory.writes else "OFF" }}</strong>
     </article>
     <article class="card">
       <span>Recent context</span>
-      <strong>{{ data.effective.chat_log.effective }}</strong>
+      <strong>{{ "ON" if data.effective.chat_log.effective != "off" else "OFF" }}</strong>
+      <small>{{ data.effective.chat_log.effective }} · enabled from {{ data.effective.chat_log.enabled_chain.source }} · capture from {{ data.effective.chat_log.capture_chain.source }}</small>
       {% if not data.effective.chat_log.guild_recent_context_applicable %}
       <small>DM에서는 최근 채널 문맥을 사용하지 않습니다.</small>
       {% endif %}

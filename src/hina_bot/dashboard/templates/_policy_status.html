@@ -1,0 +1,29 @@
+{% macro global_policy_cards(policy) -%}
+<section class="panel" id="global-context-policy" aria-labelledby="global-context-policy-title">
+  <div class="panel-heading">
+    <div>
+      <h2 id="global-context-policy-title">Memory &amp; recent context · global defaults</h2>
+      <p class="muted">전역 기본 정책입니다. 서버·채널별 재정의는 실제 적용 상태를 바꿀 수 있습니다.</p>
+    </div>
+    <a href="/state#state-target">범위별 적용 상태 확인</a>
+  </div>
+  <div class="cards">
+    <article class="card">
+      <span>Memory reads</span>
+      <strong>{{ "ON" if policy.memory_reads else "OFF" }}</strong>
+      <small>{{ policy.memory_mode }} · {{ policy.memory_source }}</small>
+    </article>
+    <article class="card">
+      <span>Memory writes</span>
+      <strong>{{ "ON" if policy.memory_writes else "OFF" }}</strong>
+      <small>{{ policy.memory_mode }} · {{ policy.memory_source }}</small>
+    </article>
+    <article class="card">
+      <span>Recent context (Guild)</span>
+      <strong>{{ "ON" if policy.recent_context_on else "OFF" }}</strong>
+      <small>{{ policy.recent_mode }} · enabled {{ policy.recent_enabled }} ({{ policy.recent_enabled_source }}) · capture {{ policy.recent_capture }} ({{ policy.recent_capture_source }})</small>
+    </article>
+  </div>
+  <p class="muted">서버·채널별 설정: 메모리 {{ policy.memory_scope_overrides }}개, 최근 맥락 {{ policy.recent_scope_overrides }}개. DM의 최근 채널 맥락은 항상 OFF입니다. 실제 답변에 포함된 문맥은 Trace에서 확인하세요.</p>
+</section>
+{%- endmacro %}

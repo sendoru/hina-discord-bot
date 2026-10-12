@@ -382,6 +382,17 @@ evidence.
 
 ### Effective memory / recent-context state
 
+Overview now shows the **global baseline** for memory reads, memory writes, and
+Guild recent-context usage as explicit ON/OFF statuses, including the configured modes,
+source (global override or default), and the number of more-specific overrides.
+These policy defaults do not necessarily apply to a particular server/channel.
+The sidebar entry is named **Memory & Context** and opens `/state`. That page
+shows the same baseline without selecting a target; selecting a Guild/channel/user
+or DM scope additionally shows the effective memory read/write and recent-context
+ON/OFF states with capture mode and inheritance sources. DM recent-channel context
+is OFF regardless of the Guild baseline. Cards are read-only; existing audited
+`/state/admin` controls retain ownership of setting changes.
+
 `/state` evaluates the configuration that applies to one target guild/channel/user without constructing
 the production `Store` or writing migrations.
 
