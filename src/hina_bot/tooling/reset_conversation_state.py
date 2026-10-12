@@ -7,6 +7,7 @@ clears persisted shared summaries. It must only run with the bot and all DB writ
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import os
 import sqlite3
@@ -287,12 +288,42 @@ def _parser() -> argparse.ArgumentParser:
         "--discard-pending", action="store_true",
         help="Explicitly abandon pending memory/summary work after a verified backup",
     )
+    parser.add_argument(
+        "--flush-pending", action="store_true",
+        help="Back up and flush pending structured/shared memory with the LLM before reset",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.flush_pending and args.discard_pending:
+        print("ERROR: --flush-pending and --discard-pending cannot be combined")
+        return 2
     try:
+        if args.yes and args.flush_pending:
+            from .flush_memory import flush_memory_database
+
+            flushed = asyncio.run(
+                flush_memory_database(
+                    args.database,
+                    offline_confirmed=args.offline_confirmed,
+                    backup_dir=args.backup_dir,
+                )
+            )
+            print(
+                f"Pre-reset flush backup: {flushed.backup_path}; "
+                f"structured batches={flushed.structured_batches}, "
+                f"shared batches={flushed.shared_batches}"
+            )
+            if not flushed.success:
+                print(
+                    "ERROR: Pending memory flush incomplete. "
+                    "No conversation reset was performed."
+                )
+                for error in flushed.errors:
+                    print("FAILED: " + error)
+                return 2
         plan, result = reset_conversation_state(
             args.database,
             apply=args.yes,
