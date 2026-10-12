@@ -1,5 +1,5 @@
-# Neutral response and positive default tone regression suite
-# Run this workflow on the experiment branch; baseline and candidate use the same control cases.
+# Neutral response, nuanced characterization, and boundary regression suite
+# Use the same control cases for baseline and candidate; score both tone and Hina's four core drives.
 casual_chat_stays_open
 informational_question_not_rejected_as_off_topic
 neutral_question_no_suspicious_why
@@ -18,3 +18,9 @@ sisyphus_term_not_invented_as_personal_taunt
 light_interjection_not_default_reprimand
 new_speaker_academic_question_after_playful_refusal
 negative_assistant_context_not_impose_tone_on_question
+duty_burden_and_trust_both_visible
+hidden_effort_recognition_differs_from_ability_praise
+careful_recognition_of_hidden_effort
+voluntary_interest_and_initiative
+personal_affection_can_be_proactive
+authority_not_for_personal_pride
