@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
@@ -883,6 +884,10 @@ async def test_partial_retry_does_not_offer_same_batch_item_as_reconciliation_ca
     store.add_memory_reconciliation_proposal = fail_once
     await harness.extract_structured_memory(store, scope)
     assert store.memory_extraction_cursor(scope) == 0
+    assert [item.content for item in store.memory_items(100)] == [
+        "사용자는 차를 좋아한다."
+    ]
+    assert store.memory_reconciliation_proposals(100) == []
 
     await harness.extract_structured_memory(store, scope)
 
@@ -936,7 +941,10 @@ async def test_reconciliation_apply_failure_retries_existing_proposal():
     store.apply_memory_reconciliation_proposal = fail_once
     await harness.extract_structured_memory(store, scope)
     assert store.memory_extraction_cursor(scope) == 0
-    assert len(store.memory_reconciliation_proposals(100)) == 1
+    assert len(store.memory_reconciliation_proposals(100)) == 0
+    assert [item.content for item in store.memory_items(100)] == [
+        "사용자는 키위를 키운다."
+    ]
 
     await harness.extract_structured_memory(store, scope)
 
@@ -1090,4 +1098,89 @@ def test_store_allows_dm_reconciliation_across_owner_origins_only():
             confidence=0.8,
             source_message_ids=("3",),
         )
+    store.close()
+
+
+
+@pytest.mark.asyncio
+async def test_atomic_extraction_rolls_back_items_and_cursor_on_cursor_write_failure():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 4)
+    extraction = json.dumps({"items": [{
+        "content": "사용자는 음악을 좋아한다.",
+        "kind": "preference",
+        "disclosure": "local",
+        "confidence": 0.9,
+        "source_message_ids": ["101"],
+    }]}, ensure_ascii=False)
+    harness = _harness(_response(extraction), _response(extraction))
+    original_writer = store.save_memory_extraction_cursor
+    attempts = 0
+
+    def fail_first(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise sqlite3.OperationalError("injected cursor failure")
+        return original_writer(*args, **kwargs)
+
+    store.save_memory_extraction_cursor = fail_first
+    assert await harness.extract_structured_memory(store, scope) is False
+    assert store.memory_items(100) == []
+    assert store.memory_extraction_cursor(scope) == 0
+    assert store.db.execute(
+        "SELECT COUNT(*) FROM memory_extraction_batches"
+    ).fetchone()[0] == 0
+
+    assert await harness.extract_structured_memory(store, scope) is True
+    assert len(store.memory_items(100)) == 1
+    assert store.memory_extraction_cursor(scope) == store.history(scope)[-1]["id"]
+    assert store.db.execute(
+        "SELECT COUNT(*) FROM memory_extraction_batches"
+    ).fetchone()[0] == 1
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_atomic_extraction_rejects_stale_cursor_without_writing_items():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 4)
+    extraction = json.dumps({"items": [{
+        "content": "사용자는 책을 좋아한다.",
+        "kind": "preference",
+        "disclosure": "local",
+        "confidence": 0.9,
+        "source_message_ids": ["101"],
+    }]}, ensure_ascii=False)
+    harness = _harness(_response(extraction))
+
+    async def move_cursor(*args, **kwargs):
+        store.save_memory_extraction_cursor(scope, store.history(scope)[-1]["id"])
+        return _response(extraction)
+
+    harness.usage.request = AsyncMock(side_effect=move_cursor)
+    assert await harness.extract_structured_memory(store, scope) is False
+    assert store.memory_items(100) == []
+    assert store.db.execute(
+        "SELECT COUNT(*) FROM memory_extraction_batches"
+    ).fetchone()[0] == 0
+    store.close()
+
+
+@pytest.mark.asyncio
+async def test_atomic_extraction_empty_result_commits_one_batch_and_is_idempotent():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 4)
+    harness = _harness(_response('{"items":[]}'))
+
+    assert await harness.extract_structured_memory(store, scope) is True
+    assert await harness.extract_structured_memory(store, scope) is False
+    harness.usage.request.assert_awaited_once()
+    assert store.memory_items(100) == []
+    assert store.db.execute(
+        "SELECT COUNT(*) FROM memory_extraction_batches"
+    ).fetchone()[0] == 1
     store.close()
