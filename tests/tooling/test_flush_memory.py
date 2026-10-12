@@ -209,3 +209,82 @@ async def test_normal_shared_summary_threshold_unchanged_but_force_works():
 
 async def _response(result):
     return result
+
+
+@pytest.mark.asyncio
+async def test_cli_flush_failure_never_resets_the_original_rows(tmp_path, monkeypatch):
+    from hina_bot.tooling import flush_memory as flushing
+    from hina_bot.tooling import reset_conversation_state as resetting
+
+    path = tmp_path / "hina.sqlite3"
+    _seed_pending(path)
+
+    async def fail_flush(*_args, **_kwargs):
+        return NS(
+            success=False, backup_path=tmp_path / "safe-copy.sqlite3",
+            structured_batches=0, shared_batches=0,
+            errors=("structured scope: no committed progress",),
+        )
+
+    monkeypatch.setattr(flushing, "flush_memory_database", fail_flush)
+    code = resetting.main([
+        "--database", str(path), "--yes", "--offline-confirmed", "--flush-pending",
+    ])
+    assert code == 2
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM shared_calls").fetchone()[0] == 1
+        assert db.execute(
+            "SELECT COUNT(*) FROM sqlite_master "
+            "WHERE type='table' AND name='conversation_reset_epochs'"
+        ).fetchone()[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_cli_flush_success_resets_only_after_pending_is_cleared(tmp_path, monkeypatch):
+    from hina_bot.tooling import flush_memory as flushing
+    from hina_bot.tooling import reset_conversation_state as resetting
+
+    path = tmp_path / "hina.sqlite3"
+    dm, shared = _seed_pending(path)
+
+    async def success_flush(*_args, **_kwargs):
+        store = Store(str(path))
+        try:
+            structured, summaries, errors = await flush_memory_batches(store, FakeWorker())
+            assert not errors
+            assert (structured, summaries) == (1, 1)
+        finally:
+            store.close()
+        return NS(
+            success=True, backup_path=tmp_path / "safe-copy.sqlite3",
+            structured_batches=structured, shared_batches=summaries, errors=(),
+        )
+
+    monkeypatch.setattr(flushing, "flush_memory_database", success_flush)
+    code = resetting.main([
+        "--database", str(path), "--yes", "--offline-confirmed", "--flush-pending",
+    ])
+    assert code == 0
+    with sqlite3.connect(path) as db:
+        for table in ("turns", "shared_calls", "shared_summaries"):
+            assert db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0] == 1
+        assert db.execute(
+            "SELECT COUNT(*) FROM conversation_reset_epochs"
+        ).fetchone()[0] == 1
+    assert dm.user_id == 100 and shared.guild_id == 44
+
+
+def test_mutually_exclusive_flush_and_discard_pending_options(tmp_path):
+    from hina_bot.tooling import reset_conversation_state as resetting
+
+    path = tmp_path / "hina.sqlite3"
+    _seed_pending(path)
+    code = resetting.main([
+        "--database", str(path), "--yes", "--offline-confirmed",
+        "--flush-pending", "--discard-pending",
+    ])
+    assert code == 2
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 1
