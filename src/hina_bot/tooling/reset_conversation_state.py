@@ -112,8 +112,12 @@ def _backup_destination(database_path: Path, backup_dir: str | Path | None) -> P
     if directory.exists() and directory.is_symlink():
         raise ValueError("Backup directory must not be a symbolic link")
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    # Restrict backup access: copies contain unredacted personal memory and raw dialogue.
-    directory.chmod(0o700)
+    # Avoid silently changing permissions of an operator-supplied existing directory.
+    if directory.stat().st_mode & 0o077:
+        raise ValueError(
+            "Backup directory must be owner-only (chmod 700), "
+            "because snapshots contain private messages"
+        )
     if directory.resolve() == database_path.parent.resolve() and backup_dir is None:
         raise ValueError("Backup must be stored outside the live database directory")
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -272,8 +276,9 @@ def _parser() -> argparse.ArgumentParser:
         "--database", default=os.getenv("DATABASE_PATH", "data/hina.sqlite3")
     )
     parser.add_argument("--backup-dir", default=None)
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--yes", action="store_true", help="Perform reset (not dry run)")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--yes", action="store_true", help="Perform reset (not dry run)")
     parser.add_argument(
         "--offline-confirmed", action="store_true",
         help="Confirm bot and dashboard DB writers have been stopped",
