@@ -121,7 +121,7 @@ jobs:
           for case_id in "${CASE_IDS[@]}"; do
             ID_ARGS+=(--id "$case_id")
           done
-          python -m hina_bot.tooling.eval_runner             --cases evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/baseline-fast-usage.jsonl             --output ../results/baseline-fast.jsonl             "${ID_ARGS[@]}"
+          python -m hina_bot.tooling.eval_runner             --cases ../control/evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/baseline-fast-usage.jsonl             --output ../results/baseline-fast.jsonl             "${ID_ARGS[@]}"
 
       - name: Run baseline SMART
         working-directory: baseline
@@ -139,7 +139,7 @@ jobs:
           for case_id in "${CASE_IDS[@]}"; do
             ID_ARGS+=(--id "$case_id")
           done
-          python -m hina_bot.tooling.eval_runner             --cases evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/baseline-smart-usage.jsonl             --output ../results/baseline-smart.jsonl             "${ID_ARGS[@]}"
+          python -m hina_bot.tooling.eval_runner             --cases ../control/evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/baseline-smart-usage.jsonl             --output ../results/baseline-smart.jsonl             "${ID_ARGS[@]}"
 
       - name: Install candidate
         run: python -m pip install -e ./candidate
@@ -160,7 +160,7 @@ jobs:
           for case_id in "${CASE_IDS[@]}"; do
             ID_ARGS+=(--id "$case_id")
           done
-          python -m hina_bot.tooling.eval_runner             --cases evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/candidate-fast-usage.jsonl             --output ../results/candidate-fast.jsonl             "${ID_ARGS[@]}"
+          python -m hina_bot.tooling.eval_runner             --cases ../control/evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/candidate-fast-usage.jsonl             --output ../results/candidate-fast.jsonl             "${ID_ARGS[@]}"
 
       - name: Run candidate SMART
         working-directory: candidate
@@ -178,7 +178,7 @@ jobs:
           for case_id in "${CASE_IDS[@]}"; do
             ID_ARGS+=(--id "$case_id")
           done
-          python -m hina_bot.tooling.eval_runner             --cases evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/candidate-smart-usage.jsonl             --output ../results/candidate-smart.jsonl             "${ID_ARGS[@]}"
+          python -m hina_bot.tooling.eval_runner             --cases ../control/evals/tone_cases.jsonl             --provider gemini             --model "$MODEL"             --gemini-thinking-level "$THINKING"             --repeat "$REPEAT"             --usage-log ../results/candidate-smart-usage.jsonl             --output ../results/candidate-smart.jsonl             "${ID_ARGS[@]}"
 
       - name: Write summary
         if: always()
