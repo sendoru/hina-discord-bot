@@ -4,7 +4,7 @@
 구조화 장기기억과 관계 정보, 운영 설정을 보존하기 위한 것입니다. 분석용
 `hina-reset-analysis-data`와 목적이 다릅니다.
 
-> **현재 구현 상태:** 오프라인 SQLite 초기화·전체 백업·검증과
+> **현재 구현 상태:** 오프라인 기억 강제 동기화·SQLite 초기화·전체 백업·검증과
 > 재시작 후 Discord 최근 채널 기록 자동 재수집 차단까지 구현한 단계입니다.
 > 대시보드 유지보수 화면은 후속 단계(#355)입니다.
 > 사용자가 초기화 이전 메시지에 **명시적으로 답장·인용**하는 경우에는
@@ -31,19 +31,51 @@
    hina-reset-conversation --yes --offline-confirmed
    ```
 
-5. 기존처럼 일부 scope의 기억 추출·shared summary 작업이 남아 있다면
-   정상 처리될 때까지 기다리거나 별도 배치를 마련하는 게 우선입니다.
-   **그 꼬리 대화를 포기하더라도 반드시 백업에서 복구할 수 있다는 조건에
-   동의한다면** 명시적으로 다음 명령을 실행할 수 있습니다.
+5. 미처리 턴이 있는 경우 **추출·요약을 먼저 강제 수행**하는 것을 권장합니다.
+   1턴짜리 잔여 배치도 처리하며, 모델 호출이 성공하고 해당 scope의
+   cursor/through_id가 실제로 진전한 경우만 완료로 취급합니다.
+
+   ```bash
+   # 강제 동기화의 대상 개수 확인 (API 호출 없음)
+   hina-flush-memory --dry-run
+
+   # 봇과 모든 DB writer가 종료된 상태에서 강제 기억 동기화
+   hina-flush-memory --yes --offline-confirmed
+
+   # 동기화 성공 여부와 미처리 건수 재확인
+   hina-reset-conversation --dry-run
+   ```
+
+   별도로 실행할 수도 있고, 초기화 과정에서 한꺼번에 수행할 수도 있습니다.
+
+   ```bash
+   # 초기화 직전에 강제 기억 동기화; 실패한 scope가 있으면 reset 취소
+   hina-reset-conversation --yes --offline-confirmed --flush-pending
+   ```
+
+   두 명령 모두 **LLM 호출 전에 별도 전체 SQLite 백업**을 생성합니다.
+   `--flush-pending` 경로는 flush 전후 각각 백업이 생성됩니다. 처리 실패
+   scope의 원본 턴은 삭제하지 않고 남깁니다. `read_only`나 `off` 모드 등
+   기억 쓰기가 금지된 scope는 우회하지 않으며 전체 초기화를 중단합니다.
+
+   처리할 내용이 없는 경우에도 `{"items":[]}`처럼 정상 빈 결과는
+   추출 성공으로 간주할 수 있습니다. **모든 턴이 장기기억 항목으로 변환되는 것은 아닙니다.**
+   일시적인 감정이나 단발성 질문은 기억에 저장하지 않는 게 정상입니다.
+
+   기존 `shared_summaries`는 전체 대화 상태 초기화에서 삭제되므로,
+   shared-summary flush가 성공했더라도 **그 요약이 구조화 장기기억으로
+   자동 승격되는 것은 아닙니다.** 대신 flush 전/후 SQLite 백업에 보존됩니다.
+
+   최후의 수단으로 꼬리 대화를 포기하더라도 백업을 반드시 남기도록
+   `--discard-pending` 옵션은 유지합니다. 아래 옵션은 flush와 **동시에 사용할 수
+   없습니다.**
 
    ```bash
    hina-reset-conversation --yes --offline-confirmed --discard-pending
    ```
 
-   포기되는 데이터는 이미 `memory_items`에 반영된 기억이 아니라,
-   **아직 추출·요약되지 않은 원본 대화**입니다. 현재 shared summary와
-   pending original은 별개입니다. 삭제 전 전체 SQLite snapshot은
-   `data/backups`의 별도 파일로 보존됩니다.
+   미처리 기록의 폐기는 사용자와 쌓아 온 정보를 잃을 수 있으므로 운영에
+   권장하지 않습니다.
 
 6. SQLite 백업 경로와 SHA-256 digest, 결과 row 수, reset ID를 기록합니다.
    재시작 전 백업 위치에 접근할 수 있는지 확인합니다.
