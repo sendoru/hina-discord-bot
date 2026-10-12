@@ -16,12 +16,12 @@ from pathlib import Path
 from hina_bot.core.routing import Scope
 from hina_bot.core.scope_overrides import MemoryMode
 
+from .reset_analysis_data import _connect_existing
 from .reset_conversation_state import (
     _backup_destination,
     _verified_backup,
     build_conversation_reset_plan,
 )
-from .reset_analysis_data import _connect_existing
 
 
 @dataclass(frozen=True)
@@ -207,8 +207,8 @@ async def flush_memory_database(
         if worker_factory is not None:
             worker = worker_factory(settings)
         else:
-            from hina_bot.ai.providers import create_provider_client
             from hina_bot.ai.memory_summary import MemorySummaryMixin
+            from hina_bot.ai.providers import create_provider_client
             from hina_bot.ai.usage import UsageLogger
 
             class OfflineMemoryWorker(MemorySummaryMixin):
