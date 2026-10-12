@@ -359,6 +359,11 @@ class HinaClient(discord.Client):
             return
 
         after = created_at - timedelta(seconds=self.recent.ttl)
+        cutoff_reader = getattr(self.store, "latest_conversation_reset_cutoff", None)
+        cutoff_id = int(cutoff_reader()) if callable(cutoff_reader) else 0
+        if cutoff_id:
+            # A reset must not be undone by Discord's recent-history backfill.
+            after = max(after, discord.utils.snowflake_time(cutoff_id))
         try:
             async for old in history(
                 limit=self.recent.limit,
@@ -366,6 +371,8 @@ class HinaClient(discord.Client):
                 after=after,
                 oldest_first=False,
             ):
+                if cutoff_id and old.id <= cutoff_id:
+                    continue
                 if old.webhook_id is not None:
                     continue
                 own_bot = self.user is not None and old.author.id == self.user.id
