@@ -211,8 +211,7 @@ async def _response(result):
     return result
 
 
-@pytest.mark.asyncio
-async def test_cli_flush_failure_never_resets_the_original_rows(tmp_path, monkeypatch):
+def test_cli_flush_failure_never_resets_the_original_rows(tmp_path, monkeypatch):
     from hina_bot.tooling import flush_memory as flushing
     from hina_bot.tooling import reset_conversation_state as resetting
 
@@ -240,8 +239,7 @@ async def test_cli_flush_failure_never_resets_the_original_rows(tmp_path, monkey
         ).fetchone()[0] == 0
 
 
-@pytest.mark.asyncio
-async def test_cli_flush_success_resets_only_after_pending_is_cleared(tmp_path, monkeypatch):
+def test_cli_flush_success_resets_only_after_pending_is_cleared(tmp_path, monkeypatch):
     from hina_bot.tooling import flush_memory as flushing
     from hina_bot.tooling import reset_conversation_state as resetting
 
