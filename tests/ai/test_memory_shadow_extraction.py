@@ -1184,3 +1184,35 @@ async def test_atomic_extraction_empty_result_commits_one_batch_and_is_idempoten
         "SELECT COUNT(*) FROM memory_extraction_batches"
     ).fetchone()[0] == 1
     store.close()
+
+
+@pytest.mark.asyncio
+async def test_atomic_extraction_rejects_changed_source_turns_after_llm():
+    store = Store(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    _add_turns(store, scope, 101, 4)
+    extraction = json.dumps({"items": [{
+        "content": "사용자는 책을 좋아한다.",
+        "kind": "preference",
+        "disclosure": "local",
+        "confidence": 0.9,
+        "source_message_ids": ["101"],
+    }]}, ensure_ascii=False)
+    harness = _harness(_response(extraction))
+
+    async def mutate_source(*args, **kwargs):
+        with store.db:
+            store.db.execute(
+                "UPDATE turns SET content=? WHERE scope=? AND message_id=?",
+                ("altered input", scope.conversation, "101"),
+            )
+        return _response(extraction)
+
+    harness.usage.request = AsyncMock(side_effect=mutate_source)
+    assert await harness.extract_structured_memory(store, scope) is False
+    assert store.memory_items(100) == []
+    assert store.memory_extraction_cursor(scope) == 0
+    assert store.db.execute(
+        "SELECT COUNT(*) FROM memory_extraction_batches"
+    ).fetchone()[0] == 0
+    store.close()
