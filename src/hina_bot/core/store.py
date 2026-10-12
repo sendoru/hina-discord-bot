@@ -1,5 +1,7 @@
+import hashlib
 import json
 import sqlite3
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 from .admin_commands import ensure_admin_command_schema
@@ -27,6 +29,7 @@ class Store:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.history_turns = history_turns
+        self._atomic_memory_batch_open = False
         self.db.executescript("""
             PRAGMA journal_mode=WAL;
             PRAGMA busy_timeout=5000;
@@ -129,6 +132,17 @@ class Store:
             );
             CREATE INDEX IF NOT EXISTS memory_extraction_cursor_owner
                 ON memory_extraction_cursors(realm, user_id);
+            CREATE TABLE IF NOT EXISTS memory_extraction_batches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scope TEXT NOT NULL,
+                start_id INTEGER NOT NULL,
+                through_id INTEGER NOT NULL,
+                source_hash TEXT NOT NULL,
+                completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(scope, through_id)
+            );
+            CREATE INDEX IF NOT EXISTS memory_extraction_batch_scope
+                ON memory_extraction_batches(scope, id);
             CREATE TABLE IF NOT EXISTS memory_reconciliation_proposals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -390,6 +404,69 @@ class Store:
             "SELECT * FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?",
             (scope.conversation, self.history_turns)).fetchall()))
 
+    @staticmethod
+    def _memory_batch_source_hash(rows) -> str:
+        """Fingerprint the exact turns approved by the LLM before committing."""
+        fields = (
+            "id", "message_id", "content", "reply", "exportable",
+            "memory_context", "context_provenance",
+        )
+        values = [[row[key] for key in fields] for row in rows]
+        encoded = json.dumps(values, ensure_ascii=False, separators=(",", ":")).encode()
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _memory_write(self):
+        """Avoid inner sqlite3 context-manager commits during an atomic memory batch."""
+        return nullcontext() if self._atomic_memory_batch_open else self.db
+
+    @contextmanager
+    def atomic_memory_batch(self, scope: Scope, pending, *, expected_cursor: int):
+        """Commit items, reconciliation, cursor and journal in exactly one transaction.
+
+        The external LLM request must finish before entry. All writes within this context
+        use _memory_write; a failed/stale batch is fully rolled back without partial items.
+        """
+        if not pending:
+            raise ValueError("Cannot commit an empty memory batch")
+        if self._atomic_memory_batch_open or self.db.in_transaction:
+            raise RuntimeError("A conflicting SQLite transaction is already active")
+        first_id = int(pending[0]["id"])
+        last_id = int(pending[-1]["id"])
+        expected_cursor = int(expected_cursor)
+        signature = self._memory_batch_source_hash(pending)
+        self.db.execute("BEGIN IMMEDIATE")
+        self._atomic_memory_batch_open = True
+        try:
+            row = self.db.execute(
+                "SELECT through_id FROM memory_extraction_cursors WHERE scope=?",
+                (scope.conversation,),
+            ).fetchone()
+            active_cursor = int(row["through_id"]) if row is not None else 0
+            if active_cursor != expected_cursor:
+                raise RuntimeError("Memory extraction cursor changed during LLM request")
+            current = self.db.execute(
+                """SELECT * FROM turns WHERE scope=? AND id>?
+                   ORDER BY id LIMIT ?""",
+                (scope.conversation, expected_cursor, len(pending)),
+            ).fetchall()
+            if self._memory_batch_source_hash(current) != signature:
+                raise RuntimeError("Memory extraction source turns changed during LLM request")
+
+            yield
+            self.save_memory_extraction_cursor(scope, last_id)
+            self.db.execute(
+                """INSERT INTO memory_extraction_batches(
+                    scope, start_id, through_id, source_hash
+                ) VALUES (?,?,?,?)""",
+                (scope.conversation, first_id, last_id, signature),
+            )
+            self.db.commit()
+        except BaseException:
+            self.db.rollback()
+            raise
+        finally:
+            self._atomic_memory_batch_open = False
+
     def memory_extraction_cursor(self, scope: Scope) -> int:
         row = self.db.execute(
             "SELECT through_id FROM memory_extraction_cursors WHERE scope=?",
@@ -397,7 +474,7 @@ class Store:
         ).fetchone()
         if row is not None:
             return int(row["through_id"])
-        with self.db:
+        with self._memory_write():
             self.db.execute(
                 """INSERT OR IGNORE INTO memory_extraction_cursors(
                        scope,realm,user_id,through_id
@@ -479,7 +556,7 @@ class Store:
         return list(reversed(rows))
 
     def save_memory_extraction_cursor(self, scope: Scope, through: int):
-        with self.db:
+        with self._memory_write():
             self.db.execute(
                 """INSERT INTO memory_extraction_cursors(scope,realm,user_id,through_id,updated_at)
                    VALUES (?,?,?,?,CURRENT_TIMESTAMP)
@@ -655,7 +732,7 @@ class Store:
             evidence.as_dict(), ensure_ascii=False, separators=(",", ":")
         )
         owner_name = self.user_name(scope) if user_name is None else str(user_name)[:100]
-        with self.db:
+        with self._memory_write():
             cursor = self.db.execute(
                 "INSERT INTO memory_items(user_id,user_name,content,kind,origin_realm,origin_channel_id,"
                 "origin_public_at_capture,disclosure,source_message_ids,confidence,"
@@ -948,7 +1025,7 @@ class Store:
             raise ValueError("Server reconciliation target is outside the disclosure space")
         source_ids = tuple(dict.fromkeys(str(value) for value in source_message_ids))
         encoded_sources = json.dumps(source_ids, ensure_ascii=False, separators=(",", ":"))
-        with self.db:
+        with self._memory_write():
             cursor = self.db.execute(
                 """INSERT OR IGNORE INTO memory_reconciliation_proposals(
                        user_id,origin_realm,origin_channel_id,new_memory_item_id,
@@ -1063,7 +1140,7 @@ class Store:
                 return "already_applied"
             if new_status != MemoryStatus.ACTIVE.value or target_status != MemoryStatus.ACTIVE.value:
                 return "stale_items"
-            with self.db:
+            with self._memory_write():
                 cursor = self.db.execute(
                     """UPDATE memory_items
                        SET status='superseded',superseded_by=?,updated_at=CURRENT_TIMESTAMP
@@ -1081,7 +1158,7 @@ class Store:
                 return "already_applied"
             if new_status != MemoryStatus.ACTIVE.value or target_status != MemoryStatus.ACTIVE.value:
                 return "stale_items"
-            with self.db:
+            with self._memory_write():
                 cursor = self.db.execute(
                     """UPDATE memory_items
                        SET status='superseded',superseded_by=?,updated_at=CURRENT_TIMESTAMP
