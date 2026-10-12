@@ -131,6 +131,49 @@ class HistoryBackfillTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(channel.kwargs["after"], now - timedelta(minutes=16))
 
 
+    async def test_persistent_reset_cutoff_prevents_discord_history_rehydration(self):
+        now = datetime.now(UTC).replace(microsecond=0)
+        cutoff_at = now - timedelta(minutes=2)
+        cutoff_id = (int(cutoff_at.timestamp() * 1000) - 1420070400000) << 22
+        with self.store.db:
+            self.store.db.execute(
+                """CREATE TABLE conversation_reset_epochs (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   reset_at TEXT NOT NULL,
+                   cutoff_message_id INTEGER NOT NULL,
+                   discarded_structured_turns INTEGER NOT NULL,
+                   discarded_shared_turns INTEGER NOT NULL
+                )"""
+            )
+            self.store.db.execute(
+                """INSERT INTO conversation_reset_epochs (
+                   reset_at, cutoff_message_id, discarded_structured_turns,
+                   discarded_shared_turns
+                ) VALUES (?,?,0,0)""",
+                (cutoff_at.isoformat(), cutoff_id),
+            )
+
+        channel = FakeHistoryChannel([
+            self.old_message(
+                cutoff_id - 1, "리셋 이전의 부정적인 히나 답변",
+                now - timedelta(minutes=4), author_id=99, bot=True,
+            ),
+            self.old_message(
+                cutoff_id + 1, "리셋 이후의 새 대화",
+                now - timedelta(minutes=1),
+            ),
+        ])
+        current = NS(id=cutoff_id + 100, created_at=now, channel=channel)
+        scope = Scope(1, 10, 100)
+
+        await self.bot.hydrate_recent_history(current, scope)
+
+        rows = self.bot.recent.context(scope, current.id)
+        self.assertEqual([row["content"] for row in rows], ["리셋 이후의 새 대화"])
+        self.assertEqual(channel.kwargs["after"], cutoff_at)
+        self.assertFalse(self.bot.recent.needs_hydration(scope))
+
+
 
 @unittest.skipUnless(AVAILABLE, "Install project dependencies to test recent-context parity")
 class RecentHydrationParityTests(unittest.IsolatedAsyncioTestCase):
