@@ -30,6 +30,7 @@ class InformationPlan:
     semantic_web_uncertain: bool = False
     retrieval_v2_applied: bool = False
     retrieval_v2_bundle: KnowledgeBundle | None = None
+    full_lore: bool = False
 
 
 __all__ = ["InformationPlan"]
