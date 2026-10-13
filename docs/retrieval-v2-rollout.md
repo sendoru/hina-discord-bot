@@ -16,6 +16,18 @@ The startup default is `v1` so existing deployments keep their current behavior.
 | `v1` | yes | skipped | v1 |
 | `shadow` | yes | detached comparison | v1 |
 | `v2` | skipped | yes | v2 on success, none on failure |
+| `full` | runtime knowledge lookup only | skipped | compact reviewed static lore + selected runtime knowledge |
+
+`full` avoids embedding and deterministic **static** lore retrieval; reviewed static
+lore is compiled at startup and inserted in the stable prompt prefix. Audience-only
+entries are intentionally excluded from Hina\'s in-character knowledge; unknown and
+inference entries keep their explicit caveats. Dynamic runtime knowledge still uses
+the existing bounded lookup, with no scope/permission changes. `COMMUNITY_LORE` toggles
+optional community reaction guides. Unlike `v1`/`v2`, `LORE_MAX_ITEMS` and
+`LORE_MAX_CHARS` do **not** truncate the static full-lore document. This is an
+experimental mode; compare real input/cached tokens and latency before enabling
+by default. `rag.full` logs item count and character count (not content), while
+`context.size.instruction_lore_chars` reports prompt overhead.
 
 `off` disables canonical lore, runtime knowledge and retrieval-based ambient/
 reaction references, **not** structured long-term memory, recent conversation,
