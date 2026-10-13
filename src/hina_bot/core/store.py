@@ -185,6 +185,10 @@ class Store:
             CREATE INDEX IF NOT EXISTS channel_metadata_guild
                 ON channel_metadata(guild_id, channel_id);
             CREATE TABLE IF NOT EXISTS notes (scope TEXT PRIMARY KEY, text TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS conversation_identity_names (
+                scope TEXT PRIMARY KEY,
+                name TEXT NOT NULL
+            );
         """)
         ensure_admin_command_schema(self.db)
         self.db.commit()
@@ -359,6 +363,7 @@ class Store:
             "SELECT name FROM turns WHERE scope=? AND name<>'' ORDER BY id DESC LIMIT 1",
             "SELECT name FROM shared_calls WHERE scope=? AND name<>'' ORDER BY id DESC LIMIT 1",
             "SELECT name FROM shared_summaries WHERE scope=? AND name<>'' LIMIT 1",
+            "SELECT name FROM conversation_identity_names WHERE scope=? LIMIT 1",
         ):
             row = self.db.execute(sql, (scope.conversation,)).fetchone()
             if row is not None and str(row[0] or "").strip():
@@ -398,6 +403,19 @@ class Store:
                       OR channel_metadata.name<>excluded.name""",
                 (str(channel_id), str(guild_id), channel_name),
             )
+
+    def latest_conversation_reset_cutoff(self) -> int:
+        """Bound automatic Discord history backfill after an offline reset."""
+        if self.db.execute(
+            """SELECT 1 FROM sqlite_master WHERE type='table'
+               AND name='conversation_reset_epochs'"""
+        ).fetchone() is None:
+            return 0
+        row = self.db.execute(
+            "SELECT cutoff_message_id FROM conversation_reset_epochs "
+            "ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        return int(row[0]) if row is not None else 0
 
     def history(self, scope: Scope):
         return list(reversed(self.db.execute(
