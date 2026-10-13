@@ -46,7 +46,7 @@ async def test_weather_followup_uses_prior_location_but_keeps_visible_message():
     try:
         await llm.answer(store, scope, "사용자", "그럼 모레는?")
         payload = calls[-1]
-        assert payload["tool_choice"] == {"type": "web_search"}
+        assert payload["tool_choice"] == "auto"
         assert any(tool.get("type") == "web_search" for tool in payload["tools"])
         assert any(tool.get("type") == "code_interpreter" for tool in payload["tools"])
         assert payload["input"][-1]["content"] == "그럼 모레는?"

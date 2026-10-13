@@ -65,6 +65,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "GEMINI_SMART_THINKING_LEVEL",
         "GEMINI_STORE_INTERACTIONS",
         "GEMINI_STORE_CLASSIFIER_INTERACTIONS",
+        "GEMINI_SEARCH_API_MODE",
         "CHANNEL_CONTEXT_CHARS",
         "HISTORY_MAX_CHARS",
         "LORE_MAX_ITEMS",
@@ -91,6 +92,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.smart_output_tokens == 8192
     assert settings.gemini_store_interactions is False
     assert settings.gemini_store_classifier_interactions is False
+    assert settings.gemini_search_api_mode == "auto"
     assert settings.routing_classifier_mode == "off"
     assert settings.routing_classifier_provider == "openai"
     assert settings.routing_classifier_model == settings.fast_model
@@ -102,6 +104,16 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.lore_max_chars == 3200
     assert settings.runtime_default_location == ""
     assert settings.event_log_path == "data/logs/events.jsonl"
+
+
+
+def test_settings_rejects_invalid_gemini_search_api_mode(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("GEMINI_SEARCH_API_MODE", "unknown")
+    with pytest.raises(ValueError, match="GEMINI_SEARCH_API_MODE"):
+        Settings.load()
 
 
 def test_settings_loads_always_reply_channel_ids(monkeypatch, tmp_path: Path):
@@ -132,6 +144,7 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("GEMINI_SMART_THINKING_LEVEL", "high")
     monkeypatch.setenv("GEMINI_STORE_INTERACTIONS", "true")
     monkeypatch.setenv("GEMINI_STORE_CLASSIFIER_INTERACTIONS", "true")
+    monkeypatch.setenv("GEMINI_SEARCH_API_MODE", "interactions")
 
     value = Settings.load()
     assert value.model_routing_mode == "adaptive"
@@ -145,6 +158,7 @@ def test_settings_loads_adaptive_model_tiers(monkeypatch, tmp_path: Path):
     assert value.gemini_smart_thinking_level == "high"
     assert value.gemini_store_interactions is True
     assert value.gemini_store_classifier_interactions is True
+    assert value.gemini_search_api_mode == "interactions"
     assert not hasattr(value, "gemini_fast_total_output_tokens")
     assert not hasattr(value, "gemini_smart_total_output_tokens")
 
@@ -226,6 +240,7 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
         assert settings.gemini_smart_thinking_level == "medium"
         assert settings.gemini_store_interactions is False
         assert settings.gemini_store_classifier_interactions is False
+        assert settings.gemini_search_api_mode == "auto"
         assert settings.model_routing_smart_threshold == pytest.approx(2.0)
         assert settings.memory_routing_smart_threshold == pytest.approx(2.0)
         assert settings.channel_context_chars == 6000
@@ -315,6 +330,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
     assert settings.set_text("GEMINI_SMART_THINKING_LEVEL", "high") == "high"
     assert settings.set_text("GEMINI_STORE_INTERACTIONS", "on") is True
     assert settings.set_text("GEMINI_STORE_CLASSIFIER_INTERACTIONS", "on") is True
+    assert settings.set_text("GEMINI_SEARCH_API_MODE", "Generate_Content") == "generate_content"
     store.close()
 
     store = Store(str(db))
@@ -334,6 +350,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         assert reloaded.gemini_smart_thinking_level == "high"
         assert reloaded.gemini_store_interactions is True
         assert reloaded.gemini_store_classifier_interactions is True
+        assert reloaded.gemini_search_api_mode == "generate_content"
         assert reloaded.source("LLM_MODEL") == "db"
         assert reloaded.source("LLM_FAST_MODEL") == "db"
         assert reloaded.source("LLM_SMART_MODEL") == "db"
@@ -342,6 +359,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         assert reloaded.source("GEMINI_SMART_THINKING_LEVEL") == "db"
         assert reloaded.source("GEMINI_STORE_INTERACTIONS") == "db"
         assert reloaded.source("GEMINI_STORE_CLASSIFIER_INTERACTIONS") == "db"
+        assert reloaded.source("GEMINI_SEARCH_API_MODE") == "db"
         assert reloaded.source("ALWAYS_REPLY_CHANNEL_IDS") == "db"
         assert reloaded.source("CHANNEL_CONTEXT_CHARS") == "db"
         assert reloaded.source("MODEL_ROUTING_SMART_THRESHOLD") == "db"
@@ -531,6 +549,7 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
         ("GEMINI_SMART_THINKING_LEVEL", "max"),
         ("GEMINI_STORE_INTERACTIONS", "maybe"),
         ("GEMINI_STORE_CLASSIFIER_INTERACTIONS", "maybe"),
+        ("GEMINI_SEARCH_API_MODE", "legacy"),
     ],
 )
 def test_runtime_setting_validation_rejects_invalid_values(key: str, value: str):

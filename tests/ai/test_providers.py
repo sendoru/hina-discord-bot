@@ -149,36 +149,47 @@ async def test_gemini_interaction_restores_function_result_name_from_call_id():
     assert response.output_text == "done"
 
 
+
 @pytest.mark.asyncio
-async def test_gemini_routes_search_through_generate_content_and_normalizes_response():
+async def test_gemini_search_uses_interactions_and_normalizes_grounded_response():
     seen = {}
 
     async def handler(request: httpx.Request):
         seen["url"] = str(request.url)
         seen["json"] = __import__("json").loads(request.content)
         return httpx.Response(200, json={
-            "candidates": [{
-                "finishReason": "STOP",
-                "content": {
-                    "role": "model",
-                    "parts": [{"text": "검색 결과야."}],
+            "id": "int_search_1",
+            "status": "completed",
+            "steps": [
+                {
+                    "type": "google_search_call",
+                    "id": "gs_1",
+                    "arguments": {"queries": ["test"]},
                 },
-                "groundingMetadata": {
-                    "webSearchQueries": ["test"],
-                    "groundingChunks": [{
-                        "web": {
-                            "uri": "https://example.com/source",
+                {
+                    "type": "google_search_result",
+                    "call_id": "gs_1",
+                    "result": [{"search_suggestions": []}],
+                },
+                {
+                    "type": "model_output",
+                    "content": [{
+                        "type": "text",
+                        "text": "검색 결과야.",
+                        "annotations": [{
+                            "type": "url_citation",
+                            "url": "https://example.com/source",
                             "title": "Example",
-                        }
+                        }],
                     }],
                 },
-            }],
-            "usageMetadata": {
-                "promptTokenCount": 10,
-                "candidatesTokenCount": 5,
-                "thoughtsTokenCount": 2,
-                "cachedContentTokenCount": 1,
-                "totalTokenCount": 17,
+            ],
+            "usage": {
+                "total_input_tokens": 10,
+                "total_output_tokens": 5,
+                "total_thought_tokens": 2,
+                "total_cached_tokens": 1,
+                "total_tokens": 17,
             },
         })
 
@@ -197,22 +208,22 @@ async def test_gemini_routes_search_through_generate_content_and_normalizes_resp
         await http.aclose()
 
     payload = seen["json"]
-    assert seen["url"].endswith("/v1beta/models/gemini-test:generateContent")
-    instruction = payload["system_instruction"]["parts"][0]["text"]
-    assert instruction.startswith("system")
-    assert "외부 확인이 필수" in instruction
-    assert payload["contents"] == [{
-        "role": "user",
-        "parts": [{"text": "질문"}],
+    assert seen["url"].endswith("/v1beta/interactions")
+    assert payload["system_instruction"].startswith("system")
+    assert "외부 확인이 필수" in payload["system_instruction"]
+    assert payload["input"] == [{
+        "type": "user_input",
+        "content": [{"type": "text", "text": "질문"}],
     }]
-    assert payload["tools"] == [{"google_search": {}}]
-    assert payload["generationConfig"]["thinkingConfig"]["thinkingLevel"] == "low"
-    assert payload["generationConfig"]["maxOutputTokens"] == 200
+    assert payload["tools"] == [{"type": "google_search"}]
+    assert payload["generation_config"]["thinking_level"] == "low"
+    assert payload["generation_config"]["max_output_tokens"] == 200
+    assert "tool_choice" not in payload["generation_config"]
     assert response.status == "completed"
     assert "example.com/source" in response.output_text
     assert response.usage.total_tokens == 17
+    assert response._hina_web_search_calls == 1
     assert [item.type for item in response.output].count("web_search_call") == 1
-
 
 def test_gemini_output_uses_only_final_model_output_run():
     response = _gemini_output({
@@ -311,42 +322,34 @@ async def test_gemini_managed_code_execution_stays_inside_one_interaction():
     assert response.output[1].result == "True\n"
 
 
+
 @pytest.mark.asyncio
-async def test_gemini_generate_content_preserves_search_and_code_execution_together():
+async def test_gemini_interactions_preserves_search_and_code_execution_together():
     seen = {}
 
     async def handler(request: httpx.Request):
         seen["url"] = str(request.url)
         seen["json"] = __import__("json").loads(request.content)
         return httpx.Response(200, json={
-            "candidates": [{
-                "finishReason": "STOP",
-                "content": {
-                    "role": "model",
-                    "parts": [
-                        {"text": "계산해볼게."},
-                        {
-                            "executableCode": {
-                                "id": "code_1",
-                                "language": "PYTHON",
-                                "code": "print(42)",
-                            }
-                        },
-                        {
-                            "codeExecutionResult": {
-                                "id": "code_1",
-                                "outcome": "OUTCOME_OK",
-                                "output": "42\\n",
-                            }
-                        },
-                        {"text": "답은 42야."},
-                    ],
+            "status": "completed",
+            "steps": [
+                {"type": "google_search_call", "id": "gs_1"},
+                {"type": "google_search_result", "call_id": "gs_1", "result": []},
+                {"type": "model_output", "content": [{"type": "text", "text": "계산해볼게."}]},
+                {
+                    "type": "code_execution_call",
+                    "id": "code_1",
+                    "arguments": {"code": "print(42)", "language": "python"},
                 },
-                "groundingMetadata": {
-                    "webSearchQueries": ["answer 42"],
+                {
+                    "type": "code_execution_result",
+                    "call_id": "code_1",
+                    "result": "42\\n",
+                    "is_error": False,
                 },
-            }],
-            "usageMetadata": {},
+                {"type": "model_output", "content": [{"type": "text", "text": "답은 42야."}]},
+            ],
+            "usage": {},
         })
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -363,11 +366,12 @@ async def test_gemini_generate_content_preserves_search_and_code_execution_toget
     finally:
         await http.aclose()
 
-    assert seen["url"].endswith("/v1beta/models/gemini-test:generateContent")
+    assert seen["url"].endswith("/v1beta/interactions")
     assert seen["json"]["tools"] == [
-        {"google_search": {}},
-        {"code_execution": {}},
+        {"type": "google_search"},
+        {"type": "code_execution"},
     ]
+    assert "tool_choice" not in seen["json"]["generation_config"]
     assert response.output_text == "답은 42야."
     assert [item.type for item in response.output] == [
         "web_search_call",
@@ -376,7 +380,6 @@ async def test_gemini_generate_content_preserves_search_and_code_execution_toget
         "code_execution_result",
         "message",
     ]
-
 
 @pytest.mark.asyncio
 async def test_gemini_translates_local_function_tool_and_call_output():
@@ -459,19 +462,14 @@ async def test_gemini_translates_local_function_tool_and_call_output():
     assert second.output_text == "done"
 
 
+
 @pytest.mark.asyncio
-async def test_gemini_generate_content_strips_additional_properties_from_function_schema():
+async def test_gemini_interactions_preserves_function_schema_with_search():
     seen = {}
 
     async def handler(request: httpx.Request):
         seen["json"] = __import__("json").loads(request.content)
-        return httpx.Response(200, json={
-            "candidates": [{
-                "finishReason": "STOP",
-                "content": {"role": "model", "parts": [{"text": "done"}]},
-            }],
-            "usageMetadata": {},
-        })
+        return httpx.Response(200, json={"status": "completed", "steps": [], "usage": {}})
 
     tool = {
         "type": "function",
@@ -495,46 +493,26 @@ async def test_gemini_generate_content_strips_additional_properties_from_functio
         await _GeminiResponses(http).create(
             model="gemini-test",
             input="search",
-            tools=[
-                {"type": "web_search"},
-                tool,
-            ],
+            tools=[{"type": "web_search"}, tool],
             tool_choice="auto",
         )
     finally:
         await http.aclose()
 
-    parameters = (
-        seen["json"]["tools"][1]["function_declarations"][0]["parameters"]
-    )
-    assert parameters == {
-        "type": "object",
-        "properties": {
-            "filters": {
-                "type": "object",
-                "properties": {"name": {"type": "string"}},
-            },
-        },
-    }
-    assert tool["parameters"]["additionalProperties"] is False
-    assert tool["parameters"]["properties"]["filters"]["additionalProperties"] is False
+    assert seen["json"]["tools"] == [{"type": "google_search"}, tool]
+    assert "tool_choice" not in seen["json"]["generation_config"]
 
 
 @pytest.mark.asyncio
-async def test_gemini_generate_content_restores_function_response_name_from_call_id():
+async def test_gemini_interactions_restores_function_response_name_with_search():
     seen = {}
 
     async def handler(request: httpx.Request):
         seen["json"] = __import__("json").loads(request.content)
         return httpx.Response(200, json={
-            "candidates": [{
-                "finishReason": "STOP",
-                "content": {
-                    "role": "model",
-                    "parts": [{"text": "done"}],
-                },
-            }],
-            "usageMetadata": {},
+            "status": "completed",
+            "steps": [{"type": "model_output", "content": [{"type": "text", "text": "done"}]}],
+            "usage": {},
         })
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -573,11 +551,11 @@ async def test_gemini_generate_content_restores_function_response_name_from_call
     finally:
         await http.aclose()
 
-    function_response = seen["json"]["contents"][-1]["parts"][0]["functionResponse"]
-    assert function_response["id"] == "call_1"
+    function_response = seen["json"]["input"][-1]
+    assert function_response["type"] == "function_result"
+    assert function_response["call_id"] == "call_1"
     assert function_response["name"] == "get_current_channel_members"
     assert response.output_text == "done"
-
 
 @pytest.mark.asyncio
 async def test_gemini_stateful_function_result_uses_previous_interaction_id():
@@ -659,6 +637,359 @@ async def test_gemini_stateful_function_result_uses_previous_interaction_id():
     assert second.output_text == "done"
 
 
+def test_gemini_built_in_requires_action_without_function_call_is_diagnostic():
+    response = _gemini_output({
+        "status": "requires_action",
+        "steps": [
+            {"type": "google_search_call", "id": "gs_1"},
+            {"type": "google_search_result", "call_id": "gs_1", "result": []},
+        ],
+        "usage": {},
+    })
+    assert response.status == "requires_action"
+    assert response._hina_error_codes == ["unexpected_requires_action"]
+
+
+@pytest.mark.asyncio
+async def test_gemini_mixed_search_then_local_function_replays_native_steps():
+    from hina_bot.ai.local_tools import LocalToolExecutor, LocalToolRegistry, LocalToolSpec
+
+    payloads = []
+
+    async def handler(request: httpx.Request):
+        payload = __import__("json").loads(request.content)
+        payloads.append(payload)
+        if len(payloads) == 1:
+            return httpx.Response(200, json={
+                "status": "requires_action",
+                "steps": [
+                    {"type": "google_search_call", "id": "gs_1",
+                     "signature": "search_sig", "arguments": {"queries": ["query"]}},
+                    {"type": "google_search_result", "call_id": "gs_1",
+                     "signature": "result_sig", "result": []},
+                    {"type": "thought", "signature": "thought_sig", "summary": []},
+                    {"type": "function_call", "id": "call_1", "name": "echo",
+                     "signature": "function_sig", "arguments": {"value": "hello"}},
+                ],
+                "usage": {},
+            })
+        return httpx.Response(200, json={
+            "status": "completed",
+            "steps": [{
+                "type": "model_output",
+                "content": [{"type": "text", "text": "finished"}],
+            }],
+            "usage": {},
+        })
+
+    registry = LocalToolRegistry()
+    registry.register(LocalToolSpec(
+        name="echo",
+        description="Echo.",
+        parameters={"type": "object", "properties": {"value": {"type": "string"}}},
+    ), lambda args: args)
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        responses = _GeminiResponses(http)
+        request = {
+            "model": "gemini-test",
+            "input": "hello",
+            "tools": [{"type": "web_search"}, *registry.schemas()],
+            "tool_choice": "auto",
+            "store": False,
+        }
+        async def send(payload):
+            return await responses.create(**payload)
+
+        result = await LocalToolExecutor(registry).run(send, request)
+    finally:
+        await http.aclose()
+
+    assert result.local_calls == 1
+    assert result.response.output_text == "finished"
+    assert len(payloads) == 2
+    for payload in payloads:
+        assert payload["tools"][0] == {"type": "google_search"}
+        assert payload["tools"][1]["type"] == "function"
+        assert "tool_choice" not in payload["generation_config"]
+    steps = payloads[1]["input"]
+    assert steps[0]["type"] == "user_input"
+    assert [(step["type"], step.get("signature")) for step in steps[1:5]] == [
+        ("google_search_call", "search_sig"),
+        ("google_search_result", "result_sig"),
+        ("thought", "thought_sig"),
+        ("function_call", "function_sig"),
+    ]
+    assert steps[-1]["type"] == "function_result"
+    assert steps[-1]["call_id"] == "call_1"
+    assert steps[-1]["name"] == "echo"
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["unexpected_requires_action", "tool_http_error"])
+async def test_gemini_auto_falls_back_for_known_interactions_tool_failures(failure):
+    calls = []
+
+    async def handler(request):
+        calls.append(str(request.url))
+        if calls[-1].endswith("/v1beta/interactions"):
+            if failure == "tool_http_error":
+                return httpx.Response(400, json={
+                    "error": {"status": "INVALID_ARGUMENT",
+                              "message": "google_search tool is unsupported"},
+                })
+            return httpx.Response(200, json={
+                "status": "requires_action",
+                "steps": [{"type": "google_search_call", "id": "gs_1"}],
+                "usage": {},
+            })
+        return httpx.Response(200, json={
+            "candidates": [{
+                "content": {"parts": [{"text": "fallback answer"}]},
+                "finishReason": "STOP",
+            }],
+            "usageMetadata": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        client = _GeminiResponses(http, settings=NS(gemini_search_api_mode="auto"))
+        response = await client.create(
+            model="test", input="question", tools=[{"type": "web_search"}]
+        )
+    finally:
+        await http.aclose()
+
+    assert calls == [
+        "https://generativelanguage.googleapis.com/v1beta/interactions",
+        "https://generativelanguage.googleapis.com/v1beta/models/test:generateContent",
+    ]
+    assert response.output_text == "fallback answer"
+    assert response._hina_gemini_api == "generate_content"
+
+
+@pytest.mark.asyncio
+async def test_gemini_auto_does_not_retry_unrelated_http_errors():
+    calls = []
+
+    async def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(400, json={
+            "error": {"status": "INVALID_ARGUMENT", "message": "invalid model name"},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        responses = _GeminiResponses(http, settings=NS(gemini_search_api_mode="auto"))
+        with pytest.raises(ProviderAPIError):
+            await responses.create(
+                model="test", input="question", tools=[{"type": "web_search"}]
+            )
+    finally:
+        await http.aclose()
+    assert len(calls) == 1
+    assert calls[0].endswith("/v1beta/interactions")
+
+
+@pytest.mark.asyncio
+async def test_gemini_search_manual_modes_apply_on_next_turn():
+    selected = NS(gemini_search_api_mode="interactions")
+    calls = []
+
+    async def handler(request):
+        calls.append(str(request.url))
+        if calls[-1].endswith("/v1beta/interactions"):
+            return httpx.Response(200, json={
+                "status": "completed",
+                "steps": [{"type": "model_output",
+                           "content": [{"type": "text", "text": "interaction"}]}],
+                "usage": {},
+            })
+        return httpx.Response(200, json={
+            "candidates": [{"content": {"parts": [{"text": "generateContent"}]}}],
+            "usageMetadata": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        client = _GeminiResponses(http, settings=selected)
+        first = await client.create(model="test", input="one", tools=[{"type": "web_search"}])
+        selected.gemini_search_api_mode = "generate_content"
+        second = await client.create(model="test", input="two", tools=[{"type": "web_search"}])
+        third = await client.create(model="test", input="plain")
+    finally:
+        await http.aclose()
+
+    assert [first.output_text, second.output_text, third.output_text] == [
+        "interaction", "generateContent", "interaction",
+    ]
+    assert calls[0].endswith("/v1beta/interactions")
+    assert calls[1].endswith("/v1beta/models/test:generateContent")
+    assert calls[2].endswith("/v1beta/interactions")
+
+
+@pytest.mark.asyncio
+async def test_gemini_auto_circuit_opens_and_recovers_after_cooldown(monkeypatch):
+    from hina_bot.ai import providers
+
+    clock = [100.0]
+    monkeypatch.setattr(providers, "monotonic", lambda: clock[0])
+    calls = []
+    fail_interactions = [True]
+
+    async def handler(request):
+        calls.append(str(request.url))
+        if calls[-1].endswith("/v1beta/interactions"):
+            if fail_interactions[0]:
+                return httpx.Response(200, json={
+                    "status": "requires_action",
+                    "steps": [{"type": "google_search_call", "id": "gs"}],
+                    "usage": {},
+                })
+            return httpx.Response(200, json={
+                "status": "completed",
+                "steps": [{"type": "model_output",
+                           "content": [{"type": "text", "text": "recovered"}]}],
+                "usage": {},
+            })
+        return httpx.Response(200, json={
+            "candidates": [{"content": {"parts": [{"text": "fallback"}]}}],
+            "usageMetadata": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        client = _GeminiResponses(http, settings=NS(gemini_search_api_mode="auto"))
+        for _ in range(2):
+            assert (await client.create(
+                model="test", input="search", tools=[{"type": "web_search"}]
+            )).output_text == "fallback"
+        assert client._search_circuit_until == 400.0
+        calls_before = len(calls)
+        await client.create(model="test", input="search", tools=[{"type": "web_search"}])
+        assert len(calls) == calls_before + 1
+        assert calls[-1].endswith("/v1beta/models/test:generateContent")
+        clock[0] = 401.0
+        fail_interactions[0] = False
+        answer = await client.create(
+            model="test", input="search", tools=[{"type": "web_search"}]
+        )
+    finally:
+        await http.aclose()
+
+    assert answer.output_text == "recovered"
+    assert calls[-1].endswith("/v1beta/interactions")
+    assert client._search_failures == 0
+    assert client._search_circuit_until == 0
+
+
+@pytest.mark.asyncio
+async def test_gemini_auto_does_not_fallback_after_client_function_call():
+    calls = []
+
+    async def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, json={
+            "status": "requires_action",
+            "steps": [{"type": "google_search_call", "id": "gs_1"}],
+            "usage": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        client = _GeminiResponses(http, settings=NS(gemini_search_api_mode="auto"))
+        response = await client.create(
+            model="test",
+            input=[
+                {"type": "function_call_output", "call_id": "call_1",
+                 "name": "echo", "output": '{"ok":true}'},
+            ],
+            tools=[{"type": "web_search"}],
+        )
+    finally:
+        await http.aclose()
+
+    assert response.status == "requires_action"
+    assert response._hina_error_codes == ["unexpected_requires_action"]
+    assert len(calls) == 1
+    assert calls[0].endswith("/v1beta/interactions")
+
+
+@pytest.mark.asyncio
+async def test_gemini_manually_forced_interactions_does_not_auto_fallback():
+    calls = []
+
+    async def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, json={
+            "status": "requires_action",
+            "steps": [{"type": "google_search_call", "id": "gs_1"}],
+            "usage": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        client = _GeminiResponses(http, settings=NS(gemini_search_api_mode="interactions"))
+        response = await client.create(
+            model="test", input="search", tools=[{"type": "web_search"}]
+        )
+    finally:
+        await http.aclose()
+
+    assert response.status == "requires_action"
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_gemini_generate_content_continuation_is_pinned_across_runtime_changes():
+    from hina_bot.ai.local_tools import LocalToolExecutor, LocalToolRegistry, LocalToolSpec
+
+    selected = NS(gemini_search_api_mode="generate_content")
+    calls = []
+    registry = LocalToolRegistry()
+
+    def execute(args):
+        selected.gemini_search_api_mode = "interactions"
+        return args
+
+    registry.register(LocalToolSpec(
+        "echo", "Echo", {"type": "object", "properties": {"value": {"type": "string"}}}
+    ), execute)
+
+    async def handler(request):
+        calls.append((str(request.url), __import__("json").loads(request.content)))
+        if len(calls) == 1:
+            return httpx.Response(200, json={
+                "candidates": [{"content": {"parts": [{
+                    "functionCall": {"id": "call_1", "name": "echo",
+                                     "args": {"value": "hello"}},
+                }]}}],
+                "usageMetadata": {},
+            })
+        return httpx.Response(200, json={
+            "candidates": [{"content": {"parts": [{"text": "finished"}]}}],
+            "usageMetadata": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        client = _GeminiResponses(http, settings=selected)
+
+        async def send(payload):
+            return await client.create(**payload)
+
+        result = await LocalToolExecutor(registry).run(send, {
+            "model": "test",
+            "input": "hello",
+            "tools": [{"type": "web_search"}, *registry.schemas()],
+        })
+    finally:
+        await http.aclose()
+
+    assert result.local_calls == 1
+    assert result.response.output_text == "finished"
+    assert all(url.endswith("/v1beta/models/test:generateContent") for url, _ in calls)
+    assert calls[1][1]["contents"][-1]["parts"][0]["functionResponse"]["name"] == "echo"
+
 @pytest.mark.asyncio
 async def test_gemini_non_search_requests_stay_on_interactions():
     seen = {}
@@ -692,24 +1023,17 @@ async def test_gemini_non_search_requests_stay_on_interactions():
     assert response.output_text == "응."
 
 
+
 @pytest.mark.asyncio
-async def test_gemini_respects_per_request_store_for_all_endpoints():
+async def test_gemini_respects_per_request_store_with_and_without_search():
     seen = []
 
     async def handler(request: httpx.Request):
         seen.append((str(request.url), __import__("json").loads(request.content)))
-        if str(request.url).endswith("/v1beta/interactions"):
-            return httpx.Response(200, json={
-                "status": "completed",
-                "steps": [],
-                "usage": {},
-            })
         return httpx.Response(200, json={
-            "candidates": [{
-                "finishReason": "STOP",
-                "content": {"role": "model", "parts": [{"text": "ok"}]},
-            }],
-            "usageMetadata": {},
+            "status": "completed",
+            "steps": [],
+            "usage": {},
         })
 
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -726,9 +1050,7 @@ async def test_gemini_respects_per_request_store_for_all_endpoints():
         await http.aclose()
 
     assert [payload["store"] for _, payload in seen] == [False, True]
-    assert seen[0][0].endswith("/v1beta/interactions")
-    assert seen[1][0].endswith("/v1beta/models/gemini-test:generateContent")
-
+    assert all(url.endswith("/v1beta/interactions") for url, _ in seen)
 
 @pytest.mark.asyncio
 async def test_gemini_common_generation_budget_is_forwarded():
