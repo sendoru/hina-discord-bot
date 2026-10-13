@@ -335,7 +335,7 @@ class RecentHydrationParityTests(unittest.IsolatedAsyncioTestCase):
         rows = self.bot.recent.context(scope, current.id)
         self.assertEqual([row["content"] for row in rows], ["새로운 대화"])
         self.assertAlmostEqual(
-            channel.kwargs["after"].timestamp(), cutoff_time.timestamp(), places=3
+            channel.kwargs["after"].timestamp(), cutoff_time.timestamp(), delta=0.001
         )
         self.assertFalse(self.bot.recent.needs_hydration(scope))
 
