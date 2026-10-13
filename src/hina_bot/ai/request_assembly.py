@@ -535,6 +535,18 @@ class RequestAssembler(BaseLLM):
             web_search_enabled=self.settings.chat_web_search
         )
         reference_policies = _reference_instruction_parts(context)
+        compact_lore = (
+            self.compact_lore_with_community
+            if self.settings.community_lore
+            else self.compact_lore_without_community
+        ) if information_plan.full_lore else None
+        if compact_lore is not None:
+            self.usage.routing_event(
+                "rag.full", status="completed",
+                rag_full_items=compact_lore.items,
+                rag_full_chars=compact_lore.chars,
+                rag_full_audience_excluded=compact_lore.excluded_audience_items,
+            )
         instruction_parts = [
             POLICY,
             reference_policies[0],
@@ -542,6 +554,7 @@ class RequestAssembler(BaseLLM):
             CURRENT_INTERACTION_POLICY,
             WORLD_CORE_POLICY,
             self.character,
+            *([compact_lore.text] if compact_lore and compact_lore.text else []),
             relationship_policy,
             capability_policy,
         ]
@@ -568,6 +581,7 @@ class RequestAssembler(BaseLLM):
             ),
             "instruction_world_core_chars": len(WORLD_CORE_POLICY),
             "instruction_character_chars": len(self.character),
+            "instruction_lore_chars": compact_lore.chars if compact_lore else 0,
             "instruction_relationship_chars": len(relationship_policy),
             "instruction_runtime_chars": len(runtime_policy) + len(capability_policy),
             "instruction_memory_chars": 0,
