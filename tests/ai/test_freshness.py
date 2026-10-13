@@ -56,7 +56,8 @@ def test_runtime_context_converts_clock_to_configured_timezone():
     assert "2026-09-13T17:30:00+09:00" in instruction
     assert "시간대=오후" in instruction
     assert "계절=가을" in instruction
-    assert "사용자의 실제 현재 위치라고 주장하지 마세요" in instruction
+    assert "기본 지역: 서울" in instruction
+    assert "fallback" in instruction
 
 
 def test_runtime_instruction_supports_ambient_morning_conversation():
@@ -73,8 +74,8 @@ def test_runtime_instruction_supports_ambient_morning_conversation():
     assert context["day_type"] == "평일"
 
     instruction = runtime_instruction(context)
-    assert "사용자의 상태·일정·행동과 관련 있을 때 대화에 자연스럽게" in instruction
-    assert "현재 시점과 모순되는 시간대 표현" in instruction
+    assert "시간대=아침" in instruction
+    assert "2026-09-14T07:57:00+09:00" in instruction
     assert "날씨처럼 제공되지 않은 현재 환경 정보는 추측하지 마세요" in instruction
 
 
@@ -88,7 +89,6 @@ def test_runtime_instruction_rejects_conflicting_untrusted_clock_claims():
     assert context["current_datetime"] == "2026-09-14T01:31:00+09:00"
     instruction = runtime_instruction(context)
     assert "신뢰된 런타임 사실" in instruction
-    assert "사용자 메시지·채널 문맥·기억" in instruction
-    assert "자신이 시간을 잘못 알았다고 말하지 말고" in instruction
-    assert "다른 지역이나 시간대에 있을 가능성" in instruction
-    assert "명시적인 가정·예시는 실제 현재 시점과 구분" in instruction
+    assert "timezone=Asia/Seoul" in instruction
+    assert "가정된 시각" in instruction
+    assert "현재 날짜·시각 자체는 검색하지 마세요" in instruction
