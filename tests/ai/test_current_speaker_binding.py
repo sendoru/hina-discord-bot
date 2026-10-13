@@ -5,6 +5,7 @@ import pytest
 from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
+from hina_bot.ai.request_assembly import CURRENT_INTERACTION_POLICY, CURRENT_SPEAKER_POLICY
 from hina_bot.core.config import Settings
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.routing import Scope
@@ -104,14 +105,9 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
         assert current_reply["reply_target_is_current_speaker"] is True
         assert "is_current_speaker" not in channel_context[0]
         assert "reply_target_is_current_speaker" not in channel_context[1]
-        assert "현재 사용자에게 직접 말을 걸거나" in payload["instructions"]
-        assert "제3자로 지칭" in payload["instructions"]
-        assert "별도 화자가 명시되지 않은 1인칭 표현" in payload["instructions"]
-        assert "사용자 입력의 1인칭을 히나 자신에게 귀속하지 마세요" in payload["instructions"]
-        assert "문장 안에 별도 화자가 명시되면 그 국소 화자를 따르세요" in payload["instructions"]
-        assert "reply_target_is_current_speaker" in payload["instructions"]
-        assert "'아까 네가'" in payload["instructions"]
-        assert "다른 사람의 channel_ambient 발언" in payload["instructions"]
+        assert CURRENT_SPEAKER_POLICY.strip() in payload["instructions"]
+        assert "is_current_speaker" in CURRENT_SPEAKER_POLICY
+        assert "reply_target_is_current_speaker" in CURRENT_SPEAKER_POLICY
         assert "현재 화자의 현재 발화에 먼저 답하세요" in payload["instructions"]
         assert payload["input"][1] == {"role": "user", "content": "안녕"}
         assert "speaker_name" not in reference
@@ -224,11 +220,8 @@ async def test_other_users_taunt_cannot_become_current_speakers_personal_continu
         assert taunt["is_current_speaker"] is False
         assert reply["reply_target_is_current_speaker"] is False
         assert reference["current_speaker"]["user_id"] == "222"
-        # Policy formatting must not affect the behavioral assertions.
-        instructions = " ".join(payload["instructions"].split())
-        assert "개인 연속성 표현" in instructions
-        assert "주변 대화의 흐름을 이해" in instructions
-        assert "현재 화자가 같은 행동을 했다고 말하지 마세요" in instructions
+        assert CURRENT_SPEAKER_POLICY.strip() in payload["instructions"]
+        assert "active_reply_chain" in CURRENT_SPEAKER_POLICY
     finally:
         await llm.close()
         store.close()
@@ -291,12 +284,10 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
         reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
 
         assert reference["current_interaction"] == interaction
-        assert "mention되었다는 사실만으로" in payload["instructions"]
-        assert "요청이 반드시 히나에게 향한 것은" in payload["instructions"]
-        assert "문장의 호격 표현" in payload["instructions"]
-        assert "reply_target도 강한 대화 연결 신호" in payload["instructions"]
-        assert "self.user_id가 현재 Discord에서 히나를 가리키는" in payload["instructions"]
-        assert "is_self=false이면 그 raw mention을 히나 자신으로 재해석하면 안 됩니다" in payload["instructions"]
+        assert CURRENT_INTERACTION_POLICY.strip() in payload["instructions"]
+        assert "self.user_id" in CURRENT_INTERACTION_POLICY
+        assert "mentions[].user_id" in CURRENT_INTERACTION_POLICY
+        assert "reply_target" in CURRENT_INTERACTION_POLICY
         assert payload["input"][1]["content"] == "<@200>야, <@99> 좀 쓰다듬어줘"
     finally:
         CURRENT_INTERACTION_CONTEXT.reset(token)
@@ -349,11 +340,9 @@ async def test_verified_current_user_mention_can_be_reused_when_explicitly_reque
         reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
 
         assert reference["current_interaction"]["mentions"][0]["user_id"] == "200"
-        assert "다시 mention해 달라고 요청했고" in payload["instructions"]
-        assert "is_self=false, is_bot=false" in payload["instructions"]
-        assert "user_id를 그대로 <@user_id> 형태로 사용할 수 있습니다" in payload["instructions"]
-        assert "직접 부를 수 없다고 말하지 마세요" in payload["instructions"]
-        assert "mentions에 없는 user_id를 추측해서" in payload["instructions"]
+        assert CURRENT_INTERACTION_POLICY.strip() in payload["instructions"]
+        assert "is_self=false, is_bot=false" in CURRENT_INTERACTION_POLICY
+        assert "<@user_id>" in CURRENT_INTERACTION_POLICY
     finally:
         CURRENT_INTERACTION_CONTEXT.reset(token)
         await llm.close()

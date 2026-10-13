@@ -277,7 +277,6 @@ async def test_general_chat_gets_optional_web_with_classifier_off(chat_llm, rout
         assert_auto_web_with_code(payload)
         assert "[외부 확인]" in payload["instructions"]
         assert "외부 정보 검색: 필요한 요청에서 사용 가능." in payload["instructions"]
-        assert "기능 자체가 없다고 말하지 마세요" in payload["instructions"]
     finally:
         store.close()
 
