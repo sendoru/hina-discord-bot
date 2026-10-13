@@ -3,6 +3,7 @@
 import json
 import logging
 import mimetypes
+from time import monotonic
 from types import SimpleNamespace as NS
 from urllib.parse import urlsplit
 
@@ -15,6 +16,9 @@ GEMINI_GENERATE_CONTENT_URL = (
 )
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 SUPPORTED_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
+GEMINI_SEARCH_API_MODES = frozenset({"auto", "interactions", "generate_content"})
+SEARCH_CIRCUIT_FAILURES = 2
+SEARCH_CIRCUIT_COOLDOWN_SECONDS = 300
 log = logging.getLogger("hina")
 
 
@@ -64,6 +68,27 @@ def _gemini_http_error(response: httpx.Response) -> ProviderAPIError:
                 code = str(raw_code)
             message = error.get("message") if isinstance(error.get("message"), str) else ""
     return ProviderAPIError("gemini", response.status_code, code=code, message=message)
+
+
+
+def _gemini_interactions_tool_error(error: ProviderAPIError) -> bool:
+    """Only retry API errors that explicitly concern Gemini tool support."""
+    if error.status_code not in {400, 422, 500, 501, 503}:
+        return False
+    diagnostic = f"{error.error_code} {error.error_message}".lower()
+    return any(term in diagnostic for term in (
+        "google_search", "google search", "code_execution", "code execution",
+        "tool", "function call", "function_call", "requires_action",
+    ))
+
+
+def _gemini_has_tool_continuation(value) -> bool:
+    """Never replay a request once client-managed tool work has begun."""
+    return isinstance(value, list) and any(
+        isinstance(item, dict)
+        and item.get("type") in {"function_call", "function_call_output", "function_result"}
+        for item in value
+    )
 
 
 def _gemini_image_block(image_url: str, resolution: str = ""):
@@ -648,6 +673,12 @@ def _gemini_output(data: dict):
         error.get("code") for error in data.get("errors") or []
         if isinstance(error, dict) and isinstance(error.get("code"), str)
     ]
+    if response.status == "requires_action" and not any(
+        item.type == "function_call" for item in output
+    ):
+        # Server-managed tools should complete without client-side action.
+        # Surface a distinct failure code if that old provider regression returns.
+        response._hina_error_codes.append("unexpected_requires_action")
     return response
 
 
@@ -657,9 +688,13 @@ class _GeminiResponses:
         http: httpx.AsyncClient,
         *,
         thinking_level: str = "low",
+        settings=None,
     ):
         self.http = http
         self.thinking_level = thinking_level
+        self.settings = settings
+        self._search_failures = 0
+        self._search_circuit_until = 0.0
 
     async def _generate_content(
         self,
@@ -731,11 +766,14 @@ class _GeminiResponses:
             error = _gemini_http_error(response)
             log.warning("Provider request failed (%s)", error.safe_diagnostic)
             raise error from exc
-        return _gemini_generate_content_output(response.json())
+        normalized = _gemini_generate_content_output(response.json())
+        normalized._hina_gemini_api = "generate_content"
+        return normalized
 
     async def _interaction(
         self,
         *,
+        web_tools: list[dict],
         function_tools: list[dict],
         code_execution_tools: list[dict],
         **kwargs,
@@ -748,7 +786,15 @@ class _GeminiResponses:
         previous_interaction_id = kwargs.get("previous_interaction_id")
         if previous_interaction_id:
             payload["previous_interaction_id"] = str(previous_interaction_id)
-        instructions = kwargs.get("instructions")
+        instructions = kwargs.get("instructions") or ""
+        if web_tools and kwargs.get("tool_choice") == "required":
+            # Forcing tool_choice=any can loop on server-side tools. Ask for search
+            # in the instructions instead; the API executes Google Search itself.
+            guidance = (
+                "이 요청은 외부 확인이 필수입니다. Google Search를 사용해 필요한 사실을 "
+                "확인한 뒤, 충분한 근거를 얻으면 검색을 반복하지 말고 최종 답변을 작성하세요."
+            )
+            instructions = (instructions + "\n\n" + guidance).strip()
         if instructions:
             payload["system_instruction"] = instructions
 
@@ -761,6 +807,8 @@ class _GeminiResponses:
             generation_config["max_output_tokens"] = max_output_tokens
 
         payload_tools = []
+        if web_tools:
+            payload_tools.append({"type": "google_search"})
         for tool in function_tools:
             payload_tools.append({
                 "type": "function",
@@ -786,6 +834,7 @@ class _GeminiResponses:
             raise error from exc
         data = response.json()
         normalized = _gemini_output(data)
+        normalized._hina_gemini_api = "interactions"
         normalized._hina_interaction_id = (
             str(data.get("id") or "") if payload["store"] else ""
         )
@@ -795,6 +844,23 @@ class _GeminiResponses:
             if isinstance(step, dict)
         )
         return normalized
+
+    def _search_failure(self, reason: str) -> None:
+        self._search_failures += 1
+        if self._search_failures >= SEARCH_CIRCUIT_FAILURES:
+            self._search_circuit_until = monotonic() + SEARCH_CIRCUIT_COOLDOWN_SECONDS
+            log.warning("Gemini search API circuit opened (%s)", reason)
+        else:
+            log.warning("Gemini Interactions search fallback (%s)", reason)
+
+    def _circuit_open(self) -> bool:
+        if not self._search_circuit_until:
+            return False
+        if monotonic() < self._search_circuit_until:
+            return True
+        self._search_circuit_until = 0.0
+        self._search_failures = 0
+        return False
 
     async def create(self, **kwargs):
         tools = list(kwargs.get("tools") or [])
@@ -810,18 +876,55 @@ class _GeminiResponses:
         code_execution_tools = [
             tool for tool in tools if tool.get("type") == "code_execution"
         ]
-        if web_tools:
-            return await self._generate_content(
-                web_tools=web_tools,
-                function_tools=function_tools,
-                code_execution_tools=code_execution_tools,
-                **kwargs,
-            )
-        return await self._interaction(
-            function_tools=function_tools,
-            code_execution_tools=code_execution_tools,
+        tool_kwargs = {
+            "web_tools": web_tools,
+            "function_tools": function_tools,
+            "code_execution_tools": code_execution_tools,
             **kwargs,
+        }
+
+        mode = getattr(self.settings, "gemini_search_api_mode", "auto")
+        if mode not in GEMINI_SEARCH_API_MODES:
+            raise ValueError("GEMINI_SEARCH_API_MODE가 잘못되었습니다.")
+        pinned_api = kwargs.get("_hina_gemini_api")
+        previous_id = kwargs.get("previous_interaction_id")
+        continuing = bool(pinned_api or previous_id or _gemini_has_tool_continuation(
+            kwargs.get("input")
+        ))
+        if previous_id:
+            selected_api = "interactions"
+        elif pinned_api in {"interactions", "generate_content"}:
+            selected_api = pinned_api
+        elif not web_tools:
+            selected_api = "interactions"
+        elif mode == "generate_content" or (mode == "auto" and self._circuit_open()):
+            selected_api = "generate_content"
+        else:
+            selected_api = "interactions"
+
+        if selected_api == "generate_content":
+            return await self._generate_content(**tool_kwargs)
+
+        # A retried continuation can duplicate already-executed local actions.
+        can_fallback = mode == "auto" and bool(web_tools) and not continuing
+        try:
+            response = await self._interaction(**tool_kwargs)
+        except ProviderAPIError as exc:
+            if can_fallback and _gemini_interactions_tool_error(exc):
+                self._search_failure("tool_http_error")
+                return await self._generate_content(**tool_kwargs)
+            raise
+
+        broken_builtin = (
+            response.status == "requires_action"
+            and "unexpected_requires_action" in response._hina_error_codes
         )
+        if broken_builtin and can_fallback:
+            self._search_failure("unexpected_requires_action")
+            return await self._generate_content(**tool_kwargs)
+        if web_tools and not broken_builtin and response.status in {"completed", "requires_action"}:
+            self._search_failures = 0
+        return response
 
 
 class GeminiClient:
@@ -833,6 +936,7 @@ class GeminiClient:
         *,
         timeout: float = 45,
         thinking_level: str = "low",
+        settings=None,
     ):
         self._http = httpx.AsyncClient(
             timeout=timeout,
@@ -841,6 +945,7 @@ class GeminiClient:
         self.responses = _GeminiResponses(
             self._http,
             thinking_level=thinking_level,
+            settings=settings,
         )
 
     async def close(self):
@@ -914,6 +1019,7 @@ def create_provider_client(
             credential,
             timeout=timeout,
             thinking_level=thinking_level or settings.gemini_thinking_level,
+            settings=settings,
         )
     if provider == "openrouter":
         return OpenRouterClient(credential, timeout=timeout, max_retries=max_retries)

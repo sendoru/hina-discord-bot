@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config import (
     EXTERNAL_CONTEXT_POLICIES,
+    GEMINI_SEARCH_API_MODES,
     GEMINI_THINKING_LEVELS,
     LEGACY_RAG_MODES,
     MODEL_ROUTING_MODES,
@@ -58,6 +59,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "gemini_fast_thinking_level": "Gemini adaptive fast tier에서 사용할 추론 강도입니다.",
     "gemini_smart_thinking_level": "Gemini adaptive smart tier에서 사용할 추론 강도입니다.",
     "gemini_store_interactions": "일반 채팅 answer의 Gemini interaction을 provider 측 로그에 저장할지 정합니다.",
+    "gemini_search_api_mode": "Gemini 검색에 사용할 API 선택입니다. auto는 Interactions 우선·특정 도구 오류 시 GenerateContent 폴백, interactions/generate_content는 강제 모드입니다.",
     "gemini_store_classifier_interactions": "semantic/web routing classifier의 Gemini interaction을 provider 측 로그에 저장할지 별도로 정합니다.",
     "model_routing_smart_threshold": "채팅 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
     "memory_routing_smart_threshold": "장기 기억 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
@@ -177,6 +179,12 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     ),
     "gemini_store_interactions": _runtime_spec(
         "gemini_store_interactions", "GEMINI_STORE_INTERACTIONS", "bool"
+    ),
+    "gemini_search_api_mode": _runtime_spec(
+        "gemini_search_api_mode",
+        "GEMINI_SEARCH_API_MODE",
+        "string",
+        choices=tuple(sorted(GEMINI_SEARCH_API_MODES)),
     ),
     "gemini_store_classifier_interactions": _runtime_spec(
         "gemini_store_classifier_interactions",
@@ -321,6 +329,8 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
     if spec.kind == "string":
         if spec.attr == "external_context_policy":
             return parse_external_context_policy(text)
+        if spec.attr == "gemini_search_api_mode":
+            text = text.lower()
         if spec.empty_allowed and text.lower() in {"none", "null", "off", "-"}:
             text = ""
         if not text and not spec.empty_allowed:
