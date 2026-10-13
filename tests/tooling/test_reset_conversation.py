@@ -87,12 +87,12 @@ def test_backup_and_reset_preserves_user_memory_and_settings(tmp_path):
         assert counts(store.db) == {
             "turns": 0, "shared_calls": 0, "failed_turns": 0, "shared_summaries": 0,
         }
-        assert store.db.execute(
+        assert tuple(store.db.execute(
             "SELECT * FROM memory_items WHERE id=?", (memory,)
-        ).fetchone() == item_before
-        assert store.db.execute(
+        ).fetchone()) == item_before
+        assert [tuple(row) for row in store.db.execute(
             "SELECT * FROM memory_extraction_cursors ORDER BY scope"
-        ).fetchall() == cursor_before
+        ).fetchall()] == cursor_before
         assert store.note(dm.user_note) == "important custom user note"
         assert store.memory_mode(dm) == "normal"
         assert store.user_name(dm) == "DM display name"
