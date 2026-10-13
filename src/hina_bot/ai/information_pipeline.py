@@ -664,6 +664,12 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             use_memory=assembly_use_memory,
             factual_recall_plan=factual_recall_plan,
         )
+        # With no semantic classifier, let the answer model choose whether to search.
+        if self.settings.routing_classifier_mode == "off" and self.settings.chat_web_search:
+            information = self._with_search_provenance(
+                replace(information, search_mode="auto")
+            )
+
         baseline_score, baseline_tier, local_level = baseline_route_state(
             self.settings,
             information,
