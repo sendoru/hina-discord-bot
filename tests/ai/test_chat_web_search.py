@@ -265,8 +265,11 @@ async def test_personal_memory_question_gets_optional_web(chat_llm):
 
 
 @pytest.mark.asyncio
-async def test_general_chat_gets_optional_web_with_classifier_off(chat_llm):
+@pytest.mark.parametrize("routing_mode", ["fixed", "adaptive"])
+async def test_general_chat_gets_optional_web_with_classifier_off(chat_llm, routing_mode):
     llm, calls = chat_llm
+    llm.settings = replace(llm.settings, model_routing_mode=routing_mode)
+    assert llm.semantic_model_router is None
     store = Store(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "오늘 좀 피곤하네")
