@@ -61,3 +61,27 @@ def test_hidden_provider_citation_does_not_remove_model_authored_link():
 
     assert response_text(response, hide_citations=True) == text
 
+
+def test_hidden_citations_preserve_code_and_whitespace():
+    text = '설명:\n```python\nif True:\n    print("a  !")\n```\n다음  문장'
+    response = SimpleNamespace(
+        output_text=text,
+        output=[SimpleNamespace(
+            type="message",
+            content=[SimpleNamespace(type="output_text", text=text, annotations=[])],
+        )],
+    )
+    assert response_text(response, hide_citations=True) == text
+
+
+def test_format_markers_are_not_removed_without_structured_evidence():
+    text = r"문자 그대로의 \n, <b>태그</b>, 참고문헌 [1], 배열[1]"
+    response = SimpleNamespace(
+        output_text=text,
+        output=[SimpleNamespace(
+            type="message",
+            content=[SimpleNamespace(type="output_text", text=text, annotations=[])],
+        )],
+    )
+    assert response_text(response, hide_citations=True) == text
+    assert response_text(response, hide_citations=False) == text

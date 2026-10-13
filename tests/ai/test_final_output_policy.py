@@ -56,3 +56,11 @@ async def test_final_output_check_is_last_even_after_dynamic_instruction():
     finally:
         await llm.close()
         store.close()
+
+def test_final_output_check_requires_discord_native_format():
+    policy = FINAL_OUTPUT_CHECK_POLICY
+    assert "Discord" in policy
+    assert "실제 개행" in policy
+    assert "HTML 태그" in policy
+    assert "자동 인용 표식" in policy
+    assert "그대로 보존" in policy
