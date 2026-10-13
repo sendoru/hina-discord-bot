@@ -135,7 +135,9 @@ class MemorySummaryMixin:
             **request,
         )
 
-    async def _extract_memory_items_shadow(self, store, scope, pending) -> bool:
+    async def _extract_memory_items_shadow(
+        self, store, scope, pending, *, expected_cursor: int
+    ) -> bool:
         """Extract one fixed shadow batch and report whether its cursor may advance."""
 
         if not callable(getattr(store, "add_memory_item", None)) or not callable(
@@ -228,26 +230,32 @@ class MemorySummaryMixin:
                 _record_shadow_extraction(self.usage, "invalid", **metrics)
                 log.warning("Structured memory shadow extraction returned invalid output")
                 return False
-            persisted = persist_shadow_items_detailed(
-                store,
-                scope,
-                parsed.items,
-                source_public_at_capture=source_public_at_capture,
-            )
-            proposal_count = 0
-            applied_reconciliations = 0
-            deferred_reconciliations = 0
-            proposal_writer = getattr(store, "add_memory_reconciliation_proposal", None)
-            if callable(proposal_writer):
-                reconciliation = persist_reconciliation_proposals(
+            # The LLM request happened outside the write lock. Verify the original
+            # cursor and exact turns under BEGIN IMMEDIATE; all memory writes and
+            # cursor advancement commit together or roll back together.
+            with store.atomic_memory_batch(
+                scope, pending, expected_cursor=expected_cursor
+            ):
+                persisted = persist_shadow_items_detailed(
                     store,
                     scope,
                     parsed.items,
-                    persisted.item_ids,
+                    source_public_at_capture=source_public_at_capture,
                 )
-                proposal_count = reconciliation.stored
-                applied_reconciliations = reconciliation.applied
-                deferred_reconciliations = reconciliation.deferred
+                proposal_count = 0
+                applied_reconciliations = 0
+                deferred_reconciliations = 0
+                proposal_writer = getattr(store, "add_memory_reconciliation_proposal", None)
+                if callable(proposal_writer):
+                    reconciliation = persist_reconciliation_proposals(
+                        store,
+                        scope,
+                        parsed.items,
+                        persisted.item_ids,
+                    )
+                    proposal_count = reconciliation.stored
+                    applied_reconciliations = reconciliation.applied
+                    deferred_reconciliations = reconciliation.deferred
             completed_metrics = {
                 **metrics,
                 "accepted_items": len(parsed.items),
@@ -293,13 +301,13 @@ class MemorySummaryMixin:
         required_turns = batch_size if min_turns is None else max(
             1, min(int(min_turns), batch_size)
         )
+        expected_cursor = store.memory_extraction_cursor(scope)
         pending = store.pending_memory_extraction(scope, limit=batch_size)
         if len(pending) < required_turns:
             return False
-        if await self._extract_memory_items_shadow(store, scope, pending):
-            store.save_memory_extraction_cursor(scope, pending[-1]["id"])
-            return True
-        return False
+        return await self._extract_memory_items_shadow(
+            store, scope, pending, expected_cursor=expected_cursor
+        )
 
     async def summarize_shared(self, store, scope):
         pending = store.pending_shared(scope)
