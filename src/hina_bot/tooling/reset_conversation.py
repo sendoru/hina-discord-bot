@@ -166,8 +166,8 @@ def format_plan(plan: ResetPlan) -> str:
         f"Database: {plan.path}",
         "Conversation tables to delete:",
         *(f"  {table}: {count}" for table, count in plan.removed.items()),
-        f"Structured memory pending: {plan.pending_turns} turns / "
-        f"{plan.pending_scopes} scopes",
+        (f"Structured memory pending: {plan.pending_turns} turns / "
+         f"{plan.pending_scopes} scopes"),
         f"Structured memory rows preserved: {plan.preserved.get('memory_items',0)}",
         "Shared summaries will be deleted (possibly unique information).",
         "Original conversation and shared summaries remain in the verified full backup.",
