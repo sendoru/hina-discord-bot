@@ -25,3 +25,24 @@ This change addresses gaps in `src/hina_bot/data/lore.jsonl` without changing th
 - `uv run pytest tests/core/test_lore.py tests/tooling/test_retrieval_calibration.py`
 - `uv run python -m hina_bot.tooling.retrieval_calibration --validate-only`
 - Corpus size tests should derive their expected length from the actual packaged lore, not pin an obsolete count.
+
+## Follow-up expansion after review feedback (2026-10-13)
+
+The initial seven new entries left major gaps. This follow-up adds **20 more substantial records**; total corpus is now **157**.
+
+| Focus | Added lore IDs | Source type |
+| --- | --- | --- |
+| Gehenna / Pandemonium | `canon.gehenna.makoto.character_and_work_style`, `canon.gehenna.iroha.pandemonium_role`, `canon.gehenna.ibuki.pandemonium_role`, `canon.gehenna.makoto.iroha_ibuki_contrast`, `canon.gehenna.makoto_vs_hina.pandemonium_institutional_conflict` | Game-profile mirrors and community substory summaries |
+| Prefect Team practice | `canon.gehenna.ako_iori.work_dynamics`, `canon.gehenna.prefect_team.chinatsu_previous_emergency_experience` | Relationship summaries and extracted game equipment descriptions |
+| Food service / Gourmet Society | `canon.gehenna.fuuka.school_lunch_profile`, `canon.gehenna.juri.school_lunch_profile`, `canon.gehenna.haruna.gourmet_leader`, `canon.gehenna.gourmet_members_roster` | In-game descriptions / club roster mirrors |
+| Hot spring / Emergency medicine | `canon.gehenna.kasumi.hotspring_leader`, `canon.gehenna.megu.hotspring_member`, `canon.gehenna.sena.emergency_medical_leader` | Game-profile mirrors |
+| Problem Solver 68 | `canon.gehenna.aru.problem_solver_leader`, `canon.gehenna.problem_solver_68.members`, `canon.gehenna.kayoko.problem_solver_moderator` | Game profiles / club descriptions |
+| Eden Treaty | `canon.eden.hina.protects_sensei_after_cathedral_blast`, `canon.eden.hina_sensei.sena_evacuation`, `canon.eden.hina.confides_exhaustion_and_returns_to_battle` | Fan-edited episode recaps; see caveat below |
+
+**Evidence boundaries:** Each new record's `source.url` links to its specific profile or story. Fan-maintained event and story summaries are *not* official line-by-line transcripts. In particular, the new Eden scene-level records should be checked against game dialogue when performing a later high-rigor source pass. Game-profile mirrors paraphrase original in-game descriptions; `crosschecked` is the schema's existing accepted-level value, not evidence of an independently completed transcript audit.
+
+**Knowledge limits:** Most character-profile facts are labeled `public_knowledge`. The Ako–Iori private office dynamic is labeled `audience_only`, preventing it from being promoted into Hina's firsthand memories. The source of truth for server-specific personal relationships remains scoped Discord memory; membership or conflicts between organizations are not evidence of romantic or intimate relations.
+
+**KR timeline caution:** Only content released before 2026-10-13 on the Korean server should be retained as `kr_release=confirmed`; this dataset is based on well-established early Gehenna / Eden content rather than JP-only future arcs.
+
+**Further work:** First-party story-script source pointers and full dialogue evidence would improve provenance of the Eden and group-story entries. Do not use the number of added records as a proxy for sufficient coverage; next evaluate real questions involving Makoto, Ibuki, Iroha, Fuuka, Haruna, Ako and Hina against the new compact/full-context mode.
