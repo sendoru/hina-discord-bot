@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 SUPPORTED_MODEL_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
 GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
+GEMINI_SEARCH_API_MODES = frozenset({"auto", "interactions", "generate_content"})
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
@@ -109,6 +110,7 @@ class Settings:
     gemini_smart_thinking_level: str = "medium"
     gemini_store_interactions: bool = False
     gemini_store_classifier_interactions: bool = False
+    gemini_search_api_mode: str = "auto"
     db_path: str = "data/hina.sqlite3"
     prompt_path: str = ""
     call_prefixes: tuple[str, ...] = ("히나야",)
@@ -371,6 +373,12 @@ class Settings:
             if level not in GEMINI_THINKING_LEVELS:
                 allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
                 raise ValueError(f"{variable}은 {allowed} 중 하나여야 합니다.")
+        gemini_search_api_mode = os.getenv(
+            "GEMINI_SEARCH_API_MODE", "auto"
+        ).strip().lower()
+        if gemini_search_api_mode not in GEMINI_SEARCH_API_MODES:
+            allowed = ", ".join(sorted(GEMINI_SEARCH_API_MODES))
+            raise ValueError(f"GEMINI_SEARCH_API_MODE는 {allowed} 중 하나여야 합니다.")
         gemini_store_interactions = os.getenv(
             "GEMINI_STORE_INTERACTIONS", "false"
         ).strip().lower()
@@ -450,6 +458,7 @@ class Settings:
             gemini_fast_thinking_level=gemini_fast_thinking_level,
             gemini_smart_thinking_level=gemini_smart_thinking_level,
             gemini_store_interactions=gemini_store_interactions == "true",
+            gemini_search_api_mode=gemini_search_api_mode,
             gemini_store_classifier_interactions=(
                 gemini_store_classifier_interactions == "true"
             ),
