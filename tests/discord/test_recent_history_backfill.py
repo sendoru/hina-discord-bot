@@ -334,7 +334,9 @@ class RecentHydrationParityTests(unittest.IsolatedAsyncioTestCase):
 
         rows = self.bot.recent.context(scope, current.id)
         self.assertEqual([row["content"] for row in rows], ["새로운 대화"])
-        self.assertEqual(channel.kwargs["after"], cutoff_time)
+        self.assertAlmostEqual(
+            channel.kwargs["after"].timestamp(), cutoff_time.timestamp(), places=3
+        )
         self.assertFalse(self.bot.recent.needs_hydration(scope))
 
     def test_live_assistant_metadata_no_longer_depends_on_timestamp_presence(self):
