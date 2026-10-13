@@ -211,6 +211,9 @@ class HinaClient(BaseHinaClient):
             return
 
         after = created_at - timedelta(seconds=self.recent.ttl)
+        cutoff_id = self.store.latest_conversation_reset_cutoff()
+        if cutoff_id:
+            after = max(after, discord.utils.snowflake_time(cutoff_id))
         policy = capture_mode(self.store, scope)
         try:
             async for old in history(
@@ -219,6 +222,8 @@ class HinaClient(BaseHinaClient):
                 after=after,
                 oldest_first=False,
             ):
+                if cutoff_id and old.id <= cutoff_id:
+                    continue
                 if old.webhook_id is not None:
                     continue
                 own_bot = self.user is not None and old.author.id == self.user.id

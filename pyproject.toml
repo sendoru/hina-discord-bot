@@ -20,6 +20,8 @@ hina-lore = "hina_bot.tooling.lore_cli:main"
 hina-eval = "hina_bot.tooling.eval_runner:main"
 hina-routing-eval = "hina_bot.tooling.model_routing_eval:main"
 hina-reset-analysis-data = "hina_bot.tooling.reset_analysis_data:main"
+hina-flush-memory = "hina_bot.tooling.flush_pending_memory:main"
+hina-reset-conversation = "hina_bot.tooling.reset_conversation:main"
 hina-migrate-runtime = "hina_bot.core.runtime_migration:main"
 
 [tool.setuptools.packages.find]

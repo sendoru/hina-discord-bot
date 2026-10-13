@@ -300,6 +300,45 @@ class RecentHydrationParityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(provider[0]["context_kind"], "channel_ambient")
         self.assertNotIn("reply_target_is_current_speaker", provider[0])
 
+    async def test_production_web_bot_excludes_pre_reset_history_after_restart(self):
+        now = datetime.now(UTC)
+        cutoff_time = now - timedelta(minutes=2)
+        cutoff = (int(cutoff_time.timestamp() * 1000) - 1420070400000) << 22
+        with self.store.db:
+            self.store.db.execute(
+                """CREATE TABLE conversation_reset_epochs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    reset_at TEXT NOT NULL,
+                    cutoff_message_id INTEGER NOT NULL,
+                    backup_sha256 TEXT NOT NULL
+                )"""
+            )
+            self.store.db.execute(
+                """INSERT INTO conversation_reset_epochs(
+                    reset_at,cutoff_message_id,backup_sha256
+                ) VALUES (?,?,?)""",
+                (cutoff_time.isoformat(), cutoff, "fixture"),
+            )
+
+        old = self.message(
+            cutoff - 1, "과거 부정적인 대화", now - timedelta(minutes=3), 100
+        )
+        fresh = self.message(
+            cutoff + (1 << 22), "새로운 대화", now - timedelta(minutes=1), 100
+        )
+        channel = FakeHistoryChannel([old, fresh])
+        current = NS(id=cutoff + (2 << 22), created_at=now, channel=channel)
+        scope = Scope(1, 10, 100)
+
+        await self.bot.hydrate_recent_history(current, scope)
+
+        rows = self.bot.recent.context(scope, current.id)
+        self.assertEqual([row["content"] for row in rows], ["새로운 대화"])
+        self.assertAlmostEqual(
+            channel.kwargs["after"].timestamp(), cutoff_time.timestamp(), delta=0.001
+        )
+        self.assertFalse(self.bot.recent.needs_hydration(scope))
+
     def test_live_assistant_metadata_no_longer_depends_on_timestamp_presence(self):
         recent = TargetAwareRecentMessages()
         scope = Scope(1, 10, 100)
