@@ -88,7 +88,7 @@ ROUTING_CLASSIFIER_MODE=off
 `ROUTING_CLASSIFIER_MODE`로 작은 classifier를 선택적으로 결합할 수 있습니다. classifier는 한 번의
 요청에서 **추론 난이도**와 **웹 검색 필요성**을 독립적으로 반환합니다.
 
-- `off`: classifier를 호출하지 않고 `chat-v6` + deterministic web 정책을 사용합니다.
+- `off`: classifier를 호출하지 않고 `chat-v6`를 사용하며, `CHAT_WEB_SEARCH=true`라면 모든 일반 답변에 웹 검색 도구를 `auto`로 제공합니다 (`required` 강제도 적용하지 않음).
 - `shadow`: 실제 답변은 baseline을 유지하고 classifier가 제안한 model/web 결과만 백그라운드 telemetry에
   기록합니다. 비용은 발생하지만 답변 경로는 기다리지 않습니다.
 - `active`: classifier 결과를 실제 model/web 선택에 사용합니다. 정책명은 `chat-hybrid-v6`입니다.
