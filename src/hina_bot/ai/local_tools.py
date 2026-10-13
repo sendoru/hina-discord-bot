@@ -216,6 +216,11 @@ def continuation_request(
         next_input = [{"role": "user", "content": str(previous_input)}]
     interaction_id = str(getattr(response, "_hina_interaction_id", "") or "")
     followup = dict(request)
+    # Keep one Gemini API throughout a local-function round, even if runtime
+    # settings or circuit state change while the function is executing.
+    gemini_api = getattr(response, "_hina_gemini_api", "")
+    if gemini_api in {"interactions", "generate_content"}:
+        followup["_hina_gemini_api"] = gemini_api
     if interaction_id:
         followup["input"] = [
             result.provider_input(include_name=True)

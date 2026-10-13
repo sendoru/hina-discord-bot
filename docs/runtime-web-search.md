@@ -126,6 +126,55 @@ Freshness routing은 기존 Blue Archive lore 정책을 대체하지 않습니�
 `auto`에서는 tool만 제공하고 `tool_choice=required`를 보내지 않습니다. `required`에서만 강제
 선택합니다. 검색 context는 현재 `low`를 사용합니다.
 
+## Gemini Interactions 장애 우회 및 운영 설정
+
+Gemini 웹 검색은 기본적으로 **Interactions API**의 `google_search` 도구를 사용합니다.
+`GEMINI_SEARCH_API_MODE`는 런타임 설정으로 Dashboard 또는 `/config set`에서 즉시 변경할 수
+있으며, `CHAT_WEB_SEARCH=false`인 경우에는 검색 API 모드에 관계없이 웹 검색을 제공하지 않습니다.
+
+| `GEMINI_SEARCH_API_MODE` | 검색을 포함한 새 요청 | 오류 시 동작 |
+| --- | --- | --- |
+| `auto` (기본값) | Interactions 우선 | 아래 조건일 때만 GenerateContent 단일 재시도 |
+| `interactions` | Interactions 고정 | 자동 재시도 없음 |
+| `generate_content` | GenerateContent 고정 | 자동 재시도 없음 |
+
+검색 도구가 **없는** Gemini 요청(기억 요약, 검색 비활성화 등)은 세 모드 모두 Interactions를
+사용합니다. `required` 검색도 Gemini에서는 강제 `tool_choice=any`가 아니라
+Google Search 사용 지침으로 요청합니다.
+
+### `auto` 모드의 정확한 fallback 조건
+
+최초 Interactions 요청에서 웹 검색 도구가 제공된 경우에 한하여 다음을 도구 호환성 오류로 봅니다.
+
+1. 응답 상태가 `requires_action`인데 클라이언트가 실행할 `function_call`이 없는 경우
+   (`unexpected_requires_action`; Google Search/Code Execution은 서버가 실행해야 함)
+2. HTTP 400/422/500/501/503 오류에 **도구 관련 문자열**
+   (`google_search`, `code_execution`, `tool`, `function_call` 등)이 명시된 경우
+
+이때 동일 요청을 GenerateContent로 **한 번만** 다시 보냅니다. GenerateContent까지 실패하면
+원래의 오류 처리 경로로 전달하고 추가 fallback은 하지 않습니다. 단순 타임아웃, HTTP 429,
+모델 이름 오류처럼 도구와 무관한 실패, 정상 완료이지만 답변 내용이 기대와 다른 경우에는
+API fallback을 실행하지 않습니다.
+
+이미 로컬 함수 호출이 시작된 **후속 요청**에는 fallback을 허용하지 않습니다. 사용자 측에서
+호출한 기능이 중복 실행되는 것을 막기 위한 제한입니다. 후속 요청은 기존에 사용한 API를
+유지하며, `store=true`의 `previous_interaction_id`도 Interactions로 계속 처리합니다.
+모드 변경은 새로운 턴부터 적용된다고 생각하면 됩니다. 기존 API가 실제 검색을 일부 수행한 뒤
+비정상 응답을 반환했다면 fallback이 검색을 다시 실행해 과금이 중복될 수 있습니다.
+
+### 연속 실패 시 임시 우회 (circuit breaker)
+
+같은 프로세스의 Gemini 클라이언트에서 도구 호환성 실패가 **연속 2회** 발생하면, 5분 동안
+웹 검색을 포함하는 **새 요청**은 Interactions를 시도하지 않고 GenerateContent로 전송합니다.
+이후 새 요청에서 Interactions를 다시 시험하고, 정상 응답이면 실패 횟수를 초기화합니다.
+수동 `interactions`/`generate_content` 모드에서는 회로 차단이 적용되지 않습니다.
+상태는 **프로세스 메모리에만** 유지되므로 재시작하면 초기화되며, 다중 프로세스 간 공유하지 않습니다.
+
+운영 중 문제가 재발하면 `GEMINI_SEARCH_API_MODE=generate_content`로 즉시 고정할 수 있습니다.
+`Gemini Interactions search fallback` / `Gemini search API circuit opened` 경고 로그와
+`unexpected_requires_action` 진단 코드를 확인하세요. `auto`가 실제 Gemini API 버그를 완전히
+차단해 준다는 보장은 없고, 사용자의 실제 API 키로 혼합 도구 동작을 검증해야 합니다.
+
 ## 현재 정보의 신뢰 기준
 
 현재 상태를 묻는 질문에서는 검색 결과의 게시·관측·발표 시점을 런타임 기준 시각과 비교하도록

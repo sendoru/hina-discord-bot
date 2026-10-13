@@ -23,6 +23,13 @@ MEMORY_MAX_OUTPUT_TOKENS=4096
 기존 설치의 `OPENAI_MODEL`은 호환 alias로 계속 읽지만 새 설정에서는 `LLM_MODEL`을 권장합니다.
 예전에 사용하던 `MEMORY_PROVIDER`, `MEMORY_MODEL`은 더 이상 읽지 않습니다.
 
+### Gemini Google Search API fallback
+
+검색을 포함한 답변의 기본 호출 API는 Interactions입니다. 검색 도구 호환성 문제에 대비해
+`GEMINI_SEARCH_API_MODE=auto|interactions|generate_content`를 런타임에서 선택할 수 있습니다.
+`auto`는 명시된 도구 오류에서만 GenerateContent로 재시도하며, 상세한 트리거·예외·5분
+circuit breaker 규칙은 [runtime-web-search.md](runtime-web-search.md)를 참고하세요.
+
 ## adaptive 모델 라우팅
 
 `MODEL_ROUTING_MODE=adaptive`에서는 일반 답변과 장기 기억 요약이 fast/smart 모델 pool을 공유하지만,
@@ -217,7 +224,10 @@ MEMORY_MAX_OUTPUT_TOKENS=4096
 ```
 
 Gemini는 Interactions API를 직접 사용합니다. `CHAT_WEB_SEARCH=true`일 때 검색이 필요한 일반 답변은
-내부 `web_search` 요청을 Google Search 도구로 변환합니다. 기억 요약에는 웹 검색 도구를 붙이지
+내부 `web_search` 요청을 Interactions API의 `google_search` 도구로 변환합니다.
+검색·코드 실행·로컬 함수가 함께 있어도 Interactions API에 전달하며, 검색·코드 실행은 서버가 처리하고
+로컬 함수 호출만 클라이언트가 이어서 실행합니다. `required` 검색은 지침으로 요청하고
+`generation_config.tool_choice=any`를 강제하지 않습니다. 기억 요약에는 웹 검색 도구를 붙이지
 않습니다. Gemini 3.x의 `max_output_tokens`에는 사용자에게 보이는 답변뿐 아니라 내부 thought token도
 포함됩니다.
 
