@@ -447,7 +447,16 @@ def test_production_quality_cases_are_sanitized_and_cover_live_failure_shapes():
         "production_ambiguous_deictic_does_not_invent",
         "production_visual_address_not_self_attribution",
         "production_programming_statement_not_missing_input",
+        "production_unverified_relationship_not_denied",
+        "production_previous_relationship_denial_can_be_corrected",
+        "production_new_visual_not_prior_assistant_identity_guess",
     }
+    suite_ids = {
+        line.strip()
+        for line in Path("evals/suites/production-quality.txt").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    assert suite_ids == ids
     raw = Path("evals/production_quality_cases.jsonl").read_text(encoding="utf-8")
     assert "478976784881287178" not in raw
     assert "135336096480493568" not in raw
