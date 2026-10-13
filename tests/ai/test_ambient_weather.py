@@ -202,5 +202,5 @@ def test_runtime_instruction_includes_request_scoped_weather_snapshot():
     assert "날씨=비" in instruction
     assert "기온=21.2°C" in instruction
     assert "체감=20.5°C" in instruction
-    assert "매 답변마다 억지로 언급하지 마세요" in instruction
-    assert "세계관 내부 장소·사건" in instruction
+    assert "기본 지역" in instruction
+    assert "세계관 내부 날씨" in instruction
