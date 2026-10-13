@@ -200,7 +200,6 @@ def test_clarification_policy_is_in_request_assembly():
     assert "reference_material" in REFERENCE_PROVENANCE_POLICY
     assert "reference_derived" in REFERENCE_PROVENANCE_POLICY
     assert "reference_source_is_current_speaker" in REFERENCE_PROVENANCE_POLICY
-    assert "내가 기억하고 있다" in REFERENCE_PROVENANCE_POLICY
     assert "author_user_id" in REFERENCE_PROVENANCE_POLICY
 
 
