@@ -139,6 +139,7 @@ def test_runtime_mode_is_immediate_rollback_switch():
         ("off", "active", "off"),
         ("v1", "active", "v1"),
         ("shadow", "off", "shadow"),
+        ("full", "off", "full"),
     ],
 )
 def test_rag_env_precedence_and_legacy_mapping(monkeypatch, tmp_path, rag, legacy, expected):
@@ -176,6 +177,9 @@ def test_rag_runtime_off_v1_shadow_and_legacy_alias_persist():
         assert settings.retrieval_v2_mode == "off"
         assert settings.set_text("RAG_MODE", "shadow") == "shadow"
         assert settings.rag_mode == "shadow"
+        assert settings.set_text("RAG_MODE", "full") == "full"
+        assert settings.rag_mode == "full"
+        assert settings.retrieval_v2_mode == "off"
         assert settings.set_text("RETRIEVAL_V2_MODE", "off") == "off"
         assert settings.rag_mode == "v1"
         assert settings.source("RAG_MODE") == "db"

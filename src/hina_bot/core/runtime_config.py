@@ -43,7 +43,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
-    "rag_mode": "RAG 모드입니다. off는 지식 검색 없음, v1은 기존 검색, shadow는 v1 답변과 비동기 v2 비교, v2는 v2만 사용합니다. v2 실패 시 RAG 없이 답합니다.",
+    "rag_mode": "RAG 모드입니다. off는 지식 검색 없음, v1은 기존 검색, shadow는 v1 답변과 비동기 v2 비교, v2는 v2만 사용합니다. full은 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 기존 방식으로 검색합니다.",
     "retrieval_v2_timeout_seconds": "Retrieval v2 shadow/active 한 턴의 전체 실행 시간 상한(초)입니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
@@ -540,7 +540,7 @@ class RuntimeSettings:
     def __getattr__(self, name: str):
         if name == "retrieval_v2_mode":
             return {"off": "off", "v1": "off", "shadow": "shadow",
-                    "v2": "active"}[self.rag_mode]
+                    "v2": "active", "full": "off"}[self.rag_mode]
         overrides = object.__getattribute__(self, "_overrides")
         if name in overrides:
             return overrides[name]

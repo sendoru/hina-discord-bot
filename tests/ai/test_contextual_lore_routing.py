@@ -69,7 +69,7 @@ async def test_lore_followup_uses_previous_entity_but_keeps_visible_message():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("mode", "expect_lore"),
-    [("off", False), ("v1", True), ("shadow", True), ("v2", False)],
+    [("off", False), ("v1", True), ("shadow", True), ("v2", False), ("full", False)],
 )
 async def test_rag_mode_controls_actual_lore_execution_and_context(mode, expect_lore):
     seen = []
@@ -119,6 +119,7 @@ async def test_rag_mode_controls_actual_lore_execution_and_context(mode, expect_
         context = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
         refs = {row.get("reference") for row in context["lore_reference"]}
         assert ("canon.hina.birthday" in refs) is expect_lore
+        assert ("[검수된 정적 설정 자료" in payload["instructions"]) is (mode == "full")
     finally:
         await llm.close()
         store.close()

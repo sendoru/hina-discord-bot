@@ -15,6 +15,7 @@ _INSTRUCTION_GROUP_FIELDS = (
     "instruction_identity_chars",
     "instruction_world_core_chars",
     "instruction_character_chars",
+    "instruction_lore_chars",
     "instruction_relationship_chars",
     "instruction_runtime_chars",
     "instruction_memory_chars",

@@ -13,7 +13,7 @@ EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 RETRIEVAL_V2_MODES = frozenset({"off", "shadow", "active"})  # Legacy env alias.
-RAG_MODES = frozenset({"off", "v1", "shadow", "v2"})
+RAG_MODES = frozenset({"off", "v1", "shadow", "v2", "full"})
 LEGACY_RAG_MODES = {"off": "v1", "shadow": "shadow", "active": "v2"}
 
 
@@ -197,7 +197,7 @@ class Settings:
             allowed = ", ".join(sorted(RAG_MODES))
             raise ValueError(f"RAG_MODE는 {allowed} 중 하나여야 합니다.")
         retrieval_v2_mode = {"off": "off", "v1": "off", "shadow": "shadow",
-                             "v2": "active"}[rag_mode]
+                             "v2": "active", "full": "off"}[rag_mode]
         try:
             retrieval_v2_timeout_seconds = float(
                 os.getenv("RETRIEVAL_V2_TIMEOUT_SECONDS", "3.0")

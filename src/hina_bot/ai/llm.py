@@ -4,6 +4,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from hina_bot.core.admin_db import AdminDatabase
+from hina_bot.core.compact_lore import compile_compact_lore
 from hina_bot.core.config import Settings
 from hina_bot.core.instructions import InstructionRegistry
 from hina_bot.core.lore import LoreIndex
@@ -46,6 +47,10 @@ class LLM:
         self.runtime_lore = RuntimeKnowledgeRegistry(self.admin_db, kind="world_fact")
         self.story_context = RuntimeKnowledgeRegistry(self.admin_db, kind="interpretation")
         self.lore = LoreIndex.load(settings.lore_path)
+        self.compact_lore_with_community = compile_compact_lore(self.lore)
+        self.compact_lore_without_community = compile_compact_lore(
+            self.lore, include_community=False
+        )
         self.usage = UsageLogger(settings.usage_log_path)
 
     async def close(self):
@@ -76,7 +81,8 @@ class LLM:
         filename = "special_dm.md" if special else "ordinary_relationship.md"
         return files("hina_bot").joinpath("prompts/" + filename).read_text(encoding="utf-8")
 
-    def lore_references(self, content: str) -> list[dict]:
+    def runtime_lore_references(self, content: str) -> list[dict]:
+        """Keep the existing bounded runtime-knowledge lookup in full mode."""
         limit, chars = self.settings.lore_max_items, self.settings.lore_max_chars
         if limit <= 0 or chars <= 0:
             return []
@@ -94,6 +100,12 @@ class LLM:
                 result.append(item)
                 used += size
 
+        return result
+
+    def lore_references(self, content: str) -> list[dict]:
+        limit, chars = self.settings.lore_max_items, self.settings.lore_max_chars
+        result = self.runtime_lore_references(content)
+        used = sum(len(json.dumps(item, ensure_ascii=False)) for item in result)
         remaining_items = limit - len(result)
         remaining_chars = chars - used
         if remaining_items > 0 and remaining_chars > 0:

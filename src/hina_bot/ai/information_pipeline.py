@@ -449,13 +449,17 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         )
 
     def build_information_plan(
-        self, routing: RoutingPlan, *, use_lore: bool = True
+        self, routing: RoutingPlan, *, use_lore: bool = True,
+        use_runtime_lore: bool = False,
     ) -> InformationPlan:
         query = routing.routing_query
         request = classify_information_request(query, call_prefixes=self._call_prefixes())
-        # In off/v2 mode do not execute the legacy lore or runtime-knowledge
-        # retrieval pipeline. Web/freshness routing remains independent of RAG.
-        references = self.lore_references(query) if use_lore else []
+        # Full mode keeps bounded runtime knowledge while compiling static lore
+        # once into the stable prompt prefix. Off/v2 skip both legacy channels.
+        references = (
+            self.lore_references(query) if use_lore
+            else self.runtime_lore_references(query) if use_runtime_lore else []
+        )
         freshness = request.freshness
         fact_question = self._looks_like_world_fact_question(query) and not (
             freshness == FreshnessMode.REQUIRED and is_live_domain(query)
@@ -567,9 +571,16 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             rag_mode = {"off": "v1", "shadow": "shadow",
                         "active": "v2"}.get(legacy_mode, "v1")
         information = self.build_information_plan(
-            routing, use_lore=rag_mode in {"v1", "shadow"}
+            routing,
+            use_lore=rag_mode in {"v1", "shadow"},
+            use_runtime_lore=rag_mode == "full",
         )
-        selected_rag = "v1" if rag_mode in {"v1", "shadow"} else "none"
+        if rag_mode == "full":
+            information = replace(information, full_lore=True)
+        selected_rag = (
+            "v1" if rag_mode in {"v1", "shadow"}
+            else "full" if rag_mode == "full" else "none"
+        )
 
         assembly_store = store
         assembly_public_context = public_context
