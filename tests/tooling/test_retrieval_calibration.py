@@ -67,7 +67,7 @@ async def test_report_uses_training_only_and_reuses_embeddings_across_fusions_an
 
 def test_packaged_fixture_validation(capsys):
     assert main(["--validate-only"]) == 0
-    assert '"corpus_size": 130' in capsys.readouterr().out
+    assert f'"corpus_size": {len(LoreIndex.load().records)}' in capsys.readouterr().out
     cases = read_jsonl(Path("evals/retrieval_v2_calibration.jsonl"))
     rows = LoreIndex.load().candidates(include_community=False)
     validate_cases(cases, rows)
