@@ -30,7 +30,7 @@ def assert_openai_code_interpreter(payload):
     }]
 
 
-def assert_auto_web_with_code(payload):
+def assert_code_only(payload):
     assert web_tools(payload) == []
     assert_openai_code_interpreter(payload)
     assert payload["tool_choice"] == "auto"
