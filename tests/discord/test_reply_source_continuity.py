@@ -195,7 +195,8 @@ def test_clarification_policy_is_in_request_assembly():
     )
 
     assert "무엇을 가리키는지 짧게 되물으세요" in REFERENCE_CONTINUITY_POLICY
-    assert "다시 인용해 달라고" in REFERENCE_PROVENANCE_POLICY
+    assert "source_turn_message_id" in REFERENCE_PROVENANCE_POLICY
+    assert "truncated" in REFERENCE_PROVENANCE_POLICY
     assert "reference_material" in REFERENCE_PROVENANCE_POLICY
     assert "reference_derived" in REFERENCE_PROVENANCE_POLICY
     assert "reference_source_is_current_speaker" in REFERENCE_PROVENANCE_POLICY
