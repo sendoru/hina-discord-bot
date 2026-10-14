@@ -48,13 +48,40 @@
 
    초기화 명령도 자체적으로 전체 SQLite 백업 B를 새 파일에 만들고 검사한 뒤,
    하나의 트랜잭션에서 네 conversation 테이블만 정리한다.
+   구형 `conversation_reset_epochs`의 사용하지 않는
+   `discarded_structured_turns`/`discarded_shared_turns` 컬럼은
+   초기화 트랜잭션 안에서 자동으로 제거된다. 기존 epoch의
+   `id`/`reset_at`/`cutoff_message_id`와 존재하는 `backup_sha256`
+   값은 보존한다. 오래된 행에 백업 해시가 없었던 경우에는 빈 문자열로
+   유지하고 새 epoch에는 검증된 백업의 SHA-256을 기록한다.
+   알 수 없는 추가 컬럼이 있으면 삭제 전에 오류로 중단하고 롤백한다.
    백업 실패 또는 미처리 기억이 있으면 원본을 변경하지 않는다.
 
 5. `backup=` 및 `sha256=` 로그를 안전하게 기록하고, 임시 SQLite 복제본에
    백업 파일을 열어 주요 장기기억과 설정이 복구 가능한지 확인한다.
    그다음 봇을 재시작해서 DM/서버 첫 메시지, 기억 추출, 공유 요약 재생성을 검증한다.
 
-## 2. 주의 사항
+## 2. 별도 epoch 스키마 정리 (선택)
+
+초기화와 관계없이 구형 epoch 기록 테이블의 컬럼만 정리하려면
+운영 봇·대시보드·모든 DB writer를 종료한 뒤 다음을 실행한다.
+
+```sh
+uv run hina-migrate-reset-epochs --dry-run
+uv run hina-migrate-reset-epochs --yes --offline-confirmed
+```
+
+이 명령은 `conversation_reset_epochs`만 정리한다. 오래된 두
+`discarded_*` 컬럼은 삭제되므로 과거 기록의 해당 값이 필요하면
+자동으로 생성되는 전체 SQLite 백업(`data/backups`)을 참조한다.
+마이그레이션은 기존 행·ID·cutoff와 시퀀스를 보존하며,
+대화·메모리·설정 테이블은 변경하지 않는다. 이미 최신 스키마면 아무것도
+수정하지 않는다. 이 명령을 따로 실행하지 않아도
+`hina-reset-conversation`이 백업 이후 같은 정리를 트랜잭션 안에서 수행한다.
+
+SQLite 3.35 이상이 필요하다 (`ALTER TABLE DROP COLUMN` 지원).
+
+## 3. 주의 사항
 
 - 백업에는 **개인 대화 원문과 비공개 기억**이 담긴다. 공개 파일 서버, 웹 URL,
   Discord 채널이나 GitHub에 업로드하면 안 된다. 백업 파일(0600)과 디렉터리(0700)를 보호한다.
