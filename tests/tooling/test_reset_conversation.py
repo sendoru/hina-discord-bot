@@ -248,31 +248,28 @@ def test_invalid_reset_epoch_schema_rolls_back_all_deletions(tmp_path):
 
 
 @pytest.mark.parametrize("has_backup_sha256", [False, True])
-def test_legacy_required_discard_counter_is_set_to_zero(tmp_path, has_backup_sha256):
+def test_legacy_discard_counters_are_removed_by_atomic_reset(tmp_path, has_backup_sha256):
     path = tmp_path / "legacy-counter.sqlite3"
     seed(path)
-    backup_column = (
-        ", backup_sha256 TEXT NOT NULL" if has_backup_sha256 else ""
-    )
+    backup_column = ", backup_sha256 TEXT NOT NULL" if has_backup_sha256 else ""
     with sqlite3.connect(path) as db:
         db.execute(
             "CREATE TABLE conversation_reset_epochs ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT,"
             "reset_at TEXT NOT NULL,"
             "cutoff_message_id INTEGER NOT NULL,"
-            "discarded_structured_turns INTEGER NOT NULL"
+            "discarded_structured_turns INTEGER NOT NULL,"
+            "discarded_shared_turns INTEGER NOT NULL"
             + backup_column + ")"
         )
         previous_columns = (
-            "reset_at,cutoff_message_id,discarded_structured_turns,backup_sha256"
-            if has_backup_sha256
-            else "reset_at,cutoff_message_id,discarded_structured_turns"
+            "reset_at,cutoff_message_id,discarded_structured_turns,"
+            "discarded_shared_turns"
+            + (",backup_sha256" if has_backup_sha256 else "")
         )
         previous_values = (
-            ("2026-09-01T00:00:00+00:00", 123456789, 7, "legacy-hash")
-            if has_backup_sha256
-            else ("2026-09-01T00:00:00+00:00", 123456789, 7)
-        )
+            "2026-09-01T00:00:00+00:00", 123456789, 7, 9
+        ) + (("legacy-hash",) if has_backup_sha256 else ())
         db.execute(
             "INSERT INTO conversation_reset_epochs (" + previous_columns
             + ") VALUES (" + ",".join("?" for _ in previous_values) + ")",
@@ -285,18 +282,27 @@ def test_legacy_required_discard_counter_is_set_to_zero(tmp_path, has_backup_sha
         assert counts(db) == {
             "turns": 0, "shared_calls": 0, "failed_turns": 0, "shared_summaries": 0,
         }
+        assert {
+            row[1] for row in db.execute(
+                "PRAGMA table_info(conversation_reset_epochs)"
+            )
+        } == {"id", "reset_at", "cutoff_message_id", "backup_sha256"}
         rows = db.execute(
-            "SELECT cutoff_message_id,discarded_structured_turns,backup_sha256 "
+            "SELECT id,cutoff_message_id,backup_sha256 "
             "FROM conversation_reset_epochs ORDER BY id"
         ).fetchall()
-        assert rows == [
-            (123456789, 7, "legacy-hash" if has_backup_sha256 else ""),
-            (rows[-1][0], 0, result.backup.sha256),
-        ]
-        assert rows[-1][0] > rows[0][0]
+        assert rows[0] == (
+            1, 123456789, "legacy-hash" if has_backup_sha256 else "",
+        )
+        assert rows[1] == (2, rows[1][1], result.backup.sha256)
+        assert rows[1][1] > rows[0][1]
         assert db.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0] == 1
     with sqlite3.connect(result.backup.path) as backup:
         assert counts(backup)["turns"] == 2
+        assert backup.execute(
+            "SELECT discarded_structured_turns,discarded_shared_turns "
+            "FROM conversation_reset_epochs"
+        ).fetchone() == (7, 9)
 
 
 def test_unknown_required_legacy_epoch_column_refuses_without_data_loss(tmp_path):
