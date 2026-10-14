@@ -49,6 +49,33 @@ class EvalRunnerTests(unittest.TestCase):
         self.assertEqual(cases[3]["visuals"][0]["mime_type"], "image/png")
         self.assertEqual(case_visuals(cases[3])[0].context_kind, "current_message")
 
+    def test_eval_visuals_preserve_reply_provenance_and_source(self):
+        case = {
+            "visuals": [{
+                "fixture": "evals/fixtures/visual-not-hina.png.b64",
+                "mime_type": "image/png",
+                "source": "attachment",
+                "context_kind": "replied_message",
+                "message_id": "100",
+                "author_name": "B",
+                "author_user_id": "200",
+                "message_content": "도장을 하나 샀는데 어때?",
+            }, {
+                "fixture": "evals/fixtures/visual-not-hina.png.b64",
+                "mime_type": "image/png",
+                "source": "emoji",
+                "context_kind": "current_message",
+            }],
+        }
+        reply, current = case_visuals(case)
+        self.assertEqual(reply.reference_strength, "explicit_reply")
+        self.assertEqual(reply.context_kind, "replied_message")
+        self.assertEqual(reply.author_user_id, "200")
+        self.assertEqual(reply.message_content, "도장을 하나 샀는데 어때?")
+        self.assertEqual(current.context_kind, "current_message")
+        self.assertEqual(current.source, "emoji")
+        self.assertEqual(current.reference_strength, "current_message")
+
     def test_rejects_duplicate_ids_invalid_mode_and_bad_channel_context(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "cases.jsonl"
@@ -446,6 +473,7 @@ def test_production_quality_cases_are_sanitized_and_cover_live_failure_shapes():
         "production_current_user_first_person_not_assistant_self",
         "production_ambiguous_deictic_does_not_invent",
         "production_visual_address_not_self_attribution",
+        "production_replied_visual_not_automatic_self_experience",
         "production_programming_statement_not_missing_input",
         "production_unverified_relationship_not_denied",
         "production_previous_relationship_denial_can_be_corrected",
