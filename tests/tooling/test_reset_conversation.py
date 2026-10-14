@@ -184,3 +184,64 @@ def test_repeat_reset_adds_epoch_without_reusing_old_sequence(tmp_path):
         assert db.execute(
             "SELECT seq FROM sqlite_sequence WHERE name='turns'"
         ).fetchone()[0] == 2
+
+
+def test_legacy_reset_epoch_table_missing_backup_hash_is_upgraded(tmp_path):
+    path = tmp_path / "legacy.sqlite3"
+    seed(path)
+    # A deployed DB may already have epochs from an older schema.
+    with sqlite3.connect(path) as db:
+        db.execute(
+            """CREATE TABLE conversation_reset_epochs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reset_at TEXT NOT NULL,
+                cutoff_message_id INTEGER NOT NULL
+            )"""
+        )
+        db.execute(
+            "INSERT INTO conversation_reset_epochs(reset_at,cutoff_message_id) "
+            "VALUES (?,?)",
+            ("2026-09-01T00:00:00+00:00", 123456789),
+        )
+
+    plan, result = reset_conversation(path, offline_confirmed=True)
+    assert plan.ready
+    assert result.reset_id == 2
+    assert result.deleted == {
+        "turns": 2, "shared_calls": 1, "failed_turns": 0, "shared_summaries": 1,
+    }
+    with sqlite3.connect(path) as db:
+        assert counts(db) == {
+            "turns": 0, "shared_calls": 0, "failed_turns": 0, "shared_summaries": 0,
+        }
+        assert db.execute(
+            "SELECT reset_at,cutoff_message_id,backup_sha256 "
+            "FROM conversation_reset_epochs WHERE id=1"
+        ).fetchone() == ("2026-09-01T00:00:00+00:00", 123456789, "")
+        assert db.execute(
+            "SELECT backup_sha256 FROM conversation_reset_epochs WHERE id=2"
+        ).fetchone()[0] == result.backup.sha256
+        assert db.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0] == 1
+
+    # The verified pre-reset backup has the legacy schema and all conversations.
+    with sqlite3.connect(result.backup.path) as snapshot:
+        assert counts(snapshot)["turns"] == 2
+        assert "backup_sha256" not in {
+            row[1] for row in snapshot.execute(
+                "PRAGMA table_info(conversation_reset_epochs)"
+            )
+        }
+
+
+def test_invalid_reset_epoch_schema_rolls_back_all_deletions(tmp_path):
+    path = tmp_path / "invalid.sqlite3"
+    seed(path)
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE conversation_reset_epochs (id INTEGER PRIMARY KEY)")
+
+    with pytest.raises(RuntimeError, match="Unsupported conversation_reset_epochs"):
+        reset_conversation(path, offline_confirmed=True)
+    with sqlite3.connect(path) as db:
+        assert counts(db) == {
+            "turns": 2, "shared_calls": 1, "failed_turns": 0, "shared_summaries": 1,
+        }
