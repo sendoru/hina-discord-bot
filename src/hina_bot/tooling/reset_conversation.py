@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .maintenance_backup import BackupInfo, backup_sqlite
+from .migrate_conversation_reset_epochs import ensure_epoch_schema
 from .reset_analysis_data import _connect_existing, _row_count, _table_exists
 
 RAW_TABLES = ("turns", "shared_calls", "failed_turns", "shared_summaries")
@@ -128,14 +129,7 @@ def reset_conversation(
             _remember_names(db)
             now = datetime.now(UTC)
             cutoff_message_id = (int(now.timestamp() * 1000) - DISCORD_EPOCH_MS) << 22
-            db.execute(
-                """CREATE TABLE IF NOT EXISTS conversation_reset_epochs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    reset_at TEXT NOT NULL,
-                    cutoff_message_id INTEGER NOT NULL,
-                    backup_sha256 TEXT NOT NULL
-                )"""
-            )
+            ensure_epoch_schema(db)
             deleted = {}
             for table in RAW_TABLES:
                 result = db.execute(f"DELETE FROM {table}")

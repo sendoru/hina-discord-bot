@@ -184,3 +184,147 @@ def test_repeat_reset_adds_epoch_without_reusing_old_sequence(tmp_path):
         assert db.execute(
             "SELECT seq FROM sqlite_sequence WHERE name='turns'"
         ).fetchone()[0] == 2
+
+
+def test_legacy_reset_epoch_table_missing_backup_hash_is_upgraded(tmp_path):
+    path = tmp_path / "legacy.sqlite3"
+    seed(path)
+    # A deployed DB may already have epochs from an older schema.
+    with sqlite3.connect(path) as db:
+        db.execute(
+            """CREATE TABLE conversation_reset_epochs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reset_at TEXT NOT NULL,
+                cutoff_message_id INTEGER NOT NULL
+            )"""
+        )
+        db.execute(
+            "INSERT INTO conversation_reset_epochs(reset_at,cutoff_message_id) "
+            "VALUES (?,?)",
+            ("2026-09-01T00:00:00+00:00", 123456789),
+        )
+
+    plan, result = reset_conversation(path, offline_confirmed=True)
+    assert plan.ready
+    assert result.reset_id == 2
+    assert result.deleted == {
+        "turns": 2, "shared_calls": 1, "failed_turns": 0, "shared_summaries": 1,
+    }
+    with sqlite3.connect(path) as db:
+        assert counts(db) == {
+            "turns": 0, "shared_calls": 0, "failed_turns": 0, "shared_summaries": 0,
+        }
+        assert db.execute(
+            "SELECT reset_at,cutoff_message_id,backup_sha256 "
+            "FROM conversation_reset_epochs WHERE id=1"
+        ).fetchone() == ("2026-09-01T00:00:00+00:00", 123456789, "")
+        assert db.execute(
+            "SELECT backup_sha256 FROM conversation_reset_epochs WHERE id=2"
+        ).fetchone()[0] == result.backup.sha256
+        assert db.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0] == 1
+
+    # The verified pre-reset backup has the legacy schema and all conversations.
+    with sqlite3.connect(result.backup.path) as snapshot:
+        assert counts(snapshot)["turns"] == 2
+        assert "backup_sha256" not in {
+            row[1] for row in snapshot.execute(
+                "PRAGMA table_info(conversation_reset_epochs)"
+            )
+        }
+
+
+def test_invalid_reset_epoch_schema_rolls_back_all_deletions(tmp_path):
+    path = tmp_path / "invalid.sqlite3"
+    seed(path)
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE conversation_reset_epochs (id INTEGER PRIMARY KEY)")
+
+    with pytest.raises(RuntimeError, match="Unsupported conversation_reset_epochs"):
+        reset_conversation(path, offline_confirmed=True)
+    with sqlite3.connect(path) as db:
+        assert counts(db) == {
+            "turns": 2, "shared_calls": 1, "failed_turns": 0, "shared_summaries": 1,
+        }
+
+
+@pytest.mark.parametrize("has_backup_sha256", [False, True])
+def test_legacy_discard_counters_are_removed_by_atomic_reset(tmp_path, has_backup_sha256):
+    path = tmp_path / "legacy-counter.sqlite3"
+    seed(path)
+    backup_column = ", backup_sha256 TEXT NOT NULL" if has_backup_sha256 else ""
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "CREATE TABLE conversation_reset_epochs ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "reset_at TEXT NOT NULL,"
+            "cutoff_message_id INTEGER NOT NULL,"
+            "discarded_structured_turns INTEGER NOT NULL,"
+            "discarded_shared_turns INTEGER NOT NULL"
+            + backup_column + ")"
+        )
+        previous_columns = (
+            "reset_at,cutoff_message_id,discarded_structured_turns,"
+            "discarded_shared_turns"
+            + (",backup_sha256" if has_backup_sha256 else "")
+        )
+        previous_values = (
+            "2026-09-01T00:00:00+00:00", 123456789, 7, 9
+        ) + (("legacy-hash",) if has_backup_sha256 else ())
+        db.execute(
+            "INSERT INTO conversation_reset_epochs (" + previous_columns
+            + ") VALUES (" + ",".join("?" for _ in previous_values) + ")",
+            previous_values,
+        )
+
+    _, result = reset_conversation(path, offline_confirmed=True)
+    assert result.reset_id == 2
+    with sqlite3.connect(path) as db:
+        assert counts(db) == {
+            "turns": 0, "shared_calls": 0, "failed_turns": 0, "shared_summaries": 0,
+        }
+        assert {
+            row[1] for row in db.execute(
+                "PRAGMA table_info(conversation_reset_epochs)"
+            )
+        } == {"id", "reset_at", "cutoff_message_id", "backup_sha256"}
+        rows = db.execute(
+            "SELECT id,cutoff_message_id,backup_sha256 "
+            "FROM conversation_reset_epochs ORDER BY id"
+        ).fetchall()
+        assert rows[0] == (
+            1, 123456789, "legacy-hash" if has_backup_sha256 else "",
+        )
+        assert rows[1] == (2, rows[1][1], result.backup.sha256)
+        assert rows[1][1] > rows[0][1]
+        assert db.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0] == 1
+    with sqlite3.connect(result.backup.path) as backup:
+        assert counts(backup)["turns"] == 2
+        assert backup.execute(
+            "SELECT discarded_structured_turns,discarded_shared_turns "
+            "FROM conversation_reset_epochs"
+        ).fetchone() == (7, 9)
+
+
+def test_unknown_required_legacy_epoch_column_refuses_without_data_loss(tmp_path):
+    path = tmp_path / "legacy-unknown.sqlite3"
+    seed(path)
+    with sqlite3.connect(path) as db:
+        db.execute(
+            """CREATE TABLE conversation_reset_epochs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reset_at TEXT NOT NULL,
+                cutoff_message_id INTEGER NOT NULL,
+                unknown_required_field INTEGER NOT NULL
+            )"""
+        )
+    with pytest.raises(RuntimeError, match="unknown_required_field"):
+        reset_conversation(path, offline_confirmed=True)
+    with sqlite3.connect(path) as db:
+        assert counts(db) == {
+            "turns": 2, "shared_calls": 1, "failed_turns": 0, "shared_summaries": 1,
+        }
+        assert "backup_sha256" not in {
+            row[1] for row in db.execute(
+                "PRAGMA table_info(conversation_reset_epochs)"
+            )
+        }
