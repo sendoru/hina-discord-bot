@@ -120,9 +120,26 @@ def read_cases(path: Path) -> list[dict]:
                 raise ValueError(
                     f"{path}:{number}: visual.mime_type은 다음 중 하나여야 합니다: {supported}"
                 )
-            name = visual.get("name", "")
-            if not isinstance(name, str):
-                raise TypeError(f"{path}:{number}: visual.name은 문자열이어야 합니다.")
+            context_kind = visual.get("context_kind", "current_message")
+            if context_kind not in {
+                "current_message", "replied_message", "reply_origin_source",
+                "recent_channel_message",
+            }:
+                raise ValueError(f"{path}:{number}: visual.context_kind가 잘못되었습니다.")
+            reference_strength = visual.get("reference_strength")
+            if reference_strength is not None and reference_strength not in {
+                "current_message", "explicit_reply", "prior_explicit_reply",
+                "passive_recent",
+            }:
+                raise ValueError(f"{path}:{number}: visual.reference_strength가 잘못되었습니다.")
+            if visual.get("source", "attachment") not in {"attachment", "emoji", "sticker"}:
+                raise ValueError(f"{path}:{number}: visual.source가 잘못되었습니다.")
+            for field in (
+                "name", "message_id", "author_name", "author_user_id",
+                "message_content", "at",
+            ):
+                if not isinstance(visual.get(field, ""), str):
+                    raise TypeError(f"{path}:{number}: visual.{field}는 문자열이어야 합니다.")
         validators = case.get("validators", [])
         if (not isinstance(validators, list)
                 or any(not isinstance(value, str) or value not in VALIDATORS
@@ -389,13 +406,25 @@ def case_visuals(case: dict) -> tuple[VisualInput, ...]:
             data = base64.b64decode("".join(encoded.split()), validate=True)
         except (OSError, UnicodeError, ValueError, binascii.Error) as exc:
             raise ValueError(f"visual fixture를 읽을 수 없습니다: {item['fixture']}") from exc
+        context_kind = item.get("context_kind", "current_message")
+        default_strength = {
+            "current_message": "current_message",
+            "replied_message": "explicit_reply",
+            "reply_origin_source": "prior_explicit_reply",
+            "recent_channel_message": "passive_recent",
+        }[context_kind]
         visuals.append(VisualInput(
             data=data,
             mime_type=item["mime_type"],
-            source="attachment",
+            source=item.get("source", "attachment"),
             name=item.get("name", ""),
-            context_kind="current_message",
-            reference_strength="current_message",
+            context_kind=context_kind,
+            reference_strength=item.get("reference_strength", default_strength),
+            message_id=item.get("message_id", ""),
+            author_name=item.get("author_name", ""),
+            author_user_id=item.get("author_user_id", ""),
+            message_content=item.get("message_content", ""),
+            at=item.get("at", ""),
         ))
     return tuple(visuals)
 

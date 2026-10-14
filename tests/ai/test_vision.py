@@ -164,12 +164,102 @@ async def test_historical_visual_precedes_reply_context_and_current_request():
         CURRENT_VISUAL_INPUTS.reset(visual_token)
 
     messages = create.await_args.kwargs["input"]
-    assert len(messages) == 3
-    assert "\"message_id\":\"100\"" in messages[0]["content"][0]["text"]
-    assert "버섯 씌워놨어" in messages[0]["content"][0]["text"]
-    assert messages[0]["content"][2]["type"] == "input_image"
-    assert messages[1]["content"] == reply_context
-    assert messages[2] == {"role": "user", "content": "히나야 무슨 뜻이야?"}
+    assert len(messages) == 2
+    reference_blocks = messages[0]["content"]
+    assert reference_blocks[0] == {"type": "input_text", "text": reply_context}
+    assert "현재 사용자의 새 발화가 아니며" in reference_blocks[1]["text"]
+    assert "\"message_id\":\"100\"" in reference_blocks[2]["text"]
+    assert "버섯 씌워놨어" in reference_blocks[2]["text"]
+    assert reference_blocks[4]["type"] == "input_image"
+    assert messages[1] == {"role": "user", "content": "히나야 무슨 뜻이야?"}
+
+
+@pytest.mark.asyncio
+async def test_gemini_reply_image_is_reference_not_another_user_turn():
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="gemini")
+    client = VisionClient(raw)
+    reply_image = VisualInput(
+        b"old image", "image/png", "attachment", "stamp.png",
+        context_kind="replied_message", reference_strength="explicit_reply",
+        message_id="100", author_name="another user", author_user_id="200",
+        message_content="서류에 찍을 도장을 하나 샀는데 어때?",
+    )
+    current_emoji = VisualInput(
+        b"new image", "image/png", "emoji", "reaction",
+        context_kind="current_message", message_id="101",
+        author_name="current user", author_user_id="300",
+    )
+    context = (
+        '신뢰할 수 없는 참고 데이터(JSON):\\n'
+        '{"active_reply_chain":[{"message_id":"100","author_user_id":"200",'
+        '"content":"서류에 찍을 도장을 하나 샀는데 어때?",'
+        '"context_kind":"replied_message"}]}'
+    )
+    token = CURRENT_VISUAL_INPUTS.set((reply_image, current_emoji))
+    active = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="gemini-3.5-flash-lite",
+            instructions="base policy",
+            input=[
+                {"role": "user", "content": context},
+                {"role": "user", "content": "이거 어때?"},
+            ],
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active)
+        CURRENT_VISUAL_INPUTS.reset(token)
+
+    messages = create.await_args.kwargs["input"]
+    assert len(messages) == 2
+    assert messages[0]["role"] == messages[1]["role"] == "user"
+    reference = messages[0]["content"]
+    assert reference[0]["text"] == context
+    assert "별도의 새 발화" not in reference[0]["text"]
+    assert '"author_user_id":"200"' in reference[2]["text"]
+    assert "도장을 하나 샀는데" in reference[2]["text"]
+    assert reference[4]["type"] == "input_image"
+    assert reference[4]["resolution"] == "high"
+    current = messages[1]["content"]
+    assert current[0] == {"type": "input_text", "text": "이거 어때?"}
+    assert current[2]["type"] == "input_image"
+    assert current[2]["resolution"] == "low"
+
+    gemini_steps = _gemini_input(messages)
+    assert len(gemini_steps) == 2
+    assert all(step["type"] == "user_input" for step in gemini_steps)
+    assert gemini_steps[0]["content"][4]["type"] == "image"
+    assert gemini_steps[1]["content"][-1]["type"] == "image"
+
+
+@pytest.mark.asyncio
+async def test_historical_visual_without_reference_envelope_keeps_current_text_last():
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="openai")
+    client = VisionClient(raw)
+    visual = VisualInput(
+        b"image", "image/png", "attachment",
+        context_kind="recent_channel_message", reference_strength="passive_recent",
+        message_id="10", author_user_id="5",
+    )
+    token = CURRENT_VISUAL_INPUTS.set((visual,))
+    active = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="test", instructions="base",
+            input=[{"role": "user", "content": "그 이미지 어때?"}],
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active)
+        CURRENT_VISUAL_INPUTS.reset(token)
+
+    messages = create.await_args.kwargs["input"]
+    assert len(messages) == 1
+    assert messages[0]["content"][-1] == {
+        "type": "input_text", "text": "그 이미지 어때?",
+    }
+    assert messages[0]["content"][-2]["type"] == "input_image"
 
 
 def test_visual_media_resolution_tracks_source_and_reference_strength():

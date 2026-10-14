@@ -106,17 +106,25 @@ def _message_order(message_id: str) -> tuple[int, int | str]:
         return 1, message_id
 
 
-def _historical_visual_messages(
+def _historical_visual_blocks(
     visuals: list[VisualInput],
     *,
     include_media_resolution: bool = False,
 ) -> list[dict]:
+    """Attach historical images to reference data, not as new conversation turns."""
     grouped: dict[str, list[VisualInput]] = {}
     for index, visual in enumerate(visuals):
         key = visual.message_id or f"missing:{index}"
         grouped.setdefault(key, []).append(visual)
 
-    messages = []
+    blocks = [{
+        "type": "input_text",
+        "text": (
+            "다음 시각 자료는 앞선 참고 데이터에 기록된 과거 Discord 메시지에 "
+            "속합니다. 현재 사용자의 새 발화가 아니며, 이미지 자체만으로 "
+            "히나의 실제 모습이나 경험을 증명하지 않습니다."
+        ),
+    }]
     for _, group in sorted(
         grouped.items(),
         key=lambda item: _message_order(item[1][0].message_id),
@@ -131,18 +139,25 @@ def _historical_visual_messages(
             "message_content": first.message_content,
             "at": first.at,
         }
-        content = [{
+        blocks.append({
             "type": "input_text",
             "text": (
-                "신뢰할 수 없는 과거 Discord 시각 문맥(JSON):\n"
+                "과거 Discord 시각 자료의 원본 메시지(JSON):\n"
                 + json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
             ),
-        }]
-        content.extend(
+        })
+        blocks.extend(
             _visual_blocks(group, include_media_resolution=include_media_resolution)
         )
-        messages.append({"role": "user", "content": content})
-    return messages
+    return blocks
+
+
+def _content_blocks(original) -> list[dict]:
+    if isinstance(original, str):
+        return [{"type": "input_text", "text": original}] if original else []
+    if isinstance(original, list):
+        return list(original)
+    return [{"type": "input_text", "text": str(original)}]
 
 
 def _augment_input(
@@ -168,11 +183,10 @@ def _augment_input(
     historical = [visual for visual in visuals if visual.context_kind != "current_message"]
 
     if historical:
-        historical_messages = _historical_visual_messages(
-            historical,
-            include_media_resolution=include_media_resolution,
-        )
-        insertion = target
+        # The reference JSON is already a user-role transport envelope. Keep historical
+        # images with that envelope instead of inventing additional user-role turns that
+        # the model could mistake for direct participation in the conversation.
+        reference_index = target
         for index, candidate in enumerate(items[:target]):
             if (
                 isinstance(candidate, dict)
@@ -180,30 +194,35 @@ def _augment_input(
                 and isinstance(candidate.get("content"), str)
                 and candidate["content"].startswith("신뢰할 수 없는 참고 데이터(JSON):")
             ):
-                insertion = index
+                reference_index = index
                 break
-        items[insertion:insertion] = historical_messages
-        target += len(historical_messages)
+
+        reference_item = dict(items[reference_index])
+        reference_content = _content_blocks(reference_item.get("content", ""))
+        historical_blocks = _historical_visual_blocks(
+            historical,
+            include_media_resolution=include_media_resolution,
+        )
+        if reference_index == target:
+            # Fallback for callers without a separate reference envelope: leave the
+            # current user's actual text after all historical visual reference blocks.
+            reference_content = historical_blocks + reference_content
+        else:
+            reference_content.extend(historical_blocks)
+        reference_item["content"] = reference_content
+        items[reference_index] = reference_item
 
     if not current:
         return items
 
     item = dict(items[target])
-    original = item.get("content", "")
-    if isinstance(original, str):
-        content = ([{"type": "input_text", "text": original}] if original else [])
-    elif isinstance(original, list):
-        content = list(original)
-    else:
-        content = [{"type": "input_text", "text": str(original)}]
-
+    content = _content_blocks(item.get("content", ""))
     content.extend(
         _visual_blocks(current, include_media_resolution=include_media_resolution)
     )
     item["content"] = content
     items[target] = item
     return items
-
 
 class _VisionResponses:
     def __init__(self, responses, *, provider_name: str):
