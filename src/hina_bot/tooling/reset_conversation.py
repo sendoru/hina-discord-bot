@@ -136,6 +136,19 @@ def reset_conversation(
                     backup_sha256 TEXT NOT NULL
                 )"""
             )
+            epoch_columns = {
+                row[1] for row in db.execute("PRAGMA table_info(conversation_reset_epochs)")
+            }
+            if not {"id", "reset_at", "cutoff_message_id"} <= epoch_columns:
+                raise RuntimeError("Unsupported conversation_reset_epochs schema")
+            if "backup_sha256" not in epoch_columns:
+                # Older epoch tables predate backup tracking. Their original backup
+                # hashes are unknown; use an empty sentinel only for those rows.
+                # This migration is rolled back with the deletion on failure.
+                db.execute(
+                    "ALTER TABLE conversation_reset_epochs "
+                    "ADD COLUMN backup_sha256 TEXT NOT NULL DEFAULT ''"
+                )
             deleted = {}
             for table in RAW_TABLES:
                 result = db.execute(f"DELETE FROM {table}")
