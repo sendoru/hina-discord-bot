@@ -445,7 +445,7 @@ async def test_answer_model_sees_emoji_aliases_but_source_rows_keep_raw_ids():
         provider_input = json.dumps(payload["input"], ensure_ascii=False)
         assert "1495269226938630315" not in provider_input
         assert payload["input"][1]["content"] == "히나야 이거 :18:"
-        reference = json.loads(payload["input"][0]["content"].split("\\n", 1)[1])
+        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
         assert reference["active_reply_chain"][0]["content"] == "도장 어때 :18:"
         assert reference["channel_recent_messages"][0]["content"] == "다른 메시지 :18:"
         assert reference["active_reply_chain"][0]["message_id"] == "101"
