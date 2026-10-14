@@ -120,9 +120,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--offline-confirmed", action="store_true")
     args = parser.parse_args(argv)
     try:
-        with _connect_existing(args.database) as db:
+        db = _connect_existing(args.database)
+        try:
             before = epoch_columns(db)
             _validate_epoch_columns(before)
+        finally:
+            db.close()
         print(f"Database: {args.database}")
         print(f"Existing epoch columns: {', '.join(sorted(before)) or '(none)'}")
         print(f"Legacy columns to drop: {', '.join(c for c in LEGACY_COLUMNS if c in before) or '(none)'}")
