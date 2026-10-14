@@ -43,7 +43,7 @@
           <a class="nav-link {% if request.url.path.startswith('/conversations') %}active{% endif %}" {% if request.url.path.startswith('/conversations') %}aria-current="page"{% endif %} href="/conversations">Conversations</a>
           <a class="nav-link {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}active{% endif %}" {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}aria-current="page"{% endif %} href="/memory">Memory</a>
           <a class="nav-link {% if request.url.path == '/relationships' %}active{% endif %}" {% if request.url.path == '/relationships' %}aria-current="page"{% endif %} href="/relationships">Relationships</a>
-          <a class="nav-link {% if request.url.path == '/state' %}active{% endif %}" {% if request.url.path == '/state' %}aria-current="page"{% endif %} href="/state">State</a>
+          <a class="nav-link {% if request.url.path == '/state' %}active{% endif %}" {% if request.url.path == '/state' %}aria-current="page"{% endif %} href="/state">Memory &amp; Context</a>
         </div>
 
         <div class="nav-group">
@@ -71,7 +71,7 @@
             {% elif request.url.path == '/memory/cursors' %}Cursors
             {% elif request.url.path.startswith('/memory') %}Memory
             {% elif request.url.path == '/relationships' %}Relationships
-            {% elif request.url.path == '/state' %}State
+            {% elif request.url.path == '/state' %}Memory &amp; Context
             {% elif request.url.path.startswith('/admin/runtime') %}Runtime Config
             {% elif request.url.path.startswith('/admin/prompts') %}Prompt State
             {% elif request.url.path == '/summaries' %}Shared summaries
@@ -94,7 +94,7 @@
             <a class="mobile-nav-link {% if request.url.path.startswith('/conversations') %}active{% endif %}" {% if request.url.path.startswith('/conversations') %}aria-current="page"{% endif %} href="/conversations">Conversations</a>
             <a class="mobile-nav-link {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}active{% endif %}" {% if request.url.path.startswith('/memory') and not request.url.path.startswith('/memory/cursors') %}aria-current="page"{% endif %} href="/memory">Memory</a>
             <a class="mobile-nav-link {% if request.url.path == '/relationships' %}active{% endif %}" {% if request.url.path == '/relationships' %}aria-current="page"{% endif %} href="/relationships">Relationships</a>
-            <a class="mobile-nav-link {% if request.url.path == '/state' %}active{% endif %}" {% if request.url.path == '/state' %}aria-current="page"{% endif %} href="/state">State</a>
+            <a class="mobile-nav-link {% if request.url.path == '/state' %}active{% endif %}" {% if request.url.path == '/state' %}aria-current="page"{% endif %} href="/state">Memory &amp; Context</a>
           </div>
 
           <div class="mobile-nav-group">
