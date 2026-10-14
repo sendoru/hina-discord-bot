@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .maintenance_backup import BackupInfo, backup_sqlite
+from .migrate_conversation_reset_epochs import ensure_epoch_schema
 from .reset_analysis_data import _connect_existing, _row_count, _table_exists
 
 RAW_TABLES = ("turns", "shared_calls", "failed_turns", "shared_summaries")
@@ -128,63 +129,16 @@ def reset_conversation(
             _remember_names(db)
             now = datetime.now(UTC)
             cutoff_message_id = (int(now.timestamp() * 1000) - DISCORD_EPOCH_MS) << 22
-            db.execute(
-                """CREATE TABLE IF NOT EXISTS conversation_reset_epochs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    reset_at TEXT NOT NULL,
-                    cutoff_message_id INTEGER NOT NULL,
-                    backup_sha256 TEXT NOT NULL
-                )"""
-            )
-            epoch_info = {
-                row[1]: row
-                for row in db.execute("PRAGMA table_info(conversation_reset_epochs)")
-            }
-            if not {"id", "reset_at", "cutoff_message_id"} <= epoch_info.keys():
-                raise RuntimeError("Unsupported conversation_reset_epochs schema")
-            if "backup_sha256" not in epoch_info:
-                # Older epoch tables predate backup tracking. Their original backup
-                # hashes are unknown; use an empty sentinel only for those rows.
-                # This migration is rolled back with the deletion on failure.
-                db.execute(
-                    "ALTER TABLE conversation_reset_epochs "
-                    "ADD COLUMN backup_sha256 TEXT NOT NULL DEFAULT ''"
-                )
-                epoch_info = {
-                    row[1]: row
-                    for row in db.execute("PRAGMA table_info(conversation_reset_epochs)")
-                }
-
-            # Some older reset tables require a discarded-structured-turns count
-            # without a DEFAULT. No such turns may be discarded here: the
-            # structured-memory pending check above must be zero before reset.
-            columns = ["reset_at", "cutoff_message_id", "backup_sha256"]
-            values = [now.isoformat(), cutoff_message_id, snapshot.sha256]
-            if "discarded_structured_turns" in epoch_info:
-                columns.append("discarded_structured_turns")
-                values.append(0)
-
-            # Never invent values for other non-nullable legacy metadata. Check
-            # before deleting turns, and roll back the migration on mismatch.
-            missing_required = [
-                name for name, (_, _, _, not_null, default, pk) in epoch_info.items()
-                if not_null and default is None and not pk and name not in columns
-            ]
-            if missing_required:
-                raise RuntimeError(
-                    "Unsupported required conversation_reset_epochs columns: "
-                    + ", ".join(missing_required)
-                )
-
+            ensure_epoch_schema(db)
             deleted = {}
             for table in RAW_TABLES:
                 result = db.execute(f"DELETE FROM {table}")
                 deleted[table] = result.rowcount
-            placeholders = ",".join("?" for _ in columns)
             result = db.execute(
-                "INSERT INTO conversation_reset_epochs ("
-                + ",".join(columns) + ") VALUES (" + placeholders + ")",
-                values,
+                """INSERT INTO conversation_reset_epochs (
+                    reset_at,cutoff_message_id,backup_sha256
+                ) VALUES (?,?,?)""",
+                (now.isoformat(), cutoff_message_id, snapshot.sha256),
             )
             reset_id = int(result.lastrowid)
             # Be explicit about preserving other tables and extraction sequences.
