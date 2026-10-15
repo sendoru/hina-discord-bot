@@ -1149,19 +1149,21 @@ class Store:
             return "below_threshold"
         if str(row["new_kind"]) != str(row["target_kind"]):
             return "kind_mismatch"
-        if str(row["new_kind"]) == MemoryKind.RELATIONSHIP.value:
-            # Relationship corrections and differing evidence are observations,
-            # not interchangeable facts. Only exact-evidence duplicates from
-            # the same origin/disclosure can be automatically superseded.
-            if (
+        # Relationship corrections and differing evidence are observations,
+        # not interchangeable facts. Only exact-evidence duplicates from
+        # the same origin/disclosure can be automatically superseded.
+        if (
+            str(row["new_kind"]) == MemoryKind.RELATIONSHIP.value
+            and (
                 relation != "duplicate"
                 or str(row["new_origin_realm"]) != str(row["target_origin_realm"])
                 or str(row["new_origin_channel_id"]) != str(row["target_origin_channel_id"])
                 or bool(row["new_public"]) != bool(row["target_public"])
                 or str(row["new_disclosure"]) != str(row["target_disclosure"])
                 or json.loads(row["new_evidence"] or "{}") != json.loads(row["target_evidence"] or "{}")
-            ):
-                return "relationship_deferred"
+            )
+        ):
+            return "relationship_deferred"
 
         if (
             str(row["new_origin_realm"]) != str(row["origin_realm"])
