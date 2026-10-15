@@ -262,6 +262,33 @@ adaptive에서는 `LLM_FAST_MODEL`과 `LLM_SMART_MODEL` 모두 실제 채팅 이
 모델의 vision 지원 여부를 확인해야 합니다. 기억 요약에는 이미지 bytes를 전달하지 않습니다. 자세한
 범위와 저장 경계는 [`vision-input.md`](vision-input.md)를 참고하세요.
 
+## 선택적 출력 형식 교정
+
+Discord 응답에 실수로 포함된 인용 표식이나 리터럴 `\\n` 등의 **형식 오류가 의심될 때만** 같은
+provider의 소형 LLM으로 최소 교정을 시도합니다. 모델에는 최초 답변 텍스트와 짧은 교정 지침만
+전달하며 원본 대화 문맥, 기억, 이미지, 도구, 캐릭터 프롬프트는 다시 보내지 않습니다.
+
+추가 `.env` 설정을 만들지 않고 기존 대시보드의 Runtime Settings에서 두 항목만 설정합니다.
+
+| 런타임 키 | 기본값 | 설명 |
+| --- | --- | --- |
+| `output_repair_mode` | `off` | `off`: 사용 안 함, `shadow`: 비동기로 교정 결과만 기록, `active`: 검증된 교정 결과로 답변 교체 |
+| `output_repair_model` | `auto` | `auto`는 현재 `fast_model`, 아니면 동일 provider에서 지원되는 모델 이름 |
+
+예: `output_repair_mode=shadow`, `output_repair_model=auto`. `active`는 모델별 실측을 마친
+뒤 권장합니다. 앱을 재시작하지 않고 설정을 변경할 수 있습니다. provider는 일반 채팅과 동일하고
+기존 API 키를 사용하므로 별도 provider/key/temperature/timeout/token-budget 환경변수는 없습니다.
+교정 요청에는 최대 512 출력 토큰과 3초 제한을 적용합니다.
+
+정규식은 호출 여부만 결정하며 `[1]` 같은 패턴을 직접 삭제하지 않습니다. 인라인·펜스 코드
+내의 표식만 있으면 교정을 시도하지 않습니다. 비정상 응답·시간 초과·빈 교정·큰 문체 변경은
+모두 원본으로 폴백합니다. `shadow`는 답변 전송을 기다리게 하지 않습니다.
+
+`usage.jsonl`의 `operation=output_repair`에는 추가 API 토큰/지연시간이 기록되고,
+`operation=output.repair`에는 `status`, 모드, 모델, 원본·후보 문자 수 및 변경 여부만
+기록합니다. 원문이나 교정본을 telemetry에 중복으로 저장하지 않습니다. 동일 응답의
+교정 평가에는 trace의 원본 모델 출력을 확인하세요. API 호출 실패도 원래 답변을 막지 않습니다.
+
 ## 같은 eval을 여러 provider에서 비교
 
 ```bash
