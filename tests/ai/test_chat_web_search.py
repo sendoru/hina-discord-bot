@@ -1,7 +1,5 @@
 import json
 from dataclasses import replace
-from tests.reference_blocks import read_reference_context
-
 
 import httpx
 import pytest
@@ -12,6 +10,7 @@ from hina_bot.core.config import Settings
 from hina_bot.core.lore import LoreIndex
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from tests.reference_blocks import read_reference_context
 
 
 def web_tools(payload):
