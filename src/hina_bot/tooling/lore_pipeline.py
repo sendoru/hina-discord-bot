@@ -282,13 +282,13 @@ fact_direct로, [UNKNOWN]을 긍정 사실로 바꾸지 마세요.
 '정설', '유력하다', '팬덤에서는' 같은 표현을 사실로 자동 승격하지 마세요. 관찰 가능한 사실과
 편집자의 해석을 분리하세요. source lane이 community_meme이면 fact_type은 fandom으로 두세요.
 
-[원자성]
-한 candidate에는 독립적으로 참/거짓을 판정할 수 있는 주장 하나만 넣으세요. 서로 다른 사건,
-인물 관계, 능력, 성격 특성, 시간대, 원인과 결과를 하나의 summary에 묶지 마세요. 문장이
-'A이며 B이고 C한다'처럼 서로 따로 검증할 수 있는 주장 여러 개를 포함한다면 candidate를
-분리하세요. 같은 지속적 사실을 여러 장면이 반복해서 뒷받침하는 경우에만 하나로 합칠 수
-있습니다. 각 summary는 가능하면 하나의 장면 또는 하나의 지속적 설정에 대응하고 180자 이하로
-재서술하세요. 원문을 길게 복제하지 마세요.
+[서술 단위와 간결성]
+서로 무관한 사실을 한 candidate에 나열하지 말고, 독립적으로 검증할 수 있는 주제로
+구분하세요. 다만 한 인물과 히나의 관계를 이해하는 데 필요한 과거 접점, 이후 변화,
+당시의 호칭과 인지 범위는 하나의 일관된 관계 항목으로 서술할 수 있습니다.
+여러 사건을 묶는 경우 시간 순서와 그때 확인된 사실을 구분하고, 근거 없는 감정·친밀도
+해석을 추가하지 마세요. summary에 고정 글자 수 제한을 적용하지 말고 정확성에 필요한
+정도만 간결하게 작성하세요. 원문을 길게 복제하지 마세요.
 
 [종류별 summary 규칙]
 fact_reported는 반드시 발화자/보고 주체를 남기세요. 예: '히나는 X라고 말했다.'
@@ -399,7 +399,7 @@ def extract(args) -> None:
                 "confidence": "candidate",
                 "status": status,
                 "kr_release": "not_applicable" if lane == "community_meme" else "pending",
-                "timeline": candidate["timeline"][:120],
+                "timeline": candidate["timeline"],
                 "source": {
                     "type": source["source_type"],
                     "title": source["title"],
