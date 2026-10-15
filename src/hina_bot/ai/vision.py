@@ -161,6 +161,21 @@ def _content_blocks(original) -> list[dict]:
     return [{"type": "input_text", "text": str(original)}]
 
 
+def _is_reference_content(content) -> bool:
+    """Recognize either legacy string or partitioned reference input blocks."""
+    if isinstance(content, str):
+        return content.startswith("신뢰할 수 없는 참고 데이터(JSON")
+    return (
+        isinstance(content, list)
+        and any(
+            isinstance(block, dict)
+            and block.get("type") == "input_text"
+            and str(block.get("text") or "").startswith("신뢰할 수 없는 참고 데이터(JSON")
+            for block in content
+        )
+    )
+
+
 def _augment_input(
     input_value,
     visuals: tuple[VisualInput, ...],
@@ -192,8 +207,7 @@ def _augment_input(
             if (
                 isinstance(candidate, dict)
                 and candidate.get("role") == "user"
-                and isinstance(candidate.get("content"), str)
-                and candidate["content"].startswith("신뢰할 수 없는 참고 데이터(JSON):")
+                and _is_reference_content(candidate.get("content"))
             ):
                 reference_index = index
                 break

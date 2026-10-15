@@ -5,6 +5,7 @@ import pytest
 from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
+from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -66,7 +67,7 @@ async def test_current_channel_query_keeps_manual_notes_but_excludes_public_cont
         )
 
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
         assert reference["server_note"] == "OTHER_CHANNEL_SERVER_NOTE"
         assert reference["user_note"] == "OTHER_CHANNEL_USER_NOTE"
         assert reference["public_server_context"] == []
@@ -115,7 +116,7 @@ async def test_server_query_keeps_authorized_cross_channel_context():
         )
 
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
         assert reference["server_note"] == "SERVER_NOTE_MARKER"
         assert reference["user_note"] == "USER_NOTE_MARKER"
         assert reference["public_server_context"][0]["summary"] == "SERVER_PUBLIC_CONTEXT"

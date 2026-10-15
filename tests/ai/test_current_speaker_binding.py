@@ -5,6 +5,7 @@ import pytest
 from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
+from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.request_assembly import CURRENT_INTERACTION_POLICY, CURRENT_SPEAKER_POLICY
 from hina_bot.core.config import Settings
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
@@ -85,7 +86,7 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
         )
 
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         assert reference["current_speaker"] == {
             "user_id": "222",
@@ -158,7 +159,7 @@ async def test_active_reply_chain_is_structured_separately_from_ambient_context(
             channel_context=[ambient, *chain],
         )
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         assert [row["message_id"] for row in reference["active_reply_chain"]] == [
             "1", "2", "3"
@@ -214,7 +215,7 @@ async def test_other_users_taunt_cannot_become_current_speakers_personal_continu
         )
 
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
         taunt, reply = reference["channel_recent_messages"]
 
         assert taunt["is_current_speaker"] is False
@@ -281,7 +282,7 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
             "<@200>야, <@99> 좀 쓰다듬어줘",
         )
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         assert reference["current_interaction"] == interaction
         assert CURRENT_INTERACTION_POLICY.strip() in payload["instructions"]
@@ -337,7 +338,7 @@ async def test_verified_current_user_mention_can_be_reused_when_explicitly_reque
     try:
         await llm.answer(store, scope, "사용자", "<@200> 불러줘")
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         assert reference["current_interaction"]["mentions"][0]["user_id"] == "200"
         assert CURRENT_INTERACTION_POLICY.strip() in payload["instructions"]
@@ -389,7 +390,7 @@ async def test_plain_explicit_reply_is_always_split_into_active_reply_chain():
             channel_context=channel_context,
         )
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         assert [row["message_id"] for row in reference["active_reply_chain"]] == ["10"]
         assert [row["message_id"] for row in reference["channel_recent_messages"]] == ["11"]
@@ -401,7 +402,6 @@ async def test_plain_explicit_reply_is_always_split_into_active_reply_chain():
     finally:
         await llm.close()
         store.close()
-
 
 
 @pytest.mark.asyncio
@@ -445,7 +445,7 @@ async def test_answer_model_sees_emoji_aliases_but_source_rows_keep_raw_ids():
         provider_input = json.dumps(payload["input"], ensure_ascii=False)
         assert "1495269226938630315" not in provider_input
         assert payload["input"][1]["content"] == "히나야 이거 :18:"
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
         assert reference["active_reply_chain"][0]["content"] == "도장 어때 :18:"
         assert reference["channel_recent_messages"][0]["content"] == "다른 메시지 :18:"
         assert reference["active_reply_chain"][0]["message_id"] == "101"

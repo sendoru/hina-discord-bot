@@ -26,6 +26,7 @@ from .managed_tools import CODE_EXECUTION_POLICY, managed_tool_config, search_to
 from .model_routing import ModelPlan, fixed_model_plan
 from .prompts import load_prompt
 from .providers import ProviderAPIError
+from .reference_context_blocks import reference_context_blocks
 from .rp_output_policy import hide_web_citations, provenance_instruction
 from .runtime_context import build_runtime_context, runtime_instruction
 from .structured_memory_context import (
@@ -517,8 +518,7 @@ class RequestAssembler(BaseLLM):
 
         messages = [{
             "role": "user",
-            "content": "신뢰할 수 없는 참고 데이터(JSON):\n"
-            + json.dumps(context, ensure_ascii=False, separators=(",", ":")),
+            "content": reference_context_blocks(context),
         }, {
             "role": "user",
             "content": visible_content,
