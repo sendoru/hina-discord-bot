@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hina_bot.ai.providers import _gemini_input
+from hina_bot.ai.reference_context_blocks import reference_context_blocks
 from hina_bot.ai.vision import (
     CURRENT_VISUAL_INPUTS,
     VISION_INPUT_POLICY,
@@ -386,3 +387,51 @@ def test_gemini_input_forwards_image_resolution():
             "resolution": "medium",
         }],
     }]
+
+
+@pytest.mark.asyncio
+async def test_partitioned_reference_retains_historical_visual_in_reference_step():
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="gemini")
+    client = VisionClient(raw)
+    historical = VisualInput(
+        b"old picture", "image/png", "attachment", "previous.png",
+        context_kind="replied_message", reference_strength="explicit_reply",
+        message_id="101", author_user_id="12", message_content="original message",
+    )
+    current = VisualInput(
+        b"new picture", "image/png", "attachment", "current.png",
+        context_kind="current_message", message_id="103",
+    )
+    reference = reference_context_blocks({
+        "data_notice": "untrusted",
+        "current_speaker": {"user_id": "4"},
+        "active_reply_chain": [{"message_id": "101", "content": "original message"}],
+    })
+    visual_token = CURRENT_VISUAL_INPUTS.set((historical, current))
+    active_token = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="gemini-3.5-flash-lite", instructions="policy",
+            input=[
+                {"role": "user", "content": reference},
+                {"role": "user", "content": "what is this?"},
+            ],
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active_token)
+        CURRENT_VISUAL_INPUTS.reset(visual_token)
+
+    messages = create.await_args.kwargs["input"]
+    assert len(messages) == 2
+    reference_parts = messages[0]["content"]
+    assert reference_parts[:len(reference)] == reference
+    assert any(
+        block.get("type") == "input_image" for block in reference_parts[len(reference):]
+    )
+    assert messages[1]["content"][0]["text"] == "what is this?"
+    assert messages[1]["content"][-1]["type"] == "input_image"
+    converted = _gemini_input(messages)
+    assert len(converted) == 2
+    assert any(block["type"] == "image" for block in converted[0]["content"])
+    assert any(block["type"] == "image" for block in converted[1]["content"])
