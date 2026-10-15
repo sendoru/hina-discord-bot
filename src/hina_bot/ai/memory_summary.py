@@ -13,6 +13,7 @@ from .memory_extraction import (
     parse_shadow_extraction,
     persist_reconciliation_proposals,
     persist_shadow_items_detailed,
+    select_reconciliation_candidates,
 )
 from .memory_model_routing import build_memory_model_plan
 
@@ -169,11 +170,16 @@ class MemorySummaryMixin:
         candidate_items = []
         candidate_reader = getattr(store, "memory_reconciliation_candidates", None)
         if callable(candidate_reader):
-            raw_candidates = candidate_reader(scope, limit=32)
-            candidate_items = [
+            # Retrieve a diverse bounded pool before choosing the 24 LLM candidates.
+            # Recent relationship rows must not starve older facts and preferences.
+            raw_candidates = candidate_reader(scope, limit=96)
+            eligible_candidates = [
                 item for item in raw_candidates
                 if set(item.source_message_ids).isdisjoint(allowed_source_ids)
-            ][-24:]
+            ]
+            candidate_items = select_reconciliation_candidates(
+                eligible_candidates, turns, limit=24
+            )
         reconciliation_candidates = build_reconciliation_candidates(candidate_items)
         payload = {
             "speaker_id": str(scope.user_id),
