@@ -5,35 +5,50 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 from .chatlog_modes import migrate_legacy_chatlog_settings
-from .memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_CONTEXT
+from .conversation_repository import ConversationRepository
 from .memory_items import (
     MemoryDisclosure,
     MemoryItem,
     MemoryKind,
-    MemoryStatus,
     RelationshipEvidence,
-    validate_memory_item_fields,
 )
-from .observability import current_turn_id
+from .memory_repository import MemoryRepository
 from .routing import Scope
 from .scope_overrides import resolve_scope_chain
 from .store_schema import initialize_store_schema
 
 
 class Store:
-    """Small single-process SQLite store. All calls run on the event-loop thread."""
+    """Compatibility facade and transaction coordinator for the runtime SQLite connection.
+
+    Calls remain synchronous on the event-loop thread. Conversation and memory SQL
+    live in repositories; batch commits and cross-table purges remain coordinated here.
+    """
 
     def __init__(self, path: str, history_turns: int = 12):
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
-        self.history_turns = history_turns
+        self._conversations = ConversationRepository(self.db, history_turns)
         self._atomic_memory_batch_open = False
+        self._memories = MemoryRepository(
+            self.db,
+            user_name=lambda scope: self.user_name(scope),
+            write_context=lambda: self._memory_write(),
+        )
         initialize_store_schema(self.db)
         # Apply legacy config migration when the store is opened, even for runtimes
         # that do not construct the Discord /chatlog command group.
         migrate_legacy_chatlog_settings(self)
+
+    @property
+    def history_turns(self) -> int:
+        return self._conversations.history_turns
+
+    @history_turns.setter
+    def history_turns(self, value: int):
+        self._conversations.history_turns = value
 
     def close(self):
         try:
@@ -56,17 +71,7 @@ class Store:
                 self.db.execute("DELETE FROM notes WHERE scope=?", (key,))
 
     def user_name(self, scope: Scope) -> str:
-        """Return the latest observed human-readable name for this scoped user."""
-        for sql in (
-            "SELECT name FROM turns WHERE scope=? AND name<>'' ORDER BY id DESC LIMIT 1",
-            "SELECT name FROM shared_calls WHERE scope=? AND name<>'' ORDER BY id DESC LIMIT 1",
-            "SELECT name FROM shared_summaries WHERE scope=? AND name<>'' LIMIT 1",
-            "SELECT name FROM conversation_identity_names WHERE scope=? LIMIT 1",
-        ):
-            row = self.db.execute(sql, (scope.conversation,)).fetchone()
-            if row is not None and str(row[0] or "").strip():
-                return str(row[0])[:100]
-        return ""
+        return self._conversations.user_name(scope)
 
     def observe_guild_channel(
         self,
@@ -103,22 +108,10 @@ class Store:
             )
 
     def latest_conversation_reset_cutoff(self) -> int:
-        """Bound automatic Discord history backfill after an offline reset."""
-        if self.db.execute(
-            """SELECT 1 FROM sqlite_master WHERE type='table'
-               AND name='conversation_reset_epochs'"""
-        ).fetchone() is None:
-            return 0
-        row = self.db.execute(
-            "SELECT cutoff_message_id FROM conversation_reset_epochs "
-            "ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-        return int(row[0]) if row is not None else 0
+        return self._conversations.latest_conversation_reset_cutoff()
 
     def history(self, scope: Scope):
-        return list(reversed(self.db.execute(
-            "SELECT * FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?",
-            (scope.conversation, self.history_turns)).fetchall()))
+        return self._conversations.history(scope)
 
     @staticmethod
     def _memory_batch_source_hash(rows) -> str:
@@ -285,8 +278,7 @@ class Store:
             )
 
     def seen(self, message_id: int):
-        return self.db.execute("SELECT 1 FROM turns WHERE message_id=?",
-                               (str(message_id),)).fetchone() is not None
+        return self._conversations.seen(message_id)
 
     def add(
         self,
@@ -299,48 +291,15 @@ class Store:
         memory_context=None,
         context_provenance=None,
     ):
-        # Legacy code chained this bit through the personal summary to prevent a mixed
-        # summary from becoming public. Structured extraction tracks provenance per turn,
-        # so the retained column can now represent capture visibility directly.
-        exportable = scope.public_at_capture
-        if memory_context is None:
-            memory_context = CURRENT_MEMORY_CONTEXT.get()
-            CURRENT_MEMORY_CONTEXT.set(())
-        encoded_context = (
-            json.dumps(list(memory_context), ensure_ascii=False, separators=(",", ":"))
-            if memory_context
-            else ""
+        return self._conversations.add(
+            scope,
+            message_id,
+            content,
+            reply,
+            name=name,
+            memory_context=memory_context,
+            context_provenance=context_provenance,
         )
-        if context_provenance is None:
-            context_provenance = CURRENT_CONTEXT_PROVENANCE.get()
-            CURRENT_CONTEXT_PROVENANCE.set(None)
-        encoded_provenance = (
-            json.dumps(context_provenance, ensure_ascii=False, separators=(",", ":"))
-            if context_provenance
-            else ""
-        )
-        with self.db:
-            self.db.execute(
-                "INSERT INTO turns(scope,realm,user_id,name,message_id,content,reply,exportable,"
-                "turn_id,memory_context,context_provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    scope.conversation,
-                    scope.realm,
-                    str(scope.user_id),
-                    str(name or "")[:100],
-                    str(message_id),
-                    content,
-                    reply,
-                    int(exportable),
-                    current_turn_id(),
-                    encoded_context,
-                    encoded_provenance,
-                ),
-            )
-            # Bound raw retention independently of persistent-memory extraction.
-            self.db.execute("DELETE FROM turns WHERE scope=? AND id NOT IN "
-                            "(SELECT id FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?)",
-                            (scope.conversation, scope.conversation, self.history_turns))
 
     def add_failed_turn(
         self,
@@ -356,67 +315,22 @@ class Store:
         error_type: str = "",
         error_fingerprint: str = "",
     ):
-        """Persist a failed exchange for observability without feeding memory pipelines."""
-        with self.db:
-            self.db.execute(
-                """INSERT INTO failed_turns(
-                       scope,realm,user_id,name,message_id,content,reply,turn_id,
-                       status,stage,reply_delivered,error_type,error_fingerprint
-                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    scope.conversation,
-                    scope.realm,
-                    str(scope.user_id),
-                    str(name or "")[:100],
-                    str(message_id),
-                    content,
-                    reply,
-                    current_turn_id(),
-                    str(status),
-                    str(stage),
-                    int(bool(reply_delivered)),
-                    str(error_type or ""),
-                    str(error_fingerprint or ""),
-                ),
-            )
-            self.db.execute(
-                """DELETE FROM failed_turns
-                   WHERE scope=? AND id NOT IN (
-                       SELECT id FROM failed_turns
-                       WHERE scope=? ORDER BY id DESC LIMIT ?
-                   )""",
-                (scope.conversation, scope.conversation, self.history_turns),
-            )
+        return self._conversations.add_failed_turn(
+            scope,
+            message_id,
+            content,
+            name=name,
+            reply=reply,
+            status=status,
+            stage=stage,
+            reply_delivered=reply_delivered,
+            error_type=error_type,
+            error_fingerprint=error_fingerprint,
+        )
 
     @staticmethod
     def _decode_memory_item(row) -> MemoryItem:
-        source_ids = json.loads(row["source_message_ids"] or "[]")
-        relationship_evidence = RelationshipEvidence.from_mapping(
-            json.loads(row["relationship_evidence"] or "{}")
-        )
-        return MemoryItem(
-            id=int(row["id"]),
-            user_id=str(row["user_id"]),
-            user_name=str(row["user_name"] or ""),
-            content=str(row["content"]),
-            kind=MemoryKind(row["kind"]),
-            origin_realm=str(row["origin_realm"]),
-            origin_channel_id=str(row["origin_channel_id"]),
-            origin_public_at_capture=bool(row["origin_public_at_capture"]),
-            disclosure=MemoryDisclosure(row["disclosure"]),
-            source_message_ids=tuple(str(value) for value in source_ids),
-            confidence=float(row["confidence"]),
-            created_at=str(row["created_at"]),
-            updated_at=str(row["updated_at"]),
-            revision=int(row["revision"]),
-            relationship_evidence=relationship_evidence,
-            status=MemoryStatus(row["status"]),
-            superseded_by=(
-                int(row["superseded_by"])
-                if row["superseded_by"] is not None
-                else None
-            ),
-        )
+        return MemoryRepository._decode_memory_item(row)
 
     def add_memory_item(
         self,
@@ -430,44 +344,16 @@ class Store:
         relationship_evidence: RelationshipEvidence | dict | None = None,
         user_name: str | None = None,
     ) -> int:
-        fields = validate_memory_item_fields(
+        return self._memories.add_memory_item(
+            scope,
             content,
             kind=kind,
             disclosure=disclosure,
+            source_message_ids=source_message_ids,
             confidence=confidence,
             relationship_evidence=relationship_evidence,
+            user_name=user_name,
         )
-        text = fields.content
-        kind = fields.kind
-        disclosure = fields.disclosure
-        confidence = fields.confidence
-        evidence = fields.relationship_evidence
-        source_ids = tuple(dict.fromkeys(str(value) for value in source_message_ids))
-        encoded_sources = json.dumps(source_ids, ensure_ascii=False, separators=(",", ":"))
-        encoded_evidence = json.dumps(
-            evidence.as_dict(), ensure_ascii=False, separators=(",", ":")
-        )
-        owner_name = self.user_name(scope) if user_name is None else str(user_name)[:100]
-        with self._memory_write():
-            cursor = self.db.execute(
-                "INSERT INTO memory_items(user_id,user_name,content,kind,origin_realm,origin_channel_id,"
-                "origin_public_at_capture,disclosure,source_message_ids,confidence,"
-                "relationship_evidence) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    str(scope.user_id),
-                    owner_name,
-                    text,
-                    kind.value,
-                    scope.realm,
-                    str(scope.channel_id),
-                    int(scope.public_at_capture),
-                    disclosure.value,
-                    encoded_sources,
-                    confidence,
-                    encoded_evidence,
-                ),
-            )
-        return int(cursor.lastrowid)
 
     def memory_items(
         self,
@@ -476,36 +362,17 @@ class Store:
         origin_realm: str | None = None,
         include_superseded: bool = False,
     ):
-        params: list[str] = [str(user_id)]
-        where = "user_id=?"
-        if include_superseded:
-            # Retry deduplication intentionally includes superseded history, but a manual
-            # retraction must not suppress a future re-observation of the same fact.
-            where += " AND status IN ('active','superseded')"
-        else:
-            where += " AND status='active'"
-        if origin_realm is not None:
-            where += " AND origin_realm=?"
-            params.append(origin_realm)
-        rows = self.db.execute(
-            f"SELECT * FROM memory_items WHERE {where} ORDER BY id",
-            tuple(params),
-        ).fetchall()
-        return [self._decode_memory_item(row) for row in rows]
+        return self._memories.memory_items(
+            user_id,
+            origin_realm=origin_realm,
+            include_superseded=include_superseded,
+        )
 
     def memory_item(self, item_id: int) -> MemoryItem | None:
-        row = self.db.execute(
-            "SELECT * FROM memory_items WHERE id=?",
-            (int(item_id),),
-        ).fetchone()
-        return self._decode_memory_item(row) if row is not None else None
+        return self._memories.memory_item(item_id)
 
     def memory_item_edit_history(self, item_id: int):
-        return self.db.execute(
-            """SELECT * FROM memory_item_edit_history
-               WHERE memory_item_id=? ORDER BY revision DESC,id DESC""",
-            (int(item_id),),
-        ).fetchall()
+        return self._memories.memory_item_edit_history(item_id)
 
     def revise_memory_item(
         self,
@@ -519,93 +386,16 @@ class Store:
         relationship_evidence: RelationshipEvidence | dict | None = None,
         admin_command_id: int | None = None,
     ) -> MemoryItem:
-        """Edit one active item in place while preserving its provenance and row identity."""
-
-        item_id = int(item_id)
-        expected_revision = int(expected_revision)
-        if item_id <= 0:
-            raise ValueError("Memory item id must be positive")
-        if expected_revision < 0:
-            raise ValueError("Memory item revision must not be negative")
-        fields = validate_memory_item_fields(
-            content,
+        return self._memories.revise_memory_item(
+            item_id,
+            expected_revision=expected_revision,
+            content=content,
             kind=kind,
             disclosure=disclosure,
             confidence=confidence,
             relationship_evidence=relationship_evidence,
+            admin_command_id=admin_command_id,
         )
-        encoded_evidence = json.dumps(
-            fields.relationship_evidence.as_dict(),
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
-
-        with self.db:
-            row = self.db.execute(
-                "SELECT * FROM memory_items WHERE id=?",
-                (item_id,),
-            ).fetchone()
-            if row is None:
-                raise ValueError("Memory item not found")
-            if str(row["status"]) != MemoryStatus.ACTIVE.value:
-                raise ValueError("Only active memory items can be edited")
-            current_revision = int(row["revision"])
-            if current_revision != expected_revision:
-                raise ValueError("Memory item has changed; reload before editing")
-
-            current_evidence = RelationshipEvidence.from_mapping(
-                json.loads(row["relationship_evidence"] or "{}")
-            )
-            changed = (
-                str(row["content"]) != fields.content
-                or str(row["kind"]) != fields.kind.value
-                or str(row["disclosure"]) != fields.disclosure.value
-                or float(row["confidence"]) != fields.confidence
-                or current_evidence != fields.relationship_evidence
-            )
-            if not changed:
-                return self._decode_memory_item(row)
-
-            self.db.execute(
-                """INSERT INTO memory_item_edit_history(
-                       memory_item_id,revision,content,kind,disclosure,confidence,
-                       relationship_evidence,admin_command_id
-                   ) VALUES (?,?,?,?,?,?,?,?)""",
-                (
-                    item_id,
-                    current_revision,
-                    str(row["content"]),
-                    str(row["kind"]),
-                    str(row["disclosure"]),
-                    float(row["confidence"]),
-                    str(row["relationship_evidence"] or "{}"),
-                    int(admin_command_id) if admin_command_id is not None else None,
-                ),
-            )
-            cursor = self.db.execute(
-                """UPDATE memory_items
-                   SET content=?,kind=?,disclosure=?,confidence=?,relationship_evidence=?,
-                       revision=revision+1,updated_at=CURRENT_TIMESTAMP
-                   WHERE id=? AND status='active' AND revision=?""",
-                (
-                    fields.content,
-                    fields.kind.value,
-                    fields.disclosure.value,
-                    fields.confidence,
-                    encoded_evidence,
-                    item_id,
-                    current_revision,
-                ),
-            )
-            if cursor.rowcount != 1:
-                raise ValueError("Memory item has changed; reload before editing")
-            updated = self.db.execute(
-                "SELECT * FROM memory_items WHERE id=?",
-                (item_id,),
-            ).fetchone()
-            if updated is None:
-                raise RuntimeError("Memory item disappeared during edit")
-            return self._decode_memory_item(updated)
 
     def retract_memory_item(
         self,
@@ -613,108 +403,13 @@ class Store:
         *,
         expected_revision: int,
     ) -> MemoryItem:
-        """Retract one active item without deleting its provenance or edit history."""
-
-        item_id = int(item_id)
-        expected_revision = int(expected_revision)
-        if item_id <= 0:
-            raise ValueError("Memory item id must be positive")
-        if expected_revision < 0:
-            raise ValueError("Memory item revision must not be negative")
-
-        with self.db:
-            row = self.db.execute(
-                "SELECT * FROM memory_items WHERE id=?",
-                (item_id,),
-            ).fetchone()
-            if row is None:
-                raise ValueError("Memory item not found")
-            if str(row["status"]) != MemoryStatus.ACTIVE.value:
-                raise ValueError("Only active memory items can be retracted")
-            if int(row["revision"]) != expected_revision:
-                raise ValueError("Memory item has changed; reload before retracting")
-            cursor = self.db.execute(
-                """UPDATE memory_items
-                   SET status='retracted',superseded_by=NULL,revision=revision+1,
-                       updated_at=CURRENT_TIMESTAMP
-                   WHERE id=? AND status='active' AND revision=?""",
-                (item_id, expected_revision),
-            )
-            if cursor.rowcount != 1:
-                raise ValueError("Memory item has changed; reload before retracting")
-            updated = self.db.execute(
-                "SELECT * FROM memory_items WHERE id=?",
-                (item_id,),
-            ).fetchone()
-            if updated is None:
-                raise RuntimeError("Memory item disappeared during retraction")
-            return self._decode_memory_item(updated)
+        return self._memories.retract_memory_item(item_id, expected_revision=expected_revision)
 
     def reference_gated_memory_candidates(self, scope: Scope, *, limit: int = 24):
-        """Return recent active owner memories whose cross-space access is reference-gated."""
-
-        if scope.guild_id is None:
-            return []
-        rows = self.db.execute(
-            """SELECT * FROM memory_items
-               WHERE user_id=? AND status='active'
-                 AND disclosure='reference_gated'
-                 AND kind<>'relationship'
-                 AND NOT (
-                     origin_realm=?
-                     AND (origin_public_at_capture=1 OR origin_channel_id=?)
-                 )
-               ORDER BY id DESC LIMIT ?""",
-            (
-                str(scope.user_id),
-                scope.realm,
-                str(scope.channel_id),
-                max(0, int(limit)),
-            ),
-        ).fetchall()
-        return [self._decode_memory_item(row) for row in rows]
+        return self._memories.reference_gated_memory_candidates(scope, limit=limit)
 
     def memory_reconciliation_candidates(self, scope: Scope, *, limit: int = 24):
-        """Return a bounded mix of active relationship and non-relationship items.
-
-        Both queries enforce ownership and disclosure space in SQL. Reserve half
-        of the slots for each group, then backfill unused slots by recency.
-        """
-
-        limit = max(0, int(limit))
-        if not limit:
-            return []
-        where = "user_id=? AND status='active'"
-        params: list[str] = [str(scope.user_id)]
-        if scope.guild_id is not None:
-            where += (
-                " AND origin_realm=?"
-                " AND (origin_public_at_capture=1 OR origin_channel_id=?)"
-            )
-            params.extend((scope.realm, str(scope.channel_id)))
-
-        def read(relationship: bool):
-            condition = "kind='relationship'" if relationship else "kind!='relationship'"
-            rows = self.db.execute(
-                f"SELECT * FROM memory_items WHERE {where} AND {condition}"
-                " ORDER BY id DESC LIMIT ?",
-                (*params, limit),
-            ).fetchall()
-            return rows
-
-        factual, relationships = read(False), read(True)
-        half = limit // 2
-        chosen = factual[:half] + relationships[:limit - half]
-        remaining = factual[half:] + relationships[limit - half:]
-        chosen.extend(
-            sorted(remaining, key=lambda row: int(row["id"]), reverse=True)[
-                :limit - len(chosen)
-            ]
-        )
-        return [
-            self._decode_memory_item(row)
-            for row in sorted(chosen, key=lambda row: int(row["id"]))
-        ]
+        return self._memories.memory_reconciliation_candidates(scope, limit=limit)
 
     def add_memory_reconciliation_proposal(
         self,
@@ -726,61 +421,14 @@ class Store:
         confidence: float,
         source_message_ids=(),
     ) -> int | None:
-        if relation not in {"duplicate", "corrects", "conflicts"}:
-            raise ValueError("Invalid memory reconciliation relation")
-        confidence = float(confidence)
-        if not 0 <= confidence <= 1:
-            raise ValueError("Memory reconciliation confidence must be between 0 and 1")
-        if int(new_memory_item_id) == int(target_memory_item_id):
-            raise ValueError("A memory item cannot reconcile with itself")
-        owned = self.db.execute(
-            """SELECT id,origin_realm,origin_channel_id,origin_public_at_capture
-               FROM memory_items
-               WHERE id IN (?,?) AND user_id=?""",
-            (
-                int(new_memory_item_id),
-                int(target_memory_item_id),
-                str(scope.user_id),
-            ),
-        ).fetchall()
-        by_id = {int(row["id"]): row for row in owned}
-        if set(by_id) != {int(new_memory_item_id), int(target_memory_item_id)}:
-            raise ValueError("Reconciliation items must belong to the current user")
-        new_item = by_id[int(new_memory_item_id)]
-        target_item = by_id[int(target_memory_item_id)]
-        if (
-            str(new_item["origin_realm"]) != scope.realm
-            or str(new_item["origin_channel_id"]) != str(scope.channel_id)
-        ):
-            raise ValueError("New reconciliation item must belong to the current space")
-        if scope.guild_id is not None and not (
-            str(target_item["origin_realm"]) == scope.realm
-            and (
-                bool(target_item["origin_public_at_capture"])
-                or str(target_item["origin_channel_id"]) == str(scope.channel_id)
-            )
-        ):
-            raise ValueError("Server reconciliation target is outside the disclosure space")
-        source_ids = tuple(dict.fromkeys(str(value) for value in source_message_ids))
-        encoded_sources = json.dumps(source_ids, ensure_ascii=False, separators=(",", ":"))
-        with self._memory_write():
-            cursor = self.db.execute(
-                """INSERT OR IGNORE INTO memory_reconciliation_proposals(
-                       user_id,origin_realm,origin_channel_id,new_memory_item_id,
-                       target_memory_item_id,relation,confidence,source_message_ids
-                   ) VALUES (?,?,?,?,?,?,?,?)""",
-                (
-                    str(scope.user_id),
-                    scope.realm,
-                    str(scope.channel_id),
-                    int(new_memory_item_id),
-                    int(target_memory_item_id),
-                    relation,
-                    confidence,
-                    encoded_sources,
-                ),
-            )
-        return int(cursor.lastrowid) if cursor.rowcount else None
+        return self._memories.add_memory_reconciliation_proposal(
+            scope,
+            new_memory_item_id=new_memory_item_id,
+            target_memory_item_id=target_memory_item_id,
+            relation=relation,
+            confidence=confidence,
+            source_message_ids=source_message_ids,
+        )
 
     def memory_reconciliation_proposal_id(
         self,
@@ -789,19 +437,14 @@ class Store:
         target_memory_item_id: int,
         relation: str,
     ) -> int | None:
-        row = self.db.execute(
-            """SELECT id FROM memory_reconciliation_proposals
-               WHERE new_memory_item_id=? AND target_memory_item_id=? AND relation=?""",
-            (int(new_memory_item_id), int(target_memory_item_id), str(relation)),
-        ).fetchone()
-        return int(row["id"]) if row is not None else None
+        return self._memories.memory_reconciliation_proposal_id(
+            new_memory_item_id=new_memory_item_id,
+            target_memory_item_id=target_memory_item_id,
+            relation=relation,
+        )
 
     def memory_reconciliation_proposals(self, user_id: int | str):
-        return self.db.execute(
-            """SELECT * FROM memory_reconciliation_proposals
-               WHERE user_id=? ORDER BY id""",
-            (str(user_id),),
-        ).fetchall()
+        return self._memories.memory_reconciliation_proposals(user_id)
 
     def apply_memory_reconciliation_proposal(
         self,
@@ -809,118 +452,7 @@ class Store:
         *,
         min_confidence: float = 0.95,
     ) -> str:
-        """Apply one conservative lifecycle transition and return its outcome."""
-
-        threshold = float(min_confidence)
-        if not 0 <= threshold <= 1:
-            raise ValueError("Reconciliation confidence threshold must be between 0 and 1")
-        row = self.db.execute(
-            """SELECT p.*,
-                      n.kind AS new_kind,n.status AS new_status,
-                      n.disclosure AS new_disclosure,
-                      n.origin_public_at_capture AS new_public,
-                      n.relationship_evidence AS new_evidence,
-                      n.superseded_by AS new_superseded_by,
-                      n.origin_realm AS new_origin_realm,
-                      n.origin_channel_id AS new_origin_channel_id,
-                      t.kind AS target_kind,t.status AS target_status,
-                      t.disclosure AS target_disclosure,
-                      t.relationship_evidence AS target_evidence,
-                      t.superseded_by AS target_superseded_by,
-                      t.origin_realm AS target_origin_realm,
-                      t.origin_channel_id AS target_origin_channel_id,
-                      t.origin_public_at_capture AS target_public
-               FROM memory_reconciliation_proposals p
-               JOIN memory_items n
-                 ON n.id=p.new_memory_item_id AND n.user_id=p.user_id
-               JOIN memory_items t
-                 ON t.id=p.target_memory_item_id AND t.user_id=p.user_id
-               WHERE p.id=?""",
-            (int(proposal_id),),
-        ).fetchone()
-        if row is None:
-            return "missing"
-        relation = str(row["relation"])
-        if relation == "conflicts":
-            return "conflict_deferred"
-        if float(row["confidence"]) < threshold:
-            return "below_threshold"
-        if str(row["new_kind"]) != str(row["target_kind"]):
-            return "kind_mismatch"
-        # Relationship corrections and differing evidence are observations,
-        # not interchangeable facts. Only exact-evidence duplicates from
-        # the same origin/disclosure can be automatically superseded.
-        if (
-            str(row["new_kind"]) == MemoryKind.RELATIONSHIP.value
-            and (
-                relation != "duplicate"
-                or str(row["new_origin_realm"]) != str(row["target_origin_realm"])
-                or str(row["new_origin_channel_id"]) != str(row["target_origin_channel_id"])
-                or bool(row["new_public"]) != bool(row["target_public"])
-                or str(row["new_disclosure"]) != str(row["target_disclosure"])
-                or json.loads(row["new_evidence"] or "{}") != json.loads(row["target_evidence"] or "{}")
-            )
-        ):
-            return "relationship_deferred"
-
-        if (
-            str(row["new_origin_realm"]) != str(row["origin_realm"])
-            or str(row["new_origin_channel_id"]) != str(row["origin_channel_id"])
-        ):
-            return "invalid_origin"
-        if str(row["origin_realm"]).startswith("guild:") and not (
-            str(row["target_origin_realm"]) == str(row["origin_realm"])
-            and (
-                bool(row["target_public"])
-                or str(row["target_origin_channel_id"]) == str(row["origin_channel_id"])
-            )
-        ):
-            return "invalid_target_space"
-
-        new_id = int(row["new_memory_item_id"])
-        target_id = int(row["target_memory_item_id"])
-        new_status = str(row["new_status"])
-        target_status = str(row["target_status"])
-        new_superseded_by = row["new_superseded_by"]
-        target_superseded_by = row["target_superseded_by"]
-
-        if relation == "duplicate":
-            if (
-                new_status == MemoryStatus.SUPERSEDED.value
-                and new_superseded_by is not None
-                and int(new_superseded_by) == target_id
-            ):
-                return "already_applied"
-            if new_status != MemoryStatus.ACTIVE.value or target_status != MemoryStatus.ACTIVE.value:
-                return "stale_items"
-            with self._memory_write():
-                cursor = self.db.execute(
-                    """UPDATE memory_items
-                       SET status='superseded',superseded_by=?,updated_at=CURRENT_TIMESTAMP
-                       WHERE id=? AND user_id=? AND status='active'""",
-                    (target_id, new_id, str(row["user_id"])),
-                )
-            return "applied" if cursor.rowcount else "stale_items"
-
-        if relation == "corrects":
-            if (
-                target_status == MemoryStatus.SUPERSEDED.value
-                and target_superseded_by is not None
-                and int(target_superseded_by) == new_id
-            ):
-                return "already_applied"
-            if new_status != MemoryStatus.ACTIVE.value or target_status != MemoryStatus.ACTIVE.value:
-                return "stale_items"
-            with self._memory_write():
-                cursor = self.db.execute(
-                    """UPDATE memory_items
-                       SET status='superseded',superseded_by=?,updated_at=CURRENT_TIMESTAMP
-                       WHERE id=? AND user_id=? AND status='active'""",
-                    (new_id, target_id, str(row["user_id"])),
-                )
-            return "applied" if cursor.rowcount else "stale_items"
-
-        return "unsupported_relation"
+        return self._memories.apply_memory_reconciliation_proposal(proposal_id, min_confidence=min_confidence)
 
     def forget(self, scope: Scope):
         """Delete this user's automatically accumulated memory in the current realm."""
@@ -1036,52 +568,22 @@ class Store:
         return deleted
 
     def add_shared_call(self, scope, message_id, name, content):
-        if scope.guild_id is None or not scope.public_at_capture:
-            return
-        with self.db:
-            self.db.execute("INSERT OR IGNORE INTO shared_calls "
-                            "(scope,realm,user_id,message_id,name,content) VALUES (?,?,?,?,?,?)",
-                            (scope.conversation, scope.realm, str(scope.user_id), str(message_id),
-                             name[:100], content))
-            self.db.execute("DELETE FROM shared_calls WHERE scope=? AND id NOT IN "
-                            "(SELECT id FROM shared_calls WHERE scope=? ORDER BY id DESC LIMIT ?)",
-                            (scope.conversation, scope.conversation, self.history_turns))
+        return self._conversations.add_shared_call(scope, message_id, name, content)
 
     def shared_summary(self, scope):
-        row = self.db.execute("SELECT text,through_id FROM shared_summaries WHERE scope=?",
-                              (scope.conversation,)).fetchone()
-        return (row[0], row[1]) if row else ("", 0)
+        return self._conversations.shared_summary(scope)
 
     def pending_shared(self, scope):
-        return self.db.execute("SELECT * FROM shared_calls WHERE scope=? AND id>? ORDER BY id",
-                               (scope.conversation, self.shared_summary(scope)[1])).fetchall()
+        return self._conversations.pending_shared(scope)
 
     def save_shared_summary(self, scope, name, text, through):
-        with self.db:
-            self.db.execute("INSERT OR REPLACE INTO shared_summaries VALUES (?,?,?,?,?,?)",
-                            (scope.conversation, scope.realm, str(scope.user_id), name,
-                             text[:1500], through))
+        return self._conversations.save_shared_summary(scope, name, text, through)
 
     def public_candidates(self, user_id: int, guild_id: int | None = None):
-        # Server queries include all speakers in this guild. DM queries include only its owner.
-        condition, value = (("realm=?", f"guild:{guild_id}") if guild_id is not None
-                            else ("user_id=?", str(user_id)))
-        rows = self.db.execute(
-            "SELECT scope, user_id, MAX(id) AS recent FROM shared_calls WHERE " + condition +
-            " GROUP BY scope,user_id ORDER BY recent DESC LIMIT 30", (value,)).fetchall()
-        return [Scope(int(r["scope"].split(":")[1]), int(r["scope"].split(":")[3]),
-                      int(r["user_id"])) for r in rows]
+        return self._conversations.public_candidates(user_id, guild_id)
 
     def public_context(self, allowed_scopes):
-        context = []
-        for source in allowed_scopes[:4]:
-            rows = self.db.execute("SELECT * FROM shared_calls WHERE scope=? ORDER BY id DESC LIMIT 2",
-                                   (source.conversation,)).fetchall()
-            context.append({"source": source.conversation, "user_id": str(source.user_id),
-                            "name": rows[0]["name"] if rows else "",
-                            "summary": self.shared_summary(source)[0],
-                            "recent_user_messages": [r["content"] for r in reversed(rows)]})
-        return context
+        return self._conversations.public_context(allowed_scopes)
 
     def emoji_rows(self):
         return self.db.execute("SELECT * FROM emoji_registry ORDER BY alias").fetchall()
