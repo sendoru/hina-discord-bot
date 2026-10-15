@@ -386,3 +386,41 @@ def test_gemini_input_forwards_image_resolution():
             "resolution": "medium",
         }],
     }]
+
+
+@pytest.mark.asyncio
+async def test_vision_reference_emoji_metadata_omits_id_without_touching_asset_uri():
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="gemini")
+    client = VisionClient(raw)
+    raw_emoji = "<a:hello:1495269226938630315>"
+    visual = VisualInput(
+        b"GIF89a123", "image/gif", "emoji", "hello",
+        context_kind="replied_message", reference_strength="explicit_reply",
+        message_id="100", author_user_id="200",
+        message_content="이거 " + raw_emoji,
+        uri="https://cdn.discordapp.com/emojis/1495269226938630315.gif",
+    )
+    token = CURRENT_VISUAL_INPUTS.set((visual,))
+    active = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="gemini-3.5-flash-lite", instructions="base",
+            input=[
+                {"role": "user", "content": "신뢰할 수 없는 참고 데이터(JSON):\\n{}"},
+                {"role": "user", "content": "이거 어때?"},
+            ],
+        )
+    finally:
+        CURRENT_VISUAL_INPUTS.reset(token)
+        VISION_REQUEST_ACTIVE.reset(active)
+
+    messages = create.await_args.kwargs["input"]
+    reference = messages[0]["content"]
+    assert '"message_content":"이거 :hello:"' in reference[2]["text"]
+    assert raw_emoji not in reference[2]["text"]
+    assert "1495269226938630315" in reference[4]["image_url"]
+    assert reference[3]["text"].startswith("명시적 답장 대상 메시지의")
+    assert not reference[3]["text"].startswith("[")
+    assert not reference[3]["text"].endswith("]")
+    assert visual.message_content == "이거 " + raw_emoji

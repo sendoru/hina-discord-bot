@@ -15,6 +15,7 @@ from hina_bot.core.memory_context import (
 from hina_bot.core.relationship_grounding import RELATION_CONTEXT_POLICY
 
 from .context_provenance import build_context_provenance
+from .discord_emoji_input import normalize_custom_emoji_text, normalized_message_context
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode
 from .information_plan import InformationPlan
@@ -273,7 +274,8 @@ class RequestAssembler(BaseLLM):
         model_plan = model_plan or fixed_model_plan(self.settings)
 
         routing = information_plan.routing
-        visible_content = routing.visible_content
+        # Normalize only the provider-facing text; routing and stored messages retain IDs.
+        visible_content = normalize_custom_emoji_text(routing.visible_content)
         routing_content = routing.routing_query
 
         channel_context = self._bind_current_speaker(channel_context or [], scope.user_id)
@@ -398,6 +400,8 @@ class RequestAssembler(BaseLLM):
             row for row in channel_rows
             if row.get("context_kind") not in chain_kinds
         ]
+        # Egress-only projection: keep metadata and Discord source records unchanged.
+        context = normalized_message_context(context)
         structured_trace = structured_memory_provenance(
             store,
             scope,
