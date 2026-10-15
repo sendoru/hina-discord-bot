@@ -576,11 +576,11 @@ __all__ = [
     "ReconciliationPersistResult",
     "ShadowPersistResult",
     "build_reconciliation_candidates",
-    "select_reconciliation_candidates",
     "build_shadow_evidence_context",
     "build_shadow_turns",
     "parse_shadow_extraction",
     "persist_reconciliation_proposals",
     "persist_shadow_items",
     "persist_shadow_items_detailed",
+    "select_reconciliation_candidates",
 ]
