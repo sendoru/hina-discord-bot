@@ -403,3 +403,54 @@ async def test_plain_explicit_reply_is_always_split_into_active_reply_chain():
         await llm.close()
         store.close()
 
+
+@pytest.mark.asyncio
+async def test_answer_model_sees_emoji_aliases_but_source_rows_keep_raw_ids():
+    calls = []
+
+    def handler(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(200, json=_response())
+
+    client = AsyncOpenAI(
+        api_key="test-not-a-real-key",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    llm = LLM(
+        Settings(
+            discord_token="test", openai_api_key="test",
+            external_context_policy="full",
+        ),
+        client=client,
+    )
+    store = Store(":memory:")
+    scope = Scope(1, 10, 222, True)
+    raw = "<:18:1495269226938630315>"
+    reply_row = {
+        "message_id": "101", "author_user_id": "111", "user_id": "111",
+        "content": f"도장 어때 {raw}", "role": "user",
+        "context_kind": "replied_message", "reference_strength": "explicit_reply",
+    }
+    ambient_row = {
+        "message_id": "102", "author_user_id": "111", "user_id": "111",
+        "content": f"다른 메시지 {raw}", "role": "user",
+        "context_kind": "channel_ambient",
+    }
+    try:
+        await llm.answer(
+            store, scope, "사용자", f"히나야 이거 {raw}",
+            channel_context=[reply_row, ambient_row],
+        )
+        payload = calls[-1]
+        provider_input = json.dumps(payload["input"], ensure_ascii=False)
+        assert "1495269226938630315" not in provider_input
+        assert payload["input"][1]["content"] == "히나야 이거 :18:"
+        reference = read_reference_context(payload["input"][0]["content"])
+        assert reference["active_reply_chain"][0]["content"] == "도장 어때 :18:"
+        assert reference["channel_recent_messages"][0]["content"] == "다른 메시지 :18:"
+        assert reference["active_reply_chain"][0]["message_id"] == "101"
+        assert reply_row["content"] == f"도장 어때 {raw}"
+        assert ambient_row["content"] == f"다른 메시지 {raw}"
+    finally:
+        await llm.close()
+        store.close()

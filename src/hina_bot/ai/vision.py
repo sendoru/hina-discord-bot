@@ -5,6 +5,7 @@ import json
 from contextvars import ContextVar
 from dataclasses import dataclass
 
+from .discord_emoji_input import normalize_custom_emoji_text
 from .prompts import load_prompt
 
 VISION_INPUT_POLICY = load_prompt("vision_input.md")
@@ -71,7 +72,7 @@ class VisualInput:
         suffix = f" · {' · '.join(details)}" if details else ""
         if name:
             suffix += f" · {name}"
-        return f"[{context}의 {source} {index}{suffix}]"
+        return f"{context}의 {source} {index}{suffix}"
 
 
 CURRENT_VISUAL_INPUTS: ContextVar[tuple[VisualInput, ...]] = ContextVar(
@@ -136,7 +137,7 @@ def _historical_visual_blocks(
             "message_id": first.message_id,
             "author_name": first.author_name,
             "author_user_id": first.author_user_id,
-            "message_content": first.message_content,
+            "message_content": normalize_custom_emoji_text(first.message_content),
             "at": first.at,
         }
         blocks.append({
