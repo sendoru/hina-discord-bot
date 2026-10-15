@@ -452,7 +452,9 @@ class Store:
         *,
         min_confidence: float = 0.95,
     ) -> str:
-        return self._memories.apply_memory_reconciliation_proposal(proposal_id, min_confidence=min_confidence)
+        return self._memories.apply_memory_reconciliation_proposal(
+            proposal_id, min_confidence=min_confidence,
+        )
 
     def forget(self, scope: Scope):
         """Delete this user's automatically accumulated memory in the current realm."""

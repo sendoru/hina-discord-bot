@@ -3,7 +3,7 @@
 import json
 import sqlite3
 from collections.abc import Callable
-from typing import ContextManager
+from contextlib import AbstractContextManager
 
 from .memory_items import (
     MemoryDisclosure,
@@ -28,7 +28,7 @@ class MemoryRepository:
         db: sqlite3.Connection,
         *,
         user_name: Callable[[Scope], str],
-        write_context: Callable[[], ContextManager],
+        write_context: Callable[[], AbstractContextManager],
     ):
         self.db = db
         self._user_name = user_name
