@@ -95,6 +95,9 @@ class Settings:
     fast_output_tokens: int = 4096
     smart_output_tokens: int = 8192
     memory_output_tokens: int = 4096
+    # Runtime-editable output proofreader; no additional .env variables.
+    output_repair_mode: str = "off"
+    output_repair_model: str = "auto"
     routing_classifier_mode: str = "off"
     routing_classifier_provider: str = "openai"
     routing_classifier_model: str = "gpt-4.1-mini"

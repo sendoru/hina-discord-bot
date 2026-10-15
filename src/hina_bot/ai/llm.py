@@ -10,6 +10,7 @@ from hina_bot.core.instructions import InstructionRegistry
 from hina_bot.core.lore import LoreIndex
 from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
+from .output_repair import OutputRepair
 from .prompts import load_prompt
 from .usage import UsageLogger
 
@@ -52,9 +53,11 @@ class LLM:
             self.lore, include_community=False
         )
         self.usage = UsageLogger(settings.usage_log_path)
+        self.output_repair = OutputRepair(settings, client, self.usage)
 
     async def close(self):
         try:
+            await self.output_repair.close()
             await self.client.close()
         finally:
             self.usage.close()

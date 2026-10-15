@@ -771,7 +771,7 @@ class RequestAssembler(BaseLLM):
                 response,
                 has_visible_text=bool(text.strip()),
             )
-        return text[:3500]
+        return await self.output_repair.apply(text[:3500])
 
 
 LLM = RequestAssembler
