@@ -78,9 +78,8 @@ class LoreValidationTests(unittest.TestCase):
         self.assertEqual(validate_record(value, accepted=True), value)
 
         for field in ("summary", "timeline", "semantic_text"):
-            with self.subTest(field=field):
-                with self.assertRaises(LoreValidationError):
-                    validate_record(value | {field: "   "}, accepted=True)
+            with self.subTest(field=field), self.assertRaises(LoreValidationError):
+                validate_record(value | {field: "   "}, accepted=True)
 
     def test_load_rejects_duplicate_ids(self):
         with tempfile.TemporaryDirectory() as directory:
