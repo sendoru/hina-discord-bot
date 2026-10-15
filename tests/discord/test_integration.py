@@ -18,7 +18,6 @@ from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from tests.reference_blocks import read_reference_context
 
-
 if AVAILABLE:
     from hina_bot.ai.information_pipeline import LLM
     from hina_bot.core.config import Settings
