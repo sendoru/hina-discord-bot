@@ -1,4 +1,6 @@
 import json
+from tests.reference_blocks import read_reference_context
+
 
 import httpx
 import pytest
@@ -127,7 +129,7 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
             channel_context=channel_context,
         )
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         serialized = json.dumps(reference, ensure_ascii=False)
         assert "MY-DIRECT" in serialized
