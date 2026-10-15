@@ -272,6 +272,7 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
             "role": "bot",
             "is_self": False,
         },
+        "trigger_kind": "implicit",
     }
     token = CURRENT_INTERACTION_CONTEXT.set(interaction)
     try:
@@ -289,6 +290,7 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
         assert "self.user_id" in CURRENT_INTERACTION_POLICY
         assert "mentions[].user_id" in CURRENT_INTERACTION_POLICY
         assert "reply_target" in CURRENT_INTERACTION_POLICY
+        assert "trigger_kind" in CURRENT_INTERACTION_POLICY
         assert payload["input"][1]["content"] == "<@200>야, <@99> 좀 쓰다듬어줘"
     finally:
         CURRENT_INTERACTION_CONTEXT.reset(token)
