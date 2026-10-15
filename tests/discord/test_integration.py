@@ -5,7 +5,6 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
-from tests.reference_blocks import read_reference_context
 
 
 try:
@@ -18,6 +17,7 @@ except ModuleNotFoundError:
 
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from tests.reference_blocks import read_reference_context
 
 if AVAILABLE:
     from hina_bot.ai.information_pipeline import LLM
