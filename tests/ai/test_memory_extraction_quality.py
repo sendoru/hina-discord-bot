@@ -4,8 +4,8 @@ from dataclasses import replace
 
 from hina_bot.ai.memory_extraction import (
     ExtractedMemoryItem,
-    select_reconciliation_candidates,
     persist_shadow_items_detailed,
+    select_reconciliation_candidates,
 )
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, RelationshipEvidence
 from hina_bot.core.relationship_profile import aggregate_owner_relationship_evidence
