@@ -92,10 +92,10 @@ def validate_record(record: dict, *, accepted: bool = False) -> dict:
         raise LoreValidationError(f"{record['id']}: runtime records must be reviewed and accepted")
     if accepted and record["lane"] == "canon" and fact_type(record) in REFERENCE_ONLY_FACT_TYPES:
         raise LoreValidationError(f"{record['id']}: adaptation/fandom rows are reference-only")
-    if not isinstance(record["summary"], str) or not 1 <= len(record["summary"].strip()) <= 600:
-        raise LoreValidationError(f"{record['id']}: summary must be 1~600 chars")
-    if not isinstance(record["timeline"], str) or not 1 <= len(record["timeline"].strip()) <= 120:
-        raise LoreValidationError(f"{record['id']}: timeline must be 1~120 chars")
+    if not isinstance(record["summary"], str) or not record["summary"].strip():
+        raise LoreValidationError(f"{record['id']}: summary must be non-empty")
+    if not isinstance(record["timeline"], str) or not record["timeline"].strip():
+        raise LoreValidationError(f"{record['id']}: timeline must be non-empty")
     for key in ("keywords", "subjects"):
         values = record[key]
         if not isinstance(values, list) or not values or len(values) > 30:
@@ -134,8 +134,8 @@ def validate_record(record: dict, *, accepted: bool = False) -> dict:
             raise LoreValidationError(f"{record['id']}: claim entities must be declared")
     if "semantic_text" in record:
         value = record["semantic_text"]
-        if not isinstance(value, str) or not 1 <= len(value.strip()) <= 600:
-            raise LoreValidationError(f"{record['id']}: semantic_text must be 1~600 chars")
+        if not isinstance(value, str) or not value.strip():
+            raise LoreValidationError(f"{record['id']}: semantic_text must be non-empty")
     return record
 
 
