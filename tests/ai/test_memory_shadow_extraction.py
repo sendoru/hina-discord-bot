@@ -235,6 +235,47 @@ def test_extraction_policy_allows_stable_personal_preference_without_future_mark
     assert "recent_evidence_context" in SHADOW_EXTRACTION_POLICY
 
 
+def test_extraction_policy_prefers_concise_content_without_losing_qualifiers():
+    policy = SHADOW_EXTRACTION_POLICY
+    assert "간결하고 중립적인 한국어 기록" in policy
+    assert "완결된 설명문일 필요는 없으며" in policy
+    assert "반복적인 주어·서술형 종결·상투적인" in policy
+    assert "사용자와 제3자/히나를 혼동해서는 안 됩니다" in policy
+    assert "실제로 관찰된 상호작용이나 변화" in policy
+    assert "근거 없는 성격 평가·친밀도 추정" in policy
+    assert "부정·조건·시간 범위·대상" in policy
+    assert "한 항목에는 한 핵심 내용" in policy
+
+
+def test_parser_preserves_concise_memory_with_scope_and_negation():
+    phrases = (
+        "모든 채널에서 답변을 짧게 받기를 원함",
+        "특정 주제는 동의 없이 언급하지 않기를 원함",
+    )
+    payload = {
+        "items": [
+            {
+                "content": content,
+                "kind": "preference" if index == 0 else "boundary",
+                "disclosure": "global",
+                "confidence": 0.98,
+                "source_message_ids": ["101"],
+            }
+            for index, content in enumerate(phrases)
+        ],
+    }
+
+    parsed = parse_shadow_extraction(
+        json.dumps(payload, ensure_ascii=False),
+        allowed_source_ids={"101"},
+    )
+
+    assert parsed.valid
+    assert [item.content for item in parsed.items] == list(phrases)
+    assert all(item.source_message_ids == ("101",) for item in parsed.items)
+    assert all(item.disclosure == MemoryDisclosure.GLOBAL for item in parsed.items)
+
+
 def test_persist_shadow_items_suppresses_exact_retry_duplicates():
     store = Store(":memory:")
     scope = Scope(None, 10, 100)
