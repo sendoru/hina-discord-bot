@@ -158,3 +158,62 @@ async def test_shadow_backpressure_sends_original_immediately():
     finally:
         gate.set()
         await repair.close()
+
+
+@pytest.mark.asyncio
+async def test_answer_pipeline_applies_repair_before_persisted_discord_reply():
+    """Integration: two provider requests, only corrected text returned to bot."""
+    import json
+
+    import httpx
+    from openai import AsyncOpenAI
+
+    from hina_bot.ai.runtime_llm import LLM
+    from hina_bot.core.routing import Scope
+
+    requests = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        text = "좋아 [1]" if len(requests) == 1 else "좋아"
+        return httpx.Response(200, json={
+            "id": f"resp_{len(requests)}",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": body["model"],
+            "output": [{
+                "id": "msg_1", "type": "message", "role": "assistant",
+                "status": "completed",
+                "content": [{
+                    "type": "output_text", "text": text, "annotations": [],
+                }],
+            }],
+        })
+
+    client = AsyncOpenAI(
+        api_key="test",
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    settings = Settings(
+        discord_token="token", openai_api_key="test", provider="openai",
+        model="answer-model", fast_model="small-model",
+        output_repair_mode="active", output_repair_model="auto",
+        usage_log_path="", chat_web_search=False,
+    )
+    llm = LLM(settings, client=client)
+    store = Store(":memory:")
+    try:
+        answer = await llm.answer(store, Scope(None, 10, 100), "사용자", "히나야 반가워")
+        assert answer == "좋아"
+        assert len(requests) == 2
+        assert requests[0]["model"] == "answer-model"
+        assert requests[1]["model"] == "small-model"
+        assert requests[1]["input"] == "좋아 [1]"
+        assert "tools" not in requests[1]
+        assert "current_speaker" not in str(requests[1])
+        assert "lore_reference" not in str(requests[1])
+    finally:
+        await llm.close()
+        store.close()
