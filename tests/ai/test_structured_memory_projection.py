@@ -1,6 +1,4 @@
 import json
-from tests.reference_blocks import read_reference_context
-
 
 import httpx
 import pytest
@@ -18,6 +16,7 @@ from hina_bot.core.config import Settings
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from tests.reference_blocks import read_reference_context
 
 
 def _response():
