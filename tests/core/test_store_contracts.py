@@ -88,14 +88,16 @@ def test_atomic_memory_batch_is_invisible_until_commit_and_rolls_back(store):
     database_path = store.db.execute("PRAGMA database_list").fetchone()[2]
     observer = sqlite3.connect(database_path)
     try:
-        with pytest.raises(RuntimeError, match="abort batch"):
-            with store.atomic_memory_batch(scope, pending, expected_cursor=0):
-                store.add_memory_item(
-                    scope, "preference", kind="preference", disclosure="local",
-                    source_message_ids=("101",),
-                )
-                assert observer.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0] == 0
-                raise RuntimeError("abort batch")
+        with (
+            pytest.raises(RuntimeError, match="abort batch"),
+            store.atomic_memory_batch(scope, pending, expected_cursor=0),
+        ):
+            store.add_memory_item(
+                scope, "preference", kind="preference", disclosure="local",
+                source_message_ids=("101",),
+            )
+            assert observer.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0] == 0
+            raise RuntimeError("abort batch")
         assert store.memory_items(100) == []
         assert store.memory_extraction_cursor(scope) == 0
         assert store.db.execute("SELECT COUNT(*) FROM memory_extraction_batches").fetchone()[0] == 0
