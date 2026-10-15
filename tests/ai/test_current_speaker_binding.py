@@ -5,12 +5,12 @@ import pytest
 from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
+from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.request_assembly import CURRENT_INTERACTION_POLICY, CURRENT_SPEAKER_POLICY
 from hina_bot.core.config import Settings
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from tests.reference_blocks import read_reference_context
 
 
 def _response():
