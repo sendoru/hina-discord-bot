@@ -56,7 +56,7 @@ def reference_context_blocks(context: dict) -> list[dict]:
 def read_reference_context(content) -> dict:
     """Reconstruct reference fields for validation and debugging of input parts."""
     if isinstance(content, str):
-        return json.loads(content.split("\\n", 1)[1])
+        return json.loads(content.splitlines()[1])
     merged = {}
     for block in content:
         if (
@@ -64,7 +64,7 @@ def read_reference_context(content) -> dict:
             and block.get("type") == "input_text"
             and str(block.get("text") or "").startswith(REFERENCE_PREFIX)
         ):
-            section = json.loads(block["text"].split("\\n", 1)[1])
+            section = json.loads(block["text"].splitlines()[1])
             overlap = merged.keys() & section.keys()
             if overlap:
                 raise ValueError("Duplicate reference fields: " + ", ".join(sorted(overlap)))
