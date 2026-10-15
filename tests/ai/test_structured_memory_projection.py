@@ -5,6 +5,7 @@ import pytest
 from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
+from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.structured_memory_context import (
     aggregate_owner_relationship_evidence,
     aggregate_relationship_evidence,
@@ -16,7 +17,6 @@ from hina_bot.core.config import Settings
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from tests.reference_blocks import read_reference_context
 
 
 def _response():
