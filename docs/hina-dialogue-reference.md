@@ -1,8 +1,103 @@
-# 일반 히나 대사 기반 화법 참고 — 2026-10-15
+# 히나 화법 참고 — 실제 한국어 스토리·모모톡 대사 조사
 
-기준 main: `874ae755a7a9bcdec8330512f2573e6b72af9dcc`.
-런타임 변경은 `prompts/hina.md` 말미의 짧은 한국어 대사 발췌 9개, 사용 지침, 별도로 확인한 스토리 대화 전개 5가지 요약입니다.
-이 문서는 개발자용 조사 기록이며 모델에 주입하지 않습니다.
+## 현행 선정 (2026-10-15)
+
+기존의 카페/로비 짧은 음성 발췌 9개와 일본어 스토리 장면의 한국어 요약 5개를 교체했습니다. **현재 캐릭터 프롬프트에는 한국어 스토리·모모톡에서 직접 검증한 짧은 대사 13개**만 있습니다. 인물 관계나 기존 lore 자료를 바꾸는 작업은 아닙니다.
+
+- **출처:** [ba-archive/blue-archive](https://github.com/ba-archive/blue-archive), 고정 커밋 `4ddc9ee241f6028d724346acda190155dc98aaf6`. **비공식 게임 데이터 미러**입니다. 공식 한국어 클라이언트를 직접 켜서 검증했다고 주장하지 않습니다.
+- 인연/메인 스토리는 `content[index].ScriptKr`의 화자 이름과 발화를 사용합니다. `TextKr`가 공란이어도 `ScriptKr`에 한국어 텍스트가 있습니다. `#3;em`, `#wait` 등 연출 명령은 발화가 아닙니다.
+- 모모톡은 `10004.yml`의 `MessageKR` 가운데 `CharacterId=10004`이며 `MessageCondition != Answer`인 히나의 메시지입니다. **선생님의 선택 답변은 제외**했습니다.
+- `히나 잠옷`은 동일 캐릭터의 특정 장면에 해당하지만 해당 장면의 감정·접촉·사건은 일반화하지 않습니다. `히나타`는 다른 사람입니다.
+- 대사는 발화 습관을 위한 참고용입니다. 그 문장을 반복하거나 선생님 관계·당시의 직무·신체 상황을 모든 사용자에게 전이하지 않습니다.
+
+## 선정 대사 13개: 근거와 발화 맥락
+
+| 말투에 참고할 특성 | 원문 (파일 및 위치) | 활용 범위 |
+| --- | --- | --- |
+| 판단·지시 | [main·content[1]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/main/33200.json#L39) | 위기 속 업무 |
+| 협력 수락 | [main·content[12]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/main/33200.json#L239) | 위기 속 업무 |
+| 의견 인정 | [f42·content[50]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100042.json#L922) | 인연 스토리의 대화 |
+| 판단 이유 설명 | [f42·content[52]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100042.json#L958) | 인연 스토리의 대화 |
+| 다른 취향 존중 | [f45·content[47]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json#L868) | 인연 스토리의 대화 |
+| 자연스러운 제안 | [f45·content[48]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json#L886) | 인연 스토리의 대화 |
+| 피로를 짧게 설명 | [f46·content[10]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100046.json#L201) | 인연 스토리의 대화 |
+| 사소한 수긍 | [f46·content[17]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100046.json#L327) | 인연 스토리의 대화 |
+| 사과를 누그러뜨림 | [f48·content[70]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100048.json#L1282) | 인연 스토리의 대화 |
+| 낯선 활동 수용 | [f415·content[138]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/1000415.json#L2508) | 사적 인연 장면 |
+| 상대 수면시간 배려 | [momo·content[5]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml#L157) | 모모톡 대화 |
+| 자신의 작은 바람 | [momo·content[18]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml#L399) | 모모톡 대화 |
+| 감정 표현 정정 | [momo·content[80]](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml#L1541) | 모모톡 대화 |
+
+링크가 가리키는 각 `ScriptKr` 또는 `MessageKR`가 프롬프트 발췌의 원문입니다. 여러 행을 조합하거나 임의로 한국어 번역을 새로 만들지 않았습니다. 문장부호와 말줄임표도 원본을 유지했습니다.
+
+## 검토 후보 전체 — 기존 음성 자료와 별도의 한국어 대사 후보
+
+| 자료 | 원문 데이터 항목 | 선정 여부·사유 |
+| --- | --- | --- |
+| main | [main:1](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/main/33200.json) (`content[1]` 또는 `MessageKR` 1) | 채택 |
+| main | [main:12](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/main/33200.json) (`content[12]` 또는 `MessageKR` 12) | 채택 |
+| main | [main:18](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/main/33200.json) (`content[18]` 또는 `MessageKR` 18) | 제외 — 단문 |
+| f42 | [f42:13](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100042.json) (`content[13]` 또는 `MessageKR` 13) | 제외 — 사과 중복 |
+| f42 | [f42:19](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100042.json) (`content[19]` 또는 `MessageKR` 19) | 제외 — 장면 농담 |
+| f42 | [f42:33](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100042.json) (`content[33]` 또는 `MessageKR` 33) | 제외 — 과도한 당황 |
+| f42 | [f42:40](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100042.json) (`content[40]` 또는 `MessageKR` 40) | 제외 — 긴 업무 설명 |
+| f42 | [f42:50](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100042.json) (`content[50]` 또는 `MessageKR` 50) | 채택 |
+| f42 | [f42:52](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100042.json) (`content[52]` 또는 `MessageKR` 52) | 채택 |
+| f42 | [f42:53](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100042.json) (`content[53]` 또는 `MessageKR` 53) | 제외 — 관점 설명 중복 |
+| f42 | [f42:62](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100042.json) (`content[62]` 또는 `MessageKR` 62) | 제외 — 피로 중복 |
+| f43 | [f43:7](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100043.json) (`content[7]` 또는 `MessageKR` 7) | 제외 — 선생·장소 맥락 |
+| f43 | [f43:13](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100043.json) (`content[13]` 또는 `MessageKR` 13) | 제외 — 특별 관계 |
+| f43 | [f43:23](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100043.json) (`content[23]` 또는 `MessageKR` 23) | 제외 — 놀림 오해 |
+| f43 | [f43:40](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100043.json) (`content[40]` 또는 `MessageKR` 40) | 제외 — 가십 상황 |
+| f43 | [f43:42](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100043.json) (`content[42]` 또는 `MessageKR` 42) | 제외 — 시간 조정 |
+| f43 | [f43:45](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100043.json) (`content[45]` 또는 `MessageKR` 45) | 제외 — 상대 호칭에 의존 |
+| f45 | [f45:13](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json) (`content[13]` 또는 `MessageKR` 13) | 제외 — 업무 반복 |
+| f45 | [f45:29](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json) (`content[29]` 또는 `MessageKR` 29) | 제외 — 보편적 질문 |
+| f45 | [f45:39](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json) (`content[39]` 또는 `MessageKR` 39) | 제외 — 특정 물건 |
+| f45 | [f45:47](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json) (`content[47]` 또는 `MessageKR` 47) | 채택 |
+| f45 | [f45:48](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json) (`content[48]` 또는 `MessageKR` 48) | 채택 |
+| f45 | [f45:55](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json) (`content[55]` 또는 `MessageKR` 55) | 제외 — 취향 부정 중복 |
+| f45 | [f45:75](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json) (`content[75]` 또는 `MessageKR` 75) | 제외 — 자책 과잉 |
+| f45 | [f45:85](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json) (`content[85]` 또는 `MessageKR` 85) | 제외 — 음료 고정 |
+| f45 | [f45:92](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100045.json) (`content[92]` 또는 `MessageKR` 92) | 제외 — 나이·관계 맥락 |
+| f46 | [f46:10](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100046.json) (`content[10]` 또는 `MessageKR` 10) | 채택 |
+| f46 | [f46:15](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100046.json) (`content[15]` 또는 `MessageKR` 15) | 제외 — 장소 맥락 |
+| f46 | [f46:16](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100046.json) (`content[16]` 또는 `MessageKR` 16) | 제외 — 상황 한정 농담 |
+| f46 | [f46:17](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100046.json) (`content[17]` 또는 `MessageKR` 17) | 채택 |
+| f46 | [f46:38](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100046.json) (`content[38]` 또는 `MessageKR` 38) | 제외 — 특별 상대 맥락 |
+| f48 | [f48:22](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100048.json) (`content[22]` 또는 `MessageKR` 22) | 제외 — 도움 거절 장면 |
+| f48 | [f48:67](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100048.json) (`content[67]` 또는 `MessageKR` 67) | 제외 — 업무 고정 |
+| f48 | [f48:70](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100048.json) (`content[70]` 또는 `MessageKR` 70) | 채택 |
+| f48 | [f48:73](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100048.json) (`content[73]` 또는 `MessageKR` 73) | 제외 — 독백 |
+| f48 | [f48:76](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/100048.json) (`content[76]` 또는 `MessageKR` 76) | 제외 — 친밀감 전이 |
+| f415 | [f415:18](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/1000415.json) (`content[18]` 또는 `MessageKR` 18) | 제외 — 보지 못한 외형 단서 |
+| f415 | [f415:33](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/1000415.json) (`content[33]` 또는 `MessageKR` 33) | 제외 — 특별 관계 |
+| f415 | [f415:85](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/1000415.json) (`content[85]` 또는 `MessageKR` 85) | 제외 — 식사 고정 |
+| f415 | [f415:131](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/1000415.json) (`content[131]` 또는 `MessageKR` 131) | 제외 — 수락 중복 |
+| f415 | [f415:138](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/story/favor/10004/1000415.json) (`content[138]` 또는 `MessageKR` 138) | 채택 |
+| momo | [momo:0](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[0]` 또는 `MessageKR` 0) | 제외 — 상대 호칭 고정 |
+| momo | [momo:4](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[4]` 또는 `MessageKR` 4) | 제외 — 장소 약속 |
+| momo | [momo:5](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[5]` 또는 `MessageKR` 5) | 채택 |
+| momo | [momo:6](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[6]` 또는 `MessageKR` 6) | 제외 — 배려 중복 |
+| momo | [momo:7](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[7]` 또는 `MessageKR` 7) | 제외 — 배려 중복 |
+| momo | [momo:10](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[10]` 또는 `MessageKR` 10) | 제외 — 짧은 감사 |
+| momo | [momo:16](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[16]` 또는 `MessageKR` 16) | 제외 — 특별 만남 |
+| momo | [momo:18](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[18]` 또는 `MessageKR` 18) | 채택 |
+| momo | [momo:28](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[28]` 또는 `MessageKR` 28) | 제외 — 감정 표현 과잉 |
+| momo | [momo:53](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[53]` 또는 `MessageKR` 53) | 제외 — 일정 약속 |
+| momo | [momo:70](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[70]` 또는 `MessageKR` 70) | 제외 — 업무 과잉 |
+| momo | [momo:80](https://github.com/ba-archive/blue-archive/blob/4ddc9ee241f6028d724346acda190155dc98aaf6/apps/blue-archive-story-viewer/public/config/yaml/momotalk/10004.yml) (`content[80]` 또는 `MessageKR` 80) | 채택 |
+
+## 프롬프트 길이 및 검증
+
+- 변경 후 `hina.md`: **3,590자 / UTF-8 8,633바이트**, 기존 11,000바이트 상한 이내. 기존 캐릭터 지침은 그대로 유지하며 화법 예시 영역만 교체했습니다.
+- 후보 **53개**, 선정 **13개**. 메인 스토리 2개, 인연 스토리 8개, 모모톡 3개입니다.
+- 출처 검증은 해당 비공식 저장소의 고정 리비전 및 한국어 발화 필드 기준으로 수행했습니다. 파일 내용 테스트와 실제 Gemini A/B 검증은 구별해야 합니다.
+- 예상 부작용: 대사 자체의 반복, 말줄임표 과잉, 선생님 호칭 전이, 특정 시점의 감정·업무 상황 과잉 재현. 동일 질문 세트로 기존 `evals/tone_cases.jsonl`과 실제 응답을 비교해야 합니다.
+
+## 이전 음성·일본어 장면 조사 (이력 자료)
+
+아래에는 과거 음성 대사 후보 30개, 일본어 전사 장면 5개를 그대로 보존합니다. **여기서 말하는 '현재 9개 채택'이나 과거 크기 수치는 현행 `hina.md`에 적용되지 않습니다.**
 
 ## 출처와 확인 수준
 
@@ -142,3 +237,4 @@ merge 전 품질 확인에서는 다음을 특히 봅니다.
 예상 부작용은 피로·쑥스러움의 과대표현, 단호한 업무 대사의 일상 전이, 도움 제안의 상투화,
 짧은 인용의 반복 및 관계 전이입니다. 기존 출력·관계 규칙과 새 참고 지침이 이를 줄이도록 구성했지만,
 코드 테스트만으로 말투 품질을 보장하지 않습니다.
+
