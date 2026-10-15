@@ -527,12 +527,27 @@ class HinaClient(BaseHinaClient):
             finally:
                 CURRENT_TURN_ID.reset(event_token)
 
+        # The routing decision is not the same as the message's addressee. An accepted
+        # bot message is always explicitly invoked; for humans, compare against routing
+        # with auto-reply disabled to distinguish a call from passive channel chatter.
+        trigger_kind = None
+        if text is not None:
+            explicit_call = bool(getattr(message.author, "bot", False)) or (
+                trigger_text(
+                    message,
+                    self.user.id,
+                    prefixes=self.settings.call_prefixes,
+                ) is not None
+            )
+            trigger_kind = "explicit" if explicit_call else "implicit"
+
         interaction_token = CURRENT_INTERACTION_CONTEXT.set(
             build_interaction_context(
                 message,
                 self.user.id,
                 replied,
                 include_mention_names=not strict_egress,
+                trigger_kind=trigger_kind,
             )
         )
         target_token = TARGET_CONTEXT.set(tuple(sampled))

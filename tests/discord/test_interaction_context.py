@@ -113,3 +113,13 @@ def test_third_party_only_mention_keeps_authoritative_self_identity_in_strict_mo
         "is_self": False,
     }]
 
+
+
+def test_trigger_kind_is_only_added_for_a_selected_reply():
+    message = NS(author=user(100, "사용자"), mentions=[])
+
+    assert "trigger_kind" not in build_interaction_context(message, 99)
+    for kind in ("implicit", "explicit"):
+        context = build_interaction_context(message, 99, trigger_kind=kind)
+        assert context["trigger_kind"] == kind
+        assert context["speaker"]["user_id"] == "100"
