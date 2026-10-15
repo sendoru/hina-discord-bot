@@ -53,7 +53,9 @@ def test_hoshino_regression_has_profiles_positive_year_comparison_and_direct_rel
     bundle = relation_bundle(grounded)
     selected = {item.candidate.candidate_id: item.candidate for item in bundle.relations}
     assert not bundle.facts
-    assert len(selected) == 5
+    # New reviewed relation evidence may be added without changing core required facts.
+    assert len(selected) >= 5
+    assert "canon.eden.hina_hoshino.reunion_and_cooperation" in selected
     hina = selected["canon.hina.basic.profile"]
     hoshino = selected["canon.hoshino.basic.profile"]
     comparison = selected["canon.hina_hoshino.same_school_year"]

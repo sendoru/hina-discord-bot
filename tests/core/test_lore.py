@@ -64,6 +64,23 @@ class LoreValidationTests(unittest.TestCase):
             with self.assertRaises(LoreValidationError):
                 validate_record(base | overrides, accepted=True)
 
+    def test_long_relationship_summary_and_timeline_are_allowed(self):
+        # Longer, grounded multi-scene relationships should not be rejected by
+        # arbitrary per-entry character caps.
+        summary = "히나가 직접 만난 이후 함께 대응한 사건의 맥락. " * 36
+        timeline = "대책위원회 편 이후, 에덴조약 편에서 재회하고 협력한 시점. " * 5
+        self.assertGreater(len(summary), 600)
+        self.assertGreater(len(timeline), 120)
+        value = record(
+            summary=summary, timeline=timeline,
+            semantic_text=summary,
+        )
+        self.assertEqual(validate_record(value, accepted=True), value)
+
+        for field in ("summary", "timeline", "semantic_text"):
+            with self.subTest(field=field), self.assertRaises(LoreValidationError):
+                validate_record(value | {field: "   "}, accepted=True)
+
     def test_load_rejects_duplicate_ids(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "lore.jsonl"
@@ -165,7 +182,8 @@ class LorePipelineTests(unittest.TestCase):
             "slug": "hina.test-fact", "summary": "히나는 시험 설정을 알고 있다.",
             "fact_type": "fact_direct", "keywords": ["시험 설정"], "subjects": ["히나"],
             "knowledge": "self", "reaction": "", "evidence": "장면 일부", "uncertainty": "",
-            "timeline": "테스트 장면", "kr_release_evidence": "한국 공지",
+            "timeline": "테스트 장면에서 시작해 그 후의 관계 변화까지 확인된 시점. " * 6,
+            "kr_release_evidence": "한국 공지",
         }]}
         response = NS(status="completed", output_text=json.dumps(parsed, ensure_ascii=False))
         fake_responses = NS(create=lambda **kwargs: response)
@@ -186,6 +204,7 @@ class LorePipelineTests(unittest.TestCase):
                 lore_pipeline.extract(NS(all=True, source_id=None, model="test-model"))
                 candidate = lore_pipeline.read_jsonl(queue_path)[0]
                 self.assertEqual(candidate["status"], "candidate")
+                self.assertEqual(candidate["timeline"], parsed["candidates"][0]["timeline"])
                 self.assertEqual(candidate["fact_type"], "fact_direct")
                 self.assertEqual(candidate["kr_release"], "pending")
                 with self.assertRaises(SystemExit):
