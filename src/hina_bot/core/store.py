@@ -977,24 +977,46 @@ class Store:
         return [self._decode_memory_item(row) for row in rows]
 
     def memory_reconciliation_candidates(self, scope: Scope, *, limit: int = 24):
-        """Return recent candidates without crossing another user's privacy boundary."""
+        """Return a bounded mix of active relationship and non-relationship items.
 
-        if scope.guild_id is None:
+        Both queries enforce ownership and disclosure space in SQL. Reserve half
+        of the slots for each group, then backfill unused slots by recency.
+        """
+
+        limit = max(0, int(limit))
+        if not limit:
+            return []
+        where = "user_id=? AND status='active'"
+        params: list[str] = [str(scope.user_id)]
+        if scope.guild_id is not None:
+            where += (
+                " AND origin_realm=?"
+                " AND (origin_public_at_capture=1 OR origin_channel_id=?)"
+            )
+            params.extend((scope.realm, str(scope.channel_id)))
+
+        def read(relationship: bool):
+            condition = "kind='relationship'" if relationship else "kind!='relationship'"
             rows = self.db.execute(
-                """SELECT * FROM memory_items
-                   WHERE user_id=? AND status='active'
-                   ORDER BY id DESC LIMIT ?""",
-                (str(scope.user_id), int(limit)),
+                f"SELECT * FROM memory_items WHERE {where} AND {condition}"
+                " ORDER BY id DESC LIMIT ?",
+                (*params, limit),
             ).fetchall()
-        else:
-            rows = self.db.execute(
-                """SELECT * FROM memory_items
-                   WHERE user_id=? AND status='active' AND origin_realm=?
-                     AND (origin_public_at_capture=1 OR origin_channel_id=?)
-                   ORDER BY id DESC LIMIT ?""",
-                (str(scope.user_id), scope.realm, str(scope.channel_id), int(limit)),
-            ).fetchall()
-        return [self._decode_memory_item(row) for row in reversed(rows)]
+            return rows
+
+        factual, relationships = read(False), read(True)
+        half = limit // 2
+        chosen = factual[:half] + relationships[:limit - half]
+        remaining = factual[half:] + relationships[limit - half:]
+        chosen.extend(
+            sorted(remaining, key=lambda row: int(row["id"]), reverse=True)[
+                :limit - len(chosen)
+            ]
+        )
+        return [
+            self._decode_memory_item(row)
+            for row in sorted(chosen, key=lambda row: int(row["id"]))
+        ]
 
     def add_memory_reconciliation_proposal(
         self,
@@ -1097,10 +1119,15 @@ class Store:
         row = self.db.execute(
             """SELECT p.*,
                       n.kind AS new_kind,n.status AS new_status,
+                      n.disclosure AS new_disclosure,
+                      n.origin_public_at_capture AS new_public,
+                      n.relationship_evidence AS new_evidence,
                       n.superseded_by AS new_superseded_by,
                       n.origin_realm AS new_origin_realm,
                       n.origin_channel_id AS new_origin_channel_id,
                       t.kind AS target_kind,t.status AS target_status,
+                      t.disclosure AS target_disclosure,
+                      t.relationship_evidence AS target_evidence,
                       t.superseded_by AS target_superseded_by,
                       t.origin_realm AS target_origin_realm,
                       t.origin_channel_id AS target_origin_channel_id,
@@ -1120,13 +1147,23 @@ class Store:
             return "conflict_deferred"
         if float(row["confidence"]) < threshold:
             return "below_threshold"
-        if (
-            str(row["new_kind"]) == MemoryKind.RELATIONSHIP.value
-            or str(row["target_kind"]) == MemoryKind.RELATIONSHIP.value
-        ):
-            return "relationship_deferred"
         if str(row["new_kind"]) != str(row["target_kind"]):
             return "kind_mismatch"
+        # Relationship corrections and differing evidence are observations,
+        # not interchangeable facts. Only exact-evidence duplicates from
+        # the same origin/disclosure can be automatically superseded.
+        if (
+            str(row["new_kind"]) == MemoryKind.RELATIONSHIP.value
+            and (
+                relation != "duplicate"
+                or str(row["new_origin_realm"]) != str(row["target_origin_realm"])
+                or str(row["new_origin_channel_id"]) != str(row["target_origin_channel_id"])
+                or bool(row["new_public"]) != bool(row["target_public"])
+                or str(row["new_disclosure"]) != str(row["target_disclosure"])
+                or json.loads(row["new_evidence"] or "{}") != json.loads(row["target_evidence"] or "{}")
+            )
+        ):
+            return "relationship_deferred"
 
         if (
             str(row["new_origin_realm"]) != str(row["origin_realm"])

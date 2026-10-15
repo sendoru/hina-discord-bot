@@ -89,6 +89,12 @@ a time (`STRUCTURED_MEMORY_EVERY=4`).
 - unknown source ids, invalid enums/confidence, overlong content, malformed JSON, and provenance-less
   rows are rejected instead of repaired,
 - exact retry duplicates are suppressed,
+- identical content/kind/disclosure/evidence in the same origin channel with the same
+  public-at-capture visibility is suppressed even when it occurs in a later batch;
+  different relationship evidence is retained as a separate observation,
+- memory candidates now reserve space for relationship and non-relationship items
+  before ranking the bounded 24-item extraction context by simple textual overlap;
+  overlap never authorizes memory access or decides whether an item is a duplicate,
 - a valid `{"items":[]}` result advances the structured cursor, while API failures, empty responses,
   malformed top-level JSON, or storage failures leave the batch pending for retry,
 - structured extraction, personal summary, and shared summary run as separate memory tasks so failures
@@ -120,10 +126,13 @@ any realm/channel owned by that user. The extractor may propose exactly one rela
 Every proposal is still retained in `memory_reconciliation_proposals` for inspection. The first
 automatic lifecycle policy is intentionally conservative:
 
-- only non-`relationship` items with matching `kind` are eligible,
+- matching `kind` is required; relationship duplicates are eligible only when
+  both items share the exact origin realm, channel, capture visibility, disclosure
+  and numeric evidence, while relationship corrections and different evidence
+  observations remain review-only,
 - relation confidence must be at least `0.95`,
 - high-confidence `duplicate` supersedes the newly extracted duplicate and keeps the existing target
-  active,
+  active; exact same-scope canonical-content duplicates can be skipped before insert,
 - high-confidence explicit `corrects` supersedes the old target and keeps the new item active,
 - `conflicts`, relationship-memory proposals, lower-confidence proposals, and kind mismatches remain
   observation-only.
@@ -196,8 +205,10 @@ reconstructing concrete past events, locations, names, or conversation content f
 Owner-DM reads and relationship aggregation, same-space relationship reads, and cross-space
 relationship aggregation consume active items only, so superseded observations do not remain
 simultaneously visible.
-Deferred conflicts and relationship proposals intentionally remain active until a later policy can resolve
-them safely.
+Deferred conflicts and relationship corrections or evidence-mismatched duplicates
+remain active until a later policy can resolve them safely. New same-evidence
+relationship duplicates are automatically superseded, preserving the profile
+projection because only the existing observation contributes.
 
 ## Phase 4: reference-gated factual recall
 
