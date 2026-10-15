@@ -76,4 +76,4 @@ def test_empty_and_new_context_keys_are_not_silently_dropped():
     }
     blocks = reference_context_blocks(context)
     assert read_reference_context(blocks) == context
-    assert len(blocks) == 4
+    assert len(blocks) == 5
