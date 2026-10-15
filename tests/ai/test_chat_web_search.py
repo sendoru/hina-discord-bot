@@ -1,5 +1,7 @@
 import json
 from dataclasses import replace
+from tests.reference_blocks import read_reference_context
+
 
 import httpx
 import pytest
@@ -108,7 +110,7 @@ async def test_relation_question_still_searches_with_one_local_fact(chat_llm):
         await llm.answer(store, Scope(None, 20, 100), "사용자", "나기사 만나본 적 있어?")
         payload = calls[-1]
         assert_auto_web_with_code(payload)
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
         assert reference["lore_reference"][0]["reference"] == "test.hina.nagisa.meeting"
     finally:
         store.close()
