@@ -5,6 +5,7 @@ import pytest
 from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
+from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.structured_memory_context import (
     aggregate_owner_relationship_evidence,
     aggregate_relationship_evidence,
@@ -47,7 +48,7 @@ def _client(calls):
 
 
 def _reference(call):
-    return json.loads(call["input"][0]["content"].split("\n", 1)[1])
+    return read_reference_context(call["input"][0]["content"])
 
 
 def test_owner_dm_memory_contains_every_owner_item_and_no_other_user_item():

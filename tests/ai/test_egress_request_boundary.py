@@ -4,6 +4,7 @@ import httpx
 import pytest
 from openai import AsyncOpenAI
 
+from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.core.config import Settings
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
@@ -127,7 +128,7 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
             channel_context=channel_context,
         )
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         serialized = json.dumps(reference, ensure_ascii=False)
         assert "MY-DIRECT" in serialized

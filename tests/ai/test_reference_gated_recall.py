@@ -4,6 +4,7 @@ import httpx
 import pytest
 from openai import AsyncOpenAI
 
+from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.reference_gated_recall import (
     detect_explicit_self_reference,
     plan_reference_gated_recall,
@@ -45,7 +46,7 @@ def _client(calls):
 
 
 def _reference(call):
-    return json.loads(call["input"][0]["content"].split("\n", 1)[1])
+    return read_reference_context(call["input"][0]["content"])
 
 
 @pytest.mark.parametrize(

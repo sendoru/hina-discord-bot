@@ -6,6 +6,7 @@ import httpx
 import pytest
 from openai import AsyncOpenAI
 
+from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
@@ -53,7 +54,7 @@ async def test_full_mode_includes_static_prefix_and_dynamic_refs_without_embeddi
         assert "소라사키 히나는 게헨나 학원 3학년" in instructions
         # Audience-only material must not become Hina's supposed memory.
         assert "아코는 과로한 히나에게 휴식이 필요하다고 판단해" not in instructions
-        context = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        context = read_reference_context(payload["input"][0]["content"])
         assert any("테스트 전용 동적 지식" in str(ref)
                    for ref in context["lore_reference"])
         rows = [json.loads(line) for line in usage_path.read_text().splitlines()]

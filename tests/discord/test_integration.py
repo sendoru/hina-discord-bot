@@ -14,6 +14,7 @@ try:
 except ModuleNotFoundError:
     AVAILABLE = False
 
+from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 
@@ -60,7 +61,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         self.store.add(scope, 2, "new", "reply")
         await self.llm.answer(self.store, scope, "name", "current-question")
         payload = self.calls[-1]["input"]
-        reference = json.loads(payload[0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload[0]["content"])
         self.assertEqual(
             [row["role"] for row in reference["conversation_history"]],
             ["user", "assistant"],
@@ -154,7 +155,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         payload = self.calls[-1]
         self.assertNotIn(attack, payload["instructions"])
         self.assertEqual([item["role"] for item in payload["input"]], ["user", "user"])
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
         self.assertEqual(reference["conversation_history"][0]["content"], attack)
         self.assertEqual(reference["conversation_history"][1]["role"], "assistant")
         self.assertIn("신뢰할 수 없는", payload["instructions"])
@@ -170,7 +171,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         await self.llm.answer(self.store, Scope(None, 20, 100), "사용자",
                               "마코토와 이로하는 어느 조직이야?")
         payload = self.calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
         lore = reference["lore_reference"]
         self.assertEqual(lore[0]["reference"], "test.organization.pandemonium")
         self.assertEqual(lore[0]["kind"], "world_fact")
@@ -185,7 +186,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         }])
         await self.llm.answer(self.store, Scope(None, 20, 100), "사용자",
                               "히나야 머리가 왜 이렇게 크니")
-        reference = json.loads(self.calls[-1]["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(self.calls[-1]["input"][0]["content"])
         lore = json.dumps(reference["lore_reference"], ensure_ascii=False)
         self.assertIn("optional_reaction", lore)
         self.assertNotRegex(lore, "공식|커뮤니티|밈|meme")
