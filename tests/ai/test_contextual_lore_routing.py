@@ -1,4 +1,6 @@
 import json
+from tests.reference_blocks import read_reference_context
+
 
 import httpx
 import pytest
@@ -57,7 +59,7 @@ async def test_lore_followup_uses_previous_entity_but_keeps_visible_message():
     try:
         await llm.answer(store, scope, "사용자", "그럼 걔는 히나랑 만난 적 있어?")
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
         refs = [row.get("reference") for row in reference["lore_reference"]]
         assert "canon.test.kayoko.hina" in refs
         assert payload["input"][-1]["content"] == "그럼 걔는 히나랑 만난 적 있어?"
@@ -116,7 +118,7 @@ async def test_rag_mode_controls_actual_lore_execution_and_context(mode, expect_
     try:
         await llm.answer(store, scope, "사용자", "히나야 생일 언제야?")
         payload = seen[-1]
-        context = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        context = read_reference_context(payload["input"][0]["content"])
         refs = {row.get("reference") for row in context["lore_reference"]}
         assert ("canon.hina.birthday" in refs) is expect_lore
         assert ("[검수된 정적 설정 자료" in payload["instructions"]) is (mode == "full")
