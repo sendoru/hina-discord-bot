@@ -104,9 +104,9 @@ C16–C17의 괄호 독백을 상대에게 직접 말하는 대사로 바꾸지 
 
 ## 크기, 캐시, 구조
 
-- 캐릭터: 2,850 → 3,224 characters, UTF-8 6,894 → 7,758 bytes.
-- 증가: 374 characters / 864 bytes. 기존 11,000-byte 상한 유지.
-- 기존 budget test와 동일한 정적 합산: 일반 관계 8,524, 특별 DM 8,565 characters.
+- 캐릭터: 2,850 → 3,675 characters, UTF-8 6,894 → 8,829 bytes.
+- 증가: 825 characters / 1,935 bytes. 기존 11,000-byte 상한 유지.
+- 기존 budget test와 동일한 정적 합산: 일반 관계 8,975, 특별 DM 9,016 characters.
   두 모드 모두 10,000-character 상한 이내입니다. 실제 provider token 수는 측정하지 않았습니다.
 - `LLM.__init__`가 캐릭터 파일을 읽고 `request_assembly.py`가 정적 지침에 조립하는 경로를 유지합니다.
   배포 후 프로세스 재시작이 필요하며 `prompt_path` 외부 파일 override 사용 시 이 기본 파일 변경은 적용되지 않습니다.
@@ -115,9 +115,11 @@ C16–C17의 괄호 독백을 상대에게 직접 말하는 대사로 바꾸지 
 - 관계 프롬프트, POLICY, lore 데이터·검색·compact/full 구성, 캐시 구현을 바꾸지 않습니다.
   조사 표·URL·고유명사·이벤트 세부 맥락은 상시 prompt에 추가하지 않습니다.
 
+최근 main의 lore `summary`·`timeline`·`semantic_text` 길이 제한 완화는 이 캐릭터 프롬프트 경로와 무관합니다. 이 변경은 `hina.md`의 별도 크기 상한 및 상시 static prompt 예산 내에서 구성했습니다.
+
 ## 검증과 남은 품질 확인
 
-도구 내 JavaScript로 위 크기 합산, 9개 발췌의 S1 문자열 포함, 후보 ID/개수,
+도구 내 JavaScript로 UTF-8 크기, 최신 main의 정적 프롬프트와 합산, 9개 발췌의 S1 문자열 포함, 후보 ID/개수,
 중복 예시 및 금지된 lore 고유명사 부재를 검사합니다. 저장소에 의미 없는 문자열 고정 테스트는 추가하지 않습니다.
 로컬 shell은 프로세스를 만들지 못했고 Node 실행 도구도 작업 경로 오류로 시작하지 못했습니다.
 따라서 Python 테스트를 로컬에서 실행했다고 주장하지 않습니다.
