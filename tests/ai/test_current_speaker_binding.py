@@ -1,4 +1,6 @@
 import json
+from tests.reference_blocks import read_reference_context
+
 
 import httpx
 import pytest
@@ -85,7 +87,7 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
         )
 
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         assert reference["current_speaker"] == {
             "user_id": "222",
@@ -158,7 +160,7 @@ async def test_active_reply_chain_is_structured_separately_from_ambient_context(
             channel_context=[ambient, *chain],
         )
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         assert [row["message_id"] for row in reference["active_reply_chain"]] == [
             "1", "2", "3"
@@ -214,7 +216,7 @@ async def test_other_users_taunt_cannot_become_current_speakers_personal_continu
         )
 
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
         taunt, reply = reference["channel_recent_messages"]
 
         assert taunt["is_current_speaker"] is False
@@ -281,7 +283,7 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
             "<@200>야, <@99> 좀 쓰다듬어줘",
         )
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         assert reference["current_interaction"] == interaction
         assert CURRENT_INTERACTION_POLICY.strip() in payload["instructions"]
@@ -337,7 +339,7 @@ async def test_verified_current_user_mention_can_be_reused_when_explicitly_reque
     try:
         await llm.answer(store, scope, "사용자", "<@200> 불러줘")
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         assert reference["current_interaction"]["mentions"][0]["user_id"] == "200"
         assert CURRENT_INTERACTION_POLICY.strip() in payload["instructions"]
@@ -389,7 +391,7 @@ async def test_plain_explicit_reply_is_always_split_into_active_reply_chain():
             channel_context=channel_context,
         )
         payload = calls[-1]
-        reference = json.loads(payload["input"][0]["content"].split("\n", 1)[1])
+        reference = read_reference_context(payload["input"][0]["content"])
 
         assert [row["message_id"] for row in reference["active_reply_chain"]] == ["10"]
         assert [row["message_id"] for row in reference["channel_recent_messages"]] == ["11"]
