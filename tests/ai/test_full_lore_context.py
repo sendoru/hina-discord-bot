@@ -1,6 +1,4 @@
 """End-to-end proof that full mode bypasses static retrieval and keeps runtime scope."""
-from tests.reference_blocks import read_reference_context
-
 
 import json
 
@@ -12,6 +10,7 @@ from hina_bot.ai.runtime_llm import LLM
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from tests.reference_blocks import read_reference_context
 
 
 @pytest.mark.asyncio
