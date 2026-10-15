@@ -1,4 +1,6 @@
 import json
+from tests.reference_blocks import read_reference_context
+
 
 import httpx
 import pytest
@@ -45,7 +47,7 @@ def _client(calls):
 
 
 def _reference(call):
-    return json.loads(call["input"][0]["content"].split("\n", 1)[1])
+    return read_reference_context(call["input"][0]["content"])
 
 
 @pytest.mark.parametrize(
