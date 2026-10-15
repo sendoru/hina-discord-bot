@@ -200,7 +200,7 @@ async def test_answer_pipeline_applies_repair_before_persisted_discord_reply():
         discord_token="token", openai_api_key="test", provider="openai",
         model="answer-model", fast_model="small-model",
         output_repair_mode="active", output_repair_model="auto",
-        usage_log_path="", chat_web_search=False,
+        usage_log_path="", db_path=":memory:", chat_web_search=False,
     )
     llm = LLM(settings, client=client)
     store = Store(":memory:")
