@@ -1,4 +1,6 @@
 import json
+from tests.reference_blocks import read_reference_context
+
 
 import httpx
 import pytest
@@ -47,7 +49,7 @@ def _client(calls):
 
 
 def _reference(call):
-    return json.loads(call["input"][0]["content"].split("\n", 1)[1])
+    return read_reference_context(call["input"][0]["content"])
 
 
 def test_owner_dm_memory_contains_every_owner_item_and_no_other_user_item():
