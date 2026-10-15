@@ -14,9 +14,9 @@ try:
 except ModuleNotFoundError:
     AVAILABLE = False
 
+from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from tests.reference_blocks import read_reference_context
 
 if AVAILABLE:
     from hina_bot.ai.information_pipeline import LLM
