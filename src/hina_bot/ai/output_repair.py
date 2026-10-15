@@ -46,6 +46,12 @@ def _acceptable(original: str, candidate: str) -> bool:
         return candidate == original
     if len(candidate) > len(original) + 32:
         return False
+    # Tiny replies can be mostly a spurious citation. Allow exact deletion
+    # of suspicious markers or literal newline decoding even at low ratio.
+    if candidate == _SUSPECT_FORMAT.sub("", original).strip():
+        return True
+    if candidate == original.replace("\\\\n", "\\n").replace("\\\\r", "\\r"):
+        return True
     if len(candidate) < max(1, len(original) // 2):
         return False
     return difflib.SequenceMatcher(None, original, candidate).ratio() >= 0.82
