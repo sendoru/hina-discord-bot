@@ -520,7 +520,7 @@ async def test_production_wrapper_distinguishes_automatic_and_explicit_human_tur
     recorded = []
 
     async def capture_forwarded(_message):
-        recorded.append(CURRENT_INTERACTION_CONTEXT.get()["trigger_kind"])
+        recorded.append(CURRENT_INTERACTION_CONTEXT.get().get("trigger_kind"))
 
     with (
         patch("hina_bot.discord.web_bot.collect", new=AsyncMock(return_value=[])),
@@ -549,7 +549,7 @@ async def test_production_wrapper_distinguishes_automatic_and_explicit_human_tur
         ))
 
     assert recorded == [
-        "implicit", "explicit", "explicit", "explicit", "implicit",
+        "implicit", "explicit", "explicit", None, "explicit", "implicit",
     ]
     await client.close()
 
