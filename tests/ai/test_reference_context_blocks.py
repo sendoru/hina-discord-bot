@@ -4,8 +4,7 @@ from __future__ import annotations
 import json
 
 from hina_bot.ai.providers import _gemini_input
-from hina_bot.ai.reference_context_blocks import reference_context_blocks
-from tests.reference_blocks import read_reference_context
+from hina_bot.ai.reference_context_blocks import read_reference_context, reference_context_blocks
 
 
 def test_reference_parts_round_trip_all_sections_without_duplication():
