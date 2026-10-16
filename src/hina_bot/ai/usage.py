@@ -36,6 +36,25 @@ def _web_search_calls(response) -> int:
     return count
 
 
+def _url_context_fields(responses) -> dict:
+    """Provider-reported URL retrieval telemetry without logging actual URLs."""
+    calls = 0
+    statuses = {}
+    for response in responses:
+        for item in getattr(response, "output", None) or ():
+            item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
+            if item_type == "url_context_call":
+                calls += 1
+        for status in getattr(response, "_hina_url_context_statuses", ()) or ():
+            if status in {"success", "error", "paywall", "unsafe", "unknown"}:
+                statuses[status] = statuses.get(status, 0) + 1
+    return {
+        "url_context_calls": calls,
+        "url_context_used": calls > 0,
+        "url_context_status_counts": statuses,
+    }
+
+
 def _safe_string_list(values, *, limit: int = 16, max_chars: int = 64) -> list[str]:
     result = []
     for value in values or ():
@@ -269,6 +288,7 @@ class UsageLogger:
             "cached_tokens": 0,
             "reasoning_tokens": 0,
             "web_search_calls": 0,
+            "url_context_calls": 0,
             "usage_complete": True,
         }
 
@@ -286,6 +306,9 @@ class UsageLogger:
         web_calls = row.get("web_search_calls")
         if isinstance(web_calls, int):
             bucket["web_search_calls"] += web_calls
+        url_calls = row.get("url_context_calls")
+        if isinstance(url_calls, int):
+            bucket["url_context_calls"] += url_calls
 
     def _accumulate(self, row: dict):
         state = self._exchange.get()
@@ -399,6 +422,7 @@ class UsageLogger:
             web_calls = sum(_web_search_calls(item) for item in responses)
             row["web_search_calls"] = web_calls
             row["web_search_used"] = web_calls > 0
+            row.update(_url_context_fields(responses))
             row["api_attempts"] = len(responses)
 
         async def perform_request():
@@ -428,6 +452,7 @@ class UsageLogger:
                 **_response_diagnostic_fields(response),
                 web_search_calls=web_calls,
                 web_search_used=web_calls > 0,
+                **_url_context_fields(responses),
                 api_attempts=len(responses),
             )
             if cumulative_baseline is not None:
