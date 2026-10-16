@@ -14,7 +14,7 @@ from hina_bot.core.store import Store
 
 @pytest.fixture
 def store(tmp_path):
-    instance = Store(str(tmp_path / "contracts.sqlite3"), history_turns=2)
+    instance = Store.create(str(tmp_path / "contracts.sqlite3"), history_turns=2)
     try:
         yield instance
     finally:
@@ -157,7 +157,7 @@ def test_current_purge_contract_preserves_failure_and_batch_records(store, opera
 def test_reopening_store_preserves_schema_rows_and_autoincrement_high_water(tmp_path):
     path = str(tmp_path / "reopen.sqlite3")
     scope = Scope(None, 10, 100)
-    first = Store(path)
+    first = Store.create(path)
     try:
         first.add(scope, 101, "first", "reply")
         first.add(scope, 102, "second", "reply")
@@ -170,7 +170,7 @@ def test_reopening_store_preserves_schema_rows_and_autoincrement_high_water(tmp_
     finally:
         first.close()
 
-    second = Store(path)
+    second = Store.create(path)
     try:
         assert [tuple(row) for row in second.db.execute(
             "SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type,name"

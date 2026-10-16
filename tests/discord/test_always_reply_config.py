@@ -30,7 +30,7 @@ def _interaction(*, guild_id=1, channel_id=10, user_id=100):
 
 @pytest.fixture
 def config_context():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     startup = Settings(
         discord_token="test", openai_api_key="test",
         always_reply_channel_ids=frozenset({10, 20}),

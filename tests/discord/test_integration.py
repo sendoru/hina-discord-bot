@@ -47,7 +47,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
             Settings(discord_token="test", openai_api_key="test", summary_every=2, external_context_policy="full"),
             client=client,
         )
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
 
     async def asyncTearDown(self):
         await self.llm.close()
@@ -195,7 +195,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
 @unittest.skipUnless(AVAILABLE, "Install project dev dependencies to test SDK/Discord adapters")
 class AdapterTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
         self.llm = NS(answer=AsyncMock(return_value="안녕"), extract_structured_memory=AsyncMock(), summarize_shared=AsyncMock(), close=AsyncMock())
         self.tempdir = tempfile.TemporaryDirectory()
         self.event_path = Path(self.tempdir.name) / "events.jsonl"

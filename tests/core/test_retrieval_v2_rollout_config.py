@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from hina_bot.core.config import Settings, retrieval_v2_expected_backend_key
+from hina_bot.core.db_schema import prepare_connection
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
 
@@ -88,7 +89,7 @@ def test_active_startup_accepts_backend_matched_calibration(monkeypatch, tmp_pat
 
 
 def test_runtime_mode_is_immediate_rollback_switch():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(
             Settings(discord_token="token", openai_api_key="key"),
@@ -106,7 +107,7 @@ def test_runtime_mode_is_immediate_rollback_switch():
     finally:
         store.close()
 
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(
             Settings(
@@ -166,7 +167,7 @@ def test_rag_env_precedence_and_legacy_mapping(monkeypatch, tmp_path, rag, legac
 
 
 def test_rag_runtime_off_v1_shadow_and_legacy_alias_persist():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(
             Settings(discord_token="token", openai_api_key="key"), store
@@ -201,10 +202,10 @@ def test_rag_runtime_off_v1_shadow_and_legacy_alias_persist():
     [("off", "v1"), ("shadow", "shadow"), ("active", "v2")],
 )
 def test_old_database_override_is_migrated(previous, expected):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         store.db.execute(
-            """CREATE TABLE runtime_config (
+            """CREATE TABLE IF NOT EXISTS runtime_config (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -214,6 +215,8 @@ def test_old_database_override_is_migrated(previous, expected):
             "INSERT INTO runtime_config(key,value) VALUES (?,?)",
             ("retrieval_v2_mode", f'"{previous}"'),
         )
+        store.db.commit()
+        prepare_connection(store.db, ('settings',))
         settings = RuntimeSettings(
             Settings(discord_token="token", openai_api_key="key"), store
         )

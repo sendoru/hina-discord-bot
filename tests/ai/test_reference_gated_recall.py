@@ -79,7 +79,7 @@ def test_explicit_reference_detector_rejects_topical_or_third_party_mentions(tex
 
 
 def test_unique_single_anchor_can_authorize_one_cross_space_memory():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:
@@ -114,7 +114,7 @@ def test_unique_single_anchor_can_authorize_one_cross_space_memory():
 
 
 def test_bare_recall_question_does_not_open_memory_without_topic_anchor():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:
@@ -141,7 +141,7 @@ def test_bare_recall_question_does_not_open_memory_without_topic_anchor():
 
 
 def test_explicit_reference_with_unrelated_topic_does_not_open_memory():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:
@@ -168,7 +168,7 @@ def test_explicit_reference_with_unrelated_topic_does_not_open_memory():
 
 
 def test_ambiguous_single_anchor_does_not_guess_between_memories():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:
@@ -196,7 +196,7 @@ def test_ambiguous_single_anchor_does_not_guess_between_memories():
 
 
 def test_multiple_topic_anchors_select_only_best_matching_memory():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:
@@ -228,7 +228,7 @@ def test_multiple_topic_anchors_select_only_best_matching_memory():
 
 
 def test_current_channel_only_and_owner_dm_never_open_cross_space_gate():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:
@@ -263,7 +263,7 @@ def test_current_channel_only_and_owner_dm_never_open_cross_space_gate():
 
 
 def test_other_speaker_cannot_unlock_another_users_memory():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     owner_dm = Scope(None, 10, 100)
     other_server = Scope(1, 20, 200, True)
     try:
@@ -290,7 +290,7 @@ def test_other_speaker_cannot_unlock_another_users_memory():
 
 
 def test_same_space_reference_gated_memory_is_not_cross_space_recall_candidate():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     source = Scope(1, 20, 100, True)
     same_guild = Scope(1, 30, 100, True)
     try:
@@ -327,7 +327,7 @@ async def test_explicit_owner_reference_injects_only_related_authorized_memory()
         ),
         client=_client(calls),
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:
@@ -389,7 +389,7 @@ async def test_topic_without_explicit_reference_does_not_inject_cross_space_fact
         ),
         client=_client(calls),
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:
@@ -426,7 +426,7 @@ async def test_current_channel_scope_does_not_block_explicit_reference_gated_rec
         ),
         client=_client(calls),
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:

@@ -31,7 +31,7 @@ def write_rows(path, rows):
 
 def dashboard_client(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     scope = Scope(None, 10, 100)
     token = CURRENT_TURN_ID.set("trace-ui")
     try:

@@ -171,7 +171,7 @@ async def test_shared_empty_memory_advances_cursor_only_for_explicit_completed_r
 
     llm = _summary_llm(output)
     llm.usage.request.return_value.status = status
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 2, 100, public_at_capture=True)
     try:
         store.add_shared_call(scope, 10, "A", "안녕")

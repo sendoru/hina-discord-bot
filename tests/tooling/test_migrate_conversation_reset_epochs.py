@@ -15,7 +15,7 @@ from hina_bot.tooling.migrate_conversation_reset_epochs import (
 
 
 def _legacy_database(path, *, has_hash=False):
-    store = Store(str(path))
+    store = Store.create(str(path))
     scope = Scope(None, 10, 100)
     store.add(scope, 101, "original conversation", "original reply")
     store.add_memory_item(

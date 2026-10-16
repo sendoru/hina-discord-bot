@@ -16,7 +16,7 @@ from hina_bot.discord.admin_commands import execute_admin_command
 
 @pytest.mark.asyncio
 async def test_runtime_admin_command_uses_runtime_settings_and_side_effects():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     settings = RuntimeSettings(
         Settings(discord_token="test", channel_context_chars=6000),
         store,
@@ -58,7 +58,7 @@ async def test_runtime_admin_command_uses_runtime_settings_and_side_effects():
 
 def test_runtime_dashboard_post_only_enqueues_command(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     RuntimeSettings(Settings(discord_token="test"), store)
     store.close()
     settings = DashboardSettings(
@@ -99,7 +99,7 @@ def test_runtime_dashboard_post_only_enqueues_command(tmp_path):
 
 def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     settings = RuntimeSettings(
         Settings(
             discord_token="test",
@@ -110,6 +110,7 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
         ),
         store,
     )
+    settings.capture_startup_snapshot()
     settings.set_text("channel_context_chars", "4300")
     settings.set_text("CALL_PREFIXES", "히나야, 히나, 선도부장")
     store.close()
@@ -187,7 +188,7 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
 
 def test_runtime_collection_dashboard_posts_full_desired_value(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     RuntimeSettings(
         Settings(
             discord_token="test",

@@ -4,7 +4,7 @@ from hina_bot.core.store import Store
 
 
 def test_uses_exact_recent_turns_not_already_in_channel_context():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     try:
         store.add(scope, 1, "one", "reply one")
@@ -21,7 +21,7 @@ def test_uses_exact_recent_turns_not_already_in_channel_context():
 
 
 def test_dedup_does_not_backfill_older_turns():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     try:
         for i in range(1, 7):
@@ -40,7 +40,7 @@ def test_dedup_does_not_backfill_older_turns():
 
 
 def test_advanced_cursor_does_not_remove_exact_recent_tail():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     try:
         store.add(scope, 11, "before", "before reply")
@@ -55,7 +55,7 @@ def test_advanced_cursor_does_not_remove_exact_recent_tail():
 
 
 def test_caps_server_recent_context_at_four_turns():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     try:
         for i in range(1, 7):
@@ -67,7 +67,7 @@ def test_caps_server_recent_context_at_four_turns():
 
 
 def test_dm_does_not_use_server_recent_context():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 20, 100)
     try:
         store.add(scope, 21, "dm", "dm reply")

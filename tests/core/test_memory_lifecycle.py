@@ -3,6 +3,7 @@ import sqlite3
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, MemoryStatus
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.tooling.prepare_database import prepare_database
 
 
 def _pair(
@@ -72,7 +73,8 @@ def test_existing_memory_schema_migrates_to_active_lifecycle(tmp_path):
     db.commit()
     db.close()
 
-    store = Store(str(path))
+    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+    store = Store.create(str(path))
     try:
         columns = {
             row["name"] for row in store.db.execute("PRAGMA table_info(memory_items)")
@@ -87,7 +89,7 @@ def test_existing_memory_schema_migrates_to_active_lifecycle(tmp_path):
 
 
 def test_high_confidence_correction_supersedes_target():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         target_id, new_id, proposal_id = _pair(
@@ -111,7 +113,7 @@ def test_high_confidence_correction_supersedes_target():
 
 
 def test_high_confidence_duplicate_supersedes_new_item():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         target_id, new_id, proposal_id = _pair(
@@ -133,7 +135,7 @@ def test_high_confidence_duplicate_supersedes_new_item():
 
 
 def test_low_confidence_and_conflict_proposals_remain_active():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         low_target, low_new, low_proposal = _pair(
@@ -161,7 +163,7 @@ def test_low_confidence_and_conflict_proposals_remain_active():
 
 
 def test_relationship_reconciliation_is_not_auto_applied():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         target_id, new_id, proposal_id = _pair(
@@ -180,7 +182,7 @@ def test_relationship_reconciliation_is_not_auto_applied():
 
 
 def test_superseded_items_are_not_reconciliation_candidates():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         target_id, new_id, proposal_id = _pair(
@@ -199,7 +201,7 @@ def test_superseded_items_are_not_reconciliation_candidates():
 
 
 def test_reconciliation_application_is_idempotent():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         _, _, proposal_id = _pair(store, scope, relation="corrects")
@@ -299,7 +301,8 @@ def test_existing_active_superseded_constraint_migrates_for_retraction(tmp_path)
     db.commit()
     db.close()
 
-    store = Store(str(path))
+    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+    store = Store.create(str(path))
     try:
         item = store.memory_items(100)[0]
         assert item.id == 1
@@ -332,7 +335,8 @@ def test_existing_active_superseded_constraint_migrates_for_retraction(tmp_path)
         store.close()
 
     # Opening the migrated DB again must not rebuild or lose prior history.
-    reopened = Store(str(path))
+    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+    reopened = Store.create(str(path))
     try:
         assert reopened.memory_item(1).status == MemoryStatus.RETRACTED
         assert reopened.memory_item_edit_history(1)[0]["content"] == "previous content"
@@ -346,7 +350,7 @@ def test_existing_active_superseded_constraint_migrates_for_retraction(tmp_path)
 
 
 def test_retracted_item_is_excluded_from_runtime_and_retry_history():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         item_id = store.add_memory_item(
@@ -373,7 +377,7 @@ def test_retracted_item_is_excluded_from_runtime_and_retry_history():
 
 
 def test_retraction_rejects_stale_or_non_active_item():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         item_id = store.add_memory_item(

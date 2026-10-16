@@ -16,7 +16,7 @@ from hina_bot.dashboard.telemetry import TelemetryReader
 
 def test_shared_summary_cursor_and_origin_components_preserve_stored_data(tmp_path):
     database = tmp_path / "tables.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     guild = Scope(1489432315523502251, 1554321651473195059, 221977862859653120, True)
     dm = Scope(None, 456789012345678901, 221977862859653125)
     for index, scope in enumerate((guild, dm), 1):
@@ -98,7 +98,7 @@ def test_shared_summary_cursor_and_origin_components_preserve_stored_data(tmp_pa
 @pytest.mark.parametrize("guild_id", [1489432315523502251, None])
 def test_raw_scope_keys_are_limited_to_diagnostic_views(tmp_path, guild_id):
     database = tmp_path / "all-views.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     scope = Scope(guild_id, 1554321651473195059, 221977862859653120, True)
     old = store.add_memory_item(
         scope, "Relationship old", kind="relationship", disclosure="implicit",
