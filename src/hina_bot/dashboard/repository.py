@@ -87,6 +87,15 @@ class AdminRepository:
             ).fetchone()
         return dict(row) if row is not None else None
 
+    def admin_command_id_for_request(self, request_id: str) -> int | None:
+        if not self._table_exists("admin_commands"):
+            return None
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT id FROM admin_commands WHERE request_id=?", (request_id,)
+            ).fetchone()
+        return int(row["id"]) if row is not None else None
+
     def admin_command_rows(
         self,
         *,

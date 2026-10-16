@@ -3636,3 +3636,11 @@ pre {
     min-height: 36px;
   }
 }
+
+.memory-bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.memory-bulk-actions label, .memory-mobile-select { display: inline-flex; align-items: center; gap: 8px; }
+.memory-bulk-actions input[type="checkbox"], input.memory-select {
+  min-height: 20px; width: 20px; height: 20px; padding: 0; flex: 0 0 auto;
+}
+.memory-mobile-select { min-height: 44px; }
+[data-memory-bulk-feedback] { overflow-wrap: anywhere; }
