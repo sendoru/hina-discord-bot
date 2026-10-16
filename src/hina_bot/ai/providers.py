@@ -968,7 +968,7 @@ class _GeminiResponses:
             selected_api = "interactions"
         elif pinned_api in {"interactions", "generate_content"}:
             selected_api = pinned_api
-        elif not (web_tools or url_context_tools):
+        elif not web_tools:
             selected_api = "interactions"
         elif mode == "generate_content" or (mode == "auto" and self._circuit_open()):
             selected_api = "generate_content"
