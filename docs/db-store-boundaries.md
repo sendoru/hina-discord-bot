@@ -10,12 +10,17 @@ Baseline: main `6d009da981fe13e77f3bd0733bfe9308395d3e46`.
   failed turns, public calls and summaries, and existing per-scope retention.
 - `core/memory_repository.py`: structured items, revisions, retraction,
   reconciliation candidates/proposals, and lifecycle transitions.
+- `core/settings_repository.py`: notes, emojis, memory/chatlog overrides, runtime
+  configuration, startup snapshots, and legacy settings migration writes.
 - `core/store.py`: compatibility API, connection lifetime, extraction coordination
-  and cursor queries, multi-table purge operations, and remaining settings SQL.
+  and cursor queries, multi-table purge operations, and observed guild/channel metadata.
 
 Repositories share the Store connection. They do not construct a Store, create
-tables, own the connection, or start background work. There is no generic CRUD
-base class or ORM. Existing callers continue using Store.
+tables during construction, own the connection, or start background work.
+SettingsRepository exposes an explicit runtime schema initializer, still called
+only at the existing RuntimeSettings startup point. There is no generic CRUD
+base class or ORM. Store retains its existing settings methods; RuntimeSettings and shared/Discord
+chatlog policy use Store.settings for their persistence operations.
 
 MemoryRepository receives a name resolver and a write-context factory.
 The factory preserves standalone commits while joining Store's atomic extraction
@@ -63,3 +68,30 @@ regression baseline. The normal CI matrix runs Python 3.11, 3.12, and 3.13.
 No production data migration is required by this code move. Future migrations
 must preserve IDs, AUTOINCREMENT high-water marks, provenance, revisions, and
 cursor semantics, and be rehearsed against a verified backup before deployment.
+
+## Settings extraction (#396, first PR)
+
+Baseline: main `b12807796395c36b71751410e41e8e110a160227`.
+
+SettingsRepository borrows Store.db and never closes it. Domain parsing, effective
+scope inheritance, runtime validation, override caches and Discord buffer
+invalidation remain with their existing callers. SQL row ordering, note truncation,
+error propagation and every existing commit boundary are preserved.
+
+Legacy chatlog conversion commits the converted rows and marker together.
+Runtime schema initialization, legacy RAG conversion, startup snapshot replacement,
+and ordinary runtime writes remain separate operations in their original order.
+Unified chatlog writes still make two commits; fixing that is #398.
+The new failure-injection tests cover rollback of migration markers, RAG key
+conversion, startup snapshots, and the runtime override cache after a failed write.
+
+This PR requires no schema or operational data migration. Deployment rollback is
+a code rollback; no rows need conversion. Existing initialization side effects,
+retention and physical deletion policies remain in place.
+
+Remaining #396 work is a separate PR: make the admin command queue's connection
+ownership explicit, retain AdminDatabase/InstructionRegistry/RuntimeKnowledgeRegistry,
+and document/refactor maintenance inspect/plan/backup/execute boundaries without
+changing their current transaction or dry-run behavior. #397 handles actual
+read-only startup separation. Do not introduce a generic repository base class,
+a universal connection factory, or an ORM merely to remove direct SQL.

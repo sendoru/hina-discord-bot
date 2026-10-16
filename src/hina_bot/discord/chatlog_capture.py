@@ -19,10 +19,7 @@ def capture_mode_override(store, scope_key: str) -> str | None:
 
 
 def capture_mode_overrides(store) -> dict[str, str]:
-    rows = store.db.execute(
-        "SELECT scope,text FROM notes WHERE scope LIKE ? ORDER BY scope",
-        (_PREFIX + "%",),
-    ).fetchall()
+    rows = store.settings.note_rows(_PREFIX)
     result = {}
     for row in rows:
         value = str(row["text"]).strip()
