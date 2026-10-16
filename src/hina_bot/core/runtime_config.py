@@ -467,71 +467,29 @@ class RuntimeSettings:
         object.__setattr__(self, "_base", base)
         object.__setattr__(self, "_store", store)
         object.__setattr__(self, "_overrides", {})
-        store.db.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS runtime_config (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS runtime_config_startup (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
+        store.settings.ensure_runtime_schema()
         self._migrate_legacy_rag_override()
         self._capture_startup_snapshot()
         self.reload()
 
     def _migrate_legacy_rag_override(self) -> None:
-        """Keep pre-existing DB rollout mode when upgrading to RAG_MODE."""
-        row = self._store.db.execute(
-            "SELECT value FROM runtime_config WHERE key='retrieval_v2_mode'"
-        ).fetchone()
-        if row is None:
-            return
-        current = self._store.db.execute(
-            "SELECT 1 FROM runtime_config WHERE key='rag_mode'"
-        ).fetchone()
-        with self._store.db:
-            if current is None:
-                try:
-                    legacy = json.loads(row["value"])
-                except (TypeError, ValueError):
-                    legacy = None
-                if isinstance(legacy, str) and legacy in LEGACY_RAG_MODES:
-                    self._store.db.execute(
-                        "INSERT INTO runtime_config(key,value) VALUES (?,?)",
-                        ("rag_mode", encode_runtime_value(LEGACY_RAG_MODES[legacy])),
-                    )
-            self._store.db.execute(
-                "DELETE FROM runtime_config WHERE key='retrieval_v2_mode'"
-            )
+        self._store.settings.migrate_legacy_rag_override(
+            {key: encode_runtime_value(value) for key, value in LEGACY_RAG_MODES.items()}
+        )
 
     def _capture_startup_snapshot(self) -> None:
         rows = [
             (attr, encode_runtime_value(getattr(self._base, attr)))
             for attr in RUNTIME_SETTING_SPECS
         ]
-        with self._store.db:
-            self._store.db.execute("DELETE FROM runtime_config_startup")
-            self._store.db.executemany(
-                """INSERT INTO runtime_config_startup(key,value,captured_at)
-                   VALUES (?,?,CURRENT_TIMESTAMP)""",
-                rows,
-            )
+        self._store.settings.replace_startup_snapshot(rows)
 
     @property
     def base(self) -> Settings:
         return self._base
 
     def _stored(self) -> dict[str, str]:
-        rows = self._store.db.execute(
-            "SELECT key,value FROM runtime_config ORDER BY key"
-        ).fetchall()
-        return {str(row["key"]): str(row["value"]) for row in rows}
+        return self._store.settings.runtime_values()
 
     def reload(self) -> None:
         loaded: dict[str, Any] = {}
@@ -568,17 +526,7 @@ class RuntimeSettings:
         return "db" if attr in self._overrides else "startup"
 
     def _write(self, attr: str, encoded: str | None) -> None:
-        with self._store.db:
-            if encoded is None:
-                self._store.db.execute("DELETE FROM runtime_config WHERE key=?", (attr,))
-            else:
-                self._store.db.execute(
-                    """INSERT INTO runtime_config(key,value,updated_at)
-                       VALUES (?,?,CURRENT_TIMESTAMP)
-                       ON CONFLICT(key) DO UPDATE SET
-                           value=excluded.value, updated_at=CURRENT_TIMESTAMP""",
-                    (attr, encoded),
-                )
+        self._store.settings.set_runtime_value(attr, encoded)
 
     def set_text(self, key: str, raw: str):
         attr = runtime_setting_attr(key)
