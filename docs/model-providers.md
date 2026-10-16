@@ -223,7 +223,9 @@ GEMINI_SMART_THINKING_LEVEL=medium
 MEMORY_MAX_OUTPUT_TOKENS=4096
 ```
 
-Gemini는 Interactions API를 직접 사용합니다. `CHAT_WEB_SEARCH=true`일 때 검색이 필요한 일반 답변은
+Gemini는 Interactions API를 직접 사용합니다. 현재 메시지에 URL이 포함되거나 Google Search를 허용한 답변에는
+`url_context`를 함께 제공할 수 있으며, 실제 링크 조회는 모델이 판단합니다.
+`CHAT_WEB_SEARCH=true`일 때 검색이 필요한 일반 답변은
 내부 `web_search` 요청을 Interactions API의 `google_search` 도구로 변환합니다.
 검색·코드 실행·로컬 함수가 함께 있어도 Interactions API에 전달하며, 검색·코드 실행은 서버가 처리하고
 로컬 함수 호출만 클라이언트가 이어서 실행합니다. `required` 검색은 지침으로 요청하고
