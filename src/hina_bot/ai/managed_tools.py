@@ -33,7 +33,6 @@ def managed_tool_config(
     provider: str,
     capabilities: tuple[ManagedToolCapability, ...] = (
         ManagedToolCapability.CODE_EXECUTION,
-        ManagedToolCapability.URL_CONTEXT,
     ),
 ) -> list[dict]:
     """Map semantic managed-tool capabilities to provider-native tool declarations."""
