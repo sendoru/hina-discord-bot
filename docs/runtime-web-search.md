@@ -126,6 +126,37 @@ Freshness routing은 기존 Blue Archive lore 정책을 대체하지 않습니�
 `auto`에서는 tool만 제공하고 `tool_choice=required`를 보내지 않습니다. `required`에서만 강제
 선택합니다. 검색 context는 현재 `low`를 사용합니다.
 
+## Gemini URL Context
+
+Gemini 3.x Interactions API에서는 `url_context` 도구로 공개 웹페이지, 문서, PDF 등
+메시지에 포함된 링크의 내용을 읽을 수 있습니다. 일반 대화의 모든 요청에 도구를
+제공하지는 않으며, **현재 메시지에 `https://` 또는 `http://` 링크가 있거나**
+정보 경로가 Google Search `auto`/`required`인 경우에만 도구를 제공합니다.
+링크가 제공되었다고 해서 반드시 열지는 않으며 실제 조회는 Gemini가 결정합니다.
+검색 결과의 링크를 더 자세히 검토해야 할 때 Google Search와 함께 사용할 수도 있습니다.
+
+- 별도 환경변수 또는 디스코드 명령을 추가하지 않습니다.
+- `CHAT_WEB_SEARCH=false`여도 현재 사용자 메시지의 링크는 URL Context로 읽을 수 있습니다.
+- 코드 실행·로컬 함수 호출과 공존하며, `tool_choice=any`를 강제하지 않습니다.
+- URL의 내용은 신뢰할 수 없는 외부 자료로 취급합니다. 조회 실패 시 내용을 확인한 것처럼 답해서는 안 됩니다.
+- 공개 URL만 지원하며, 로그인/유료벽·YouTube·Google Workspace 문서·오디오/동영상은 지원하지 않습니다.
+- Interactions 요청당 최대 20개 URL, URL당 최대 34MB가 지원됩니다. URL 조회 텍스트는 입력 토큰 사용량에 포함됩니다.
+
+Interactions 응답의 `url_context_call` / `url_context_result`를 해석하고, 텍스트에 포함된
+`url_citation` 표기를 기존 검색 출처 처리와 동일하게 유지합니다.
+`data/logs/usage.jsonl`에는 `url_context_calls`, `url_context_used`,
+`url_context_status_counts` (success/error/paywall/unsafe/unknown)가 기록됩니다.
+집계된 Discord 응답에는 `url_context_calls`가 포함됩니다. 기존 content-free 로그 정책을
+유지하기 위해 **조회한 원본 URL, 경로, 페이지 본문은 usage 로그에 저장하지 않습니다.**
+API 전체 응답의 사용 토큰에는 URL로 읽은 내용이 반영됩니다.
+
+`GEMINI_SEARCH_API_MODE=auto`에서 Interactions의 도구 호환성 오류를 진단하면,
+새 요청이고 로컬 함수가 실행되지 않은 경우에만 GenerateContent 재시도를 허용합니다.
+GenerateContent fallback에도 `url_context`를 포함하고, `urlContextMetadata`의
+상태를 집계합니다. `generate_content` 모드 설정은 검색 도구가 포함된 새 요청에만
+직접 적용되며, URL Context만 있는 메시지는 Interactions부터 시작합니다.
+실제 Gemini API 키로 링크 조회·인용·혼합 도구 동작을 확인해야 합니다.
+
 ## Gemini Interactions 장애 우회 및 운영 설정
 
 Gemini 웹 검색은 기본적으로 **Interactions API**의 `google_search` 도구를 사용합니다.
