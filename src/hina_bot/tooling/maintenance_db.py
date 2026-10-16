@@ -40,5 +40,3 @@ def connect_existing(database_path: str | Path) -> sqlite3.Connection:
         db.close()
         raise ValueError(f"Not a hina runtime database (missing turns table): {path}")
     return db
-
-
