@@ -61,6 +61,44 @@ def _context_timestamp(value) -> str:
     return normalized + "Z"
 
 
+_TEMPORAL_CONTEXT_SECTIONS = (
+    "active_reply_chain",
+    "channel_recent_messages",
+    "personal_recent_conversation",
+    "conversation_history",
+)
+
+
+def _annotate_elapsed_minutes(context: dict, *, now: datetime) -> dict:
+    """Expose the age of older conversation rows without changing stored/captured data."""
+    projected = dict(context)
+    now_utc = now.astimezone(UTC)
+    for section in _TEMPORAL_CONTEXT_SECTIONS:
+        rows = context.get(section)
+        if not isinstance(rows, list):
+            continue
+        annotated = []
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("at"), str):
+                annotated.append(row)
+                continue
+            try:
+                at = datetime.fromisoformat(row["at"].replace("Z", "+00:00"))
+            except ValueError:
+                annotated.append(row)
+                continue
+            # Persisted turns use SQLite UTC; Discord rows already carry their timezone.
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=UTC)
+            age_minutes = int((now_utc - at.astimezone(UTC)).total_seconds() // 60)
+            if age_minutes >= 60:
+                annotated.append({**row, "elapsed_minutes": age_minutes})
+            else:
+                annotated.append(row)
+        projected[section] = annotated
+    return projected
+
+
 REFERENCE_CONTINUITY_POLICY = load_prompt("continuity.md")
 
 REPLY_CONTINUITY_POLICY = load_prompt("reply_continuity.md")
@@ -403,6 +441,11 @@ class RequestAssembler(BaseLLM):
         ]
         # Egress-only projection: keep metadata and Discord source records unchanged.
         context = normalized_message_context(context)
+        # Give older conversations an explicit age so past time-bound situations are not
+        # mistaken for the current scene. Use the same trusted clock as runtime_instruction.
+        context = _annotate_elapsed_minutes(
+            context, now=datetime.fromisoformat(str(runtime["current_datetime"])),
+        )
         structured_trace = structured_memory_provenance(
             store,
             scope,
