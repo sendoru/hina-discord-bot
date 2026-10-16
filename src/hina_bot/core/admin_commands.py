@@ -4,7 +4,7 @@ Enqueue owns and closes a short-lived dashboard writer connection. Runtime
 claim/finish/interruption functions borrow Store's connection and never close it.
 Each commits its own transition, so callers must invoke them outside other write
 transactions. Domain actions and their side effects are dispatched separately.
-Schema creation remains at Store bootstrap, not at enqueue or queue consumption.
+Schema creation belongs to explicit preparation, not enqueue or consumption.
 """
 
 from __future__ import annotations
@@ -73,8 +73,8 @@ def enqueue_admin_command(
 ) -> tuple[int, bool]:
     """Append one command without granting the dashboard arbitrary DB write access.
 
-    The production Store owns schema creation. This function intentionally fails if
-    the bot has not created the queue table yet.
+    Explicit database preparation owns schema creation. This function fails if
+    the queue table has not been prepared yet.
     """
 
     path = Path(database_path).expanduser().resolve(strict=True)
@@ -96,7 +96,7 @@ def enqueue_admin_command(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='admin_commands'"
         ).fetchone() is None:
             raise RuntimeError(
-                "admin command queue is unavailable; start the updated bot once first"
+                "admin command queue is unavailable; run hina-prepare-db first"
             )
         try:
             with db:
