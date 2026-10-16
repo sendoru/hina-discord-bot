@@ -122,11 +122,11 @@
     <table class="wide-table memory-table">
       <thead>
         <tr>
-          {% if bulk_enabled %}<th>선택</th>{% endif %}
-          <th>ID</th><th>User</th><th>Kind</th><th>Disclosure</th><th>Origin</th>
+          {% if bulk_enabled %}<th class="memory-selection-column">선택</th>{% endif %}
+          <th class="memory-id-column">ID</th><th class="memory-user-column">User</th><th>Kind</th><th>Disclosure</th><th class="memory-origin-column">Origin</th>
           <th>Confidence</th><th>Sources</th><th>Relationship</th>
           {% if data.schema.has_lifecycle %}<th>Status</th>{% endif %}
-          <th>Updated</th>
+          <th class="memory-updated-column">Updated</th>
         </tr>
       </thead>
       <tbody>

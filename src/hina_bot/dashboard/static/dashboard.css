@@ -2565,10 +2565,12 @@ pre {
   white-space: nowrap;
 }
 
-.memory-table th:first-child { min-width: 60px; }
-.memory-table th:nth-child(2) { min-width: 190px; }
-.memory-table th:nth-child(5) { min-width: 250px; }
-.memory-table th:last-child { min-width: 170px; }
+/* Keep widths attached to their columns when bulk selection is present. */
+.memory-table .memory-selection-column { width: 44px; min-width: 44px; }
+.memory-table .memory-id-column { min-width: 60px; }
+.memory-table .memory-user-column { min-width: 190px; }
+.memory-table .memory-origin-column { min-width: 250px; }
+.memory-table .memory-updated-column { min-width: 170px; }
 
 .summary-table th,
 .cursor-table th {

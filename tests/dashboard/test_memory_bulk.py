@@ -15,7 +15,7 @@ from hina_bot.discord.admin_commands import run_admin_command_once
 
 
 @pytest.fixture
-def bulk_app(tmp_path):
+def bulk_app(tmp_path, request):
     database = tmp_path / "hina.sqlite3"
     store = Store(str(database))
     ids = [
@@ -32,7 +32,7 @@ def bulk_app(tmp_path):
         database_path=str(database),
         usage_log_path=str(tmp_path / "usage.jsonl"),
         event_log_path=str(tmp_path / "events.jsonl"),
-        write_enabled=True,
+        write_enabled=getattr(request, "param", True),
     )
     return create_app(settings), database, ids
 
@@ -359,3 +359,46 @@ def test_legacy_memory_schema_hides_bulk_controls(bulk_app):
         ][0]
         assert result["status"] == "failed"
         assert "revisions" in result["error"]
+
+
+@pytest.mark.parametrize("bulk_app", [True, False], indirect=True)
+@pytest.mark.parametrize("width", [1440, 768])
+def test_browser_memory_column_layout_with_long_identifiers(memory_browser, width):
+    page, database, _ = memory_browser
+    with sqlite3.connect(database) as db:
+        db.execute(
+            """UPDATE memory_items SET user_id=?,user_name=?,origin_realm=?,
+               origin_channel_id=?,kind=?,disclosure=?,content=?""",
+            (
+                "221977862859653120",
+                "A long dashboard user name 사용자 이름",
+                "guild:1489432315523502251",
+                "1554321651473195059",
+                "relationship",
+                "reference_gated",
+                "A long memory preview with 한국어 content. " * 30,
+            ),
+        )
+    page.set_viewport_size({"width": width, "height": 1000})
+    page.reload()
+    table = page.locator(".memory-table")
+    columns = table.locator("thead th").evaluate_all(
+        "els => Object.fromEntries(els.map(el => [el.textContent.trim(), el.getBoundingClientRect().width]))"
+    )
+    assert columns["User"] >= 190
+    assert columns["Origin"] >= 250
+    assert columns["Updated"] >= 170
+    assert columns["ID"] < 100
+    assert columns["Disclosure"] < 190
+    if "선택" in columns:
+        assert columns["선택"] <= 60
+    # Every preview row must span the complete header grid, including selection.
+    assert table.locator("tbody tr").evaluate_all(
+        "rows => rows.every(row => [...row.cells].reduce((sum, cell) => sum + cell.colSpan, 0) === row.closest('table').tHead.rows[0].cells.length)"
+    )
+    # Wide data stays in its scroll region instead of stretching the page.
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    wrap = page.locator(".desktop-result-list")
+    assert wrap.evaluate("el => el.scrollWidth > el.clientWidth")
+    wrap.evaluate("el => { el.scrollLeft = el.scrollWidth; }")
+    assert table.get_by_role("columnheader", name="Updated", exact=True).is_visible()
