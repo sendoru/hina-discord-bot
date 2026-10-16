@@ -954,6 +954,21 @@ class TraceService(ReadService):
                     _as_int(row.get("web_search_calls")) for row in usage
                 )
 
+            if exchange:
+                url_context_calls = _as_int(exchange.get("url_context_calls"))
+            else:
+                url_context_calls = sum(
+                    _as_int(row.get("url_context_calls")) for row in usage
+                )
+            url_context_status_counts = Counter()
+            for usage_row in usage:
+                counts = usage_row.get("url_context_status_counts")
+                if not isinstance(counts, dict):
+                    continue
+                for status, count in counts.items():
+                    if status in {"success", "error", "paywall", "unsafe", "unknown"}:
+                        url_context_status_counts[status] += _as_int(count)
+
             terminal_event = str(terminal.get("event") or "") if terminal else ""
             normalized_status = str(status_value or "incomplete").lower()
             final_failure = (
@@ -1162,6 +1177,8 @@ class TraceService(ReadService):
                     "exchange_elapsed_ms": exchange_elapsed_ms,
                     "web_search": web_search_calls > 0,
                     "web_search_calls": web_search_calls,
+                    "url_context_calls": url_context_calls,
+                    "url_context_status_counts": dict(url_context_status_counts),
                     "error": final_failure,
                     "error_fingerprint": (
                         str(terminal_error_row.get("error_fingerprint") or "")

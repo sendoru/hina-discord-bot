@@ -270,6 +270,128 @@ def test_gemini_output_uses_only_final_model_output_run():
     assert response.output[0].content[0].text.startswith("체인 확인 및 응답 길이 준수")
 
 
+
+@pytest.mark.asyncio
+async def test_gemini_url_context_combines_with_search_and_function_tools():
+    seen = {}
+    steps = [
+        {"type": "url_context_call", "id": "url_1", "arguments": {
+            "urls": ["https://example.com/docs"],
+        }, "signature": "signed_call"},
+        {"type": "url_context_result", "call_id": "url_1", "result": [
+            {"url": "https://example.com/docs", "status": "success"},
+            {"url": "https://example.com/missing", "status": "paywall"},
+        ], "signature": "signed_result"},
+        {"type": "google_search_call", "id": "gs_1"},
+        {"type": "google_search_result", "call_id": "gs_1", "result": []},
+        {"type": "model_output", "content": [{
+            "type": "text",
+            "text": "문서 요약이야.",
+            "annotations": [{
+                "type": "url_citation",
+                "url": "https://example.com/docs",
+                "title": "Docs",
+            }],
+        }]},
+    ]
+
+    async def handler(request: httpx.Request):
+        seen["json"] = __import__("json").loads(request.content)
+        return httpx.Response(200, json={
+            "status": "completed",
+            "steps": steps,
+            "usage": {"total_input_tokens": 20, "total_tokens": 25},
+        })
+
+    tool = {
+        "type": "function", "name": "lookup", "description": "Look up a member",
+        "parameters": {"type": "object", "properties": {}},
+    }
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        response = await _GeminiResponses(http).create(
+            model="gemini-test",
+            input="이 링크 내용을 요약해 줘 https://example.com/docs",
+            tools=[{"type": "url_context"}, {"type": "web_search"}, tool,
+                   {"type": "code_execution"}],
+            tool_choice="auto",
+        )
+    finally:
+        await http.aclose()
+
+    assert seen["json"]["tools"] == [
+        {"type": "google_search"}, {"type": "url_context"}, tool,
+        {"type": "code_execution"},
+    ]
+    assert "tool_choice" not in seen["json"]["generation_config"]
+    assert response.status == "completed"
+    assert response._hina_url_context_calls == 1
+    assert response._hina_url_context_statuses == ("success", "paywall")
+    assert response._hina_web_search_calls == 1
+    assert [item.type for item in response.output][:2] == [
+        "url_context_call", "web_search_call",
+    ]
+    assert "example.com/docs" in response.output_text
+    assert _gemini_input(list(response._hina_interaction_steps)) == steps
+
+
+@pytest.mark.asyncio
+async def test_gemini_url_context_auto_fallback_preserves_tool_in_generate_content():
+    calls = []
+
+    async def handler(request: httpx.Request):
+        payload = __import__("json").loads(request.content)
+        calls.append((str(request.url), payload))
+        if str(request.url).endswith("/v1beta/interactions"):
+            return httpx.Response(400, json={
+                "error": {"status": "INVALID_ARGUMENT",
+                          "message": "url_context tool is unavailable"},
+            })
+        return httpx.Response(200, json={
+            "candidates": [{
+                "content": {"parts": [{"text": "문서 요약"}]},
+                "finishReason": "STOP",
+                "urlContextMetadata": {"urlMetadata": [
+                    {"retrievedUrl": "https://example.com/docs",
+                     "urlRetrievalStatus": "URL_RETRIEVAL_STATUS_SUCCESS"},
+                ]},
+            }],
+            "usageMetadata": {"promptTokenCount": 10},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        response = await _GeminiResponses(
+            http, settings=NS(gemini_search_api_mode="auto"),
+        ).create(model="gemini-test", input="https://example.com/docs",
+                 tools=[{"type": "url_context"}])
+    finally:
+        await http.aclose()
+
+    assert len(calls) == 2
+    assert calls[0][1]["tools"] == [{"type": "url_context"}]
+    assert calls[1][1]["tools"] == [{"url_context": {}}]
+    assert response._hina_gemini_api == "generate_content"
+    assert response._hina_url_context_calls == 1
+    assert response._hina_url_context_statuses == ("success",)
+
+
+def test_gemini_url_context_requires_action_is_diagnostic_not_success():
+    response = _gemini_output({
+        "status": "requires_action",
+        "steps": [
+            {"type": "url_context_call", "id": "url_1"},
+            {"type": "url_context_result", "call_id": "url_1", "result": [
+                {"url": "https://example.com", "status": "error"},
+            ]},
+        ],
+        "usage": {},
+    })
+    assert response._hina_error_codes == ["unexpected_requires_action"]
+    assert response._hina_url_context_calls == 1
+    assert response._hina_url_context_statuses == ("error",)
+
+
 @pytest.mark.asyncio
 async def test_gemini_managed_code_execution_stays_inside_one_interaction():
     seen = {}

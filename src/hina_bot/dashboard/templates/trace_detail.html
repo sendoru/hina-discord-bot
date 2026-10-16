@@ -31,6 +31,7 @@
   <article class="card"><span>Post-reply</span><strong>{{ data.summary.post_reply_ms ~ " ms" if data.summary.post_reply_ms is not none else "—" }}</strong><small>Discord 전달 이후 작업</small></article>
   <article class="card"><span>Exchange elapsed</span><strong>{{ data.summary.exchange_elapsed_ms ~ " ms" if data.summary.exchange_elapsed_ms is not none else "—" }}</strong><small>discord-usage.jsonl wall time</small></article>
   <article class="card"><span>Web search</span><strong>{{ "yes" if data.summary.web_search else "no" }}</strong></article>
+  <article class="card"><span>URL Context</span><strong>{{ data.summary.url_context_calls }}</strong><small>{% for status, count in data.summary.url_context_status_counts.items() %}{{ status }}: {{ count }}{% if not loop.last %} · {% endif %}{% else %}No retrieval result{% endfor %}</small></article>
   <article class="card"><span>Issues</span><strong>{{ data.summary.issue_count }}</strong><small>{{ "final failure" if data.summary.error else ("degraded completion" if data.summary.degraded else "no observed issue") }}</small></article>
 </section>
 {% if data.summary.issues %}

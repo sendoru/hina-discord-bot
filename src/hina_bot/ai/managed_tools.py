@@ -9,6 +9,7 @@ from .prompts import load_prompt
 
 class ManagedToolCapability(StrEnum):
     CODE_EXECUTION = "code_execution"
+    URL_CONTEXT = "url_context"
 
 
 CODE_EXECUTION_POLICY = load_prompt("code_execution.md")
@@ -17,6 +18,7 @@ CODE_EXECUTION_POLICY = load_prompt("code_execution.md")
 _PROVIDER_BINDINGS = {
     "gemini": {
         ManagedToolCapability.CODE_EXECUTION: {"type": "code_execution"},
+        ManagedToolCapability.URL_CONTEXT: {"type": "url_context"},
     },
     "openai": {
         ManagedToolCapability.CODE_EXECUTION: {
