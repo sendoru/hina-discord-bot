@@ -45,7 +45,10 @@ def client(text: str, *, provider="gemini"):
 
 
 def test_managed_code_execution_maps_to_provider_native_tools():
-    assert managed_tool_config("gemini") == [{"type": "code_execution"}]
+    assert managed_tool_config("gemini") == [
+        {"type": "code_execution"},
+        {"type": "url_context"},
+    ]
     assert managed_tool_config("openai") == [{
         "type": "code_interpreter",
         "container": {"type": "auto"},
@@ -72,6 +75,7 @@ async def test_normal_gemini_chat_exposes_managed_code_execution_in_one_model_ca
         assert fake.responses.create.await_count == 1
         request = fake.responses.create.await_args.kwargs
         assert {"type": "code_execution"} in request["tools"]
+        assert {"type": "url_context"} in request["tools"]
         assert request["tool_choice"] == "auto"
         assert CODE_EXECUTION_POLICY in request["instructions"]
     finally:
@@ -98,6 +102,7 @@ async def test_non_numeric_gemini_chat_still_only_makes_one_model_call(tmp_path)
         assert fake.responses.create.await_count == 1
         request = fake.responses.create.await_args.kwargs
         assert {"type": "code_execution"} in request["tools"]
+        assert {"type": "url_context"} in request["tools"]
     finally:
         await llm.close()
         store.close()
