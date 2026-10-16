@@ -83,7 +83,7 @@ def _annotate_elapsed_minutes(context: dict, *, now: datetime) -> dict:
                 annotated.append(row)
                 continue
             try:
-                at = datetime.fromisoformat(row["at"].replace("Z", "+00:00"))
+                at = datetime.fromisoformat(row["at"])
             except ValueError:
                 annotated.append(row)
                 continue
