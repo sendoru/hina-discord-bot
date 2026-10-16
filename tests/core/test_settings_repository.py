@@ -110,7 +110,7 @@ def test_failed_runtime_write_does_not_change_effective_override(store):
     )
 
     with pytest.raises(sqlite3.IntegrityError, match="write failure"):
-        settings.set_text("rag_mode", "v2")
+        settings.set_text("rag_mode", "off")
 
     assert settings.rag_mode == "v1"
     assert store.settings.runtime_values()["rag_mode"] == '"v1"'
