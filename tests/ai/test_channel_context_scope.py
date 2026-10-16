@@ -41,7 +41,7 @@ async def test_current_channel_query_keeps_manual_notes_but_excludes_public_cont
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     try:
         store.set_note(scope.realm, "OTHER_CHANNEL_SERVER_NOTE")
@@ -98,7 +98,7 @@ async def test_server_query_keeps_authorized_cross_channel_context():
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     try:
         store.set_note(scope.realm, "SERVER_NOTE_MARKER")

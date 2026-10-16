@@ -380,7 +380,7 @@ async def test_runtime_forwards_each_tiers_gemini_budget():
     )
     llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 10, 100), "사용자", "안녕")
         fast = raw.responses.create.await_args.kwargs
@@ -422,7 +422,7 @@ async def test_runtime_smart_503_falls_back_to_fast_once():
     )
     llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         result = await llm.answer(
             store,
@@ -448,7 +448,7 @@ async def test_runtime_fast_timeout_is_not_retried():
     )
     llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         with pytest.raises(httpx.ReadTimeout):
             await llm.answer(
@@ -481,7 +481,7 @@ async def test_runtime_nontransient_400_is_not_retried():
     )
     llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         with pytest.raises(ProviderAPIError):
             await llm.answer(
@@ -506,7 +506,7 @@ async def test_runtime_long_answer_can_keep_fast_model_with_large_budget():
     )
     llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(
             store,
@@ -544,7 +544,7 @@ async def test_runtime_forwards_visuals_to_model_router(monkeypatch):
     )
     llm = LLM(settings(usage_log_path="", chat_web_search=False), client=raw)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     visual = VisualInput(
         data=b"image",
         mime_type="image/png",

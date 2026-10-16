@@ -15,7 +15,7 @@ UNKNOWN_KEY = 'legacy:<script>alert("scope")</script>'
 
 def seed_state(tmp_path):
     database = tmp_path / "state.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     guild = Scope(1, 10, 100)
     dm = Scope(None, 20, 100)
     store.add(guild, 1, "guild question", "reply", name="Guild User")

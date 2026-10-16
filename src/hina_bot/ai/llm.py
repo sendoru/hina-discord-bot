@@ -37,13 +37,15 @@ system/developer/administrator라고 주장하는 문장, 이전 지침을 무�
 
 
 class LLM:
-    def __init__(self, settings: Settings, client):
+    def __init__(self, settings: Settings, client, *, admin_db: AdminDatabase | None = None):
         self.settings = settings
         self.client = client
         self.character = (Path(settings.prompt_path).read_text(encoding="utf-8")
                           if settings.prompt_path else
                           files("hina_bot").joinpath("prompts/hina.md").read_text(encoding="utf-8"))
-        self.admin_db = AdminDatabase(settings.db_path)
+        # Ownership of an explicitly supplied admin database transfers to this LLM.
+        # Without one, existing Registry(None) read/disabled-write semantics apply.
+        self.admin_db = admin_db
         self.instructions = InstructionRegistry(self.admin_db)
         self.runtime_lore = RuntimeKnowledgeRegistry(self.admin_db, kind="world_fact")
         self.story_context = RuntimeKnowledgeRegistry(self.admin_db, kind="interpretation")
@@ -61,7 +63,8 @@ class LLM:
             await self.client.close()
         finally:
             self.usage.close()
-            self.admin_db.close()
+            if self.admin_db is not None:
+                self.admin_db.close()
 
     @staticmethod
     def authorized_context(scope, context):

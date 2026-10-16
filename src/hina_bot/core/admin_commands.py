@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .queue_schema import QUEUE_DDL
+
 _ACTION_RE = re.compile(r"[a-z][a-z0-9_.-]{1,63}")
 _REQUEST_ID_RE = re.compile(r"[a-f0-9]{32}")
 MAX_PAYLOAD_BYTES = 8192
@@ -32,28 +34,9 @@ class AdminCommand:
 
 
 def ensure_admin_command_schema(db: sqlite3.Connection) -> None:
-    db.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS admin_commands (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            request_id TEXT NOT NULL UNIQUE,
-            actor TEXT NOT NULL,
-            action TEXT NOT NULL,
-            target TEXT NOT NULL DEFAULT '',
-            payload_json TEXT NOT NULL DEFAULT '{}',
-            status TEXT NOT NULL DEFAULT 'pending'
-                CHECK(status IN ('pending','running','succeeded','failed')),
-            result_json TEXT NOT NULL DEFAULT '{}',
-            error_type TEXT NOT NULL DEFAULT '',
-            error_message TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            started_at TEXT,
-            finished_at TEXT
-        );
-        CREATE INDEX IF NOT EXISTS admin_commands_status
-            ON admin_commands(status, id);
-        """
-    )
+    """Create queue tables inside the caller transaction."""
+    for statement in QUEUE_DDL:
+        db.execute(statement)
 
 
 def _validate_action(action: str) -> str:
@@ -105,7 +88,7 @@ def enqueue_admin_command(
         raise ValueError("admin command actor is too long")
     encoded = _encode_payload(payload or {})
 
-    db = sqlite3.connect(path, timeout=5.0)
+    db = sqlite3.connect(path.as_uri() + '?mode=rw', uri=True, timeout=5.0)
     db.row_factory = sqlite3.Row
     try:
         db.execute("PRAGMA busy_timeout=5000")

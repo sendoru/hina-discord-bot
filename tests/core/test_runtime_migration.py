@@ -55,13 +55,14 @@ class RuntimeMigrationTests(unittest.TestCase):
                 contexts=str(contexts_path),
                 replace=False,
                 dry_run=False,
+                offline_confirmed=True,
             )
             counters = migrate(args)
             self.assertEqual(counters["instructions"]["added"], 2)
             self.assertEqual(counters["world_fact"]["added"], 1)
             self.assertEqual(counters["interpretation"]["added"], 1)
 
-            database = AdminDatabase(str(database_path))
+            database = AdminDatabase.create(str(database_path))
             instructions = InstructionRegistry(database)
             facts = RuntimeKnowledgeRegistry(database, kind="world_fact")
             contexts = RuntimeKnowledgeRegistry(database, kind="interpretation")
@@ -100,7 +101,7 @@ class RuntimeMigrationTests(unittest.TestCase):
             counters = migrate(args)
             self.assertEqual(counters["instructions"]["added"], 1)
 
-            database = AdminDatabase(args.database)
+            database = AdminDatabase.create(args.database)
             self.assertEqual(InstructionRegistry(database).list(), [])
             database.close()
 

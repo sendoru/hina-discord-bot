@@ -19,6 +19,8 @@ from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 
+from .evaluation_database import evaluation_admin_database
+
 DEFAULT_CASES = Path("evals/character_lore_cases.jsonl")
 DEFAULT_RESULTS_DIR = Path("data/evals")
 EVAL_USER_ID = 910001
@@ -437,7 +439,7 @@ async def run_case(
 ) -> dict:
     mode = case.get("mode", "dm")
     scope = scope_for(mode)
-    store = Store(":memory:", history_turns=llm.settings.history_turns)
+    store = Store.create(":memory:", history_turns=llm.settings.history_turns)
     responses = []
     turn_ids = []
     error = ""
@@ -657,7 +659,12 @@ async def run(args) -> None:
         raise ValueError("실행할 eval case가 없습니다.")
 
     settings = eval_settings(args)
-    llm = LLM(settings)
+    admin = evaluation_admin_database(getattr(args, "admin_database", None) or os.getenv("DATABASE_PATH"))
+    try:
+        llm = LLM(settings, admin_db=admin)
+    except BaseException:
+        admin.close()
+        raise
     try:
         results = []
         total = len(cases) * args.repeat
@@ -700,6 +707,7 @@ async def run(args) -> None:
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="실제 모델로 히나 캐릭터·설정 회귀 테스트를 실행합니다.")
+    root.add_argument("--admin-database", help="Read-only source copied into isolated evaluation memory")
     root.add_argument("--cases", default=str(DEFAULT_CASES))
     root.add_argument("--id", action="append", help="특정 case id만 실행합니다. 반복 지정할 수 있습니다.")
     root.add_argument("--limit", type=int, help="앞에서부터 N개 case만 실행합니다.")

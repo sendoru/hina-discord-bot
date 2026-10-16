@@ -64,7 +64,7 @@ def test_managed_code_execution_maps_to_provider_native_tools():
 async def test_normal_gemini_chat_exposes_managed_code_execution_in_one_model_call(tmp_path):
     fake = client("3.9가 더 커.")
     llm = InformationPipeline(settings(tmp_path), client=fake)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         answer = await llm.answer(
@@ -90,7 +90,7 @@ async def test_normal_gemini_chat_exposes_managed_code_execution_in_one_model_ca
 async def test_non_numeric_gemini_chat_still_only_makes_one_model_call(tmp_path):
     fake = client("응, 무슨 일이야?")
     llm = InformationPipeline(settings(tmp_path), client=fake)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         answer = await llm.answer(
@@ -135,7 +135,7 @@ async def test_gemini_link_message_exposes_url_context_without_forcing_fetch(tmp
 async def test_normal_openai_chat_exposes_code_interpreter_in_one_model_call(tmp_path):
     fake = client("3.9가 더 커.", provider="openai")
     llm = InformationPipeline(settings(tmp_path, provider="openai"), client=fake)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         answer = await llm.answer(

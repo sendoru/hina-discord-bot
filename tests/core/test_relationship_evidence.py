@@ -5,6 +5,7 @@ import pytest
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, RelationshipEvidence
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.tooling.prepare_database import prepare_database
 
 
 def test_store_migrates_existing_memory_items_with_empty_relationship_evidence(tmp_path):
@@ -38,7 +39,8 @@ def test_store_migrates_existing_memory_items_with_empty_relationship_evidence(t
     db.commit()
     db.close()
 
-    store = Store(str(path))
+    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+    store = Store.create(str(path))
 
     columns = {
         row["name"] for row in store.db.execute("PRAGMA table_info(memory_items)")
@@ -51,7 +53,7 @@ def test_store_migrates_existing_memory_items_with_empty_relationship_evidence(t
 
 
 def test_store_round_trips_relationship_evidence():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
 
     store.add_memory_item(
@@ -76,7 +78,7 @@ def test_store_round_trips_relationship_evidence():
 
 
 def test_store_rejects_relationship_evidence_on_non_relationship_memory():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
 
     with pytest.raises(ValueError):

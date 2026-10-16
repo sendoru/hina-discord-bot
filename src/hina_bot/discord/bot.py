@@ -142,7 +142,7 @@ class HinaClient(discord.Client):
             max_messages=None,
         )
         self.settings = settings
-        self.store = store or Store(settings.db_path, settings.history_turns)
+        self.store = store if store is not None else Store.open_existing(settings.db_path, settings.history_turns)
         self.llm = llm
         self.emoji_registry = EmojiRegistry(self, self.store)
         self.emoji_admin_ids = set(settings.bot_admin_ids)
