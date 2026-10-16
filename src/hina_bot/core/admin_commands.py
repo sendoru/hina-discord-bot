@@ -1,3 +1,12 @@
+"""Queue SQL and validation, with the existing independent commit boundaries.
+
+Enqueue owns and closes a short-lived dashboard writer connection. Runtime
+claim/finish/interruption functions borrow Store's connection and never close it.
+Each commits its own transition, so callers must invoke them outside other write
+transactions. Domain actions and their side effects are dispatched separately.
+Schema creation remains at Store bootstrap, not at enqueue or queue consumption.
+"""
+
 from __future__ import annotations
 
 import json

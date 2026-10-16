@@ -12,7 +12,7 @@ import sqlite3
 from pathlib import Path
 
 from .maintenance_backup import BackupInfo, backup_sqlite
-from .reset_analysis_data import _connect_existing
+from .maintenance_db import connect_existing as _connect_existing
 
 TABLE = "conversation_reset_epochs"
 CURRENT_COLUMNS = frozenset({"id", "reset_at", "cutoff_message_id", "backup_sha256"})

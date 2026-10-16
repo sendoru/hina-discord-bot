@@ -14,6 +14,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .maintenance_db import (
+    connect_existing as _connect_existing,
+)
+from .maintenance_db import (
+    row_count as _row_count,
+)
+from .maintenance_db import (
+    table_exists as _table_exists,
+)
+
 RAW_TABLES = ("turns", "shared_calls", "failed_turns")
 PRESERVED_TABLES = (
     "memory_items",
@@ -63,22 +73,6 @@ class ResetResult:
     epoch_id: int
     reset_at: str
     deleted_files: tuple[Path, ...]
-
-
-def _table_exists(db: sqlite3.Connection, table: str) -> bool:
-    return (
-        db.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-            (table,),
-        ).fetchone()
-        is not None
-    )
-
-
-def _row_count(db: sqlite3.Connection, table: str) -> int:
-    if not _table_exists(db, table):
-        return 0
-    return int(db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 
 
 def _pending_work(db: sqlite3.Connection) -> tuple[PendingWork, ...]:
@@ -144,20 +138,6 @@ def telemetry_files(usage_log_path: str, event_log_path: str) -> tuple[Path, ...
     for base in bases:
         files.update(_rotated_files(base))
     return tuple(sorted(files, key=lambda path: str(path)))
-
-
-def _connect_existing(database_path: str | Path) -> sqlite3.Connection:
-    path = Path(database_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"SQLite database does not exist: {path}")
-    db = sqlite3.connect(str(path), timeout=1.0)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA busy_timeout=1000")
-    db.execute("PRAGMA secure_delete=ON")
-    if not _table_exists(db, "turns"):
-        db.close()
-        raise ValueError(f"Not a hina runtime database (missing turns table): {path}")
-    return db
 
 
 def build_reset_plan(

@@ -3,12 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from hina_bot.core.admin_commands import (
-    AdminCommand,
-    claim_next_admin_command,
-    finish_admin_command,
-    mark_interrupted_admin_commands,
-)
+from hina_bot.core.admin_commands import AdminCommand
 from hina_bot.core.chatlog_modes import set_unified_chatlog_mode
 from hina_bot.core.routing import Scope
 from hina_bot.core.runtime_config import RuntimeSettings, format_runtime_value
@@ -288,13 +283,13 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
 
 
 def initialize_admin_commands(client) -> None:
-    interrupted = mark_interrupted_admin_commands(client.store.db)
+    interrupted = client.store.mark_interrupted_admin_commands()
     if interrupted:
         log.warning("Marked %s interrupted dashboard admin command(s) failed", interrupted)
 
 
 async def run_admin_command_once(client) -> bool:
-    command = claim_next_admin_command(client.store.db)
+    command = client.store.claim_next_admin_command()
     if command is None:
         return False
 
@@ -303,8 +298,7 @@ async def run_admin_command_once(client) -> bool:
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 - isolate operator action failures
-        finish_admin_command(
-            client.store.db,
+        client.store.finish_admin_command(
             command.id,
             error_type=type(exc).__name__,
             error_message=str(exc),
@@ -324,7 +318,7 @@ async def run_admin_command_once(client) -> bool:
             command.id,
         )
     else:
-        finish_admin_command(client.store.db, command.id, result=result)
+        client.store.finish_admin_command(command.id, result=result)
         client.events.emit(
             "admin.command_completed",
             action=command.action,
