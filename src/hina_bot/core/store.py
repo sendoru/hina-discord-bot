@@ -4,6 +4,12 @@ import sqlite3
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
+from .admin_commands import (
+    AdminCommand,
+    claim_next_admin_command,
+    finish_admin_command,
+    mark_interrupted_admin_commands,
+)
 from .chatlog_modes import migrate_legacy_chatlog_settings
 from .conversation_repository import ConversationRepository
 from .memory_items import (
@@ -63,6 +69,24 @@ class Store:
 
     def note(self, key: str) -> str:
         return self.settings.note(key)
+
+    def mark_interrupted_admin_commands(self) -> int:
+        """Fail interrupted commands on the Store connection; never retry them."""
+        return mark_interrupted_admin_commands(self.db)
+
+    def claim_next_admin_command(self) -> AdminCommand | None:
+        """Commit a claim before dispatch, outside any memory extraction batch."""
+        return claim_next_admin_command(self.db)
+
+    def finish_admin_command(
+        self, command_id: int, *, result: dict | None = None,
+        error_type: str = "", error_message: str = "",
+    ) -> None:
+        """Record completion separately from the dispatched action's own commits."""
+        return finish_admin_command(
+            self.db, command_id, result=result,
+            error_type=error_type, error_message=error_message,
+        )
 
     def set_note(self, key: str, text: str):
         return self.settings.set_note(key, text)

@@ -26,7 +26,11 @@ def _split_values(value: str) -> list[str]:
 
 
 class RuntimeKnowledgeRegistry:
-    """Admin-managed facts or interpretations stored in SQLite."""
+    """Admin-managed facts/interpretations on a borrowed AdminDatabase.
+
+    Writes use its nestable transaction(); connection lifetime belongs to the
+    creating LLM or migration caller, not to this registry.
+    """
 
     def __init__(self, database: AdminDatabase | None, *, kind: str):
         if kind not in {"world_fact", "interpretation"}:

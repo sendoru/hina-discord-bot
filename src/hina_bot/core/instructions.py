@@ -9,6 +9,8 @@ MAX_ACTIVE_CHARS = 6000
 
 
 class InstructionRegistry:
+    """Validation and SQL on a borrowed AdminDatabase; never owns its lifetime."""
+
     def __init__(self, database: AdminDatabase | None):
         self.database = database
 

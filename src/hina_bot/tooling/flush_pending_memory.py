@@ -54,6 +54,11 @@ def _decode_scope(row) -> Scope:
 
 
 def pending_scopes(db: sqlite3.Connection) -> tuple[PendingScope, ...]:
+    """Inspect a borrowed connection in extraction order; no commit or close.
+
+    Maintenance-only SQL serves both the read-only preview and the running flush.
+    It must not initialize Store merely to inspect pending work.
+    """
     db.row_factory = sqlite3.Row
     rows = db.execute(
         """SELECT t.scope,t.realm,t.user_id,COUNT(*) AS pending,

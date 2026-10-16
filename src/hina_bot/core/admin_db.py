@@ -4,7 +4,14 @@ from pathlib import Path
 
 
 class AdminDatabase:
-    """SQLite storage shared by runtime instructions and dynamic knowledge."""
+    """Own the existing admin connection, shared by instruction/knowledge registries.
+
+    LLM (or the standalone migration caller) creates and closes this database.
+    Registries borrow it and use transaction() for standalone writes or to join
+    an enclosing transaction() such as a legacy import. This does not join a
+    Store transaction or an arbitrary externally issued BEGIN. Constructor DDL
+    and the separate connection are preserved; initialization changes are #397.
+    """
 
     def __init__(self, path: str):
         if not path:

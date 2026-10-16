@@ -89,9 +89,75 @@ This PR requires no schema or operational data migration. Deployment rollback is
 a code rollback; no rows need conversion. Existing initialization side effects,
 retention and physical deletion policies remain in place.
 
-Remaining #396 work is a separate PR: make the admin command queue's connection
-ownership explicit, retain AdminDatabase/InstructionRegistry/RuntimeKnowledgeRegistry,
-and document/refactor maintenance inspect/plan/backup/execute boundaries without
-changing their current transaction or dry-run behavior. #397 handles actual
-read-only startup separation. Do not introduce a generic repository base class,
-a universal connection factory, or an ORM merely to remove direct SQL.
+The queue and maintenance portion of #396 follows below. #397 handles actual
+read-only startup separation.
+
+## Admin queue and registry ownership (#396, second PR)
+
+Baseline: main `078d77154d19b9ac1ab74bc434fffbd723bbfd4b`.
+
+`core/admin_commands.py` remains the queue SQL and validation boundary. Dashboard
+enqueue owns a short-lived connection and always closes it. It requires an existing
+queue table and does not bootstrap Store. Store owns the bot connection and exposes
+claim, finish and interruption methods; Discord dispatch no longer passes Store.db.
+The original connection-taking functions remain available for compatibility.
+
+Each transition retains its own commit: enqueue; pending -> running; then running
+-> succeeded/failed. Dispatch runs after the claim commits. Actions retain their
+own Store/Registry commits and buffer effects; completion is a separate write.
+Do not wrap the sequence in one transaction or invoke queue transitions inside an
+extraction/other write transaction. Claim ordering is by id, with a conditional
+pending update. Duplicate request_id returns the existing id without replacing
+its original payload. Invalid stored payloads fail and are skipped in order.
+
+Cancelled dispatch or failed completion can leave a running row even after an
+action committed. Startup marks these failed with InterruptedAdminCommand and
+scrubs the payload; it never retries the action. This is not an exactly-once queue.
+Normal finish and invalid-payload failure also scrub payloads. Dashboard queries
+remain in its read-only AdminRepository; writes only enqueue commands.
+
+`AdminDatabase` continues to own a separate connection, created/closed by LLM or
+the standalone runtime migration. InstructionRegistry and RuntimeKnowledgeRegistry
+borrow that database and keep their validation and SQL. Their transaction() calls
+join an enclosing AdminDatabase.transaction(): only its outermost scope starts
+BEGIN IMMEDIATE and commits/rolls back. This is not participation in Store's
+transaction or an arbitrary raw BEGIN. No additional Repository/Service is needed.
+Constructor DDL and migration dry-run initialization effects are unchanged (#397).
+
+## Offline maintenance boundaries and direct SQL exceptions
+
+`tooling/maintenance_db.py` contains only the existing connection opening and small
+table/count queries formerly borrowed from reset_analysis_data. It never constructs
+Store, migrates schema, begins a transaction or commits. A successful open transfers
+connection ownership to the CLI caller; each caller closes in finally. Its existing
+read/write open, busy_timeout=1000 and secure_delete=ON also apply to plan callers.
+It is not a universal connection factory or the future strict read-only API.
+
+| Owner | Inspect / plan | Backup / execute and transaction responsibility |
+| --- | --- | --- |
+| flush_pending_memory | inspect_pending owns a mode=ro connection; pending_scopes borrows either that or Store.db and preserves oldest/id scope ordering | run_flush backs up before Store/RuntimeSettings construction; then the existing worker commits each extraction batch through Store.atomic_memory_batch, not one transaction for the entire flush. Worker and Store are closed by run_flush. |
+| reset_conversation | Owns an existing-DB connection and builds counts/pending plan | Verifies backup first, opens execution connection, starts BEGIN IMMEDIATE and rechecks plan; name preservation, epoch DDL, the four original table deletes and epoch insertion commit together. Failure rolls them back. Checkpoint follows commit. |
+| migrate_conversation_reset_epochs | Closes inspection connection before backup; current schema is a no-op without backup | After backup, owns a new connection, locks and rechecks columns. ensure_epoch_schema borrows this transaction; it never commits. DDL commits/rolls back in the caller, followed by checkpoint. |
+| reset_analysis_data | Builds the existing raw/preserved/pending/log-file plan | No automatic backup is added. Owns execution connection, locks and rechecks pending work; raw deletes and observability epoch commit together. Checkpoint and log-file deletion remain after commit; filesystem effects are not atomic with DB changes. |
+| maintenance_backup | Validates source and required tables without Store initialization | Owns source, destination and read-only verification connections. Uses SQLite backup (including WAL), integrity/count checks and existing hash/no-overwrite publication. Verification connection is explicitly closed before publication or failure cleanup. |
+
+Direct SQL intentionally remains in these owners: inspection must not bootstrap
+Store; backup uses SQLite's connection API; offline deletion and epoch DDL must stay
+inside their caller's write transaction. No helper may introduce an independent
+commit into reset/epoch execution. Missing-table handling, deletion/preservation
+sets, pending rules, plan output, ID sequences, source provenance and cursor meaning
+are unchanged. Pending queries that differ in legacy support or purpose are not
+merged merely because their SQL looks similar.
+
+Store and RuntimeSettings construction during a flush still perform their existing
+schema/legacy conversion and startup-snapshot writes, after the backup. Removing
+these side effects, changing plan/dry-run opening, or introducing versioned migrations
+belongs to #397. Stale shared summaries and compound settings commits remain #398;
+retention, logical resets and history search remain #399-#401.
+
+Contract coverage includes malformed queue payloads/FIFO, separate connection
+visibility, failed/cancelled dispatch and failed finish followed by restart without
+retry, registry outer rollback, backup connection closure on success/failure, and
+post-backup conversation/schema changes rejected before execution. Existing legacy
+fixtures, extraction rollback/provenance and purge/reset preservation tests remain
+the regression baseline. This stage needs no operational schema/data migration.

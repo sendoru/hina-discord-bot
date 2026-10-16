@@ -122,6 +122,34 @@ def test_pending_refuses_before_backup_and_deletion(tmp_path):
         assert counts(db)["turns"] == 2
 
 
+def test_change_after_backup_is_rejected_before_deletion(tmp_path, monkeypatch):
+    import hina_bot.tooling.reset_conversation as mod
+
+    path = tmp_path / "changed.sqlite3"
+    dm, _, _ = seed(path)
+    backup = mod.backup_sqlite
+
+    def backup_then_write(*args, **kwargs):
+        result = backup(*args, **kwargs)
+        writer = Store(str(path))
+        try:
+            writer.add(dm, 999, "new pending source", "reply")
+        finally:
+            writer.close()
+        return result
+
+    monkeypatch.setattr(mod, "backup_sqlite", backup_then_write)
+    with pytest.raises(RuntimeError, match="Database changed since backup"):
+        mod.reset_conversation(path, offline_confirmed=True)
+    with sqlite3.connect(path) as db:
+        assert counts(db) == {
+            "turns": 3, "shared_calls": 1, "failed_turns": 0, "shared_summaries": 1,
+        }
+        assert db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='conversation_reset_epochs'"
+        ).fetchone() is None
+
+
 def test_missing_offline_confirmation_refuses_before_backup(tmp_path):
     path = tmp_path / "test.sqlite3"
     seed(path)

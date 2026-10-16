@@ -14,8 +14,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .maintenance_backup import BackupInfo, backup_sqlite
+from .maintenance_db import (
+    connect_existing as _connect_existing,
+)
+from .maintenance_db import (
+    row_count as _row_count,
+)
+from .maintenance_db import (
+    table_exists as _table_exists,
+)
 from .migrate_conversation_reset_epochs import ensure_epoch_schema
-from .reset_analysis_data import _connect_existing, _row_count, _table_exists
 
 RAW_TABLES = ("turns", "shared_calls", "failed_turns", "shared_summaries")
 PRESERVED_TABLES = (
