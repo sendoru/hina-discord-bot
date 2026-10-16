@@ -114,7 +114,7 @@ async def test_non_numeric_gemini_chat_still_only_makes_one_model_call(tmp_path)
 async def test_gemini_link_message_exposes_url_context_without_forcing_fetch(tmp_path):
     fake = client("그 문서에 대해 이야기해보자.")
     llm = InformationPipeline(settings(tmp_path), client=fake)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         await llm.answer(
