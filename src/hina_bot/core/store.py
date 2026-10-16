@@ -15,6 +15,7 @@ from .memory_items import (
 from .memory_repository import MemoryRepository
 from .routing import Scope
 from .scope_overrides import resolve_scope_chain
+from .settings_repository import SettingsRepository
 from .store_schema import initialize_store_schema
 
 
@@ -30,6 +31,7 @@ class Store:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
+        self.settings = SettingsRepository(self.db)
         self._conversations = ConversationRepository(self.db, history_turns)
         self._atomic_memory_batch_open = False
         self._memories = MemoryRepository(
@@ -60,15 +62,10 @@ class Store:
             self.db.close()
 
     def note(self, key: str) -> str:
-        row = self.db.execute("SELECT text FROM notes WHERE scope=?", (key,)).fetchone()
-        return row[0] if row else ""
+        return self.settings.note(key)
 
     def set_note(self, key: str, text: str):
-        with self.db:
-            if text:
-                self.db.execute("INSERT OR REPLACE INTO notes VALUES (?,?)", (key, text[:1500]))
-            else:
-                self.db.execute("DELETE FROM notes WHERE scope=?", (key,))
+        return self.settings.set_note(key, text)
 
     def user_name(self, scope: Scope) -> str:
         return self._conversations.user_name(scope)
@@ -588,25 +585,19 @@ class Store:
         return self._conversations.public_context(allowed_scopes)
 
     def emoji_rows(self):
-        return self.db.execute("SELECT * FROM emoji_registry ORDER BY alias").fetchall()
+        return self.settings.emoji_rows()
 
     def add_emoji(self, alias, emoji_id, description, source_guild_id=None):
-        with self.db:
-            self.db.execute("INSERT INTO emoji_registry VALUES (?,?,?,?)",
-                            (alias, emoji_id, description, source_guild_id))
+        return self.settings.add_emoji(alias, emoji_id, description, source_guild_id)
 
     def edit_emoji(self, alias, description):
-        with self.db:
-            return self.db.execute("UPDATE emoji_registry SET description=? WHERE alias=?",
-                                   (description, alias)).rowcount > 0
+        return self.settings.edit_emoji(alias, description)
 
     def remove_emoji(self, alias):
-        with self.db:
-            return self.db.execute("DELETE FROM emoji_registry WHERE alias=?", (alias,)).rowcount > 0
+        return self.settings.remove_emoji(alias)
 
     def memory_mode_override(self, key: str) -> str | None:
-        row = self.db.execute("SELECT mode FROM memory_modes WHERE scope=?", (key,)).fetchone()
-        return row[0] if row else None
+        return self.settings.memory_mode_override(key)
 
     def memory_mode_chain(self, scope: Scope) -> dict[str, str | None]:
         overrides = {
@@ -621,25 +612,17 @@ class Store:
         return str(self.memory_mode_chain(scope)["effective"])
 
     def set_memory_mode_override(self, key: str, mode: str | None):
-        if mode is not None and mode not in {"normal", "read_only", "write_only", "off"}:
-            raise ValueError("Invalid memory mode")
-        with self.db:
-            if mode is None:
-                self.db.execute("DELETE FROM memory_modes WHERE scope=?", (key,))
-            else:
-                self.db.execute("INSERT OR REPLACE INTO memory_modes VALUES (?,?)", (key, mode))
+        return self.settings.set_memory_mode_override(key, mode)
 
     def set_memory_mode(self, scope: Scope, mode: str):
         """Backward-compatible channel override setter."""
         self.set_memory_mode_override(scope.channel, mode)
 
     def memory_mode_overrides(self) -> dict[str, str]:
-        rows = self.db.execute("SELECT scope,mode FROM memory_modes ORDER BY scope").fetchall()
-        return {row["scope"]: row["mode"] for row in rows}
+        return self.settings.memory_mode_overrides()
 
     def chat_log_mode_override(self, key: str) -> str | None:
-        row = self.db.execute("SELECT mode FROM chat_log_modes WHERE scope=?", (key,)).fetchone()
-        return row[0] if row else None
+        return self.settings.chat_log_mode_override(key)
 
     def chat_log_mode_chain(self, scope: Scope) -> dict[str, str | None]:
         overrides = {
@@ -654,14 +637,7 @@ class Store:
         return self.chat_log_mode_chain(scope)["effective"] == "on"
 
     def set_chat_log_mode_override(self, key: str, mode: str | None):
-        if mode is not None and mode not in {"on", "off"}:
-            raise ValueError("Invalid chat log mode")
-        with self.db:
-            if mode is None:
-                self.db.execute("DELETE FROM chat_log_modes WHERE scope=?", (key,))
-            else:
-                self.db.execute("INSERT OR REPLACE INTO chat_log_modes VALUES (?,?)", (key, mode))
+        return self.settings.set_chat_log_mode_override(key, mode)
 
     def chat_log_mode_overrides(self) -> dict[str, str]:
-        rows = self.db.execute("SELECT scope,mode FROM chat_log_modes ORDER BY scope").fetchall()
-        return {row["scope"]: row["mode"] for row in rows}
+        return self.settings.chat_log_mode_overrides()

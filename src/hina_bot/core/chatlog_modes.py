@@ -13,10 +13,7 @@ _MIGRATION_MARKER = "config:chatlog_unified_v1"
 
 
 def _capture_overrides(store) -> dict[str, str]:
-    rows = store.db.execute(
-        "SELECT scope,text FROM notes WHERE scope LIKE ? ORDER BY scope",
-        (CHATLOG_CAPTURE_NOTE_PREFIX + "%",),
-    ).fetchall()
+    rows = store.settings.note_rows(CHATLOG_CAPTURE_NOTE_PREFIX)
     results = {}
     for row in rows:
         value = str(row["text"]).strip()
@@ -52,25 +49,7 @@ def migrate_legacy_chatlog_settings(store) -> None:
             capture = captures.get(part, capture)
         combined[key] = "off" if enabled == "off" else capture
 
-    with store.db:
-        store.db.execute("DELETE FROM chat_log_modes")
-        store.db.execute(
-            "DELETE FROM notes WHERE scope LIKE ?",
-            (CHATLOG_CAPTURE_NOTE_PREFIX + "%",),
-        )
-        for key, mode in combined.items():
-            store.db.execute(
-                "INSERT INTO chat_log_modes(scope,mode) VALUES (?,?)",
-                (key, "off" if mode == "off" else "on"),
-            )
-            store.db.execute(
-                "INSERT INTO notes(scope,text) VALUES (?,?)",
-                (CHATLOG_CAPTURE_NOTE_PREFIX + key, "all" if mode == "off" else mode),
-            )
-        store.db.execute(
-            "INSERT OR REPLACE INTO notes(scope,text) VALUES (?,?)",
-            (_MIGRATION_MARKER, "1"),
-        )
+    store.settings.replace_legacy_chatlog_settings(combined, _MIGRATION_MARKER)
 
 
 def unified_chatlog_chain(store, scope: Scope) -> dict[str, str | None]:
