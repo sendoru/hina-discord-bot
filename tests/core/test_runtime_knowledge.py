@@ -14,7 +14,7 @@ from hina_bot.discord.knowledge_commands import KnowledgeCommands
 class RuntimeKnowledgeRegistryTests(unittest.TestCase):
     def test_fact_crud_and_search(self):
         with tempfile.TemporaryDirectory() as directory:
-            database = AdminDatabase(str(Path(directory) / "hina.sqlite3"))
+            database = AdminDatabase.create(str(Path(directory) / "hina.sqlite3"))
             registry = RuntimeKnowledgeRegistry(database, kind="world_fact")
             registry.add(
                 "hina.quote", "히나는 사건 뒤 선생과 대화했다.",
@@ -34,7 +34,7 @@ class RuntimeKnowledgeRegistryTests(unittest.TestCase):
             database.close()
 
     def test_context_is_marked_as_non_fact_interpretation(self):
-        database = AdminDatabase(":memory:")
+        database = AdminDatabase.create(":memory:")
         registry = RuntimeKnowledgeRegistry(database, kind="interpretation")
         registry.add(
             "hina.hoshino", "히나가 호시노를 비교 대상으로 든 이유에 대한 해석이다.",
@@ -49,7 +49,7 @@ class RuntimeKnowledgeRegistryTests(unittest.TestCase):
         registry = RuntimeKnowledgeRegistry(None, kind="world_fact")
         with self.assertRaises(ValueError):
             registry.add("x", "내용", "키워드", "대상", "self")
-        database = AdminDatabase(":memory:")
+        database = AdminDatabase.create(":memory:")
         registry = RuntimeKnowledgeRegistry(database, kind="world_fact")
         with self.assertRaises(ValueError):
             registry.add("valid.id", "내용", "", "히나", "self")
@@ -58,7 +58,7 @@ class RuntimeKnowledgeRegistryTests(unittest.TestCase):
         database.close()
 
     def test_legacy_import_keeps_unknown_created_at_null(self):
-        database = AdminDatabase(":memory:")
+        database = AdminDatabase.create(":memory:")
         registry = RuntimeKnowledgeRegistry(database, kind="world_fact")
         registry.import_row({
             "id": "legacy.fact",
@@ -91,7 +91,7 @@ class KnowledgeIngestorTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_ingest_splits_fact_interpretation_and_hold(self):
-        database = AdminDatabase(":memory:")
+        database = AdminDatabase.create(":memory:")
         facts = RuntimeKnowledgeRegistry(database, kind="world_fact")
         contexts = RuntimeKnowledgeRegistry(database, kind="interpretation")
         payload = {
@@ -150,7 +150,7 @@ class KnowledgeIngestorTests(unittest.IsolatedAsyncioTestCase):
         database.close()
 
     async def test_ingest_skips_near_duplicate(self):
-        database = AdminDatabase(":memory:")
+        database = AdminDatabase.create(":memory:")
         facts = RuntimeKnowledgeRegistry(database, kind="world_fact")
         contexts = RuntimeKnowledgeRegistry(database, kind="interpretation")
         facts.add(
@@ -177,7 +177,7 @@ class KnowledgeIngestorTests(unittest.IsolatedAsyncioTestCase):
         database.close()
 
     async def test_ingest_reconciles_correction_and_supersedes_old_entries(self):
-        database = AdminDatabase(":memory:")
+        database = AdminDatabase.create(":memory:")
         facts = RuntimeKnowledgeRegistry(database, kind="world_fact")
         contexts = RuntimeKnowledgeRegistry(database, kind="interpretation")
         facts.add(
@@ -258,7 +258,7 @@ class KnowledgeIngestorTests(unittest.IsolatedAsyncioTestCase):
 
 class KnowledgeCommandTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.database = AdminDatabase(":memory:")
+        self.database = AdminDatabase.create(":memory:")
         facts = RuntimeKnowledgeRegistry(self.database, kind="world_fact")
         contexts = RuntimeKnowledgeRegistry(self.database, kind="interpretation")
         self.client = NS(

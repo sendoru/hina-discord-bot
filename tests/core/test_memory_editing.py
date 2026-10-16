@@ -5,7 +5,7 @@ from hina_bot.core.store import Store
 
 
 def test_revise_memory_item_preserves_identity_and_records_history():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     item_id = store.add_memory_item(
         scope,
@@ -85,7 +85,7 @@ def test_revise_memory_item_preserves_identity_and_records_history():
 
 
 def test_memory_edit_validation_matches_store_invariants():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     with pytest.raises(ValueError, match="at most 600"):
         store.add_memory_item(
@@ -134,7 +134,7 @@ def test_memory_edit_validation_matches_store_invariants():
 
 
 def test_memory_purge_removes_edit_history_snapshots():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     item_id = store.add_memory_item(
         scope,

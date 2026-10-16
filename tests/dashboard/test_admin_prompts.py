@@ -12,11 +12,12 @@ from hina_bot.core.store import Store
 from hina_bot.dashboard.app import create_app
 from hina_bot.dashboard.config import DashboardSettings
 from hina_bot.discord.admin_commands import execute_admin_command
+from hina_bot.tooling.prepare_database import prepare_database
 
 
 @pytest.mark.asyncio
 async def test_prompt_state_admin_commands_use_runtime_registries():
-    database = AdminDatabase(":memory:")
+    database = AdminDatabase.create(":memory:")
     instructions = InstructionRegistry(database)
     facts = RuntimeKnowledgeRegistry(database, kind="world_fact")
     interpretations = RuntimeKnowledgeRegistry(database, kind="interpretation")
@@ -80,8 +81,9 @@ async def test_prompt_state_admin_commands_use_runtime_registries():
 
 
 def _seed_dashboard_database(path):
-    Store(str(path)).close()
-    database = AdminDatabase(str(path))
+    Store.create(str(path)).close()
+    prepare_database(path, apply=True, offline_confirmed=True, components=('admin',))
+    database = AdminDatabase.create(str(path))
     InstructionRegistry(database).add("existing.rule", "기존 지침")
     RuntimeKnowledgeRegistry(database, kind="world_fact").add(
         "existing.fact",

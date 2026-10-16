@@ -39,7 +39,7 @@ def _interaction(*, guild_id=1, channel_id=10, user_id=100):
 
 @pytest.fixture
 def state_context():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     # Store initialization performs the legacy chatlog migration independently of commands.
     client = NS(
         store=store,

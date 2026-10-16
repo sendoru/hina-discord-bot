@@ -9,7 +9,7 @@ from hina_bot.dashboard.repository import AdminRepository
 
 
 def populated_database(path):
-    store = Store(str(path))
+    store = Store.create(str(path))
     scope = Scope(1, 10, 100, True)
     token = CURRENT_TURN_ID.set("trace-123")
     try:
@@ -45,7 +45,7 @@ def test_repository_reads_turns_and_memory_by_trace(tmp_path):
 
 def test_repository_reads_discord_scope_metadata_without_requiring_it(tmp_path):
     path = tmp_path / "scope-metadata.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     store.observe_guild_channel(1, "Readable Guild", 10, "general")
     store.close()
 
@@ -131,7 +131,7 @@ def test_repository_search_turns_filters_without_writes(tmp_path):
 
 def test_repository_conversations_include_failed_turns_without_changing_turn_history(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     scope = Scope(1, 10, 100, True)
     success_token = CURRENT_TURN_ID.set("trace-success")
     try:
@@ -183,7 +183,7 @@ def test_repository_conversations_include_failed_turns_without_changing_turn_his
 
 def test_repository_memory_inspection_and_lifecycle_columns(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     scope = Scope(1, 10, 100, True)
     token = CURRENT_TURN_ID.set("memory-source-trace")
     try:
@@ -233,7 +233,7 @@ def test_repository_memory_inspection_and_lifecycle_columns(tmp_path):
 
 def test_repository_shared_summary_and_extraction_cursor_status(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     scope = Scope(None, 10, 100)
     store.add(scope, 1, "first", "reply")
     first_id = int(store.db.execute(
@@ -280,7 +280,7 @@ def test_repository_shared_summary_and_extraction_cursor_status(tmp_path):
 
 def test_repository_reconciliation_review_filters_stats_and_source_sets(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     scope = Scope(None, 10, 100)
     store.add(scope, 101, "first source", "reply")
     store.add(scope, 102, "second source", "reply")
@@ -372,7 +372,7 @@ def test_repository_reconciliation_review_handles_missing_tables(tmp_path):
 
 def test_repository_filters_turn_time_and_reads_neighbor_context(tmp_path):
     path = tmp_path / "turn-time.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     scope = Scope(None, 10, 100)
     store.add(scope, 1, "first", "reply one")
     store.add(scope, 2, "second", "reply two")
@@ -401,7 +401,7 @@ def test_repository_filters_turn_time_and_reads_neighbor_context(tmp_path):
 
 def test_repository_user_filter_accepts_stored_human_readable_name(tmp_path):
     path = tmp_path / "identity-filter.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     target = Scope(None, 10, 100)
     other = Scope(None, 11, 200)
     store.add(target, 101, "target turn", "reply", name="Dashboard User")

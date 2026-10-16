@@ -16,7 +16,7 @@ from hina_bot.discord.target_recent import TargetAwareRecentMessages
 
 class CaptureModeTests(unittest.TestCase):
     def test_inherits_global_server_channel_with_all_default(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         scope = Scope(1, 10, 100)
         self.assertEqual(capture_mode(store, scope), "all")
 
@@ -34,7 +34,7 @@ class CaptureModeTests(unittest.TestCase):
         store.close()
 
     def test_direct_recent_keeps_only_direct_users_and_assistant(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         scope = Scope(1, 10, 100)
         set_capture_mode_override(store, "global", "direct")
         recent = TargetAwareRecentMessages(store=store)
@@ -57,7 +57,7 @@ class CaptureModeTests(unittest.TestCase):
         store.close()
 
     def test_hina_replies_keep_targets_but_remain_shared_channel_context(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         recent = TargetAwareRecentMessages(store=store)
         user_a = Scope(1, 10, 100)
         user_b = Scope(1, 10, 200)

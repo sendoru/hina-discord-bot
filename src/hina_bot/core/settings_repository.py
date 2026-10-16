@@ -4,10 +4,13 @@ Construction performs no SQL. Each write keeps its existing transaction boundary
 callers must not wrap unrelated settings writes in a memory extraction batch.
 """
 
-import json
 import sqlite3
 
-from .scope_overrides import CHATLOG_CAPTURE_NOTE_PREFIX
+from .settings_schema import (
+    SETTINGS_DDL,
+    migrate_legacy_rag_override,
+    replace_legacy_chatlog_settings,
+)
 
 
 class SettingsRepository:
@@ -83,67 +86,17 @@ class SettingsRepository:
         ).fetchall()
 
     def replace_legacy_chatlog_settings(self, combined: dict[str, str], marker: str) -> None:
-        """Commit converted overrides and their completion marker together."""
         with self.db:
-            self.db.execute("DELETE FROM chat_log_modes")
-            self.db.execute(
-                "DELETE FROM notes WHERE scope LIKE ?",
-                (CHATLOG_CAPTURE_NOTE_PREFIX + "%",),
-            )
-            for key, mode in combined.items():
-                self.db.execute(
-                    "INSERT INTO chat_log_modes(scope,mode) VALUES (?,?)",
-                    (key, "off" if mode == "off" else "on"),
-                )
-                self.db.execute(
-                    "INSERT INTO notes(scope,text) VALUES (?,?)",
-                    (CHATLOG_CAPTURE_NOTE_PREFIX + key, "all" if mode == "off" else mode),
-                )
-            self.db.execute(
-                "INSERT OR REPLACE INTO notes(scope,text) VALUES (?,?)",
-                (marker, "1"),
-            )
+            replace_legacy_chatlog_settings(self.db, combined, marker)
 
     def ensure_runtime_schema(self) -> None:
-        self.db.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS runtime_config (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS runtime_config_startup (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
+        """Explicit initialization; caller owns the transaction."""
+        for statement in SETTINGS_DDL:
+            self.db.execute(statement)
 
     def migrate_legacy_rag_override(self, encoded_modes: dict[str, str]) -> None:
-        """Keep pre-existing DB rollout mode when upgrading to RAG_MODE."""
-        row = self.db.execute(
-            "SELECT value FROM runtime_config WHERE key='retrieval_v2_mode'"
-        ).fetchone()
-        if row is None:
-            return
-        current = self.db.execute(
-            "SELECT 1 FROM runtime_config WHERE key='rag_mode'"
-        ).fetchone()
         with self.db:
-            if current is None:
-                try:
-                    legacy = json.loads(row["value"])
-                except (TypeError, ValueError):
-                    legacy = None
-                if isinstance(legacy, str) and legacy in encoded_modes:
-                    self.db.execute(
-                        "INSERT INTO runtime_config(key,value) VALUES (?,?)",
-                        ("rag_mode", encoded_modes[legacy]),
-                    )
-            self.db.execute(
-                "DELETE FROM runtime_config WHERE key='retrieval_v2_mode'"
-            )
+            migrate_legacy_rag_override(self.db, encoded_modes)
 
     def replace_startup_snapshot(self, rows: list[tuple[str, str]]) -> None:
         with self.db:

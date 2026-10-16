@@ -166,7 +166,7 @@ class RoutingTests(unittest.TestCase):
 
 class MemoryTests(unittest.TestCase):
     def setUp(self):
-        self.store = Store(":memory:", history_turns=4)
+        self.store = Store.create(":memory:", history_turns=4)
         self.a = Scope(1, 10, 100, True)
         self.other_user = Scope(1, 10, 200, True)
         self.other_channel = Scope(1, 11, 100, True)
@@ -257,7 +257,7 @@ class MemoryTests(unittest.TestCase):
     def test_structured_memory_persistence_after_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "memory.db")
-            first = Store(path)
+            first = Store.create(path)
             first.add(self.a, 1, "취미", "응")
             turn_id = first.history(self.a)[-1]["id"]
             memory_id = first.add_memory_item(
@@ -270,7 +270,7 @@ class MemoryTests(unittest.TestCase):
             first.save_memory_extraction_cursor(self.a, turn_id)
             first.close()
 
-            second = Store(path)
+            second = Store.create(path)
             self.assertTrue(second.seen(1))
             self.assertEqual(second.memory_extraction_cursor(self.a), turn_id)
             self.assertEqual(
@@ -328,7 +328,7 @@ class SharedContextTests(unittest.TestCase):
             self.assertEqual(recent.context(Scope(1, 20, 100), 3), [])
 
     def test_shared_calls_cross_users_but_not_guilds_or_private(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         a, b = Scope(1, 10, 100, True), Scope(1, 20, 200, True)
         for i, source in enumerate([a, b, Scope(2, 30, 300, True),
                                     Scope(1, 40, 400, False), Scope(None, 50, 500)], 1):

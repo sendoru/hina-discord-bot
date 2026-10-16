@@ -57,7 +57,7 @@ def test_default_scope_is_current_and_selected_scope_uses_same_user():
 def test_scope_picker_is_registered_for_channel_specific_commands():
     memory = MemoryCommands(NS(emoji_admin_ids={100}))
     # The chatlog constructor runs its legacy migration.
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         chatlog = ChatLogCommands(NS(store=store, emoji_admin_ids={100}))
         for command in (memory.get_command("mode"), memory.get_command("purge"), chatlog.get_command("mode")):
@@ -69,7 +69,7 @@ def test_scope_picker_is_registered_for_channel_specific_commands():
 
 @pytest.mark.asyncio
 async def test_memory_mode_targets_selected_channel_and_reports_its_effective_state():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         lock = asyncio.Lock()
         client = NS(store=store, channel_lock=lambda _scope: lock)
@@ -87,7 +87,7 @@ async def test_memory_mode_targets_selected_channel_and_reports_its_effective_st
 
 @pytest.mark.asyncio
 async def test_memory_mode_refuses_cross_guild_channel_without_writing():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         group = MemoryCommands(NS(store=store, channel_lock=lambda _: asyncio.Lock()))
         interaction = _interaction()
@@ -101,7 +101,7 @@ async def test_memory_mode_refuses_cross_guild_channel_without_writing():
 
 @pytest.mark.asyncio
 async def test_chatlog_mode_only_invalidates_selected_channel_buffer():
-    store, recent = Store(":memory:"), RecentMessages()
+    store, recent = Store.create(":memory:"), RecentMessages()
     try:
         current, selected, sibling = (Scope(1, n, 100) for n in (10, 20, 30))
         for i, scope in enumerate((current, selected, sibling), 1):
@@ -126,7 +126,7 @@ async def test_chatlog_mode_only_invalidates_selected_channel_buffer():
 
 @pytest.mark.asyncio
 async def test_purge_selected_channel_requires_confirmation_and_preserves_other_channels():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         current, selected, sibling = (Scope(1, n, 100) for n in (10, 20, 30))
         for index, scope in enumerate((current, selected, sibling), 1):
@@ -150,7 +150,7 @@ async def test_purge_selected_channel_requires_confirmation_and_preserves_other_
 
 @pytest.mark.asyncio
 async def test_discord_global_purge_is_unavailable_even_when_invoked_directly():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         current, other_server = Scope(1, 10, 100), Scope(2, 20, 200)
         store.add(current, 1, "current", "reply")
@@ -172,7 +172,7 @@ async def test_discord_global_purge_is_unavailable_even_when_invoked_directly():
 
 @pytest.mark.asyncio
 async def test_purge_rejects_selected_channel_for_server_operation():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         group = MemoryCommands(NS(store=store, channel_lock=lambda _: asyncio.Lock()))
         interaction = _interaction()

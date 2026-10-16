@@ -98,7 +98,7 @@ def test_context_provenance_distinguishes_reference_and_direct_sources_without_c
 
 
 def test_structured_memory_provenance_tracks_axis_local_profile_contributors():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     guild = Scope(1, 20, 100, True)
     try:
@@ -141,7 +141,7 @@ def test_structured_memory_provenance_tracks_axis_local_profile_contributors():
 
 
 def test_structured_memory_provenance_matches_owner_and_relationship_projection():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     guild = Scope(1, 20, 100, True)
     other_guild = Scope(2, 30, 100, True)

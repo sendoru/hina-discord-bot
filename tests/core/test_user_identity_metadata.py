@@ -5,7 +5,7 @@ from hina_bot.core.store import Store
 
 
 def test_persistent_user_metadata_keeps_readable_name():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         store.add(scope, 1, "hello", "hi", name="Sendol")

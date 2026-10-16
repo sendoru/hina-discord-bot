@@ -222,7 +222,7 @@ def test_settings_load_rejects_invalid_smart_threshold(
 
 
 def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(_base(), store)
         assert settings.model == "gpt-4.1-mini"
@@ -255,7 +255,7 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
 
 def test_runtime_settings_persist_startup_snapshot_for_dashboard(tmp_path: Path):
     db = tmp_path / "runtime.sqlite3"
-    store = Store(str(db))
+    store = Store.create(str(db))
     try:
         RuntimeSettings(
             _base(
@@ -264,7 +264,7 @@ def test_runtime_settings_persist_startup_snapshot_for_dashboard(tmp_path: Path)
                 runtime_default_location="Seoul",
             ),
             store,
-        )
+        ).capture_startup_snapshot()
         rows = {
             row["key"]: row["value"]
             for row in store.db.execute(
@@ -283,13 +283,13 @@ def test_runtime_settings_persist_startup_snapshot_for_dashboard(tmp_path: Path)
 
 def test_runtime_settings_refresh_startup_snapshot_on_restart(tmp_path: Path):
     db = tmp_path / "runtime.sqlite3"
-    store = Store(str(db))
-    RuntimeSettings(_base(model="first-startup"), store)
+    store = Store.create(str(db))
+    RuntimeSettings(_base(model="first-startup"), store).capture_startup_snapshot()
     store.close()
 
-    store = Store(str(db))
+    store = Store.create(str(db))
     try:
-        RuntimeSettings(_base(model="second-startup"), store)
+        RuntimeSettings(_base(model="second-startup"), store).capture_startup_snapshot()
         value = store.db.execute(
             "SELECT value FROM runtime_config_startup WHERE key='model'"
         ).fetchone()[0]
@@ -314,7 +314,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
         gemini_store_classifier_interactions=False,
     )
 
-    store = Store(str(db))
+    store = Store.create(str(db))
     settings = RuntimeSettings(base, store)
     assert settings.set_text("LLM_MODEL", "fixed-runtime") == "fixed-runtime"
     assert settings.set_text("LLM_FAST_MODEL", "fast-runtime") == "fast-runtime"
@@ -333,7 +333,7 @@ def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
     assert settings.set_text("GEMINI_SEARCH_API_MODE", "Generate_Content") == "generate_content"
     store.close()
 
-    store = Store(str(db))
+    store = Store.create(str(db))
     try:
         reloaded = RuntimeSettings(base, store)
         assert reloaded.model == "fixed-runtime"
@@ -387,7 +387,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
         empty_response_reply="응.",
     )
 
-    store = Store(str(db))
+    store = Store.create(str(db))
     settings = RuntimeSettings(base, store)
     assert settings.set_text("MODEL_ROUTING_MODE", "adaptive") == "adaptive"
     assert settings.set_text("FAST_MAX_OUTPUT_TOKENS", "6000") == 6000
@@ -405,7 +405,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
     assert settings.set_text("EMPTY_RESPONSE_REPLY", "fallback") == "fallback"
     store.close()
 
-    store = Store(str(db))
+    store = Store.create(str(db))
     try:
         reloaded = RuntimeSettings(base, store)
         assert reloaded.model_routing_mode == "adaptive"
@@ -429,7 +429,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
 
 
 def test_runtime_cross_field_constraints_match_startup_invariants():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(
             _base(
@@ -452,7 +452,7 @@ def test_runtime_cross_field_constraints_match_startup_invariants():
 
 
 def test_reset_removes_db_override_and_restores_startup_value():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(
             _base(
@@ -494,7 +494,7 @@ def test_reset_removes_db_override_and_restores_startup_value():
 
 
 def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(_base(runtime_default_location="Seoul"), store)
         assert settings.set_text("RUNTIME_DEFAULT_LOCATION", "none") == ""
@@ -553,7 +553,7 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
     ],
 )
 def test_runtime_setting_validation_rejects_invalid_values(key: str, value: str):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(_base(), store)
         with pytest.raises(ValueError):
@@ -606,7 +606,7 @@ def test_runtime_scalar_specs_expose_editor_constraints():
     assert stale.maximum == 7 * 24 * 60 * 60
 
 def test_retrieval_v2_rollout_defaults_off_and_shadow_is_hot_reloadable():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(_base(), store)
         assert settings.retrieval_v2_mode == "off"

@@ -2,6 +2,10 @@
 
 Baseline: main `6d009da981fe13e77f3bd0733bfe9308395d3e46`.
 
+The sections below record the behavior-preserving #394/#396 stages. Their constructor/
+startup and inspection-opening descriptions are historical: #397 now replaces those
+contracts with [explicit preparation and runtime startup](db-initialization.md).
+
 ## Ownership
 
 - `core/store_schema.py`: existing Store DDL, compatibility migrations, and
@@ -161,3 +165,14 @@ retry, registry outer rollback, backup connection closure on success/failure, an
 post-backup conversation/schema changes rejected before execution. Existing legacy
 fixtures, extraction rollback/provenance and purge/reset preservation tests remain
 the regression baseline. This stage needs no operational schema/data migration.
+
+
+## Explicit initialization (#397)
+
+See [DB initialization](db-initialization.md) for current APIs, supported legacy
+shapes, schema history, backup/restore and deployment commands. Constructors bind
+prepared connections; RuntimeSettings loads only; actual bot startup owns base
+snapshot capture. Inspect/plan/dry-run use read-only target connections. DDL and
+legacy transformations run only in explicit preparation, with one owned transaction
+and verified backups for existing files. Queue dispatch, extraction atomicity,
+purge/reset table sets, retention and compound runtime settings writes are preserved.

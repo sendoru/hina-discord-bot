@@ -4,6 +4,7 @@ import sqlite3
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.tooling.prepare_database import prepare_database
 
 
 def test_store_migrates_turns_with_context_provenance_column(tmp_path):
@@ -28,7 +29,8 @@ def test_store_migrates_turns_with_context_provenance_column(tmp_path):
     db.commit()
     db.close()
 
-    store = Store(str(path))
+    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+    store = Store.create(str(path))
     try:
         columns = {
             row["name"]
@@ -40,7 +42,7 @@ def test_store_migrates_turns_with_context_provenance_column(tmp_path):
 
 
 def test_store_consumes_current_context_provenance_once():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     snapshot = {
         "version": 1,

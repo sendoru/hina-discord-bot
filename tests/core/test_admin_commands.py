@@ -13,7 +13,7 @@ from hina_bot.core.store import Store
 
 def test_admin_command_queue_is_idempotent_and_scrubs_payload(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     store.close()
 
     request_id = "a" * 32
@@ -56,7 +56,7 @@ def test_admin_command_queue_is_idempotent_and_scrubs_payload(tmp_path):
 @pytest.mark.parametrize("invalid_payload", ["{", "[]"])
 def test_store_claim_skips_invalid_payload_in_id_order_and_commits(tmp_path, invalid_payload):
     path = tmp_path / "queue.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     observer = sqlite3.connect(path)
     try:
         ids = [enqueue_admin_command(
@@ -87,7 +87,7 @@ def test_store_claim_skips_invalid_payload_in_id_order_and_commits(tmp_path, inv
 
 def test_interrupted_admin_commands_are_failed_without_retry(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     store.close()
 
     enqueue_admin_command(
@@ -112,3 +112,20 @@ def test_interrupted_admin_commands_are_failed_without_retry(tmp_path):
     assert row["error_type"] == "InterruptedAdminCommand"
     assert claim_next_admin_command(db) is None
     db.close()
+
+
+def test_enqueue_cannot_recreate_a_database_removed_after_path_validation(tmp_path, monkeypatch):
+    from hina_bot.core import admin_commands
+
+    path = tmp_path / 'removed.sqlite3'
+    Store.create(str(path)).close()
+    connect = sqlite3.connect
+
+    def remove_before_open(*args, **kwargs):
+        path.unlink()
+        return connect(*args, **kwargs)
+
+    monkeypatch.setattr(admin_commands.sqlite3, 'connect', remove_before_open)
+    with pytest.raises(sqlite3.OperationalError):
+        enqueue_admin_command(path, request_id='f' * 32, action='note.set')
+    assert not path.exists()

@@ -12,7 +12,7 @@ from hina_bot.tooling.reset_conversation import (
 
 
 def seed(path, *, pending=False):
-    store = Store(str(path))
+    store = Store.create(str(path))
     dm = Scope(None, 10, 100)
     guild = Scope(1, 20, 100, True)
     store.add(dm, 101, "recent old DM", "old response", name="DM display name")
@@ -82,7 +82,7 @@ def test_backup_and_reset_preserves_user_memory_and_settings(tmp_path):
     finally:
         backup.close()
 
-    store = Store(str(path))
+    store = Store.create(str(path))
     try:
         assert counts(store.db) == {
             "turns": 0, "shared_calls": 0, "failed_turns": 0, "shared_summaries": 0,
@@ -131,7 +131,7 @@ def test_change_after_backup_is_rejected_before_deletion(tmp_path, monkeypatch):
 
     def backup_then_write(*args, **kwargs):
         result = backup(*args, **kwargs)
-        writer = Store(str(path))
+        writer = Store.create(str(path))
         try:
             writer.add(dm, 999, "new pending source", "reply")
         finally:

@@ -72,7 +72,7 @@ def information(routing, *, references=(), search_mode="none"):
 
 
 def test_routing_plan_exposes_only_safe_explicit_reply_to_classifier():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         assistant = build_routing_plan(
@@ -296,7 +296,7 @@ async def test_classifier_no_visual_request_keeps_legacy_string_input():
 
 @pytest.mark.asyncio
 async def test_classifier_payload_marks_withheld_third_party_anchor_without_forwarding_it():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     config = settings()
     classifier_client = client(response(classification(level="low", uncertain=True)))
@@ -332,7 +332,7 @@ async def test_classifier_payload_marks_withheld_third_party_anchor_without_forw
 
 @pytest.mark.asyncio
 async def test_context_reference_samples_recent_cross_speaker_bot_exchange():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     config = settings()
     classifier_client = client(response(classification()))
@@ -402,7 +402,7 @@ async def test_context_reference_samples_recent_cross_speaker_bot_exchange():
 
 
 def test_self_contained_question_does_not_sample_cross_speaker_context():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     rows = [
         {
@@ -440,7 +440,7 @@ def test_self_contained_question_does_not_sample_cross_speaker_context():
 
 @pytest.mark.asyncio
 async def test_short_nonquestion_reference_gets_recent_thread_and_explicit_reply_context():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     config = settings()
     classifier_client = client(response(classification(level="high")))

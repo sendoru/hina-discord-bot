@@ -203,7 +203,7 @@ def test_duplicate_relation_rows_are_deduped_before_shared_packing():
 
 
 def test_runtime_metadata_is_not_synthesized_from_subject_or_admin_ownership():
-    database = AdminDatabase(":memory:")
+    database = AdminDatabase.create(":memory:")
     try:
         registry = RuntimeKnowledgeRegistry(database, kind="world_fact")
         registry.add("pair", "히나 호시노 관계", "관계", "히나,호시노", "self")

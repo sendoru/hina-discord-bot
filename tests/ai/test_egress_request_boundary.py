@@ -43,7 +43,7 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
         chat_web_search=False,
         external_context_policy="bot_interactions_only",
     ), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     store.set_note(scope.realm, "SERVER-NOTE-SECRET")
     store.set_note(scope.user_note, "MY-NOTE")

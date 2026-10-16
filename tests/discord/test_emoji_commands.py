@@ -21,7 +21,7 @@ class Emoji:
 
 class RegistryTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
         self.client = NS(get_emoji=MagicMock(return_value=Emoji()),
                          create_application_emoji=AsyncMock(return_value=Emoji()),
                          fetch_application_emojis=AsyncMock(return_value=[]))
@@ -84,9 +84,9 @@ class RegistryTests(unittest.IsolatedAsyncioTestCase):
     async def test_registry_persistence(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "bot.db")
-            one = Store(path)
+            one = Store.create(path)
             one.add_emoji("hina_happy", "1234", "happy", "100")
             one.close()
-            two = Store(path)
+            two = Store.create(path)
             self.assertEqual(two.emoji_rows()[0]["description"], "happy")
             two.close()

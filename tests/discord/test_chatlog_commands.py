@@ -10,11 +10,12 @@ from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.discord.chatlog_capture import set_capture_mode_override
 from hina_bot.discord.chatlog_commands import ChatLogCommands, _set_mode_override
+from hina_bot.tooling.prepare_database import prepare_database
 
 
 class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
     async def test_access_control_and_command_surface(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         try:
             group = ChatLogCommands(NS(store=store, emoji_admin_ids={100, 101}))
             interaction = NS(user=NS(id=200), response=NS(send_message=AsyncMock()))
@@ -30,7 +31,7 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
             store.close()
 
     def test_available_in_guilds_and_private_contexts(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         try:
             group = ChatLogCommands(NS(store=store, emoji_admin_ids={100}))
             self.assertTrue(group.allowed_contexts.guild)
@@ -42,7 +43,7 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
             store.close()
 
     async def test_mode_direct_clears_target_buffer_and_keeps_chatlog_enabled(self):
-        store, recent, lock = Store(":memory:"), RecentMessages(), asyncio.Lock()
+        store, recent, lock = Store.create(":memory:"), RecentMessages(), asyncio.Lock()
         scope, other = Scope(1, 10, 100), Scope(1, 20, 100)
         recent.add(scope, 1, "A", "current")
         recent.add(other, 2, "A", "other channel")
@@ -72,7 +73,7 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         store.close()
 
     async def test_mode_off_clears_only_target_buffer_and_not_memory(self):
-        store, recent, lock = Store(":memory:"), RecentMessages(), asyncio.Lock()
+        store, recent, lock = Store.create(":memory:"), RecentMessages(), asyncio.Lock()
         scope, other = Scope(1, 10, 100), Scope(1, 20, 100)
         store.add(scope, 10, "keep", "reply")
         recent.add(scope, 1, "A", "current")
@@ -104,7 +105,7 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         store.close()
 
     async def test_inherit_removes_both_backing_overrides_and_uses_parent_policy(self):
-        store, recent, lock = Store(":memory:"), RecentMessages(), asyncio.Lock()
+        store, recent, lock = Store.create(":memory:"), RecentMessages(), asyncio.Lock()
         scope = Scope(1, 10, 100)
         client = NS(
             store=store,
@@ -134,7 +135,7 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         store.close()
 
     async def test_global_cannot_inherit_and_server_target_requires_guild(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         client = NS(
             store=store,
             recent=RecentMessages(),
@@ -162,14 +163,16 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         # ChatLogCommands. The migration must run as part of Store initialization.
         with tempfile.TemporaryDirectory() as tempdir:
             path = str(Path(tempdir) / "legacy.sqlite3")
-            store = Store(path)
+            prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+            store = Store.create(path)
             store.set_chat_log_mode_override("global", "on")
             set_capture_mode_override(store, "global", "direct")
             store.set_chat_log_mode_override("guild:1", "off")
             store.set_note("config:chatlog_unified_v1", "")
             store.close()
 
-            store = Store(path)
+            prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+            store = Store.create(path)
             try:
                 self.assertEqual(store.note("config:chatlog_unified_v1"), "1")
                 global_scope = Scope(2, 20, 100)
@@ -184,14 +187,15 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
                 )
                 # Reopening must not repeat or overwrite the converted policy.
                 store.close()
-                store = Store(path)
+                prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+                store = Store.create(path)
                 self.assertEqual(store.note("config:chatlog_unified_v1"), "1")
                 self.assertEqual(store.chat_log_mode_override("guild:1"), "off")
             finally:
                 store.close()
 
     async def test_clear_only_drops_current_channel_recent_buffer(self):
-        store, recent = Store(":memory:"), RecentMessages()
+        store, recent = Store.create(":memory:"), RecentMessages()
         scope, other = Scope(1, 10, 100), Scope(1, 20, 100)
         store.add(scope, 10, "keep", "reply")
         recent.add(scope, 1, "A", "current")

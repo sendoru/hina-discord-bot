@@ -147,7 +147,7 @@ def build_reset_plan(
     event_log_path: str = "data/logs/events.jsonl",
 ) -> ResetPlan:
     path = Path(database_path)
-    db = _connect_existing(path)
+    db = _connect_existing(path, readonly=True)
     try:
         raw_rows = {table: _row_count(db, table) for table in RAW_TABLES}
         preserved_rows = {

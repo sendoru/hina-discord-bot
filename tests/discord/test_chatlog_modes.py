@@ -20,7 +20,7 @@ if AVAILABLE:
 @unittest.skipUnless(AVAILABLE, "Install project dependencies to test Discord adapters")
 class ChatLogAdapterTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
         self.llm = NS(
             answer=AsyncMock(return_value="안녕"),
             summarize=AsyncMock(),

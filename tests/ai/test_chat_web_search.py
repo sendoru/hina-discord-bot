@@ -78,7 +78,7 @@ async def chat_llm():
 @pytest.mark.asyncio
 async def test_relation_question_requires_search_without_local_evidence(chat_llm):
     llm, calls = chat_llm
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "나기사 만나본 적 있어?")
         payload = calls[-1]
@@ -104,7 +104,7 @@ async def test_relation_question_still_searches_with_one_local_fact(chat_llm):
         "knowledge": "direct_experience",
         "timeline": "테스트 사건",
     }])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "나기사 만나본 적 있어?")
         payload = calls[-1]
@@ -128,7 +128,7 @@ async def test_simple_fact_with_local_world_fact_gets_optional_web(chat_llm):
         "knowledge": "self",
         "timeline": "상시",
     }])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "총 이름 뭐야?")
         payload = calls[-1]
@@ -142,7 +142,7 @@ async def test_simple_fact_with_local_world_fact_gets_optional_web(chat_llm):
 @pytest.mark.asyncio
 async def test_named_who_question_is_world_fact_not_self_identity(chat_llm):
     llm, calls = chat_llm
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "나기사 누구야?")
         payload = calls[-1]
@@ -155,7 +155,7 @@ async def test_named_who_question_is_world_fact_not_self_identity(chat_llm):
 @pytest.mark.asyncio
 async def test_current_release_question_requires_search(chat_llm):
     llm, calls = chat_llm
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "한섭에 지금 어디까지 공개됐어?")
         payload = calls[-1]
@@ -168,7 +168,7 @@ async def test_current_release_question_requires_search(chat_llm):
 @pytest.mark.asyncio
 async def test_clock_question_uses_runtime_context_with_optional_search(chat_llm):
     llm, calls = chat_llm
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "지금 몇 시야?")
         payload = calls[-1]
@@ -182,7 +182,7 @@ async def test_clock_question_uses_runtime_context_with_optional_search(chat_llm
 @pytest.mark.asyncio
 async def test_location_dependent_live_question_is_optional_without_default_location(chat_llm):
     llm, calls = chat_llm
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "지금 날씨 어때?")
         payload = calls[-1]
@@ -198,7 +198,7 @@ async def test_location_dependent_live_question_is_optional_without_default_loca
 async def test_default_location_still_uses_auto_with_classifier_off(chat_llm):
     llm, calls = chat_llm
     llm.settings = replace(llm.settings, runtime_default_location="서울")
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "지금 날씨 어때?")
         payload = calls[-1]
@@ -211,7 +211,7 @@ async def test_default_location_still_uses_auto_with_classifier_off(chat_llm):
 @pytest.mark.asyncio
 async def test_public_schedule_countdown_requires_live_lookup(chat_llm):
     llm, calls = chat_llm
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(
             store, Scope(None, 20, 100), "사용자", "이번 추석 연휴 시작까지 며칠 남았어?"
@@ -226,7 +226,7 @@ async def test_public_schedule_countdown_requires_live_lookup(chat_llm):
 @pytest.mark.asyncio
 async def test_ambiguous_current_fact_gets_optional_search_tool(chat_llm):
     llm, calls = chat_llm
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "오늘 뭐 먹지?")
         payload = calls[-1]
@@ -240,7 +240,7 @@ async def test_ambiguous_current_fact_gets_optional_search_tool(chat_llm):
 @pytest.mark.asyncio
 async def test_self_identity_question_gets_optional_web(chat_llm):
     llm, calls = chat_llm
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "너 누구야?")
         payload = calls[-1]
@@ -254,7 +254,7 @@ async def test_self_identity_question_gets_optional_web(chat_llm):
 @pytest.mark.asyncio
 async def test_personal_memory_question_gets_optional_web(chat_llm):
     llm, calls = chat_llm
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "내 생일 기억하고 있어?")
         payload = calls[-1]
@@ -271,7 +271,7 @@ async def test_general_chat_gets_optional_web_with_classifier_off(chat_llm, rout
     llm, calls = chat_llm
     llm.settings = replace(llm.settings, model_routing_mode=routing_mode)
     assert llm.semantic_model_router is None
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "오늘 좀 피곤하네")
         payload = calls[-1]
@@ -285,7 +285,7 @@ async def test_general_chat_gets_optional_web_with_classifier_off(chat_llm, rout
 @pytest.mark.asyncio
 async def test_roleplay_now_question_gets_optional_web_with_classifier_off(chat_llm):
     llm, calls = chat_llm
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "지금 뭐해?")
         payload = calls[-1]
@@ -298,7 +298,7 @@ async def test_roleplay_now_question_gets_optional_web_with_classifier_off(chat_
 async def test_web_search_can_be_disabled_in_settings(chat_llm):
     llm, calls = chat_llm
     llm.settings = replace(llm.settings, chat_web_search=False)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "나기사 만나본 적 있어?")
         payload = calls[-1]
