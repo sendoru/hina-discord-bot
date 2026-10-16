@@ -10,6 +10,7 @@ import hashlib
 import os
 import sqlite3
 import uuid
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -74,7 +75,7 @@ def backup_sqlite(path: str | Path, *, backup_dir: str | Path | None = None) -> 
             source.backup(snapshot)
         finally:
             snapshot.close()
-        with sqlite3.connect(f"file:{temporary.resolve()}?mode=ro", uri=True) as check:
+        with closing(sqlite3.connect(f"file:{temporary.resolve()}?mode=ro", uri=True)) as check:
             if check.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise RuntimeError("SQLite backup integrity_check failed")
             if _counts(check) != before:
