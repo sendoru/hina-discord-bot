@@ -22,7 +22,7 @@ SETTINGS_DDL = (
 def replace_legacy_chatlog_settings(
     db: sqlite3.Connection, combined: dict[str, str], marker: str
 ) -> None:
-    """Commit converted overrides and their completion marker together."""
+    """Apply overrides and their marker within the caller's transaction."""
     db.execute("DELETE FROM chat_log_modes")
     db.execute("DELETE FROM notes WHERE scope LIKE ?", (CHATLOG_CAPTURE_NOTE_PREFIX + "%",))
     for key, mode in combined.items():
