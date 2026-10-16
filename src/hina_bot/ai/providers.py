@@ -77,7 +77,8 @@ def _gemini_interactions_tool_error(error: ProviderAPIError) -> bool:
         return False
     diagnostic = f"{error.error_code} {error.error_message}".lower()
     return any(term in diagnostic for term in (
-        "google_search", "google search", "code_execution", "code execution",
+        "google_search", "google search", "url_context", "url context",
+        "code_execution", "code execution",
         "tool", "function call", "function_call", "requires_action",
     ))
 
@@ -165,6 +166,8 @@ def _gemini_input(value):
             "code_execution_result",
             "google_search_call",
             "google_search_result",
+            "url_context_call",
+            "url_context_result",
             "file_search_call",
             "file_search_result",
         }:
@@ -378,6 +381,38 @@ def _gemini_grounding_citations(metadata: dict) -> list[tuple[str, str]]:
     return citations
 
 
+def _gemini_url_context_statuses(rows) -> list[str]:
+    """Extract bounded retrieval statuses, never URL/content, for telemetry."""
+    if isinstance(rows, dict):
+        rows = _gemini_dict_field(
+            rows, "urlMetadata", "url_metadata", "urlsMetadata",
+            "urls_metadata", "result", default=[],
+        )
+    if not isinstance(rows, list):
+        return []
+    statuses = []
+    for item in rows[:20]:
+        if not isinstance(item, dict):
+            continue
+        status = str(_gemini_dict_field(
+            item, "status", "urlRetrievalStatus", "url_retrieval_status", default="",
+        )).lower()
+        if not status:
+            status = "unknown"
+        elif "paywall" in status:
+            status = "paywall"
+        elif "unsafe" in status:
+            status = "unsafe"
+        elif status.endswith("success"):
+            status = "success"
+        elif status.endswith("error"):
+            status = "error"
+        else:
+            status = "unknown"
+        statuses.append(status)
+    return statuses
+
+
 def _gemini_generate_content_output(data: dict):
     candidates = data.get("candidates") or []
     candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
@@ -396,6 +431,8 @@ def _gemini_generate_content_output(data: dict):
     final_text_pieces = []
     last_text_part = None
     web_search_calls = 0
+    url_context_calls = 0
+    url_context_statuses = []
     last_code_id = ""
 
     for index, part in enumerate(parts):
@@ -410,12 +447,19 @@ def _gemini_generate_content_output(data: dict):
             if tool_type.startswith("GOOGLE_SEARCH"):
                 output.append(NS(type="web_search_call"))
                 web_search_calls += 1
+            elif tool_type.startswith("URL_CONTEXT"):
+                output.append(NS(type="url_context_call"))
+                url_context_calls += 1
             final_text_pieces = []
             last_text_part = None
             continue
 
         tool_response = _gemini_dict_field(part, "toolResponse", "tool_response")
         if isinstance(tool_response, dict):
+            if str(_gemini_dict_field(tool_response, "toolType", "tool_type", default="")).startswith("URL_CONTEXT"):
+                url_context_statuses.extend(_gemini_url_context_statuses(
+                    _gemini_dict_field(tool_response, "result", "response", default=[])
+                ))
             final_text_pieces = []
             last_text_part = None
             continue
@@ -489,6 +533,14 @@ def _gemini_generate_content_output(data: dict):
         default=[],
     ) or []
     citations = _gemini_grounding_citations(metadata)
+    url_context_metadata = _gemini_dict_field(
+        candidate, "urlContextMetadata", "url_context_metadata", default={},
+    )
+    if not url_context_statuses:
+        url_context_statuses = _gemini_url_context_statuses(url_context_metadata)
+    if url_context_calls == 0 and url_context_statuses:
+        url_context_calls = 1
+        output.insert(0, NS(type="url_context_call"))
     if web_search_calls == 0 and (queries or citations):
         output.insert(0, NS(type="web_search_call"))
         web_search_calls = 1
@@ -559,6 +611,8 @@ def _gemini_generate_content_output(data: dict):
         usage=usage,
     )
     response._hina_web_search_calls = web_search_calls
+    response._hina_url_context_calls = url_context_calls
+    response._hina_url_context_statuses = tuple(url_context_statuses)
     response._hina_error_codes = (
         [] if completed or not finish_reason else [finish_reason]
     )
@@ -578,6 +632,8 @@ def _gemini_output(data: dict):
     final_text_pieces = []
     previous_step_was_model_output = False
     web_search_calls = 0
+    url_context_calls = 0
+    url_context_statuses = []
 
     for step in data.get("steps") or []:
         step_type = step.get("type")
@@ -586,6 +642,13 @@ def _gemini_output(data: dict):
         if step_type == "google_search_call":
             output.append(NS(type="web_search_call"))
             web_search_calls += 1
+            continue
+        if step_type == "url_context_call":
+            output.append(NS(type="url_context_call"))
+            url_context_calls += 1
+            continue
+        if step_type == "url_context_result":
+            url_context_statuses.extend(_gemini_url_context_statuses(step.get("result")))
             continue
         if step_type == "function_call":
             call_id = str(step.get("id") or "")
@@ -669,6 +732,8 @@ def _gemini_output(data: dict):
         usage=usage,
     )
     response._hina_web_search_calls = web_search_calls
+    response._hina_url_context_calls = url_context_calls
+    response._hina_url_context_statuses = tuple(url_context_statuses)
     response._hina_error_codes = [
         error.get("code") for error in data.get("errors") or []
         if isinstance(error, dict) and isinstance(error.get("code"), str)
@@ -702,6 +767,7 @@ class _GeminiResponses:
         web_tools: list[dict],
         function_tools: list[dict],
         code_execution_tools: list[dict],
+        url_context_tools: list[dict],
         **kwargs,
     ):
         model = str(kwargs["model"]).removeprefix("models/")
@@ -736,6 +802,8 @@ class _GeminiResponses:
         payload_tools = []
         if web_tools:
             payload_tools.append({"google_search": {}})
+        if url_context_tools:
+            payload_tools.append({"url_context": {}})
         if function_tools:
             payload_tools.append({
                 "function_declarations": [{
@@ -752,7 +820,7 @@ class _GeminiResponses:
         if payload_tools:
             payload["tools"] = payload_tools
 
-        if web_tools and function_tools:
+        if (web_tools or url_context_tools) and function_tools:
             payload["toolConfig"] = {
                 "includeServerSideToolInvocations": True,
                 "functionCallingConfig": {"mode": "VALIDATED"},
@@ -776,6 +844,7 @@ class _GeminiResponses:
         web_tools: list[dict],
         function_tools: list[dict],
         code_execution_tools: list[dict],
+        url_context_tools: list[dict],
         **kwargs,
     ):
         payload = {
@@ -809,6 +878,8 @@ class _GeminiResponses:
         payload_tools = []
         if web_tools:
             payload_tools.append({"type": "google_search"})
+        if url_context_tools:
+            payload_tools.append({"type": "url_context"})
         for tool in function_tools:
             payload_tools.append({
                 "type": "function",
@@ -866,18 +937,20 @@ class _GeminiResponses:
         tools = list(kwargs.get("tools") or [])
         unknown_tools = [
             tool for tool in tools
-            if tool.get("type") not in {"web_search", "function", "code_execution"}
+            if tool.get("type") not in {"web_search", "url_context", "function", "code_execution"}
         ]
         if unknown_tools:
             raise ValueError("Gemini provider가 지원하지 않는 tool type입니다.")
 
         web_tools = [tool for tool in tools if tool.get("type") == "web_search"]
+        url_context_tools = [tool for tool in tools if tool.get("type") == "url_context"]
         function_tools = [tool for tool in tools if tool.get("type") == "function"]
         code_execution_tools = [
             tool for tool in tools if tool.get("type") == "code_execution"
         ]
         tool_kwargs = {
             "web_tools": web_tools,
+            "url_context_tools": url_context_tools,
             "function_tools": function_tools,
             "code_execution_tools": code_execution_tools,
             **kwargs,
@@ -895,7 +968,7 @@ class _GeminiResponses:
             selected_api = "interactions"
         elif pinned_api in {"interactions", "generate_content"}:
             selected_api = pinned_api
-        elif not web_tools:
+        elif not (web_tools or url_context_tools):
             selected_api = "interactions"
         elif mode == "generate_content" or (mode == "auto" and self._circuit_open()):
             selected_api = "generate_content"
@@ -906,7 +979,7 @@ class _GeminiResponses:
             return await self._generate_content(**tool_kwargs)
 
         # A retried continuation can duplicate already-executed local actions.
-        can_fallback = mode == "auto" and bool(web_tools) and not continuing
+        can_fallback = mode == "auto" and bool(web_tools or url_context_tools) and not continuing
         try:
             response = await self._interaction(**tool_kwargs)
         except ProviderAPIError as exc:
@@ -922,7 +995,7 @@ class _GeminiResponses:
         if broken_builtin and can_fallback:
             self._search_failure("unexpected_requires_action")
             return await self._generate_content(**tool_kwargs)
-        if web_tools and not broken_builtin and response.status in {"completed", "requires_action"}:
+        if (web_tools or url_context_tools) and not broken_builtin and response.status in {"completed", "requires_action"}:
             self._search_failures = 0
         return response
 
