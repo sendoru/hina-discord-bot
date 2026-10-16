@@ -66,7 +66,7 @@ async def test_instruction_size_telemetry_matches_assembled_request(tmp_path):
         ),
         client=client,
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(
             store,

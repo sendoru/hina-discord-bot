@@ -84,7 +84,7 @@ class FakeHistoryChannel:
 @unittest.skipUnless(AVAILABLE, "Install project dependencies to test Discord history backfill")
 class HistoryBackfillTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
         self.llm = NS(close=AsyncMock())
         self.bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=self.store, llm=self.llm)
         self.bot._connection.user = NS(id=99)
@@ -135,7 +135,7 @@ class HistoryBackfillTests(unittest.IsolatedAsyncioTestCase):
 @unittest.skipUnless(AVAILABLE, "Install project dependencies to test recent-context parity")
 class RecentHydrationParityTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
         self.llm = NS(close=AsyncMock())
         self.bot = WebHinaClient(
             Settings(discord_token="test", openai_api_key="test", cooldown=0),

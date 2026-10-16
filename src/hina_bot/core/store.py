@@ -10,8 +10,9 @@ from .admin_commands import (
     finish_admin_command,
     mark_interrupted_admin_commands,
 )
-from .chatlog_modes import migrate_legacy_chatlog_settings
 from .conversation_repository import ConversationRepository
+from .db_connections import open_existing
+from .db_schema import prepare_connection, require_current
 from .memory_items import (
     MemoryDisclosure,
     MemoryItem,
@@ -22,7 +23,6 @@ from .memory_repository import MemoryRepository
 from .routing import Scope
 from .scope_overrides import resolve_scope_chain
 from .settings_repository import SettingsRepository
-from .store_schema import initialize_store_schema
 
 
 class Store:
@@ -32,23 +32,57 @@ class Store:
     live in repositories; batch commits and cross-table purges remain coordinated here.
     """
 
-    def __init__(self, path: str, history_turns: int = 12):
-        if path != ":memory:":
-            Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
-        self.db.row_factory = sqlite3.Row
-        self.settings = SettingsRepository(self.db)
-        self._conversations = ConversationRepository(self.db, history_turns)
+    def __init__(self, db: sqlite3.Connection, history_turns: int = 12):
+        """Take ownership of an already prepared connection; performs no SQL."""
+        if not isinstance(db, sqlite3.Connection):
+            raise TypeError("Use open_existing() or create() with a path")
+        self.db = db
+        self.settings = SettingsRepository(db)
+        self._conversations = ConversationRepository(db, history_turns)
         self._atomic_memory_batch_open = False
         self._memories = MemoryRepository(
-            self.db,
-            user_name=lambda scope: self.user_name(scope),
+            db, user_name=lambda scope: self.user_name(scope),
             write_context=lambda: self._memory_write(),
         )
-        initialize_store_schema(self.db)
-        # Apply legacy config migration when the store is opened, even for runtimes
-        # that do not construct the Discord /chatlog command group.
-        migrate_legacy_chatlog_settings(self)
+
+    @classmethod
+    def open_existing(cls, path: str, history_turns: int = 12):
+        db = open_existing(path)
+        try:
+            require_current(db, ('store', 'settings'))
+            db.execute('PRAGMA journal_mode=WAL')
+            db.execute('PRAGMA secure_delete=ON')
+            return cls(db, history_turns)
+        except BaseException:
+            db.close()
+            raise
+
+    @classmethod
+    def create(cls, path: str, history_turns: int = 12):
+        """Explicit bootstrap for a new file or isolated test DB.
+
+        Existing files must be prepared with the backed-up preparation CLI first.
+        """
+        path = str(path)
+        if path != ':memory:':
+            path = str(Path(path).expanduser())
+        if path != ':memory:' and Path(path).exists():
+            return cls.open_existing(path, history_turns)
+        if path != ':memory:':
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            # Refuse to overwrite a file created by another process.
+            with Path(path).open('xb'):
+                pass
+        db = sqlite3.connect(path)
+        db.row_factory = sqlite3.Row
+        try:
+            prepare_connection(db, ('store', 'settings'))
+            db.execute('PRAGMA journal_mode=WAL')
+            db.execute('PRAGMA secure_delete=ON')
+            return cls(db, history_turns)
+        except BaseException:
+            db.close()
+            raise
 
     @property
     def history_turns(self) -> int:

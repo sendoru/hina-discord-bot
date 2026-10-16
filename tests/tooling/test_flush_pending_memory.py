@@ -34,7 +34,7 @@ class FakeWorker:
 
 
 def _seed(path, count=5):
-    store = Store(str(path), history_turns=12)
+    store = Store.create(str(path), history_turns=12)
     scope = Scope(None, 456, 123)
     for number in range(count):
         store.add(scope, 1000 + number, f"user-{number}", "reply")
@@ -46,7 +46,7 @@ def _seed(path, count=5):
 async def test_one_turn_tail_and_multiple_batches(tmp_path):
     path = tmp_path / "test.sqlite3"
     scope = _seed(path, 5)
-    store = Store(str(path))
+    store = Store.create(str(path))
     worker = FakeWorker()
     try:
         assert inspect_pending(path)[0].count == 5
@@ -63,7 +63,7 @@ async def test_one_turn_tail_and_multiple_batches(tmp_path):
 async def test_failure_keeps_raw_turns_and_cursor(tmp_path):
     path = tmp_path / "test.sqlite3"
     scope = _seed(path, 1)
-    store = Store(str(path))
+    store = Store.create(str(path))
     try:
         batches, errors = await flush_pending(store, FakeWorker(fail=True))
         assert batches == 0 and len(errors) == 1
@@ -77,7 +77,7 @@ async def test_failure_keeps_raw_turns_and_cursor(tmp_path):
 async def test_read_only_mode_cannot_be_bypassed(tmp_path):
     path = tmp_path / "test.sqlite3"
     scope = _seed(path, 1)
-    store = Store(str(path))
+    store = Store.create(str(path))
     try:
         store.set_memory_mode_override("global", "read_only")
         worker = FakeWorker()
@@ -152,3 +152,27 @@ def test_backup_failure_does_not_flush(tmp_path, monkeypatch):
             "SELECT COUNT(*) FROM memory_extraction_cursors WHERE scope=?",
             (scope.conversation,),
         ).fetchone()[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_flush_does_not_replace_actual_bot_startup_snapshot(tmp_path, monkeypatch):
+    from hina_bot.core.runtime_config import RuntimeSettings
+
+    path = tmp_path / 'snapshot.sqlite3'
+    _seed(path, 1)
+    store = Store.open_existing(str(path))
+    RuntimeSettings(Settings(discord_token='test', model='bot-startup'), store).capture_startup_snapshot()
+    before = [tuple(row) for row in store.db.execute('SELECT * FROM runtime_config_startup ORDER BY key')]
+    store.close()
+    monkeypatch.setattr(Settings, 'load', classmethod(lambda cls: Settings(
+        discord_token='test', db_path=str(path), model='maintenance-environment',
+    )))
+    result = await run_flush(path, worker_factory=lambda settings: FakeWorker())
+    assert result.completed
+    store = Store.open_existing(str(path))
+    try:
+        assert [tuple(row) for row in store.db.execute(
+            'SELECT * FROM runtime_config_startup ORDER BY key'
+        )] == before
+    finally:
+        store.close()

@@ -11,7 +11,7 @@ from hina_bot.discord.admin_commands import execute_admin_command
 
 @pytest.mark.asyncio
 async def test_memory_item_edit_uses_stored_scope_and_memory_lock_only():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     item_id = store.add_memory_item(
         scope,
@@ -78,7 +78,7 @@ async def test_memory_item_edit_uses_stored_scope_and_memory_lock_only():
 
 @pytest.mark.asyncio
 async def test_memory_item_edit_rejects_stale_revision():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     item_id = store.add_memory_item(scope, "before", kind="fact", disclosure="local")
     store.revise_memory_item(
@@ -117,7 +117,7 @@ async def test_memory_item_edit_rejects_stale_revision():
 
 @pytest.mark.asyncio
 async def test_memory_item_retract_uses_stored_scope_and_memory_lock_only():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     item_id = store.add_memory_item(
         scope,

@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 
 from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.runtime_llm import LLM
+from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -36,7 +37,7 @@ async def test_full_mode_includes_static_prefix_and_dynamic_refs_without_embeddi
         discord_token="test", openai_api_key="test", model="test-model",
         db_path=str(tmp_path / "hina.sqlite3"), usage_log_path=str(usage_path),
         chat_web_search=False, rag_mode="full",
-    ), client=client)
+    ), client=client, admin_db=AdminDatabase.create(':memory:'))
 
     def never_run_legacy(_query):
         raise AssertionError("Static retrieval was called in full mode")
@@ -45,7 +46,7 @@ async def test_full_mode_includes_static_prefix_and_dynamic_refs_without_embeddi
     llm.retrieval_v2.retrieve = never_run_legacy
     llm.runtime_lore.add("test.dynamic", "테스트 전용 동적 지식",
                          "히나,동적", "히나", "self")
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(store, Scope(None, 20, 100), "사용자", "히나 동적 설정 알려줘")
         payload = calls[-1]

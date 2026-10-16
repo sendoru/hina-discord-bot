@@ -23,7 +23,7 @@ from hina_bot.core.store import Store
 
 def build_fixture(root: Path):
     app = dashboard_client(root).app
-    store = Store(str(root / "hina.sqlite3"))
+    store = Store.create(str(root / "hina.sqlite3"))
     scope = Scope(None, 10, 100)
     content = "긴 한국어 본문과 식별자의 줄바꿈·모바일 탐색을 확인합니다. " * 35
     for index in range(55):
