@@ -73,6 +73,29 @@ async def test_usage_success_and_error_do_not_log_content(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_url_context_usage_tracks_status_without_storing_urls(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    result = response(120, 30, output=[
+        NS(type="url_context_call"), NS(type="message"),
+    ])
+    result._hina_url_context_statuses = ("success", "paywall")
+    client = NS(responses=NS(create=AsyncMock(return_value=result)))
+    with logger.exchange("guild"):
+        await logger.request(
+            client, "answer", model="gemini-test",
+            input="https://example.com/private-query",
+        )
+    logger.close()
+
+    row = json.loads(path.read_text().splitlines()[0])
+    assert row["url_context_calls"] == 1
+    assert row["url_context_used"] is True
+    assert row["url_context_status_counts"] == {"success": 1, "paywall": 1}
+    assert "example.com" not in path.read_text()
+
+
+@pytest.mark.asyncio
 async def test_request_deadline_logs_timeout_without_failed_api_call(tmp_path):
     path = tmp_path / "usage.jsonl"
     logger = UsageLogger(str(path))
