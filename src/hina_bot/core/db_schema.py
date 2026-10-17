@@ -11,36 +11,33 @@ import re
 import sqlite3
 from functools import cache
 
-from .admin_schema import ADMIN_DDL
-from .chatlog_modes import _MIGRATION_MARKER, legacy_chatlog_plan
 from .config import LEGACY_RAG_MODES
-from .queue_schema import QUEUE_DDL
+from .db_ddl import DDL, LEDGER_DDL, QUEUE_DDL, STORE_DDL, STORE_INDEXES
 from .scope_overrides import CHATLOG_CAPTURE_NOTE_PREFIX
-from .settings_schema import (
-    SETTINGS_DDL,
-    migrate_legacy_rag_override,
-    replace_legacy_chatlog_settings,
-)
-from .store_ddl import STORE_DDL, STORE_INDEXES
-from .store_schema import initialize_store_schema
 
-COMPONENTS = ("store", "settings", "admin")
-DDL = {
-    "store": STORE_DDL + STORE_INDEXES + QUEUE_DDL,
-    "settings": SETTINGS_DDL,
-    "admin": ADMIN_DDL,
-}
-LEGACY_OPTIONAL = {
-    "turns": {"name", "turn_id", "memory_context", "context_provenance"},
-    "memory_items": {"relationship_evidence", "user_name", "status", "superseded_by", "revision"},
+COMPONENTS = tuple(DDL)
+# Only these known legacy columns may be absent. Inspection and ALTER use the
+# same list; declarations are the existing upgrades, not a general schema DSL.
+LEGACY_COLUMNS = {
+    "turns": {
+        "memory_context": "TEXT NOT NULL DEFAULT ''",
+        "context_provenance": "TEXT NOT NULL DEFAULT ''",
+        "turn_id": "TEXT",
+        "name": "TEXT NOT NULL DEFAULT ''",
+    },
+    "memory_items": {
+        "relationship_evidence": "TEXT NOT NULL DEFAULT '{}'",
+        "user_name": "TEXT NOT NULL DEFAULT ''",
+        "status": "TEXT NOT NULL DEFAULT 'active' "
+                  "CHECK(status IN ('active','superseded','retracted'))",
+        "superseded_by": "INTEGER",
+        "revision": "INTEGER NOT NULL DEFAULT 0",
+    },
 }
 # These schemas existed before CHECK constraints were installed. Copy all columns,
 # preserving IDs and sequences, rather than blessing a weaker schema as current.
 LEGACY_REBUILD = {"memory_items", "memory_item_edit_history", "memory_reconciliation_proposals"}
-LEDGER_DDL = """CREATE TABLE schema_migrations (
-    component TEXT NOT NULL, version INTEGER NOT NULL, name TEXT NOT NULL,
-    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY(component,version))"""
+CHATLOG_MIGRATION_MARKER = "config:chatlog_unified_v1"
 
 
 class SchemaError(RuntimeError):
@@ -86,13 +83,20 @@ def _unique_keys(db, table):
 
 @cache
 def _expected():
+    """Ask SQLite for our fixed DDL's columns/checks/keys/SQL and named indexes."""
     db = sqlite3.connect(":memory:")
     try:
         result = {}
+        owned = set()
         for component in COMPONENTS:
             for statement in DDL[component]:
                 db.execute(statement)
-            tables = re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", "\n".join(DDL[component]))
+            tables = {
+                row[0] for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name NOT GLOB 'sqlite_*'"
+                )
+            }
             result[component] = {
                 table: (
                     _columns(db, table),
@@ -100,8 +104,9 @@ def _expected():
                     _unique_keys(db, table),
                     _sql(db, table),
                 )
-                for table in tables
+                for table in tables - owned
             }
+            owned = tables
         indexes = {
             r[0]: (r[1], r[2])
             for r in db.execute(
@@ -114,10 +119,11 @@ def _expected():
 
 
 def _matches(db, table, spec):
+    columns, checks, keys, _ = spec
     return (
-        _columns(db, table) == spec[0]
-        and _checks(_sql(db, table)) == spec[1]
-        and _unique_keys(db, table) == spec[2]
+        _columns(db, table) == columns
+        and _checks(_sql(db, table)) == checks
+        and _unique_keys(db, table) == keys
     )
 
 
@@ -141,7 +147,7 @@ def inspect_connection(db, components=COMPONENTS) -> tuple[str, ...]:
     }
     if tables and not tables & known:
         raise SchemaError("Not a recognized Hina database; refuse schema adoption")
-    ledger = {}
+    ledger = set()
     if _sql(db, "schema_migrations"):
         ledger_columns = {
             "component": ("component", "TEXT", 1, None, 1, 0),
@@ -165,13 +171,14 @@ def inspect_connection(db, components=COMPONENTS) -> tuple[str, ...]:
                 raise SchemaError("Unknown or future schema migration history")
             if component in ledger:
                 raise SchemaError("Duplicate schema migration history")
-            ledger[component] = version
-    pending = []
+            ledger.add(component)
+    pending = set()
     for component in COMPONENTS:
         if component not in components:
             continue
         current = True
         for table, spec in expected[component].items():
+            expected_columns, expected_checks, expected_keys, expected_sql = spec
             sql = _sql(db, table)
             if sql is None:
                 current = False
@@ -186,26 +193,27 @@ def inspect_connection(db, components=COMPONENTS) -> tuple[str, ...]:
             ):
                 raise SchemaError(f"Unsupported table semantics in {table}")
             cols = _columns(db, table)
-            optional = LEGACY_OPTIONAL.get(table, set())
-            if set(cols) - set(spec[0]) or (set(spec[0]) - set(cols)) - optional:
+            missing = expected_columns.keys() - cols.keys()
+            if cols.keys() - expected_columns.keys() or missing - LEGACY_COLUMNS.get(table, {}).keys():
                 raise SchemaError(f"Unsupported columns in {table}")
             for name, column in cols.items():
                 # Column position is deliberately excluded: ALTER appends columns.
-                if column != spec[0][name]:
+                if column != expected_columns[name]:
                     raise SchemaError(f"Unsupported column definition: {table}.{name}")
             checks = _checks(sql)
-            allowed = spec[1]
+            allowed = expected_checks
             if table == "memory_items":
                 allowed |= {"statusin('active','superseded')"}
-            if checks - allowed or _unique_keys(db, table) - spec[2]:
+            keys = _unique_keys(db, table)
+            if checks - allowed or keys - expected_keys:
                 raise SchemaError(f"Unsupported constraints in {table}")
             if db.execute(f'PRAGMA foreign_key_list("{table}")').fetchone():
                 raise SchemaError(f"Unsupported foreign keys in {table}")
-            if "autoincrement" in spec[3].lower() and "autoincrement" not in sql.lower():
+            if "autoincrement" in expected_sql.lower() and "autoincrement" not in sql.lower():
                 raise SchemaError(f"Missing AUTOINCREMENT in {table}")
-            exact = _matches(db, table, spec)
+            exact = cols == expected_columns and checks == expected_checks and keys == expected_keys
             if not exact:
-                if table not in LEGACY_REBUILD and not set(spec[0]) - set(cols):
+                if table not in LEGACY_REBUILD and not missing:
                     raise SchemaError(f"Unsupported constraints in {table}")
                 # Rebuilds may discard dependent objects; refuse anything we cannot restore.
                 if table in LEGACY_REBUILD:
@@ -230,31 +238,30 @@ def inspect_connection(db, components=COMPONENTS) -> tuple[str, ...]:
         if component in ledger and not current:
             raise SchemaError(f"{component} schema differs from recorded version")
         if component not in ledger:
-            pending.append(component)
+            pending.add(component)
     if "store" in components and _sql(db, "summaries"):
         cols = set(_columns(db, "summaries"))
         cursor_columns = {"scope", "realm", "user_id", "through_id"}
         unused_columns = {"name", "text", "exportable"}
         if not cursor_columns <= cols or cols - cursor_columns - unused_columns:
             raise SchemaError("Unsupported legacy summaries")
-        if "store" not in pending:
-            pending.append("store")
+        pending.add("store")
     if "store" in components and _sql(db, "notes"):
-        marker = db.execute("SELECT text FROM notes WHERE scope=?", (_MIGRATION_MARKER,)).fetchone()
-        if (marker is None or marker[0] != "1") and "store" not in pending:
-            pending.append("store")
+        marker = db.execute("SELECT text FROM notes WHERE scope=?",
+                            (CHATLOG_MIGRATION_MARKER,)).fetchone()
+        if marker is None or marker[0] != "1":
+            pending.add("store")
     if (
         "settings" in components
         and _sql(db, "runtime_config")
         and db.execute("SELECT 1 FROM runtime_config WHERE key='retrieval_v2_mode'").fetchone()
-        and "settings" not in pending
     ):
-        pending.append("settings")
+        pending.add("settings")
     return tuple(c for c in COMPONENTS if c in pending)
 
 
 def _rebuild_legacy(db):
-    expected, indexes = _expected()
+    expected, _ = _expected()
     for table in LEGACY_REBUILD:
         spec = expected["store"][table]
         if _matches(db, table, spec):
@@ -271,10 +278,78 @@ def _rebuild_legacy(db):
         if sequence:
             db.execute("DELETE FROM sqlite_sequence WHERE name=?", (table,))
             db.execute("INSERT INTO sqlite_sequence(name,seq) VALUES (?,?)", (table, sequence[0]))
-        for owner, statement in indexes.values():
-            if owner == table:
-                # SQL comes from our isolated canonical schema, never the input DB.
-                db.execute(statement)
+
+
+def _migrate_legacy_chatlog(db):
+    marker = db.execute("SELECT text FROM notes WHERE scope=?",
+                        (CHATLOG_MIGRATION_MARKER,)).fetchone()
+    if marker and marker[0] == "1":
+        return
+    logs = dict(db.execute("SELECT scope,mode FROM chat_log_modes"))
+    captures = {
+        scope[len(CHATLOG_CAPTURE_NOTE_PREFIX):]: str(text).strip()
+        for scope, text in db.execute(
+            "SELECT scope,text FROM notes WHERE scope LIKE ?", (CHATLOG_CAPTURE_NOTE_PREFIX + "%",)
+        )
+        if str(text).strip() in {"all", "direct"}
+    }
+    # Read both old representations before replacing either. All writes and the
+    # completion marker belong to prepare_connection's one transaction.
+    db.execute("DELETE FROM chat_log_modes")
+    db.execute("DELETE FROM notes WHERE scope LIKE ?", (CHATLOG_CAPTURE_NOTE_PREFIX + "%",))
+    for key in set(logs) | set(captures):
+        if key == "global":
+            parents = ("global",)
+        elif key.startswith("guild:") and ":channel:" in key:
+            parents = ("global", key.split(":channel:", 1)[0], key)
+        else:
+            parents = ("global", key)
+        enabled, capture = "on", "all"
+        for parent in parents:
+            enabled = logs.get(parent, enabled)
+            capture = captures.get(parent, capture)
+        db.execute("INSERT INTO chat_log_modes(scope,mode) VALUES (?,?)",
+                   (key, "off" if enabled == "off" else "on"))
+        db.execute("INSERT INTO notes(scope,text) VALUES (?,?)",
+                   (CHATLOG_CAPTURE_NOTE_PREFIX + key, "all" if enabled == "off" else capture))
+    db.execute("INSERT OR REPLACE INTO notes(scope,text) VALUES (?,?)",
+               (CHATLOG_MIGRATION_MARKER, "1"))
+
+
+def _prepare_store(db):
+    for statement in STORE_DDL + QUEUE_DDL:
+        db.execute(statement)
+    for table, declarations in LEGACY_COLUMNS.items():
+        columns = _columns(db, table)
+        for name, declaration in declarations.items():
+            if name not in columns:
+                db.execute(f'ALTER TABLE "{table}" ADD COLUMN {name} {declaration}')
+    if _sql(db, "summaries"):
+        # Existing structured cursors win. The original summary remains in the
+        # verified pre-migration backup, as in the existing conversion contract.
+        db.execute("""INSERT OR IGNORE INTO memory_extraction_cursors(scope,realm,user_id,through_id)
+                      SELECT scope,realm,user_id,through_id FROM summaries""")
+        db.execute("DROP TABLE summaries")
+    _rebuild_legacy(db)
+    # Create indexes once, after column additions and table rebuilds have finished.
+    for statement in STORE_INDEXES:
+        db.execute(statement)
+    _migrate_legacy_chatlog(db)
+
+
+def _migrate_legacy_rag(db):
+    row = db.execute("SELECT value FROM runtime_config WHERE key='retrieval_v2_mode'").fetchone()
+    if row is None:
+        return
+    if not db.execute("SELECT 1 FROM runtime_config WHERE key='rag_mode'").fetchone():
+        try:
+            legacy = json.loads(row[0])
+        except (TypeError, ValueError):
+            legacy = None
+        if isinstance(legacy, str) and legacy in LEGACY_RAG_MODES:
+            db.execute("INSERT INTO runtime_config(key,value) VALUES (?,?)",
+                       ("rag_mode", json.dumps(LEGACY_RAG_MODES[legacy])))
+    db.execute("DELETE FROM runtime_config WHERE key='retrieval_v2_mode'")
 
 
 def prepare_connection(db, components=COMPONENTS, *, expected_signature=None) -> tuple[str, ...]:
@@ -293,30 +368,13 @@ def prepare_connection(db, components=COMPONENTS, *, expected_signature=None) ->
         if inspect_connection(db, components) != pending:
             raise SchemaError("Schema changed since inspection")
         if "store" in pending:
-            initialize_store_schema(db)
-            _rebuild_legacy(db)
-            marker = db.execute(
-                "SELECT text FROM notes WHERE scope=?", (_MIGRATION_MARKER,)
-            ).fetchone()
-            if not marker or marker[0] != "1":
-                logs = dict(db.execute("SELECT scope,mode FROM chat_log_modes"))
-                captures = {
-                    scope[len(CHATLOG_CAPTURE_NOTE_PREFIX) :]: str(text).strip()
-                    for scope, text in db.execute(
-                        "SELECT scope,text FROM notes WHERE scope LIKE ?",
-                        (CHATLOG_CAPTURE_NOTE_PREFIX + "%",),
-                    )
-                    if str(text).strip() in {"all", "direct"}
-                }
-                replace_legacy_chatlog_settings(
-                    db, legacy_chatlog_plan(logs, captures), _MIGRATION_MARKER
-                )
+            _prepare_store(db)
         if "settings" in pending:
-            for statement in SETTINGS_DDL:
+            for statement in DDL["settings"]:
                 db.execute(statement)
-            migrate_legacy_rag_override(db, {k: json.dumps(v) for k, v in LEGACY_RAG_MODES.items()})
+            _migrate_legacy_rag(db)
         if "admin" in pending:
-            for statement in ADMIN_DDL:
+            for statement in DDL["admin"]:
                 db.execute(statement)
         if not _sql(db, "schema_migrations"):
             db.execute(LEDGER_DDL)

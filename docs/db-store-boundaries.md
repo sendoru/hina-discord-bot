@@ -11,6 +11,8 @@ The #395 midpoint [schema and compatibility audit](db-schema-audit.md) records
 active fields, write-only audit metadata and removed obsolete initialization APIs.
 The follow-up [DB operation audit](db-operations-audit.md) records unused query/write
 entrypoints, shared connection setup and the transaction/deletion paths retained.
+The [final #397–#398 review](db-final-review.md) consolidates schema ownership into
+`db_ddl.py` and `db_schema.py`; earlier schema filenames below are historical.
 
 ## Ownership
 
