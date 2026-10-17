@@ -1,5 +1,6 @@
 """SDK/adapter contract tests; no Discord login or paid API requests."""
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -298,6 +299,69 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(completed["reply_delivered"])
         self.llm.extract_structured_memory.assert_awaited_once()
         self.llm.summarize_shared.assert_awaited_once()
+
+    async def test_public_projection_failure_rolls_back_success_without_resending_reply(self):
+        self.store.db.execute("""CREATE TEMP TRIGGER reject_shared BEFORE INSERT ON shared_calls
+            BEGIN SELECT RAISE(ABORT, 'private-storage-error'); END""")
+        await self.bot.on_message(self.message())
+        self.channel.send.assert_awaited_once()
+        self.assertFalse(self.store.seen(1))
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM shared_calls").fetchone()[0], 0)
+        failed = self.store.db.execute("SELECT * FROM failed_turns").fetchone()
+        self.assertEqual(failed["stage"], "memory_persist")
+        self.assertEqual(failed["reply"], "안녕")
+        self.assertEqual(failed["reply_delivered"], 1)
+        self.llm.extract_structured_memory.assert_not_awaited()
+        self.llm.summarize_shared.assert_not_awaited()
+        raw = self.event_path.read_text()
+        self.assertNotIn("private-storage-error", raw)
+        rows = [json.loads(line) for line in raw.splitlines()]
+        self.assertFalse(any(row["event"] == "turn.completed" for row in rows))
+        terminal = next(row for row in rows if row["event"] == "turn.failed")
+        self.assertTrue(terminal["reply_delivered"])
+        self.assertEqual(terminal["stage"], "memory_persist")
+        self.assertEqual(terminal["error_type"], "IntegrityError")
+        self.assertEqual(terminal["turn_id"], failed["turn_id"])
+
+        # Failure audit does not participate in seen(), so a later redelivery is
+        # still processable. There is no automatic retry or exactly-once delivery.
+        self.store.db.execute("DROP TRIGGER reject_shared")
+        await self.bot.on_message(self.message())
+        self.assertEqual(self.channel.send.await_count, 2)
+        self.assertTrue(self.store.seen(1))
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM shared_calls").fetchone()[0], 1)
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM failed_turns").fetchone()[0], 1)
+
+    async def test_failure_audit_write_error_preserves_original_failure_and_delivery(self):
+        for table in ("shared_calls", "failed_turns"):
+            self.store.db.execute(f"""CREATE TEMP TRIGGER reject_{table} BEFORE INSERT ON {table}
+                BEGIN SELECT RAISE(ABORT, 'private-storage-error'); END""")
+        await self.bot.on_message(self.message())
+        self.channel.send.assert_awaited_once()
+        self.assertFalse(self.store.seen(1))
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM failed_turns").fetchone()[0], 0)
+        raw = self.event_path.read_text()
+        self.assertNotIn("private-storage-error", raw)
+        rows = [json.loads(line) for line in raw.splitlines()]
+        self.assertTrue(any(row["event"] == "turn.persistence_failed" for row in rows))
+        terminal = next(row for row in rows if row["event"] == "turn.failed")
+        self.assertEqual(terminal["raw_turn_persistence"], "failed")
+        self.assertEqual(terminal["stage"], "memory_persist")
+        self.assertEqual(terminal["error_type"], "IntegrityError")
+        self.assertTrue(terminal["reply_delivered"])
+
+    async def test_failure_audit_lookup_error_does_not_replace_the_original_terminal_error(self):
+        self.store.db.execute("""CREATE TEMP TRIGGER reject_shared BEFORE INSERT ON shared_calls
+            BEGIN SELECT RAISE(ABORT, 'private-storage-error'); END""")
+        self.store.seen = MagicMock(side_effect=[False, sqlite3.OperationalError("audit unavailable")])
+        await self.bot.on_message(self.message())
+        self.channel.send.assert_awaited_once()
+        rows = [json.loads(line) for line in self.event_path.read_text().splitlines()]
+        self.assertTrue(any(row["event"] == "turn.persistence_failed" for row in rows))
+        terminal = next(row for row in rows if row["event"] == "turn.failed")
+        self.assertEqual(terminal["raw_turn_persistence"], "failed")
+        self.assertEqual(terminal["error_type"], "IntegrityError")
+        self.assertEqual(terminal["stage"], "memory_persist")
 
     async def test_structured_memory_failure_does_not_block_shared_summary(self):
         self.llm.extract_structured_memory.side_effect = RuntimeError("structured-failure")
