@@ -5,6 +5,8 @@ Baseline: main `6d009da981fe13e77f3bd0733bfe9308395d3e46`.
 The sections below record the behavior-preserving #394/#396 stages. Their constructor/
 startup and inspection-opening descriptions are historical: #397 now replaces those
 contracts with [explicit preparation and runtime startup](db-initialization.md).
+The #398 reliability changes are documented separately in
+[database reliability contracts](db-reliability.md).
 
 ## Ownership
 
