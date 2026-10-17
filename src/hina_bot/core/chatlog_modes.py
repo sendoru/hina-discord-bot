@@ -77,12 +77,6 @@ def set_unified_chatlog_mode(store, scope_key: str, mode: str | None) -> None:
     """Update both backing overrides of one unified all/direct/off mode."""
     if mode is not None and mode not in {"all", "direct", "off"}:
         raise ValueError("Invalid chat log mode")
-    if mode is None:
-        store.set_chat_log_mode_override(scope_key, None)
-        store.set_note(CHATLOG_CAPTURE_NOTE_PREFIX + scope_key, "")
-    else:
-        store.set_chat_log_mode_override(scope_key, "off" if mode == "off" else "on")
-        store.set_note(
-            CHATLOG_CAPTURE_NOTE_PREFIX + scope_key,
-            "all" if mode == "off" else mode,
-        )
+    enabled = None if mode is None else "off" if mode == "off" else "on"
+    capture = None if mode is None else "all" if mode == "off" else mode
+    store.settings.replace_chatlog_override(scope_key, enabled=enabled, capture=capture)
