@@ -2565,10 +2565,12 @@ pre {
   white-space: nowrap;
 }
 
-.memory-table th:first-child { min-width: 60px; }
-.memory-table th:nth-child(2) { min-width: 190px; }
-.memory-table th:nth-child(5) { min-width: 250px; }
-.memory-table th:last-child { min-width: 170px; }
+/* Keep widths attached to their columns when bulk selection is present. */
+.memory-table .memory-selection-column { width: 44px; min-width: 44px; }
+.memory-table .memory-id-column { min-width: 60px; }
+.memory-table .memory-user-column { min-width: 190px; }
+.memory-table .memory-origin-column { min-width: 250px; }
+.memory-table .memory-updated-column { min-width: 170px; }
 
 .summary-table th,
 .cursor-table th {
@@ -3636,3 +3638,11 @@ pre {
     min-height: 36px;
   }
 }
+
+.memory-bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.memory-bulk-actions label, .memory-mobile-select { display: inline-flex; align-items: center; gap: 8px; }
+.memory-bulk-actions input[type="checkbox"], input.memory-select {
+  min-height: 20px; width: 20px; height: 20px; padding: 0; flex: 0 0 auto;
+}
+.memory-mobile-select { min-height: 44px; }
+[data-memory-bulk-feedback] { overflow-wrap: anywhere; }
