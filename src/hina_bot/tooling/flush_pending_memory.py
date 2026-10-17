@@ -107,7 +107,7 @@ async def flush_pending(store: Store, worker) -> tuple[int, tuple[str, ...]]:
         if not MemoryMode(store.memory_mode(scope)).writes:
             failures.append(f"{scope.conversation}: memory writes are disabled")
             continue
-        while store.pending_memory_extraction(scope):
+        while store.pending_memory_extraction(scope, limit=1):
             previous = store.memory_extraction_cursor(scope)
             try:
                 committed = await worker.extract_structured_memory(

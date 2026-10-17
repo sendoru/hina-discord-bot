@@ -59,7 +59,7 @@ class ModeTests(unittest.TestCase):
         store.set_chat_log_mode_override(scope.channel, "off")
         self.assertFalse(store.chat_log_enabled(scope))
         self.assertEqual(store.memory_mode(scope), "normal")
-        store.set_memory_mode(scope, "off")
+        store.set_memory_mode_override(scope.channel, "off")
         self.assertFalse(store.chat_log_enabled(scope))
         store.close()
 
@@ -69,7 +69,7 @@ class ModeTests(unittest.TestCase):
             store = Store.create(path)
             scope = Scope(1, 10, 100)
             store.add(scope, 1, "keep", "keep reply")
-            store.set_memory_mode(scope, "off")
+            store.set_memory_mode_override(scope.channel, "off")
             self.assertEqual(store.memory_mode(Scope(1, 10, 200)), "off")
             self.assertEqual(store.memory_mode(Scope(1, 20, 100)), "normal")
             store.close()
@@ -81,7 +81,7 @@ class ModeTests(unittest.TestCase):
             store.set_memory_mode_override(scope.channel, None)
             self.assertEqual(store.memory_mode(scope), "normal")
             with self.assertRaises(ValueError):
-                store.set_memory_mode(scope, "invalid")
+                store.set_memory_mode_override(scope.channel, "invalid")
             store.close()
 
 

@@ -20,7 +20,8 @@ def stores(tmp_path):
     scope = Scope(1, 10, 100, True)
     for message_id in (101, 102):
         first.add(scope, message_id, "source", "reply", name="name")
-        first.add_shared_call(scope, message_id, "name", "source")
+        with first.db:
+            first._conversations.write_shared_call(scope, message_id, "name", "source")
     try:
         yield first, second, scope
     finally:
