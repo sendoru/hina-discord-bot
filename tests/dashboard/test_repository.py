@@ -119,6 +119,21 @@ def test_repository_handles_pre_turn_id_database_without_migrating_it(tmp_path):
     assert "turn_id" not in columns
 
 
+def test_repository_does_not_treat_a_view_as_the_memory_table(tmp_path):
+    path = tmp_path / "view.sqlite3"
+    db = sqlite3.connect(path)
+    try:
+        db.execute("CREATE VIEW memory_items AS SELECT 1 AS id, 'active' AS status")
+        db.commit()
+    finally:
+        db.close()
+
+    repository = AdminRepository(path)
+    assert repository.memory_schema()["available"] is False
+    assert repository.memory_schema()["columns"] == ()
+    assert repository.search_memory_items() == []
+
+
 def test_repository_search_conversations_filters_without_writes(tmp_path):
     path = tmp_path / "hina.sqlite3"
     populated_database(path)

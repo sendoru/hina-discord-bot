@@ -13,7 +13,7 @@ epoch/JSON 이전 CLI와 그 호출부·테스트를 조사했다. 정적 참조
 | Dashboard `table_names`, `memory_counts_by_user`, `recent_reconciliation_proposals`, `shared_summaries` | 애플리케이션·테스트의 메서드 호출이 없다. 현행 화면이 쓰는 schema/status/필터 조회를 유지하고 폐기된 단순 목록·집계 API를 제거했다. SQL의 같은 테이블 이름을 메서드 호출로 세지 않았다. |
 | Dashboard `search_turns`, `_turn_filters`, `count_turns`의 필터 인자 | 검색은 성공·실패 대화를 합치는 `search_conversations/count_conversations`로 이미 이동했다. 옛 검색은 테스트만 사용했다. 필터·날짜·사용자 이름 검증을 실제 화면 경로로 옮겼다. `count_turns()`는 telemetry coverage의 **성공 대화 총수**로 계속 사용되므로 단순화해 유지했다. |
 | Dashboard `recent_memory_items` | 테스트만 사용했다. 같은 데이터 준비 후 현행 `search_memory_items`로 검증한다. 기존 목록의 기본 lifecycle 조건과 현행 검색 조건을 같은 것으로 간주해 런타임 호출을 바꾼 것은 아니다. |
-| Dashboard `_has_column` | `_table_columns`와 중복됐다. 한 번의 `PRAGMA table_info`로 필요한 컬럼을 확인한다. 없는 테이블은 SQLite가 빈 결과를 반환하므로 별도의 존재 확인 연결도 제거했다. |
+| Dashboard `_has_column` | `_table_columns`와 중복됐다. 필요한 컬럼을 함께 확인하고, 존재 확인과 `PRAGMA table_info`는 같은 연결에서 실행한다. view를 실제 기억 테이블로 취급하지 않는 기존 규칙도 유지한다. |
 | Store `_decode_memory_item` | Repository 구현으로 옮겨진 뒤 남은 미사용 private wrapper였다. 실제 decoder는 Repository에 유지했다. |
 | Store `set_memory_mode` | 현재 관리 경로는 `set_memory_mode_override`를 사용한다. 테스트만 쓰던 채널 별칭을 제거하고 테스트도 실제 override API를 사용한다. |
 | Store/ConversationRepository `add_shared_call`, `save_shared_summary` | #398 이후 현재 봇은 각각 공동 저장과 snapshot/guarded commit을 사용한다. 두 standalone writer의 남은 호출은 테스트 상태 준비뿐이었다. 별도 커밋을 만드는 wrapper를 제거했다. 과거 상태·서로 다른 ID·경합을 재현하는 테스트는 기존 `write_shared_call/write_shared_summary`를 **명시적인 테스트 트랜잭션**에서 호출해 데이터를 준비한다. 런타임 fallback은 만들지 않았다. |
@@ -55,6 +55,7 @@ epoch/JSON 이전 CLI와 그 호출부·테스트를 조사했다. 정적 참조
 기존 테스트의 검색·이름·커서·ID·보존/삭제·경합 assertion은 유지하고 사용 경로만 바꾼다.
 추가한 유지보수 실패 주입은 writer/read-only opener 이후 PRAGMA 및 schema 확인이
 실패했을 때 연결이 닫히는지 검증한다. 기존 Dashboard read-only 검증도 연결 종료를 확인한다.
+테이블 introspection 통합 후에도 view를 현행 기억 테이블로 인식하지 않는지 검증한다.
 전체 Python 3.11~3.13 CI와 Ruff·버전 검사를 통합 전후 확인한다.
 
 실제 schema와 보존량은 변경하지 않는다. `history_turns`의 원본 삭제, 논리 reset,

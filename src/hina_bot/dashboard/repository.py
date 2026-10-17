@@ -559,7 +559,11 @@ class AdminRepository:
 
     def _table_columns(self, table: str) -> set[str]:
         with self._connection() as db:
-            # SQLite returns no rows for an absent table; no separate open/check needed.
+            # Keep the existing table-only contract without opening twice.
+            if db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,),
+            ).fetchone() is None:
+                return set()
             rows = db.execute(f"PRAGMA table_info({table})").fetchall()
         return {str(row["name"]) for row in rows}
 
