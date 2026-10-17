@@ -109,6 +109,16 @@ it will run its old constructor migrations and snapshot writes again. Use a veri
 backup restore if an actual schema downgrade/recovery is required. No automatic
 reverse migration or production DB execution is included in this change.
 
+## Schema code ownership
+
+`core/db_ddl.py` contains the unchanged target SQL for the fixed store/settings/admin
+areas and their baseline ledger. `core/db_schema.py` owns inspection and the known
+legacy upgrades, including Store column additions and chatlog/RAG conversion.
+There is no migration plugin registry or general schema DSL. Store indexes are
+installed once after any table rebuilds, within the same preparation transaction.
+The [final structural review](db-final-review.md) records consolidation, retained
+safety checks, comparison results and verification limits.
+
 ## Connection and object ownership
 
 - `open_readonly(path)` uses an encoded SQLite URI with mode=ro/query_only; it never

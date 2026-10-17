@@ -1,4 +1,4 @@
-"""Shared chatlog mode storage, effective inheritance and legacy migration.
+"""Shared chatlog mode storage and effective inheritance.
 
 These helpers are domain operations used by Dashboard and Discord, independent
 of slash-command registration and Discord.py.
@@ -9,8 +9,6 @@ from __future__ import annotations
 from .routing import Scope
 from .scope_overrides import CHATLOG_CAPTURE_NOTE_PREFIX, resolve_scope_chain
 
-_MIGRATION_MARKER = "config:chatlog_unified_v1"
-
 
 def _capture_overrides(store) -> dict[str, str]:
     rows = store.settings.note_rows(CHATLOG_CAPTURE_NOTE_PREFIX)
@@ -20,27 +18,6 @@ def _capture_overrides(store) -> dict[str, str]:
         if value in {"all", "direct"}:
             results[str(row["scope"])[len(CHATLOG_CAPTURE_NOTE_PREFIX):]] = value
     return results
-
-
-def _parents(key: str) -> tuple[str, ...]:
-    if key == "global":
-        return ("global",)
-    if key.startswith("guild:") and ":channel:" in key:
-        return ("global", key.split(":channel:", 1)[0], key)
-    return ("global", key)
-
-
-def legacy_chatlog_plan(logs: dict[str, str], captures: dict[str, str]) -> dict[str, str]:
-    combined = {}
-    for key in set(logs) | set(captures):
-        enabled = "on"
-        capture = "all"
-        for part in _parents(key):
-            enabled = logs.get(part, enabled)
-            capture = captures.get(part, capture)
-        combined[key] = "off" if enabled == "off" else capture
-
-    return combined
 
 
 def unified_chatlog_chain(store, scope: Scope) -> dict[str, str | None]:
