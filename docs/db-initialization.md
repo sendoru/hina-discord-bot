@@ -140,8 +140,9 @@ RuntimeSettings construction/reload reads overrides only. Snapshot values are st
 the startup environment/base values, not effective DB overrides. Only a deliberate
 bot start captures them; reconnects, CLI inspection, maintenance flush, JSON import
 and evaluation do not replace them. Configuration inheritance, validation, caches,
-Discord buffer invalidation, and existing settings commits are unchanged. Compound
-chatlog write atomicity and stale shared summaries remain #398.
+Discord buffer invalidation and standalone settings commits retain their contracts.
+The #398 [reliability changes](db-reliability.md) add atomic unified chatlog writes
+and guarded shared-summary commits on the same prepared connections.
 
 ## Maintenance, JSON import and evaluation
 

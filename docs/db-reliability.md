@@ -42,3 +42,22 @@ compatibility/setup calls; production generation exclusively uses the guarded
 snapshot/commit entrypoints, with no unconditional fallback. Repositories borrow
 Store's connection and the guarded write SQL never commits internally. The existing
 atomic_memory_batch source/cursor guard and extraction transaction are unchanged.
+
+## Unified chatlog settings
+
+all/direct/off/inherit retain their existing mode+capture-note representation.
+SettingsRepository.replace_chatlog_override borrows Store's connection and owns
+one short BEGIN IMMEDIATE transaction covering both values (or both deletes for
+inherit). Failure of either SQL or commit rolls back both, including when the
+second value failed after the first write. An already open transaction is rejected
+without changing its caller's work. Standalone note and mode setters retain their
+existing independent commit boundaries.
+
+Discord and the Dashboard command executor perform their existing recent-buffer
+clears after the database call returns, within the channel lock. Database failure
+leaves buffers/hydration unchanged and does not report command success. A later
+buffer error does not roll back the committed setting: it reports command failure
+with the database already updated. Database state and ephemeral buffers are not
+one distributed transaction. Channel/server/global clearing and hydration semantics
+are unchanged; logical reset belongs to #400. Queue claim/action/finish commits and
+InterruptedAdminCommand restart handling remain independent as before.
