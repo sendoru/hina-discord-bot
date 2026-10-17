@@ -2,14 +2,13 @@
 
 import sqlite3
 
-from .admin_commands import ensure_admin_command_schema
-from .store_ddl import STORE_DDL
+from .queue_schema import QUEUE_DDL
+from .store_ddl import STORE_DDL, STORE_INDEXES
 
 
 def initialize_store_schema(db: sqlite3.Connection) -> None:
-    for statement in STORE_DDL:
+    for statement in STORE_DDL + QUEUE_DDL:
         db.execute(statement)
-    ensure_admin_command_schema(db)
     columns = {row[1] for row in db.execute("PRAGMA table_info(turns)")}
     for name, declaration in (
         ("memory_context", "TEXT NOT NULL DEFAULT ''"),
@@ -19,7 +18,6 @@ def initialize_store_schema(db: sqlite3.Connection) -> None:
     ):
         if name not in columns:
             db.execute(f"ALTER TABLE turns ADD COLUMN {name} {declaration}")
-    db.execute("CREATE INDEX IF NOT EXISTS turns_turn_id ON turns(turn_id)")
     if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='summaries'").fetchone():
         # Existing structured cursors still win; the complete legacy source is in
         # the verified pre-migration backup, not silently reconstructed later.
@@ -41,6 +39,5 @@ def initialize_store_schema(db: sqlite3.Connection) -> None:
             db.execute(f"ALTER TABLE memory_items ADD COLUMN {name} {declaration}")
     # Widening known legacy constraints is handled by db_schema's verified copy,
     # preserving every ID, provenance field, revision and AUTOINCREMENT high mark.
-    db.execute(
-        "CREATE INDEX IF NOT EXISTS memory_items_owner_status ON memory_items(user_id,status,id)"
-    )
+    for statement in STORE_INDEXES:
+        db.execute(statement)

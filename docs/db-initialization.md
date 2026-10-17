@@ -60,6 +60,9 @@ Supported legacy shapes include the existing turns optional columns, memory_item
 without lifecycle/evidence/name fields, the known pre-retraction CHECK, legacy
 memory history/proposal tables without their current CHECK/unique constraints,
 legacy personal summaries, chatlog conversion markers, and the legacy RAG key.
+Personal summaries need only their four cursor columns; historical `name/text/exportable`
+columns are optional because conversion never reads them. The complete pre-upgrade
+table remains in the verified backup. See the [schema audit](db-schema-audit.md).
 Unknown columns, constraints or dependencies that a rebuild would discard cause
 an error. Arbitrary damaged/partial schemas are not repaired automatically.
 The compatibility fixtures exercise these paths on actual files.
@@ -119,6 +122,10 @@ reverse migration or production DB execution is included in this change.
 - `Store.create(':memory:')` / `AdminDatabase.create(':memory:')` explicitly prepare
   isolated databases. With a file path these factories create only a new file or
   open an already prepared one; existing legacy files must use the backed-up CLI.
+- `AdminDatabase.copy_to_memory(source=None)` owns an isolated evaluation/import
+  validation database. An optional source is read-only; only the disposable copy
+  is prepared. Callers close the returned owner. The JSON import CLI lives in
+  `tooling/runtime_migration.py`; its command remains `hina-migrate-runtime`.
 - `Store(connection)` / `AdminDatabase(connection)` transfer ownership of an already
   prepared sqlite3 connection and perform no SQL. Old path constructor calls fail
   early with a direction to use create/open_existing.

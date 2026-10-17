@@ -14,12 +14,11 @@ from dotenv import load_dotenv
 
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS, VisualInput
+from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.config import GEMINI_THINKING_LEVELS, SUPPORTED_MODEL_PROVIDERS, Settings
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-
-from .evaluation_database import evaluation_admin_database
 
 DEFAULT_CASES = Path("evals/character_lore_cases.jsonl")
 DEFAULT_RESULTS_DIR = Path("data/evals")
@@ -659,7 +658,9 @@ async def run(args) -> None:
         raise ValueError("실행할 eval case가 없습니다.")
 
     settings = eval_settings(args)
-    admin = evaluation_admin_database(getattr(args, "admin_database", None) or os.getenv("DATABASE_PATH"))
+    admin = AdminDatabase.copy_to_memory(
+        getattr(args, "admin_database", None) or os.getenv("DATABASE_PATH")
+    )
     try:
         llm = LLM(settings, admin_db=admin)
     except BaseException:

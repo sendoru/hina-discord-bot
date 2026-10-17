@@ -12,8 +12,6 @@ STORE_DDL = (
             context_provenance TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""",
-    """CREATE INDEX IF NOT EXISTS turns_scope ON turns(scope, id)""",
-    """CREATE INDEX IF NOT EXISTS turns_owner ON turns(realm, user_id)""",
     """CREATE TABLE IF NOT EXISTS failed_turns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             scope TEXT NOT NULL, realm TEXT NOT NULL, user_id TEXT NOT NULL,
@@ -29,16 +27,12 @@ STORE_DDL = (
             error_fingerprint TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""",
-    """CREATE INDEX IF NOT EXISTS failed_turns_scope ON failed_turns(scope, id)""",
-    """CREATE INDEX IF NOT EXISTS failed_turns_turn_id ON failed_turns(turn_id)""",
-    """CREATE INDEX IF NOT EXISTS failed_turns_message_id ON failed_turns(message_id)""",
     """CREATE TABLE IF NOT EXISTS shared_calls (
             id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL,
             realm TEXT NOT NULL, user_id TEXT NOT NULL, message_id TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL, content TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""",
-    """CREATE INDEX IF NOT EXISTS shared_calls_scope ON shared_calls(scope, id)""",
     """CREATE TABLE IF NOT EXISTS shared_summaries (
             scope TEXT PRIMARY KEY, realm TEXT NOT NULL, user_id TEXT NOT NULL,
             name TEXT NOT NULL, text TEXT NOT NULL, through_id INTEGER NOT NULL
@@ -69,9 +63,6 @@ STORE_DDL = (
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             CHECK(superseded_by IS NULL OR superseded_by != id)
         )""",
-    """CREATE INDEX IF NOT EXISTS memory_items_owner ON memory_items(user_id, id)""",
-    """CREATE INDEX IF NOT EXISTS memory_items_origin
-            ON memory_items(origin_realm, origin_channel_id, user_id)""",
     """CREATE TABLE IF NOT EXISTS memory_item_edit_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             memory_item_id INTEGER NOT NULL,
@@ -88,8 +79,6 @@ STORE_DDL = (
             edited_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             admin_command_id INTEGER
         )""",
-    """CREATE INDEX IF NOT EXISTS memory_item_edit_history_item
-            ON memory_item_edit_history(memory_item_id, revision, id)""",
     """CREATE TABLE IF NOT EXISTS memory_extraction_cursors (
             scope TEXT PRIMARY KEY,
             realm TEXT NOT NULL,
@@ -97,8 +86,6 @@ STORE_DDL = (
             through_id INTEGER NOT NULL,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""",
-    """CREATE INDEX IF NOT EXISTS memory_extraction_cursor_owner
-            ON memory_extraction_cursors(realm, user_id)""",
     """CREATE TABLE IF NOT EXISTS memory_extraction_batches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             scope TEXT NOT NULL,
@@ -108,8 +95,6 @@ STORE_DDL = (
             completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(scope, through_id)
         )""",
-    """CREATE INDEX IF NOT EXISTS memory_extraction_batch_scope
-            ON memory_extraction_batches(scope, id)""",
     """CREATE TABLE IF NOT EXISTS memory_reconciliation_proposals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
@@ -124,8 +109,6 @@ STORE_DDL = (
             CHECK(new_memory_item_id != target_memory_item_id),
             UNIQUE(new_memory_item_id, target_memory_item_id, relation)
         )""",
-    """CREATE INDEX IF NOT EXISTS memory_reconciliation_owner
-            ON memory_reconciliation_proposals(user_id, origin_realm, origin_channel_id, id)""",
     """CREATE TABLE IF NOT EXISTS emoji_registry (
             alias TEXT PRIMARY KEY, emoji_id TEXT NOT NULL UNIQUE, description TEXT NOT NULL,
             source_guild_id TEXT
@@ -149,11 +132,33 @@ STORE_DDL = (
             name TEXT NOT NULL,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""",
-    """CREATE INDEX IF NOT EXISTS channel_metadata_guild
-            ON channel_metadata(guild_id, channel_id)""",
     """CREATE TABLE IF NOT EXISTS notes (scope TEXT PRIMARY KEY, text TEXT NOT NULL)""",
     """CREATE TABLE IF NOT EXISTS conversation_identity_names (
             scope TEXT PRIMARY KEY,
             name TEXT NOT NULL
         )""",
+)
+
+# Installed after known legacy columns are added; also used for validation and
+# index restoration after table rebuilds. Each index has one canonical definition.
+STORE_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS turns_scope ON turns(scope, id)",
+    "CREATE INDEX IF NOT EXISTS turns_owner ON turns(realm, user_id)",
+    "CREATE INDEX IF NOT EXISTS turns_turn_id ON turns(turn_id)",
+    "CREATE INDEX IF NOT EXISTS failed_turns_scope ON failed_turns(scope, id)",
+    "CREATE INDEX IF NOT EXISTS failed_turns_turn_id ON failed_turns(turn_id)",
+    "CREATE INDEX IF NOT EXISTS failed_turns_message_id ON failed_turns(message_id)",
+    "CREATE INDEX IF NOT EXISTS shared_calls_scope ON shared_calls(scope, id)",
+    "CREATE INDEX IF NOT EXISTS memory_items_owner ON memory_items(user_id, id)",
+    """CREATE INDEX IF NOT EXISTS memory_items_origin
+       ON memory_items(origin_realm, origin_channel_id, user_id)""",
+    "CREATE INDEX IF NOT EXISTS memory_items_owner_status ON memory_items(user_id,status,id)",
+    """CREATE INDEX IF NOT EXISTS memory_item_edit_history_item
+       ON memory_item_edit_history(memory_item_id, revision, id)""",
+    """CREATE INDEX IF NOT EXISTS memory_extraction_cursor_owner
+       ON memory_extraction_cursors(realm, user_id)""",
+    "CREATE INDEX IF NOT EXISTS memory_extraction_batch_scope ON memory_extraction_batches(scope, id)",
+    """CREATE INDEX IF NOT EXISTS memory_reconciliation_owner
+       ON memory_reconciliation_proposals(user_id, origin_realm, origin_channel_id, id)""",
+    "CREATE INDEX IF NOT EXISTS channel_metadata_guild ON channel_metadata(guild_id, channel_id)",
 )
