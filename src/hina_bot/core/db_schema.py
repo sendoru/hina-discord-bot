@@ -215,15 +215,25 @@ def inspect_connection(db, components=COMPONENTS) -> tuple[str, ...]:
             if not exact:
                 if table not in LEGACY_REBUILD and not missing:
                     raise SchemaError(f"Unsupported constraints in {table}")
-                # Rebuilds may discard dependent objects; refuse anything we cannot restore.
+                # Do not parse arbitrary view/trigger bodies to guess their dependencies.
+                # RENAME can rewrite objects on other tables too; refuse custom SQL
+                # objects during rebuild, and unknown indexes on the rebuilt table.
                 if table in LEGACY_REBUILD:
                     for kind, name in db.execute(
-                        "SELECT type,name FROM sqlite_master WHERE tbl_name=? "
-                        "AND type IN ('trigger','index') AND sql IS NOT NULL",
+                        "SELECT type,name FROM sqlite_master WHERE sql IS NOT NULL "
+                        "AND (type IN ('view','trigger') OR (type='index' AND tbl_name=?))",
                         (table,),
                     ):
-                        if kind == "trigger" or name not in indexes:
+                        if kind != "index" or name not in indexes:
                             raise SchemaError(f"Unsupported rebuild dependency: {name}")
+                    # RENAME rewrites incoming FKs too; dropping the old table
+                    # can leave broken references or cascade-delete child rows.
+                    for dependent in tables:
+                        if db.execute(
+                            'SELECT 1 FROM pragma_foreign_key_list(?) WHERE "table"=? COLLATE NOCASE',
+                            (dependent, table),
+                        ).fetchone():
+                            raise SchemaError(f"Unsupported rebuild foreign key: {dependent}")
                 current = False
         for name, (table, sql) in indexes.items():
             if table not in expected[component]:

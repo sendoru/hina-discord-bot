@@ -65,6 +65,9 @@ columns are optional because conversion never reads them. The complete pre-upgra
 table remains in the verified backup. See the [schema audit](db-schema-audit.md).
 Unknown columns, constraints or dependencies that a rebuild would discard cause
 an error. Arbitrary damaged/partial schemas are not repaired automatically.
+When a legacy memory table needs rebuilding, incoming foreign keys and custom
+views/triggers are rejected before mutation. Even unrelated custom views/triggers
+require manual review; the preparer does not parse arbitrary SQL dependencies.
 The compatibility fixtures exercise these paths on actual files.
 
 Known memory table rebuilds copy complete rows and restore sqlite_sequence high
