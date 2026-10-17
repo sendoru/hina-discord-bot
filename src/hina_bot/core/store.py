@@ -364,6 +364,26 @@ class Store:
             context_provenance=context_provenance,
         )
 
+    def record_completed_turn(
+        self, scope: Scope, message_id: int, content: str, reply: str, *, name: str = "",
+        memory_context=None, context_provenance=None,
+    ):
+        """Commit a delivered turn and its eligible public projection together."""
+        if self.db.in_transaction:
+            raise RuntimeError("A conflicting SQLite transaction is already active")
+        values = self._conversations.turn_values(
+            scope, message_id, content, reply, name=name, memory_context=memory_context,
+            context_provenance=context_provenance,
+        )
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            self._conversations.write_turn(scope, values)
+            self._conversations.write_shared_call(scope, message_id, name, content)
+            self.db.commit()
+        except BaseException:
+            self.db.rollback()
+            raise
+
     def add_failed_turn(
         self,
         scope: Scope,

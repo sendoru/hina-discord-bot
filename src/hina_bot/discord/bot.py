@@ -555,11 +555,11 @@ class HinaClient(discord.Client):
                 raw_turn_persistence = "skipped"
                 raw_turn_persistence_reason = "memory_writes_disabled"
                 return
-            if self.store.seen(message.id):
-                raw_turn_persistence = "stored"
-                raw_turn_persistence_reason = ""
-                return
             try:
+                if self.store.seen(message.id):
+                    raw_turn_persistence = "stored"
+                    raw_turn_persistence_reason = ""
+                    return
                 self.store.add_failed_turn(
                     scope,
                     message.id,
@@ -829,7 +829,7 @@ class HinaClient(discord.Client):
                     # Expensive persistent-memory updates run after the channel lock is released.
                     if save_memory:
                         stage = "memory_persist"
-                        self.store.add(
+                        self.store.record_completed_turn(
                             scope,
                             message.id,
                             text,
@@ -838,12 +838,6 @@ class HinaClient(discord.Client):
                         )
                         raw_turn_persistence = "stored"
                         raw_turn_persistence_reason = ""
-                        self.store.add_shared_call(
-                            scope,
-                            message.id,
-                            message.author.display_name,
-                            text,
-                        )
 
                 memory_failures = 0
                 if save_memory:

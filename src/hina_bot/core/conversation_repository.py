@@ -9,7 +9,7 @@ from .routing import Scope
 
 
 class ConversationRepository:
-    """No connection ownership or schema initialization; commits retain legacy boundaries."""
+    """Standalone methods retain commits; write_* helpers borrow a caller transaction."""
 
     def __init__(self, db: sqlite3.Connection, history_turns: int = 12):
         self.db = db
@@ -51,6 +51,17 @@ class ConversationRepository:
                                (str(message_id),)).fetchone() is not None
 
     def add(
+        self, scope, message_id, content, reply, *, name="", memory_context=None,
+        context_provenance=None,
+    ):
+        values = self.turn_values(
+            scope, message_id, content, reply, name=name, memory_context=memory_context,
+            context_provenance=context_provenance,
+        )
+        with self.db:
+            self.write_turn(scope, values)
+
+    def turn_values(
         self,
         scope: Scope,
         message_id: int,
@@ -81,28 +92,22 @@ class ConversationRepository:
             if context_provenance
             else ""
         )
-        with self.db:
-            self.db.execute(
-                "INSERT INTO turns(scope,realm,user_id,name,message_id,content,reply,exportable,"
-                "turn_id,memory_context,context_provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    scope.conversation,
-                    scope.realm,
-                    str(scope.user_id),
-                    str(name or "")[:100],
-                    str(message_id),
-                    content,
-                    reply,
-                    int(exportable),
-                    current_turn_id(),
-                    encoded_context,
-                    encoded_provenance,
-                ),
-            )
-            # Bound raw retention independently of persistent-memory extraction.
-            self.db.execute("DELETE FROM turns WHERE scope=? AND id NOT IN "
-                            "(SELECT id FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?)",
-                            (scope.conversation, scope.conversation, self.history_turns))
+        return (
+            scope.conversation, scope.realm, str(scope.user_id), str(name or "")[:100],
+            str(message_id), content, reply, int(exportable), current_turn_id(),
+            encoded_context, encoded_provenance,
+        )
+
+    def write_turn(self, scope, values):
+        """Insert and prune on the caller's transaction, using already encoded values."""
+        self.db.execute(
+            "INSERT INTO turns(scope,realm,user_id,name,message_id,content,reply,exportable,"
+            "turn_id,memory_context,context_provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?)", values,
+        )
+        # Keep the existing retention policy; its separation belongs to #399.
+        self.db.execute("DELETE FROM turns WHERE scope=? AND id NOT IN "
+                        "(SELECT id FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?)",
+                        (scope.conversation, scope.conversation, self.history_turns))
 
     def add_failed_turn(
         self,
@@ -154,13 +159,18 @@ class ConversationRepository:
         if scope.guild_id is None or not scope.public_at_capture:
             return
         with self.db:
-            self.db.execute("INSERT OR IGNORE INTO shared_calls "
-                            "(scope,realm,user_id,message_id,name,content) VALUES (?,?,?,?,?,?)",
-                            (scope.conversation, scope.realm, str(scope.user_id), str(message_id),
-                             name[:100], content))
-            self.db.execute("DELETE FROM shared_calls WHERE scope=? AND id NOT IN "
-                            "(SELECT id FROM shared_calls WHERE scope=? ORDER BY id DESC LIMIT ?)",
-                            (scope.conversation, scope.conversation, self.history_turns))
+            self.write_shared_call(scope, message_id, name, content)
+
+    def write_shared_call(self, scope, message_id, name, content):
+        if scope.guild_id is None or not scope.public_at_capture:
+            return
+        self.db.execute("INSERT OR IGNORE INTO shared_calls "
+                        "(scope,realm,user_id,message_id,name,content) VALUES (?,?,?,?,?,?)",
+                        (scope.conversation, scope.realm, str(scope.user_id), str(message_id),
+                         name[:100], content))
+        self.db.execute("DELETE FROM shared_calls WHERE scope=? AND id NOT IN "
+                        "(SELECT id FROM shared_calls WHERE scope=? ORDER BY id DESC LIMIT ?)",
+                        (scope.conversation, scope.conversation, self.history_turns))
 
     def shared_summary(self, scope):
         row = self.db.execute("SELECT text,through_id FROM shared_summaries WHERE scope=?",
