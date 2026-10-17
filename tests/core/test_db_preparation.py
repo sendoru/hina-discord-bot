@@ -206,7 +206,7 @@ def test_unsupported_schema_is_rejected_without_stamp_or_backup(tmp_path, mutati
     assert not (tmp_path / "backups").exists()
 
 
-@pytest.mark.parametrize("fail_at", ["copy", "ledger"])
+@pytest.mark.parametrize("fail_at", ["copy", "index", "ledger"])
 def test_migration_failure_rolls_back_ddl_rows_and_ledger(tmp_path, monkeypatch, fail_at):
     from hina_bot.core import db_schema
 
@@ -227,14 +227,15 @@ def test_migration_failure_rolls_back_ddl_rows_and_ledger(tmp_path, monkeypatch,
             monkeypatch.setattr(db_schema, "_rebuild_legacy", abort_after_copy)
         else:
 
-            def reject_ledger(action, table, *rest):
-                return (
-                    sqlite3.SQLITE_DENY
-                    if action == sqlite3.SQLITE_INSERT and table == "schema_migrations"
-                    else sqlite3.SQLITE_OK
+            def reject_write(action, name, *rest):
+                rejected = (
+                    action == sqlite3.SQLITE_INSERT and name == "schema_migrations"
+                    if fail_at == "ledger"
+                    else action == sqlite3.SQLITE_CREATE_INDEX and name == "memory_items_owner_status"
                 )
+                return sqlite3.SQLITE_DENY if rejected else sqlite3.SQLITE_OK
 
-            db.set_authorizer(reject_ledger)
+            db.set_authorizer(reject_write)
         with pytest.raises((RuntimeError, sqlite3.DatabaseError)):
             prepare_connection(db)
         db.set_authorizer(None)
@@ -483,3 +484,94 @@ def test_check_literal_case_is_part_of_the_schema_contract(tmp_path):
     with pytest.raises(SchemaError, match="Unsupported constraints"):
         preparation.prepare_database(path, apply=True, offline_confirmed=True)
     assert signature(path) == before
+
+
+@pytest.mark.parametrize("global_mode", ["on", "off"])
+def test_legacy_chatlog_inheritance_and_invalid_capture_cleanup_are_preserved(tmp_path, global_mode):
+    prefix = "config:chatlog_capture:"
+    path = tmp_path / "legacy-chatlog.sqlite3"
+    store = Store.create(path)
+    try:
+        store.set_note("config:chatlog_unified_v1", "")
+        for scope, mode in {"global": global_mode, "guild:1": "on",
+                            "guild:1:channel:10": "off"}.items():
+            store.set_chat_log_mode_override(scope, mode)
+        for scope, capture in {"global": " direct ", "guild:1": "all",
+                               "guild:1:channel:10": "direct",
+                               "guild:2:channel:20": "direct", "guild:3": "invalid"}.items():
+            store.set_note(prefix + scope, capture)
+        store.set_note("manual", "preserved")
+    finally:
+        store.close()
+    before = signature(path)
+    _, backup = preparation.prepare_database(path, apply=True, offline_confirmed=True)
+    assert signature(backup.path) == before
+    with closing(open_readonly(path)) as db:
+        assert dict(db.execute("SELECT scope,mode FROM chat_log_modes")) == {
+            "global": global_mode, "guild:1": "on", "guild:1:channel:10": "off",
+            "guild:2:channel:20": global_mode,
+        }
+        notes = dict(db.execute("SELECT scope,text FROM notes"))
+        assert notes == {
+            "manual": "preserved", "config:chatlog_unified_v1": "1",
+            prefix + "global": "all" if global_mode == "off" else "direct",
+            prefix + "guild:1": "all", prefix + "guild:1:channel:10": "all",
+            prefix + "guild:2:channel:20": "all" if global_mode == "off" else "direct",
+        }
+    after = signature(path)
+    assert preparation.prepare_database(path, apply=True, offline_confirmed=True) == ((), None)
+    assert signature(path) == after
+
+
+def test_legacy_rebuild_keeps_edit_history_proposals_and_their_id_high_marks(tmp_path):
+    path = tmp_path / "legacy-relations.sqlite3"
+    legacy_database(path)
+    with closing(sqlite3.connect(path)) as db:
+        db.executescript("""
+            ALTER TABLE memory_items ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
+            UPDATE memory_items SET revision=4 WHERE id=5;
+            CREATE TABLE memory_item_edit_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, memory_item_id INTEGER NOT NULL,
+                revision INTEGER NOT NULL, content TEXT NOT NULL, kind TEXT NOT NULL,
+                disclosure TEXT NOT NULL, confidence REAL NOT NULL,
+                relationship_evidence TEXT NOT NULL DEFAULT '{}',
+                edited_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, admin_command_id INTEGER
+            );
+            INSERT INTO memory_item_edit_history(id,memory_item_id,revision,content,kind,
+                disclosure,confidence,relationship_evidence,admin_command_id)
+            VALUES (8,5,3,'earlier text','fact','local',0.9,'{"support":0.6}',41),
+                   (20,5,4,'deleted','fact','local',1,'{}',NULL);
+            DELETE FROM memory_item_edit_history WHERE id=20;
+            CREATE TABLE memory_reconciliation_proposals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL,
+                origin_realm TEXT NOT NULL, origin_channel_id TEXT NOT NULL,
+                new_memory_item_id INTEGER NOT NULL, target_memory_item_id INTEGER NOT NULL,
+                relation TEXT NOT NULL, confidence REAL NOT NULL,
+                source_message_ids TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO memory_reconciliation_proposals(id,user_id,origin_realm,origin_channel_id,
+                new_memory_item_id,target_memory_item_id,relation,confidence,source_message_ids)
+            VALUES (9,'100','dm:100','10',5,6,'corrects',0.99,'["11","12"]'),
+                   (30,'100','dm:100','10',5,7,'conflicts',0.8,'[]');
+            DELETE FROM memory_reconciliation_proposals WHERE id=30;
+        """)
+        history = db.execute("SELECT * FROM memory_item_edit_history").fetchall()
+        proposals = db.execute("SELECT * FROM memory_reconciliation_proposals").fetchall()
+    before = signature(path)
+    _, backup = preparation.prepare_database(path, apply=True, offline_confirmed=True)
+    assert signature(backup.path) == before
+    restored = tmp_path / "restored-relations.sqlite3"
+    with closing(open_readonly(backup.path)) as source, closing(sqlite3.connect(restored)) as target:
+        source.backup(target)
+    assert signature(restored) == before
+    preparation.prepare_database(restored, apply=True, offline_confirmed=True)
+    for candidate in (path, restored):
+        with closing(open_readonly(candidate)) as db:
+            assert [tuple(row) for row in db.execute("SELECT * FROM memory_item_edit_history")] == history
+            assert [tuple(row) for row in db.execute("SELECT * FROM memory_reconciliation_proposals")] == proposals
+            assert db.execute("SELECT revision FROM memory_items WHERE id=5").fetchone()[0] == 4
+            sequences = dict(db.execute("SELECT name,seq FROM sqlite_sequence"))
+            assert sequences["memory_items"] == sequences["memory_item_edit_history"] == 20
+            assert sequences["memory_reconciliation_proposals"] == 30
+            assert inspect_connection(db) == ()  # Includes every restored index/constraint.
