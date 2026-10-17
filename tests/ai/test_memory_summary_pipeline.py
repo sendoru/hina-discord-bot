@@ -25,8 +25,12 @@ class SharedStore:
     def shared_summary(self, scope):
         return "기존 공개 기억 " * 120, 0
 
-    def save_shared_summary(self, scope, name, text, through):
-        self.saved = (name, text[:1500], through)
+    def shared_summary_snapshot(self, scope):
+        text, through = self.shared_summary(scope)
+        return {"text": text, "through_id": through}, self.pending_shared(scope)
+
+    def commit_shared_summary(self, scope, pending, *, expected_summary, text):
+        self.saved = (pending[-1]["name"], text[:1500], pending[-1]["id"])
 
 
 def _pipeline(output_text: str):
