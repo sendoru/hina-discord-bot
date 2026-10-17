@@ -6,6 +6,7 @@ callers must not wrap unrelated settings writes in a memory extraction batch.
 
 import sqlite3
 
+from .scope_overrides import CHATLOG_CAPTURE_NOTE_PREFIX
 from .settings_schema import (
     SETTINGS_DDL,
     migrate_legacy_rag_override,
@@ -78,6 +79,28 @@ class SettingsRepository:
     def chat_log_mode_overrides(self) -> dict[str, str]:
         rows = self.db.execute("SELECT scope,mode FROM chat_log_modes ORDER BY scope").fetchall()
         return {row["scope"]: row["mode"] for row in rows}
+
+    def replace_chatlog_override(self, key, *, enabled, capture):
+        """Commit the two representations of one unified mode together."""
+        if (enabled, capture) not in {
+            (None, None), ("off", "all"), ("on", "all"), ("on", "direct"),
+        }:
+            raise ValueError("Invalid unified chat log setting")
+        if self.db.in_transaction:
+            raise RuntimeError("A conflicting SQLite transaction is already active")
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            if enabled is None:
+                self.db.execute("DELETE FROM chat_log_modes WHERE scope=?", (key,))
+                self.db.execute("DELETE FROM notes WHERE scope=?", (CHATLOG_CAPTURE_NOTE_PREFIX + key,))
+            else:
+                self.db.execute("INSERT OR REPLACE INTO chat_log_modes VALUES (?,?)", (key, enabled))
+                self.db.execute("INSERT OR REPLACE INTO notes VALUES (?,?)",
+                                (CHATLOG_CAPTURE_NOTE_PREFIX + key, capture))
+            self.db.commit()
+        except BaseException:
+            self.db.rollback()
+            raise
 
     def note_rows(self, prefix: str):
         return self.db.execute(
