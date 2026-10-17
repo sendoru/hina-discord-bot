@@ -46,6 +46,19 @@ pending도 집합으로 중복을 없앤 뒤 기존 순서의 tuple로 반환한
 - **#398의 별도 원자성 계약**: 기억 추출의 커서/해시 guard, 공개 요약의 snapshot/guard,
   완료 대화 공동 저장, 큐의 claim/action/finish는 범위가 다르다. 범용 transaction executor로 합치지 않는다.
 
+## 별도 안전성 보완: 재구성의 외부 의존성
+
+구조 정리 후 합성 DB에서 기존 구현의 문제를 재현했다. 다른 테이블의 FK나 외부 view가
+기억 테이블을 참조하면 RENAME이 참조를 임시 이름으로 바꾼다. 이어진 DROP은 FK OFF에서
+깨진 참조를 남기고, FK ON + ON DELETE CASCADE에서는 자식 행까지 삭제할 수 있었다.
+자기 테이블의 index/trigger만 확인하던 기존 검사를 보완해, 들어오는 FK와 custom
+view/trigger가 있는 재구성은 **DDL·백업 전에 거부**한다.
+
+임의 SQL body를 해석하는 parser는 추가하지 않는다. 따라서 무관한 custom view/trigger도
+재구성이 필요한 DB에서는 자동 지원하지 않는다. 재구성이 필요 없는 현행 DB의 관련
+동작은 바꾸지 않는다. 이 입력 거부 동작 변경은 소유권 정리 PR과 별도 PR로 검토한다.
+목표 DDL·운영 자료·보존 정책을 바꾸지 않고, 위험한 이전을 그대로 중단시키는 변경이다.
+
 ## 단순화 여지가 있지만 이번에 바꾸지 않은 부분
 
 - Store/AdminDatabase의 새 DB 생성 코드에는 비슷한 경로가 남는다. 공통 factory를
@@ -66,8 +79,10 @@ pending도 집합으로 중복을 없앤 뒤 기존 순서의 tuple로 반환한
 | 항목 | 전 → 후 |
 | --- | --- |
 | schema 관련 파일 | 6 → 2 (전체 `src/` Python 파일 157 → 153) |
-| `db_schema.py` | 348 → 406줄: 다른 파일의 이전 책임을 모아 이 파일 자체는 증가 |
-| 전체 `src/` Python 코드 | 33,883 → 33,845줄, 합계 38줄 감소 |
+| `db_schema.py` | 348 → 416줄: 다른 파일의 이전 책임 통합 및 외부 의존성 거부로 증가 |
+| 전체 `src/` Python 코드 | 33,883 → 33,855줄, 합계 28줄 감소 |
+
+구조 정리 PR의 감소분은 38줄이며, 별도 안전성 보완에서 10줄을 추가했다.
 
 여섯 목표 DDL 상수의 SQL 문자열은 기준 코드와 정확히 같다. 새 컬럼·인덱스·version은
 추가하지 않는다. 기존 구형 DB가 목표 baseline으로 이전되는 결과와 기존 요약 제거·백업
@@ -75,7 +90,9 @@ pending도 집합으로 중복을 없앤 뒤 기존 순서의 tuple로 반환한
 
 - 기존 전체 회귀에 인덱스 설치 실패 rollback, chatlog 상속/무효 capture 처리 2건,
   세 기억 테이블의 편집 이력·revision·출처·ID 최고값 및 실제 backup restore 검증을 추가했다.
-  전체 **1,476 tests + 3 subtests**, Ruff·version check를 확인한다. CI 결과는 이 변경의
+  구조 정리 PR은 **1,476 tests + 3 subtests**를 검증한다. 안전성 보완은 FK ON/OFF 및
+  외부/무관 view·trigger의 무쓰기 거부 5건을 추가해 **1,481 tests + 3 subtests**가 된다.
+  Ruff·version check 및 CI 결과는 각 변경의
   PR과 #407 상태 검사에 기록한다.
 - 별도 일회성 비교에서는 기준 코드와 수정 코드에 같은 26개 합성 DB/설정 형태와
   영역 선택 7조합을 적용했다. **182조합(승인 151, 거부 31)**의 승인/거부, pending/적용
@@ -83,6 +100,8 @@ pending도 집합으로 중복을 없앤 뒤 기존 순서의 tuple로 반환한
   거부된 입력은 변경되지 않았다.
   양쪽의 `CURRENT_TIMESTAMP`를 동일하게 고정해 새 감사 시각도 비교했다.
   이 보조 비교는 CI 테스트 개수에 포함되지 않는다.
+  위의 외부 FK/view/trigger 사례는 기존 코드가 위험하게 허용하던 입력을 의도적으로
+  거부하도록 바뀌었으므로, 동일성 비교와 별도의 안전성 회귀로 검증한다.
 
 운영 DB의 실제 형태·데이터량·손상 여부, 운영 복제본 migration/restore, 실제 Discord/LLM
 연동과 프로세스 강제 종료·전원 장애는 검증하지 않았다. fixture의 실제 파일 backup/restore와
