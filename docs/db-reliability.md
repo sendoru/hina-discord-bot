@@ -61,3 +61,40 @@ with the database already updated. Database state and ephemeral buffers are not
 one distributed transaction. Channel/server/global clearing and hydration semantics
 are unchanged; logical reset belongs to #400. Queue claim/action/finish commits and
 InterruptedAdminCommand restart handling remain independent as before.
+
+## Delivered turn persistence
+
+The bot calls Store.record_completed_turn after delivering the complete answer.
+One short BEGIN IMMEDIATE covers the turns insert, the eligible shared_calls
+projection, both existing pruning operations, and their ID allocations. Either
+write/prune or commit failure rolls back the entire operation. DM/private scopes
+still store only turns. Public eligibility, message-ID uniqueness/INSERT OR IGNORE
+rules, names, telemetry turn_id, context/provenance encoding and history_turns
+limits remain unchanged. Explicit standalone add/add_shared_call retain their
+independent commits; the runtime completed-turn path uses the combined entrypoint.
+
+The turn is the retained successful exchange and shared_calls is its public input
+projection. Keeping the turn after a projection failure previously made seen()
+true and hid the missing projection from ordinary processing. A shared transaction
+is sufficient because these writes already use one SQLite connection; no outbox,
+compensating worker or generic transaction framework is needed. Repository write
+helpers never commit the enclosing Store transaction. No business schema migration
+or retention change is involved.
+
+Discord delivery and database storage are separate operations. The write lock is
+not held during generation/delivery. If storage fails after the answer was sent,
+the bot does not resend or append a fallback response. It emits turn.failed at
+memory_persist with reply_delivered=true, preserving the original error type and
+recording the delivered answer in failed_turns if possible. Failed turns are audit
+records, not extraction/shared-summary inputs. Failure to read/write that audit
+emits turn.persistence_failed and does not replace the original terminal error.
+The existing raw_turn_persistence=stored can mean a failure audit was retained;
+terminal event/stage and the actual source table distinguish it from success.
+
+The existing seen() policy only examines retained successful turns. Failure audit
+alone does not suppress later redelivery, so a later Gateway redelivery of the same
+message can generate another answer after recovery. There is no automatic retry
+or exactly-once Discord delivery guarantee in this change. Successful redelivery
+leaves the earlier audit record intact. Partially delivered chunk semantics,
+retention-driven deduplication limits and in-flight generation across logical
+reset are separate follow-up concerns.
