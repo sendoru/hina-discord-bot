@@ -1,3 +1,7 @@
+import hashlib
+import json
+import re
+
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -65,6 +69,75 @@ def build_router(
             context={"data": data},
         )
 
+    @router.post("/memory/bulk-status")
+    async def bulk_memory_status(request: Request):
+        form = await writer.form(request)
+        # Retraction is the only existing operator-controlled lifecycle transition.
+        # Superseding requires reconciliation; reactivation is not supported.
+        if form.get("status") != "retracted":
+            raise HTTPException(status_code=422, detail="only retracted status is supported")
+        if form.get("confirm") != "yes":
+            raise HTTPException(status_code=422, detail="retract confirmation is required")
+        request_id = form.get("_request_id", "")
+        if not re.fullmatch(r"[a-f0-9]{32}", request_id):
+            raise HTTPException(status_code=422, detail="invalid admin request id")
+        try:
+            items = json.loads(form.get("items", ""))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail="invalid memory selection") from exc
+        if not isinstance(items, list) or not 1 <= len(items) <= 50:
+            raise HTTPException(status_code=422, detail="select between 1 and 50 memory items")
+
+        results = []
+        seen = set()
+        for selected in items:
+            item_id = selected.get("item_id") if isinstance(selected, dict) else None
+            revision = selected.get("expected_revision") if isinstance(selected, dict) else None
+            result = {"item_id": item_id, "status": "failed"}
+            results.append(result)
+            if type(item_id) is not int or item_id <= 0:
+                result["error"] = "invalid memory item id"
+                continue
+            if item_id in seen:
+                result["error"] = "duplicate memory item"
+                continue
+            seen.add(item_id)
+            if type(revision) is not int or revision < 0:
+                result["error"] = "invalid memory revision"
+                continue
+            # One independently tracked command per row reuses runtime locking,
+            # revision validation, auditing, and failure isolation. Retries of the
+            # same submission reuse the same command instead of applying it twice.
+            child_id = hashlib.sha256(
+                f"{request_id}:retracted:{item_id}:{revision}".encode()
+            ).hexdigest()[:32]
+            existing_id = service.repository.admin_command_id_for_request(child_id)
+            if existing_id is not None:
+                result.update(status="pending", command_id=existing_id)
+                continue
+            item = service.repository.memory_item(item_id)
+            if item is None:
+                result["error"] = "Memory item not found"
+                continue
+            if item.get("status") != "active" or "revision" not in item:
+                result["error"] = "only active memory items with revisions can be retracted"
+                continue
+            if item["revision"] != revision:
+                result["error"] = "memory item changed; reload before retracting"
+                continue
+            try:
+                command_id, _ = writer.enqueue(
+                    request_id=child_id,
+                    action="memory.item.retract",
+                    target=str(item_id),
+                    payload={"item_id": item_id, "expected_revision": revision},
+                )
+            except HTTPException as exc:
+                result["error"] = str(exc.detail)
+                continue
+            result.update(status="pending", command_id=command_id)
+        return {"results": results}
+
     @router.get("/memory/cursors", response_class=HTMLResponse)
     def memory_cursors(
         request: Request,
@@ -114,7 +187,9 @@ def build_router(
         if expected_revision < 0:
             raise HTTPException(status_code=422, detail="invalid memory revision")
         if int(item.get("revision") or 0) != expected_revision:
-            raise HTTPException(status_code=409, detail="memory item changed; reload before editing")
+            raise HTTPException(
+                status_code=409, detail="memory item changed; reload before editing"
+            )
 
         kind = form.get("kind", "")
         relationship_evidence: dict[str, int] = {}
@@ -183,7 +258,9 @@ def build_router(
         if expected_revision < 0:
             raise HTTPException(status_code=422, detail="invalid memory revision")
         if int(item.get("revision") or 0) != expected_revision:
-            raise HTTPException(status_code=409, detail="memory item changed; reload before retracting")
+            raise HTTPException(
+                status_code=409, detail="memory item changed; reload before retracting"
+            )
 
         command_id, _ = writer.enqueue(
             request_id=form.get("_request_id", ""),
