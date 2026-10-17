@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .db_connections import open_existing
+
 _ACTION_RE = re.compile(r"[a-z][a-z0-9_.-]{1,63}")
 _REQUEST_ID_RE = re.compile(r"[a-f0-9]{32}")
 MAX_PAYLOAD_BYTES = 8192
@@ -80,10 +82,8 @@ def enqueue_admin_command(
         raise ValueError("admin command actor is too long")
     encoded = _encode_payload(payload or {})
 
-    db = sqlite3.connect(path.as_uri() + '?mode=rw', uri=True, timeout=5.0)
-    db.row_factory = sqlite3.Row
+    db = open_existing(path)
     try:
-        db.execute("PRAGMA busy_timeout=5000")
         if db.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='admin_commands'"
         ).fetchone() is None:

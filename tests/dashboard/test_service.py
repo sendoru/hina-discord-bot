@@ -927,7 +927,7 @@ def test_conversation_service_local_time_filter_and_search_match(tmp_path):
 
 def test_conversation_context_marks_selected_turn(tmp_path):
     service = build_service(tmp_path)
-    row_id = int(service.repository.search_turns(limit=1)[0]["id"])
+    row_id = int(service.repository.search_conversations(limit=1)[0]["id"])
 
     data = service.conversation_context(row_id, before=2, after=2)
 

@@ -35,8 +35,10 @@ def stores(tmp_path):
     first = Store.create(path, history_turns=3)
     second = Store.open_existing(path, history_turns=3)
     scope = Scope(1, 10, 100, public_at_capture=True)
-    first.add_shared_call(scope, 101, "name-secret", "source-secret")
-    first.save_shared_summary(scope, "name-secret", "old-secret", 0)
+    with first.db:
+        first._conversations.write_shared_call(scope, 101, "name-secret", "source-secret")
+    with first.db:
+        first._conversations.write_shared_summary(scope, "name-secret", "old-secret", 0)
     try:
         yield first, second, scope
     finally:
@@ -62,7 +64,8 @@ async def test_changed_input_is_rejected_without_resurrection_or_cursor_regressi
             second.purge_all_memory()
         elif mutation == "prune":
             for number in (102, 103, 104):
-                second.add_shared_call(scope, number, "other", "new")
+                with second.db:
+                    second._conversations.write_shared_call(scope, number, "other", "new")
         else:
             with second.db:
                 if mutation == "source":
@@ -96,7 +99,8 @@ async def test_new_calls_and_unrelated_changes_do_not_discard_valid_work(stores)
     task = asyncio.create_task(llm.summarize_shared(first, scope))
     await asyncio.wait_for(llm.entered.wait(), 2)
     try:
-        second.add_shared_call(scope, 102, "name", "tail")
+        with second.db:
+            second._conversations.write_shared_call(scope, 102, "name", "tail")
         second.set_note("unrelated", "keep")
         llm.release.set()
         await task
@@ -201,7 +205,8 @@ def test_commit_failure_rolls_back_and_the_same_input_can_be_retried(tmp_path):
     first, second = Store(connection), Store.open_existing(path)
     scope = Scope(1, 10, 100, True)
     try:
-        first.add_shared_call(scope, 101, "name", "source")
+        with first.db:
+            first._conversations.write_shared_call(scope, 101, "name", "source")
         expected, pending = first.shared_summary_snapshot(scope)
         assert expected is None
         connection.fail_commit = True

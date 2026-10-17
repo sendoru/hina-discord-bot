@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
+
+from hina_bot.core.db_connections import open_readonly
 
 
 class AdminRepository:
@@ -15,18 +17,11 @@ class AdminRepository:
         if not resolved.is_file():
             raise FileNotFoundError(f"Dashboard database is not a file: {resolved}")
         self.path = resolved
-        self._uri = f"{resolved.as_uri()}?mode=ro"
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
-        db = sqlite3.connect(self._uri, uri=True, timeout=5.0)
-        db.row_factory = sqlite3.Row
-        try:
-            db.execute("PRAGMA query_only=ON")
-            db.execute("PRAGMA busy_timeout=5000")
+        with closing(open_readonly(self.path)) as db:
             yield db
-        finally:
-            db.close()
 
     @staticmethod
     def _limit(value: int, *, maximum: int = 1000) -> int:
@@ -42,20 +37,6 @@ class AdminRepository:
     def ping(self) -> None:
         with self._connection() as db:
             db.execute("SELECT 1").fetchone()
-
-    def table_names(self) -> tuple[str, ...]:
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-            ).fetchall()
-        return tuple(str(row["name"]) for row in rows)
-
-    def _has_column(self, table: str, column: str) -> bool:
-        if table not in {"turns"}:
-            raise ValueError("unsupported dashboard schema lookup")
-        with self._connection() as db:
-            rows = db.execute(f"PRAGMA table_info({table})").fetchall()
-        return any(str(row["name"]) == column for row in rows)
 
     def runtime_config_startup_rows(self) -> list[dict[str, object]]:
         if not self._table_exists("runtime_config_startup"):
@@ -262,7 +243,7 @@ class AdminRepository:
 
     def latest_user_names(self) -> dict[tuple[str, str], str]:
         names: dict[tuple[str, str], str] = {}
-        if self._table_exists("turns") and self._has_column("turns", "name"):
+        if "name" in self._table_columns("turns"):
             with self._connection() as db:
                 rows = db.execute(
                     """SELECT realm,user_id,name FROM turns
@@ -331,8 +312,7 @@ class AdminRepository:
 
     def recent_turns(self, *, limit: int = 100) -> list[dict[str, object]]:
         limit = self._limit(limit)
-        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
-        name = "name" if self._has_column("turns", "name") else "'' AS name"
+        turn_id, name = self._turn_select()
         with self._connection() as db:
             rows = db.execute(
                 f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
@@ -350,109 +330,13 @@ class AdminRepository:
             .replace("_", "\\_")
         )
 
-    def _turn_filters(
-        self,
-        *,
-        scope: str = "",
-        realm: str = "",
-        user_id: str = "",
-        query: str = "",
-        created_after: str = "",
-        created_before: str = "",
-    ) -> tuple[str, tuple[object, ...]]:
-        clauses: list[str] = []
-        params: list[object] = []
-        if scope:
-            clauses.append("scope=?")
-            params.append(scope)
-        if realm:
-            clauses.append("realm=?")
-            params.append(realm)
-        if user_id:
-            if self._has_column("turns", "name"):
-                escaped_user = self._like(user_id)
-                clauses.append(
-                    "(user_id=? OR name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
-                )
-                params.extend((user_id, f"%{escaped_user}%"))
-            else:
-                clauses.append("user_id=?")
-                params.append(user_id)
-        if query:
-            escaped = self._like(query)
-            clauses.append(
-                "(content LIKE ? ESCAPE '\\' OR reply LIKE ? ESCAPE '\\' "
-                "OR message_id LIKE ? ESCAPE '\\')"
-            )
-            pattern = f"%{escaped}%"
-            params.extend((pattern, pattern, pattern))
-        if created_after:
-            clauses.append("created_at>=?")
-            params.append(created_after)
-        if created_before:
-            clauses.append("created_at<=?")
-            params.append(created_before)
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        return where, tuple(params)
-
-    def count_turns(
-        self,
-        *,
-        scope: str = "",
-        realm: str = "",
-        user_id: str = "",
-        query: str = "",
-        created_after: str = "",
-        created_before: str = "",
-    ) -> int:
-        where, params = self._turn_filters(
-            scope=scope,
-            realm=realm,
-            user_id=user_id,
-            query=query,
-            created_after=created_after,
-            created_before=created_before,
-        )
+    def count_turns(self) -> int:
+        """Successful-turn total for telemetry coverage; excludes failure audits."""
         with self._connection() as db:
-            row = db.execute(f"SELECT COUNT(*) AS count FROM turns{where}", params).fetchone()
-        return int(row["count"]) if row is not None else 0
-
-    def search_turns(
-        self,
-        *,
-        scope: str = "",
-        realm: str = "",
-        user_id: str = "",
-        query: str = "",
-        created_after: str = "",
-        created_before: str = "",
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[dict[str, object]]:
-        limit = self._limit(limit)
-        offset = max(0, int(offset))
-        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
-        name = "name" if self._has_column("turns", "name") else "'' AS name"
-        where, params = self._turn_filters(
-            scope=scope,
-            realm=realm,
-            user_id=user_id,
-            query=query,
-            created_after=created_after,
-            created_before=created_before,
-        )
-        with self._connection() as db:
-            rows = db.execute(
-                f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
-                           {turn_id},memory_context,created_at
-                    FROM turns{where} ORDER BY id DESC LIMIT ? OFFSET ?""",
-                (*params, limit, offset),
-            ).fetchall()
-        return self._dicts(rows)
+            return int(db.execute("SELECT COUNT(*) FROM turns").fetchone()[0])
 
     def _conversation_union(self) -> str:
-        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
-        name = "name" if self._has_column("turns", "name") else "'' AS name"
+        turn_id, name = self._turn_select()
         selects = [
             f"""SELECT 'turn' AS record_type,id,scope,realm,user_id,{name},message_id,
                        content,reply,exportable,{turn_id},memory_context,created_at,
@@ -571,8 +455,9 @@ class AdminRepository:
         return self._dicts(rows)
 
     def _turn_select(self) -> tuple[str, str]:
-        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
-        name = "name" if self._has_column("turns", "name") else "'' AS name"
+        columns = self._table_columns("turns")
+        turn_id = "turn_id" if "turn_id" in columns else "NULL AS turn_id"
+        name = "name" if "name" in columns else "'' AS name"
         return turn_id, name
 
     def turn_by_id(self, row_id: int) -> dict[str, object] | None:
@@ -627,7 +512,7 @@ class AdminRepository:
         if not trace_id:
             return None
 
-        has_turn_trace = self._has_column("turns", "turn_id")
+        has_turn_trace = "turn_id" in self._table_columns("turns")
         has_failed_trace = "turn_id" in self._table_columns("failed_turns")
         if not has_turn_trace and not has_failed_trace:
             return None
@@ -673,9 +558,12 @@ class AdminRepository:
         return row is not None
 
     def _table_columns(self, table: str) -> set[str]:
-        if not self._table_exists(table):
-            return set()
         with self._connection() as db:
+            # Keep the existing table-only contract without opening twice.
+            if db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,),
+            ).fetchone() is None:
+                return set()
             rows = db.execute(f"PRAGMA table_info({table})").fetchall()
         return {str(row["name"]) for row in rows}
 
@@ -858,8 +746,7 @@ class AdminRepository:
         if not values or not self._table_exists("turns"):
             return []
         placeholders = ",".join("?" for _ in values)
-        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
-        name = "name" if self._has_column("turns", "name") else "'' AS name"
+        turn_id, name = self._turn_select()
         with self._connection() as db:
             rows = db.execute(
                 f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
@@ -868,15 +755,6 @@ class AdminRepository:
                 values,
             ).fetchall()
         return self._dicts(rows)
-
-    def memory_counts_by_user(self) -> dict[str, int]:
-        if not self._table_exists("memory_items"):
-            return {}
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT user_id,COUNT(*) AS count FROM memory_items GROUP BY user_id"
-            ).fetchall()
-        return {str(row["user_id"]): int(row["count"]) for row in rows}
 
     def relationship_profile_users(
         self,
@@ -1000,15 +878,6 @@ class AdminRepository:
                     FROM scopes sc
                     {cursor_join}
                     ORDER BY pending_turns DESC, sc.scope"""
-            ).fetchall()
-        return self._dicts(rows)
-
-    def recent_memory_items(self, *, limit: int = 100) -> list[dict[str, object]]:
-        limit = self._limit(limit)
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT * FROM memory_items ORDER BY id DESC LIMIT ?",
-                (limit,),
             ).fetchall()
         return self._dicts(rows)
 
@@ -1243,23 +1112,3 @@ class AdminRepository:
                 for row in relations
             },
         }
-
-    def recent_reconciliation_proposals(
-        self, *, limit: int = 100
-    ) -> list[dict[str, object]]:
-        limit = self._limit(limit)
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT * FROM memory_reconciliation_proposals ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return self._dicts(rows)
-
-    def shared_summaries(self, *, limit: int = 100) -> list[dict[str, object]]:
-        limit = self._limit(limit)
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT * FROM shared_summaries ORDER BY rowid DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return self._dicts(rows)

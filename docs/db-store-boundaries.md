@@ -9,6 +9,8 @@ The #398 reliability changes are documented separately in
 [database reliability contracts](db-reliability.md).
 The #395 midpoint [schema and compatibility audit](db-schema-audit.md) records
 active fields, write-only audit metadata and removed obsolete initialization APIs.
+The follow-up [DB operation audit](db-operations-audit.md) records unused query/write
+entrypoints, shared connection setup and the transaction/deletion paths retained.
 
 ## Ownership
 
