@@ -7,6 +7,8 @@ startup and inspection-opening descriptions are historical: #397 now replaces th
 contracts with [explicit preparation and runtime startup](db-initialization.md).
 The #398 reliability changes are documented separately in
 [database reliability contracts](db-reliability.md).
+The #395 midpoint [schema and compatibility audit](db-schema-audit.md) records
+active fields, write-only audit metadata and removed obsolete initialization APIs.
 
 ## Ownership
 

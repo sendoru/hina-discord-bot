@@ -21,11 +21,15 @@ from .settings_schema import (
     migrate_legacy_rag_override,
     replace_legacy_chatlog_settings,
 )
-from .store_ddl import STORE_DDL
+from .store_ddl import STORE_DDL, STORE_INDEXES
 from .store_schema import initialize_store_schema
 
 COMPONENTS = ("store", "settings", "admin")
-DDL = {"store": STORE_DDL + QUEUE_DDL, "settings": SETTINGS_DDL, "admin": ADMIN_DDL}
+DDL = {
+    "store": STORE_DDL + STORE_INDEXES + QUEUE_DDL,
+    "settings": SETTINGS_DDL,
+    "admin": ADMIN_DDL,
+}
 LEGACY_OPTIONAL = {
     "turns": {"name", "turn_id", "memory_context", "context_provenance"},
     "memory_items": {"relationship_evidence", "user_name", "status", "superseded_by", "revision"},
@@ -99,16 +103,11 @@ def _expected():
                 for table in tables
             }
         indexes = {
-            r[0]: (r[1], re.sub(r"\s+", "", r[2]).lower())
+            r[0]: (r[1], r[2])
             for r in db.execute(
                 "SELECT name,tbl_name,sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL"
             )
         }
-        indexes["turns_turn_id"] = ("turns", "createindexturns_turn_idonturns(turn_id)")
-        indexes["memory_items_owner_status"] = (
-            "memory_items",
-            "createindexmemory_items_owner_statusonmemory_items(user_id,status,id)",
-        )
         return result, indexes
     finally:
         db.close()
@@ -225,7 +224,7 @@ def inspect_connection(db, components=COMPONENTS) -> tuple[str, ...]:
             if found is None:
                 current = False
             elif re.sub(r"\s+", "", found.lower()).replace("ifnotexists", "") != re.sub(
-                "ifnotexists", "", sql
+                r"\s+|ifnotexists", "", sql.lower()
             ):
                 raise SchemaError(f"Unsupported index: {name}")
         if component in ledger and not current:
@@ -234,7 +233,9 @@ def inspect_connection(db, components=COMPONENTS) -> tuple[str, ...]:
             pending.append(component)
     if "store" in components and _sql(db, "summaries"):
         cols = set(_columns(db, "summaries"))
-        if cols != {"scope", "realm", "user_id", "name", "text", "through_id", "exportable"}:
+        cursor_columns = {"scope", "realm", "user_id", "through_id"}
+        unused_columns = {"name", "text", "exportable"}
+        if not cursor_columns <= cols or cols - cursor_columns - unused_columns:
             raise SchemaError("Unsupported legacy summaries")
         if "store" not in pending:
             pending.append("store")
@@ -270,19 +271,10 @@ def _rebuild_legacy(db):
         if sequence:
             db.execute("DELETE FROM sqlite_sequence WHERE name=?", (table,))
             db.execute("INSERT INTO sqlite_sequence(name,seq) VALUES (?,?)", (table, sequence[0]))
-        for name, (owner, _) in indexes.items():
+        for owner, statement in indexes.values():
             if owner == table:
-                # Use the original DDL rather than constructing SQL from input.
-                for statement in STORE_DDL:
-                    if re.match(
-                        r"CREATE INDEX IF NOT EXISTS " + re.escape(name) + r"\b", statement
-                    ):
-                        db.execute(statement)
-        if table == "memory_items":
-            db.execute(
-                "CREATE INDEX IF NOT EXISTS memory_items_owner_status "
-                "ON memory_items(user_id,status,id)"
-            )
+                # SQL comes from our isolated canonical schema, never the input DB.
+                db.execute(statement)
 
 
 def prepare_connection(db, components=COMPONENTS, *, expected_signature=None) -> tuple[str, ...]:

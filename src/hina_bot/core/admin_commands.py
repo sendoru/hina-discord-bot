@@ -16,8 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .queue_schema import QUEUE_DDL
-
 _ACTION_RE = re.compile(r"[a-z][a-z0-9_.-]{1,63}")
 _REQUEST_ID_RE = re.compile(r"[a-f0-9]{32}")
 MAX_PAYLOAD_BYTES = 8192
@@ -31,12 +29,6 @@ class AdminCommand:
     action: str
     target: str
     payload: dict[str, Any]
-
-
-def ensure_admin_command_schema(db: sqlite3.Connection) -> None:
-    """Create queue tables inside the caller transaction."""
-    for statement in QUEUE_DDL:
-        db.execute(statement)
 
 
 def _validate_action(action: str) -> str:

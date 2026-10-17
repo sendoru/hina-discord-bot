@@ -4,7 +4,6 @@ import sqlite3
 
 import pytest
 
-from hina_bot.core.chatlog_modes import migrate_legacy_chatlog_settings
 from hina_bot.core.config import Settings
 from hina_bot.core.db_schema import prepare_connection
 from hina_bot.core.runtime_config import RuntimeSettings
@@ -54,7 +53,7 @@ def test_chatlog_migration_marker_failure_rolls_back_all_converted_rows(store):
     )
 
     with pytest.raises(sqlite3.IntegrityError, match="marker failure"):
-        migrate_legacy_chatlog_settings(store)
+        prepare_connection(store.db, ('store',))
 
     assert store.chat_log_mode_overrides() == before_modes
     assert [tuple(row) for row in store.db.execute("SELECT * FROM notes ORDER BY scope")] == before_notes
@@ -82,7 +81,6 @@ def test_startup_snapshot_insert_failure_preserves_previous_snapshot(store):
 
 
 def test_legacy_rag_delete_failure_rolls_back_new_key(store):
-    store.settings.ensure_runtime_schema()
     with store.db:
         store.db.execute(
             "INSERT INTO runtime_config(key,value) VALUES ('retrieval_v2_mode', ?)",
