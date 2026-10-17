@@ -37,6 +37,28 @@ class AdminDatabase:
             raise
 
     @classmethod
+    def copy_to_memory(cls, source=None):
+        """Own a disposable admin copy for evaluation/import validation.
+
+        The optional source is opened read-only; only the in-memory destination
+        is prepared. The returned owner must be closed by its caller.
+        """
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        try:
+            if source:
+                original = open_readonly(source)
+                try:
+                    original.backup(db)
+                finally:
+                    original.close()
+            prepare_connection(db, ("admin",))
+            return cls(db)
+        except BaseException:
+            db.close()
+            raise
+
+    @classmethod
     def create(cls, path: str):
         """Explicit initialization for new/isolated databases, never an upgrade."""
         if not path:

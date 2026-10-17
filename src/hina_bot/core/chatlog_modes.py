@@ -30,20 +30,6 @@ def _parents(key: str) -> tuple[str, ...]:
     return ("global", key)
 
 
-def migrate_legacy_chatlog_settings(store) -> None:
-    """Explicit compatibility migration; never called by Store construction.
-
-    A single DB transaction prevents another reader from observing an in-between
-    state. The marker is written with the converted rows for crash safety.
-    """
-    if store.note(_MIGRATION_MARKER) == "1":
-        return
-    logs = store.chat_log_mode_overrides()
-    captures = _capture_overrides(store)
-    combined = legacy_chatlog_plan(logs, captures)
-    store.settings.replace_legacy_chatlog_settings(combined, _MIGRATION_MARKER)
-
-
 def legacy_chatlog_plan(logs: dict[str, str], captures: dict[str, str]) -> dict[str, str]:
     combined = {}
     for key in set(logs) | set(captures):
