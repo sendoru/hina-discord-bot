@@ -24,7 +24,7 @@ hina-reset-analysis-data = "hina_bot.tooling.reset_analysis_data:main"
 hina-flush-memory = "hina_bot.tooling.flush_pending_memory:main"
 hina-reset-conversation = "hina_bot.tooling.reset_conversation:main"
 hina-migrate-reset-epochs = "hina_bot.tooling.migrate_conversation_reset_epochs:main"
-hina-migrate-runtime = "hina_bot.core.runtime_migration:main"
+hina-migrate-runtime = "hina_bot.tooling.runtime_migration:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

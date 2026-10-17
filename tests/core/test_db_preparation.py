@@ -19,10 +19,9 @@ from hina_bot.core.db_schema import (
     prepare_connection,
 )
 from hina_bot.core.runtime_config import RuntimeSettings
-from hina_bot.core.runtime_migration import migrate
 from hina_bot.core.store import Store
 from hina_bot.tooling import prepare_database as preparation
-from hina_bot.tooling.evaluation_database import evaluation_admin_database
+from hina_bot.tooling.runtime_migration import migrate
 
 
 def legacy_database(path):
@@ -58,6 +57,50 @@ def legacy_database(path):
 def signature(path):
     with closing(open_readonly(path)) as db:
         return database_signature(db)
+
+
+@pytest.mark.parametrize("optional_column", ["", "name TEXT", "text TEXT", "exportable INTEGER"])
+def test_legacy_summary_upgrade_does_not_require_unused_fields(tmp_path, optional_column):
+    path = tmp_path / "legacy.sqlite3"
+    with closing(sqlite3.connect(path)) as db:
+        extra = ", " + optional_column if optional_column else ""
+        db.execute(
+            "CREATE TABLE summaries (scope TEXT PRIMARY KEY, realm TEXT NOT NULL, "
+            "user_id TEXT NOT NULL, through_id INTEGER NOT NULL" + extra + ")"
+        )
+        db.execute(
+            "INSERT INTO summaries(scope,realm,user_id,through_id) VALUES (?,?,?,?)",
+            ("dm:100:channel:10:user:100", "dm:100", "100", 55),
+        )
+        db.commit()
+    before = signature(path)
+    assert preparation.prepare_database(path)[0] == ("store", "settings", "admin")
+    assert signature(path) == before
+    _, backup = preparation.prepare_database(path, apply=True, offline_confirmed=True)
+    assert signature(backup.path) == before
+    with closing(open_readonly(path)) as db:
+        assert inspect_connection(db) == ()
+        assert tuple(db.execute("SELECT scope,realm,user_id,through_id "
+                                "FROM memory_extraction_cursors").fetchone()) == (
+            "dm:100:channel:10:user:100", "dm:100", "100", 55,
+        )
+        assert not db.execute("SELECT 1 FROM sqlite_master WHERE name='summaries'").fetchone()
+    assert preparation.prepare_database(path, apply=True, offline_confirmed=True) == ((), None)
+
+
+@pytest.mark.parametrize("columns", [
+    "scope TEXT, realm TEXT, user_id TEXT",  # A cursor cannot be recovered without through_id.
+    "scope TEXT, realm TEXT, user_id TEXT, through_id INTEGER, unknown TEXT",
+])
+def test_unrecognized_legacy_summary_columns_are_rejected_without_writes(tmp_path, columns):
+    path = tmp_path / "unsupported.sqlite3"
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("CREATE TABLE summaries (" + columns + ")")
+    before = signature(path)
+    with pytest.raises(SchemaError, match="Unsupported legacy summaries"):
+        preparation.prepare_database(path, apply=True, offline_confirmed=True)
+    assert signature(path) == before
+    assert not (tmp_path / "backups").exists()
 
 
 def test_missing_inspection_never_creates_file_or_parent(tmp_path):
@@ -262,7 +305,7 @@ async def test_llm_default_does_not_open_settings_database_and_eval_copy_is_isol
     assert not path.parent.exists()
     preparation.prepare_database(path, apply=True, offline_confirmed=True)
     before = signature(path)
-    admin = evaluation_admin_database(path)
+    admin = AdminDatabase.copy_to_memory(path)
     try:
         from hina_bot.core.instructions import InstructionRegistry
 

@@ -79,9 +79,9 @@ async def main():
         parser.error("OPENAI_API_KEY is required; the normal test suite never needs it")
 
     client = AsyncOpenAI(api_key=api_key, timeout=45, max_retries=2)
-    from hina_bot.tooling.evaluation_database import evaluation_admin_database
+    from hina_bot.core.admin_db import AdminDatabase
 
-    admin = evaluation_admin_database()
+    admin = AdminDatabase.copy_to_memory()
     bot = LLM(Settings(discord_token="eval-only", openai_api_key=api_key, model=args.model), client=client, admin_db=admin)
     canary = "EVAL_CANARY_" + secrets.token_hex(12)
     original_policy = llm_module.POLICY

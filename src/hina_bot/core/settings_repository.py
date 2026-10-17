@@ -7,11 +7,6 @@ callers must not wrap unrelated settings writes in a memory extraction batch.
 import sqlite3
 
 from .scope_overrides import CHATLOG_CAPTURE_NOTE_PREFIX
-from .settings_schema import (
-    SETTINGS_DDL,
-    migrate_legacy_rag_override,
-    replace_legacy_chatlog_settings,
-)
 
 
 class SettingsRepository:
@@ -107,19 +102,6 @@ class SettingsRepository:
             "SELECT scope,text FROM notes WHERE scope LIKE ? ORDER BY scope",
             (prefix + "%",),
         ).fetchall()
-
-    def replace_legacy_chatlog_settings(self, combined: dict[str, str], marker: str) -> None:
-        with self.db:
-            replace_legacy_chatlog_settings(self.db, combined, marker)
-
-    def ensure_runtime_schema(self) -> None:
-        """Explicit initialization; caller owns the transaction."""
-        for statement in SETTINGS_DDL:
-            self.db.execute(statement)
-
-    def migrate_legacy_rag_override(self, encoded_modes: dict[str, str]) -> None:
-        with self.db:
-            migrate_legacy_rag_override(self.db, encoded_modes)
 
     def replace_startup_snapshot(self, rows: list[tuple[str, str]]) -> None:
         with self.db:

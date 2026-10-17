@@ -5,14 +5,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from hina_bot.tooling.evaluation_database import evaluation_admin_database
-from hina_bot.tooling.maintenance_backup import backup_schema_database
+from hina_bot.core.admin_db import AdminDatabase
+from hina_bot.core.db_connections import open_existing, open_readonly
+from hina_bot.core.db_schema import database_signature, prepare_connection
+from hina_bot.core.instructions import InstructionRegistry
+from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
-from .admin_db import AdminDatabase
-from .db_connections import open_existing, open_readonly
-from .db_schema import database_signature, prepare_connection
-from .instructions import InstructionRegistry
-from .runtime_knowledge import RuntimeKnowledgeRegistry
+from .maintenance_backup import backup_schema_database
 
 MIGRATION_NAME = "legacy-json-admin-v1"
 
@@ -50,9 +49,9 @@ def migrate(args) -> dict[str, dict[str, int]]:
     if not args.dry_run and not getattr(args, 'offline_confirmed', False):
         raise ValueError('Stop all database writers and pass --offline-confirmed')
     # All dry-run validation uses a disposable clone and the real registries.
-    database = evaluation_admin_database(path if path.exists() else None)
-    if not args.dry_run:
-        database.close()
+    if args.dry_run:
+        database = AdminDatabase.copy_to_memory(path if path.exists() else None)
+    else:
         expected = None
         if path.exists():
             original = open_readonly(path)
