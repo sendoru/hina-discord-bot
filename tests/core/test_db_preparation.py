@@ -575,3 +575,48 @@ def test_legacy_rebuild_keeps_edit_history_proposals_and_their_id_high_marks(tmp
             assert sequences["memory_items"] == sequences["memory_item_edit_history"] == 20
             assert sequences["memory_reconciliation_proposals"] == 30
             assert inspect_connection(db) == ()  # Includes every restored index/constraint.
+
+
+@pytest.mark.parametrize("foreign_keys", [False, True])
+def test_external_foreign_key_refuses_rebuild_without_breaking_or_deleting_children(
+    tmp_path, foreign_keys,
+):
+    path = tmp_path / "external-fk.sqlite3"
+    legacy_database(path)
+    with closing(open_existing(path)) as db:
+        with db:
+            db.execute("""CREATE TABLE external_links (
+                item_id INTEGER REFERENCES MEMORY_ITEMS(id) ON DELETE CASCADE)""")
+            db.execute("INSERT INTO external_links VALUES (5)")
+        db.execute("PRAGMA foreign_keys=" + str(int(foreign_keys)))
+        before = signature(path)
+        with pytest.raises(SchemaError, match="Unsupported rebuild foreign key: external_links"):
+            prepare_connection(db, ("store",))
+        assert not db.in_transaction
+        assert signature(path) == before
+        assert db.execute("SELECT item_id FROM external_links").fetchone()[0] == 5
+        assert db.execute("PRAGMA foreign_key_list(external_links)").fetchone()[2] == "MEMORY_ITEMS"
+    with pytest.raises(SchemaError, match="Unsupported rebuild foreign key: external_links"):
+        preparation.prepare_database(path, apply=True, offline_confirmed=True)
+    assert signature(path) == before
+    assert not (tmp_path / "backups").exists()
+
+
+@pytest.mark.parametrize("custom_sql", [
+    "CREATE VIEW external_memory AS SELECT id FROM memory_items",
+    """CREATE TABLE external_events(id INTEGER);
+       CREATE TRIGGER external_memory_trigger AFTER INSERT ON external_events
+       BEGIN UPDATE memory_items SET content='changed' WHERE id=NEW.id; END""",
+    # No SQL dependency parser: even an unrelated custom view requires manual review.
+    "CREATE VIEW unrelated_view AS SELECT 1 AS id",
+])
+def test_custom_views_and_triggers_refuse_rebuild_before_rename(tmp_path, custom_sql):
+    path = tmp_path / "custom-objects.sqlite3"
+    legacy_database(path)
+    with closing(sqlite3.connect(path)) as db:
+        db.executescript(custom_sql)
+    before = signature(path)
+    with pytest.raises(SchemaError, match="Unsupported rebuild dependency"):
+        preparation.prepare_database(path, apply=True, offline_confirmed=True)
+    assert signature(path) == before
+    assert not (tmp_path / "backups").exists()
