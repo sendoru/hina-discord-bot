@@ -411,10 +411,6 @@ class Store:
             error_fingerprint=error_fingerprint,
         )
 
-    @staticmethod
-    def _decode_memory_item(row) -> MemoryItem:
-        return MemoryRepository._decode_memory_item(row)
-
     def add_memory_item(
         self,
         scope: Scope,
@@ -652,17 +648,11 @@ class Store:
                 deleted += self._rowcount(cursor)
         return deleted
 
-    def add_shared_call(self, scope, message_id, name, content):
-        return self._conversations.add_shared_call(scope, message_id, name, content)
-
     def shared_summary(self, scope):
         return self._conversations.shared_summary(scope)
 
     def pending_shared(self, scope):
         return self._conversations.pending_shared(scope)
-
-    def save_shared_summary(self, scope, name, text, through):
-        return self._conversations.save_shared_summary(scope, name, text, through)
 
     def shared_summary_snapshot(self, scope):
         """Read one coherent input, releasing the transaction before the LLM await."""
@@ -736,10 +726,6 @@ class Store:
 
     def set_memory_mode_override(self, key: str, mode: str | None):
         return self.settings.set_memory_mode_override(key, mode)
-
-    def set_memory_mode(self, scope: Scope, mode: str):
-        """Backward-compatible channel override setter."""
-        self.set_memory_mode_override(scope.channel, mode)
 
     def memory_mode_overrides(self) -> dict[str, str]:
         return self.settings.memory_mode_overrides()

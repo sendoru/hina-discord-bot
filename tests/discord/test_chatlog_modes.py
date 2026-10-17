@@ -62,7 +62,7 @@ class ChatLogAdapterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_chatlog_on_still_works_when_long_term_memory_is_off(self):
         scope = Scope(1, 10, 100)
-        self.store.set_memory_mode(scope, "off")
+        self.store.set_memory_mode_override(scope.channel, "off")
 
         await self.bot.on_message(self.message("호출하지 않은 앞 대화", 1))
         await self.bot.on_message(self.message("히나야 지금 질문", 2))

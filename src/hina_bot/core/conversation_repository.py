@@ -155,12 +155,6 @@ class ConversationRepository:
                 (scope.conversation, scope.conversation, self.history_turns),
             )
 
-    def add_shared_call(self, scope, message_id, name, content):
-        if scope.guild_id is None or not scope.public_at_capture:
-            return
-        with self.db:
-            self.write_shared_call(scope, message_id, name, content)
-
     def write_shared_call(self, scope, message_id, name, content):
         if scope.guild_id is None or not scope.public_at_capture:
             return
@@ -191,12 +185,7 @@ class ConversationRepository:
         return self.db.execute(sql, params).fetchall()
 
     def pending_shared(self, scope):
-        return self.db.execute("SELECT * FROM shared_calls WHERE scope=? AND id>? ORDER BY id",
-                               (scope.conversation, self.shared_summary(scope)[1])).fetchall()
-
-    def save_shared_summary(self, scope, name, text, through):
-        with self.db:
-            self.write_shared_summary(scope, name, text, through)
+        return self.shared_calls_after(scope, self.shared_summary(scope)[1])
 
     def write_shared_summary(self, scope, name, text, through):
         """Write on the caller's transaction; never commit an enclosing guard."""

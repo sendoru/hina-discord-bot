@@ -35,11 +35,13 @@ def connect_existing(database_path: str | Path, *, readonly: bool = False) -> sq
     if not path.is_file():
         raise FileNotFoundError(f"SQLite database does not exist: {path}")
     db = open_readonly(path) if readonly else open_existing(path)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA busy_timeout=1000")
-    if not readonly:
-        db.execute("PRAGMA secure_delete=ON")
-    if not table_exists(db, "turns"):
+    try:
+        db.execute("PRAGMA busy_timeout=1000")
+        if not readonly:
+            db.execute("PRAGMA secure_delete=ON")
+        if not table_exists(db, "turns"):
+            raise ValueError(f"Not a hina runtime database (missing turns table): {path}")
+        return db
+    except BaseException:
         db.close()
-        raise ValueError(f"Not a hina runtime database (missing turns table): {path}")
-    return db
+        raise
