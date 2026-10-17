@@ -42,14 +42,16 @@ def _seed_safe_database(path):
         error_fingerprint="deadbeef",
     )
 
-    store.add_shared_call(guild, 2, "User", "public call")
+    with store.db:
+        store._conversations.write_shared_call(guild, 2, "User", "public call")
     shared_id = int(
         store.db.execute(
             "SELECT id FROM shared_calls WHERE scope=?",
             (guild.conversation,),
         ).fetchone()["id"]
     )
-    store.save_shared_summary(guild, "User", "shared summary", shared_id)
+    with store.db:
+        store._conversations.write_shared_summary(guild, "User", "shared summary", shared_id)
 
     with store.db:
         store.db.execute(

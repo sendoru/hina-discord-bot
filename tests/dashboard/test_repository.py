@@ -38,7 +38,7 @@ def test_repository_reads_turns_and_memory_by_trace(tmp_path):
     assert turns[0]["content"] == "question"
     assert repository.turn_for_trace("trace-123")["reply"] == "answer"
 
-    memories = repository.recent_memory_items()
+    memories = repository.search_memory_items()
     assert len(memories) == 1
     assert memories[0]["content"] == "likes coffee"
 
@@ -75,6 +75,9 @@ def test_repository_connection_is_sqlite_read_only(tmp_path):
 
     with repository._connection() as db, pytest.raises(sqlite3.OperationalError):
         db.execute("DELETE FROM turns")
+
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        db.execute("SELECT 1")
 
     writable = sqlite3.connect(path)
     try:
@@ -116,15 +119,15 @@ def test_repository_handles_pre_turn_id_database_without_migrating_it(tmp_path):
     assert "turn_id" not in columns
 
 
-def test_repository_search_turns_filters_without_writes(tmp_path):
+def test_repository_search_conversations_filters_without_writes(tmp_path):
     path = tmp_path / "hina.sqlite3"
     populated_database(path)
     repository = AdminRepository(path)
 
-    assert repository.count_turns(query="question") == 1
-    assert repository.count_turns(query="missing") == 0
+    assert repository.count_conversations(query="question") == 1
+    assert repository.count_conversations(query="missing") == 0
 
-    rows = repository.search_turns(user_id="100", query="answer", limit=10)
+    rows = repository.search_conversations(user_id="100", query="answer", limit=10)
     assert len(rows) == 1
     assert rows[0]["message_id"] == "55"
 
@@ -388,7 +391,7 @@ def test_repository_filters_turn_time_and_reads_neighbor_context(tmp_path):
 
     repository = AdminRepository(path)
 
-    rows = repository.search_turns(
+    rows = repository.search_conversations(
         created_after="2026-09-22 12:30:00",
         created_before="2026-09-22 13:30:00",
     )
@@ -424,9 +427,9 @@ def test_repository_user_filter_accepts_stored_human_readable_name(tmp_path):
 
     repository = AdminRepository(path)
 
-    turns = repository.search_turns(user_id="dashboard")
+    turns = repository.search_conversations(user_id="dashboard")
     assert [row["user_id"] for row in turns] == ["100"]
-    assert repository.count_turns(user_id="Dashboard User") == 1
+    assert repository.count_conversations(user_id="Dashboard User") == 1
 
     memories = repository.search_memory_items(user_id="board user")
     assert [row["user_id"] for row in memories] == ["100"]

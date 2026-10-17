@@ -37,8 +37,9 @@ and cancelled. Only a completed database commit emits committed. Provider respon
 completion alone is not a persistence claim. Telemetry includes bounded reason
 codes and counts/sizes, never input rows, names, generated text or hashes.
 
-The unconditional save_shared_summary setter remains available for explicit
-compatibility/setup calls; production generation exclusively uses the guarded
+The midpoint [operation cleanup](db-operations-audit.md) removes the unused
+unconditional save_shared_summary setter. Tests seed historical states through
+transaction-borrowing repository helpers; production generation uses the guarded
 snapshot/commit entrypoints, with no unconditional fallback. Repositories borrow
 Store's connection and the guarded write SQL never commits internally. The existing
 atomic_memory_batch source/cursor guard and extraction transaction are unchanged.
@@ -70,8 +71,9 @@ projection, both existing pruning operations, and their ID allocations. Either
 write/prune or commit failure rolls back the entire operation. DM/private scopes
 still store only turns. Public eligibility, message-ID uniqueness/INSERT OR IGNORE
 rules, names, telemetry turn_id, context/provenance encoding and history_turns
-limits remain unchanged. Explicit standalone add/add_shared_call retain their
-independent commits; the runtime completed-turn path uses the combined entrypoint.
+limits remain unchanged. Standalone add retains its independent commit for
+hydration. The unused standalone add_shared_call wrapper was removed in the
+midpoint cleanup; the completed-turn path uses the combined entrypoint.
 
 The turn is the retained successful exchange and shared_calls is its public input
 projection. Keeping the turn after a projection failure previously made seen()

@@ -226,7 +226,8 @@ class MemoryTests(unittest.TestCase):
     def test_public_to_dm_only_same_user(self):
         for i, scope in enumerate([self.a, self.other_user, self.dm], 1):
             self.store.add(scope, i, f"text{i}", "응")
-            self.store.add_shared_call(scope, i, "speaker", f"text{i}")
+            with self.store.db:
+                self.store._conversations.write_shared_call(scope, i, "speaker", f"text{i}")
         candidates = self.store.public_candidates(100)
         self.assertEqual([s.conversation for s in candidates], [self.a.conversation])
         context = self.store.public_context(candidates)
@@ -246,10 +247,12 @@ class MemoryTests(unittest.TestCase):
 
     def test_public_context_keeps_only_public_direct_calls(self):
         self.store.add(self.a, 1, "공개", "응")
-        self.store.add_shared_call(self.a, 1, "speaker", "공개")
+        with self.store.db:
+            self.store._conversations.write_shared_call(self.a, 1, "speaker", "공개")
         private = Scope(1, 10, 100, False)
         self.store.add(private, 2, "비공개", "응")
-        self.store.add_shared_call(private, 2, "speaker", "비공개")
+        with self.store.db:
+            self.store._conversations.write_shared_call(private, 2, "speaker", "비공개")
         context = self.store.public_context([self.a])[0]
         self.assertEqual(context["summary"], "")
         self.assertEqual(context["recent_user_messages"], ["공개"])
@@ -332,10 +335,12 @@ class SharedContextTests(unittest.TestCase):
         a, b = Scope(1, 10, 100, True), Scope(1, 20, 200, True)
         for i, source in enumerate([a, b, Scope(2, 30, 300, True),
                                     Scope(1, 40, 400, False), Scope(None, 50, 500)], 1):
-            store.add_shared_call(source, i, "speaker", "called")
+            with store.db:
+                store._conversations.write_shared_call(source, i, "speaker", "called")
         self.assertEqual({s.user_id for s in store.public_candidates(200, 1)}, {100, 200})
         self.assertEqual({s.user_id for s in store.public_candidates(200)}, {200})
-        store.save_shared_summary(a, "A", "A preference", 1)
+        with store.db:
+            store._conversations.write_shared_summary(a, "A", "A preference", 1)
         store.forget(a)
         self.assertEqual(store.shared_summary(a), ("", 0))
         self.assertEqual({s.user_id for s in store.public_candidates(200, 1)}, {200})

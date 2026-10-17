@@ -22,11 +22,13 @@ def test_shared_summary_cursor_and_origin_components_preserve_stored_data(tmp_pa
     for index, scope in enumerate((guild, dm), 1):
         store.add(scope, index, "question", "reply", name=f"User {index}")
         store.save_memory_extraction_cursor(scope, store.history(scope)[-1]["id"])
-    store.add_shared_call(guild, 3, "User 1", "shared question")
+    with store.db:
+        store._conversations.write_shared_call(guild, 3, "User 1", "shared question")
     shared_id = int(store.db.execute(
         "SELECT id FROM shared_calls WHERE message_id='3'"
     ).fetchone()["id"])
-    store.save_shared_summary(guild, "User 1", "Shared summary", shared_id)
+    with store.db:
+        store._conversations.write_shared_summary(guild, "User 1", "Shared summary", shared_id)
     long_text = ("사용자는 히나에게 직접적인 애정과 호감을 표현합니다. " * 15).strip()
     old = store.add_memory_item(guild, long_text, kind="relationship", disclosure="implicit")
     new = store.add_memory_item(guild, long_text, kind="relationship", disclosure="implicit")

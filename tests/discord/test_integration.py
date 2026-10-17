@@ -120,9 +120,11 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
     async def test_shared_summary_contains_only_direct_calls(self):
         source = Scope(1, 10, 100, True)
         self.store.add(source, 1, "first call", "passive-context-secret")
-        self.store.add_shared_call(source, 1, "A", "first call")
+        with self.store.db:
+            self.store._conversations.write_shared_call(source, 1, "A", "first call")
         self.store.add(source, 2, "second call", "another-passive-secret")
-        self.store.add_shared_call(source, 2, "A", "second call")
+        with self.store.db:
+            self.store._conversations.write_shared_call(source, 2, "A", "second call")
         await self.llm.summarize_shared(self.store, source)
         payload = self.calls[-1]["input"]
         self.assertIn("first call", payload)
@@ -396,7 +398,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_stale_memory_sweep_skips_non_writable_scope(self):
         scope = Scope(1, 10, 100)
-        self.store.set_memory_mode(scope, "read_only")
+        self.store.set_memory_mode_override(scope.channel, "read_only")
         self.store.stale_memory_extraction_scopes = MagicMock(return_value=[scope])
 
         await self.bot._sweep_stale_structured_memory()
@@ -477,7 +479,8 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(row["content"] == "히나야 /서버메모 override" for row in recent))
 
     async def test_current_visibility_and_membership_rechecked(self):
-        self.store.add_shared_call(Scope(1, 10, 100, True), 500, "speaker", "공개")
+        with self.store.db:
+            self.store._conversations.write_shared_call(Scope(1, 10, 100, True), 500, "speaker", "공개")
         member = NS(id=100)
         self.guild.get_channel = MagicMock(return_value=self.channel)
         self.guild.fetch_member = AsyncMock(return_value=member)
@@ -490,7 +493,8 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.bot.public_sources(100), [])
 
     async def test_threads_excluded(self):
-        self.store.add_shared_call(Scope(1, 10, 100, True), 500, "speaker", "공개")
+        with self.store.db:
+            self.store._conversations.write_shared_call(Scope(1, 10, 100, True), 500, "speaker", "공개")
         self.guild.get_channel = MagicMock(return_value=MagicMock(spec=discord.Thread))
         self.bot.get_guild = MagicMock(return_value=self.guild)
         self.assertEqual(await self.bot.public_sources(100), [])
@@ -510,7 +514,8 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("A의 일반 발언", str(dict(calls[0])))
 
     async def test_other_speakers_public_sources_available_in_server(self):
-        self.store.add_shared_call(Scope(1, 10, 200, True), 500, "B", "나는 커피를 좋아해")
+        with self.store.db:
+            self.store._conversations.write_shared_call(Scope(1, 10, 200, True), 500, "B", "나는 커피를 좋아해")
         self.guild.get_channel = MagicMock(return_value=self.channel)
         self.guild.fetch_member = AsyncMock(return_value=NS(id=100))
         self.bot.get_guild = MagicMock(return_value=self.guild)
@@ -519,7 +524,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_memory_off_skips_persistent_memory_but_keeps_recent_context(self):
         scope = Scope(1, 10, 100)
-        self.store.set_memory_mode(scope, "off")
+        self.store.set_memory_mode_override(scope.channel, "off")
         self.bot.public_sources = AsyncMock()
         await self.bot.on_message(self.message("ordinary", id=1))
         await self.bot.on_message(self.message("히나야 current", id=2))
@@ -544,7 +549,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
     async def test_read_only_replies_without_persisting(self):
         scope = Scope(1, 10, 100)
         self.store.add(scope, 500, "old", "old reply")
-        self.store.set_memory_mode(scope, "read_only")
+        self.store.set_memory_mode_override(scope.channel, "read_only")
         await self.bot.on_message(self.message())
         self.assertTrue(self.llm.answer.call_args.kwargs["use_memory"])
         self.assertEqual([r["content"] for r in self.store.history(scope)], ["old"])
@@ -555,7 +560,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_write_only_saves_without_response_context(self):
         scope = Scope(1, 10, 100)
-        self.store.set_memory_mode(scope, "write_only")
+        self.store.set_memory_mode_override(scope.channel, "write_only")
         await self.bot.on_message(self.message())
         self.assertFalse(self.llm.answer.call_args.kwargs["use_memory"])
         self.assertTrue(self.store.seen(1))

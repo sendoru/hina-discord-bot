@@ -177,8 +177,10 @@ async def test_shared_empty_memory_advances_cursor_only_for_explicit_completed_r
     store = Store.create(":memory:")
     scope = Scope(1, 2, 100, public_at_capture=True)
     try:
-        store.add_shared_call(scope, 10, "A", "안녕")
-        store.save_shared_summary(scope, "A", "이전 기억", 0)
+        with store.db:
+            store._conversations.write_shared_call(scope, 10, "A", "안녕")
+        with store.db:
+            store._conversations.write_shared_summary(scope, "A", "이전 기억", 0)
         if clears:
             await llm.summarize_shared(store, scope)
         else:
