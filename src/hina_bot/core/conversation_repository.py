@@ -9,7 +9,7 @@ from .routing import Scope
 
 
 class ConversationRepository:
-    """No connection ownership or schema initialization; commits retain legacy boundaries."""
+    """Standalone methods retain commits; write_* helpers borrow a caller transaction."""
 
     def __init__(self, db: sqlite3.Connection, history_turns: int = 12):
         self.db = db
@@ -51,6 +51,17 @@ class ConversationRepository:
                                (str(message_id),)).fetchone() is not None
 
     def add(
+        self, scope, message_id, content, reply, *, name="", memory_context=None,
+        context_provenance=None,
+    ):
+        values = self.turn_values(
+            scope, message_id, content, reply, name=name, memory_context=memory_context,
+            context_provenance=context_provenance,
+        )
+        with self.db:
+            self.write_turn(scope, values)
+
+    def turn_values(
         self,
         scope: Scope,
         message_id: int,
@@ -81,28 +92,22 @@ class ConversationRepository:
             if context_provenance
             else ""
         )
-        with self.db:
-            self.db.execute(
-                "INSERT INTO turns(scope,realm,user_id,name,message_id,content,reply,exportable,"
-                "turn_id,memory_context,context_provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    scope.conversation,
-                    scope.realm,
-                    str(scope.user_id),
-                    str(name or "")[:100],
-                    str(message_id),
-                    content,
-                    reply,
-                    int(exportable),
-                    current_turn_id(),
-                    encoded_context,
-                    encoded_provenance,
-                ),
-            )
-            # Bound raw retention independently of persistent-memory extraction.
-            self.db.execute("DELETE FROM turns WHERE scope=? AND id NOT IN "
-                            "(SELECT id FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?)",
-                            (scope.conversation, scope.conversation, self.history_turns))
+        return (
+            scope.conversation, scope.realm, str(scope.user_id), str(name or "")[:100],
+            str(message_id), content, reply, int(exportable), current_turn_id(),
+            encoded_context, encoded_provenance,
+        )
+
+    def write_turn(self, scope, values):
+        """Insert and prune on the caller's transaction, using already encoded values."""
+        self.db.execute(
+            "INSERT INTO turns(scope,realm,user_id,name,message_id,content,reply,exportable,"
+            "turn_id,memory_context,context_provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?)", values,
+        )
+        # Keep the existing retention policy; its separation belongs to #399.
+        self.db.execute("DELETE FROM turns WHERE scope=? AND id NOT IN "
+                        "(SELECT id FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?)",
+                        (scope.conversation, scope.conversation, self.history_turns))
 
     def add_failed_turn(
         self,
@@ -150,32 +155,43 @@ class ConversationRepository:
                 (scope.conversation, scope.conversation, self.history_turns),
             )
 
-    def add_shared_call(self, scope, message_id, name, content):
+    def write_shared_call(self, scope, message_id, name, content):
         if scope.guild_id is None or not scope.public_at_capture:
             return
-        with self.db:
-            self.db.execute("INSERT OR IGNORE INTO shared_calls "
-                            "(scope,realm,user_id,message_id,name,content) VALUES (?,?,?,?,?,?)",
-                            (scope.conversation, scope.realm, str(scope.user_id), str(message_id),
-                             name[:100], content))
-            self.db.execute("DELETE FROM shared_calls WHERE scope=? AND id NOT IN "
-                            "(SELECT id FROM shared_calls WHERE scope=? ORDER BY id DESC LIMIT ?)",
-                            (scope.conversation, scope.conversation, self.history_turns))
+        self.db.execute("INSERT OR IGNORE INTO shared_calls "
+                        "(scope,realm,user_id,message_id,name,content) VALUES (?,?,?,?,?,?)",
+                        (scope.conversation, scope.realm, str(scope.user_id), str(message_id),
+                         name[:100], content))
+        self.db.execute("DELETE FROM shared_calls WHERE scope=? AND id NOT IN "
+                        "(SELECT id FROM shared_calls WHERE scope=? ORDER BY id DESC LIMIT ?)",
+                        (scope.conversation, scope.conversation, self.history_turns))
 
     def shared_summary(self, scope):
         row = self.db.execute("SELECT text,through_id FROM shared_summaries WHERE scope=?",
                               (scope.conversation,)).fetchone()
         return (row[0], row[1]) if row else ("", 0)
 
-    def pending_shared(self, scope):
-        return self.db.execute("SELECT * FROM shared_calls WHERE scope=? AND id>? ORDER BY id",
-                               (scope.conversation, self.shared_summary(scope)[1])).fetchall()
+    def shared_summary_row(self, scope):
+        row = self.db.execute("SELECT * FROM shared_summaries WHERE scope=?",
+                              (scope.conversation,)).fetchone()
+        return dict(row) if row is not None else None
 
-    def save_shared_summary(self, scope, name, text, through):
-        with self.db:
-            self.db.execute("INSERT OR REPLACE INTO shared_summaries VALUES (?,?,?,?,?,?)",
-                            (scope.conversation, scope.realm, str(scope.user_id), name,
-                             text[:1500], through))
+    def shared_calls_after(self, scope, through, *, limit=None):
+        sql = "SELECT * FROM shared_calls WHERE scope=? AND id>? ORDER BY id"
+        params = (scope.conversation, through)
+        if limit is not None:
+            sql += " LIMIT ?"
+            params += (limit,)
+        return self.db.execute(sql, params).fetchall()
+
+    def pending_shared(self, scope):
+        return self.shared_calls_after(scope, self.shared_summary(scope)[1])
+
+    def write_shared_summary(self, scope, name, text, through):
+        """Write on the caller's transaction; never commit an enclosing guard."""
+        self.db.execute("INSERT OR REPLACE INTO shared_summaries VALUES (?,?,?,?,?,?)",
+                        (scope.conversation, scope.realm, str(scope.user_id), name,
+                         text[:1500], through))
 
     def public_candidates(self, user_id: int, guild_id: int | None = None):
         # Server queries include all speakers in this guild. DM queries include only its owner.

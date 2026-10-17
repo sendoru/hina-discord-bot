@@ -26,7 +26,7 @@ def write_rows(path, rows):
 
 def build_service(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     scope = Scope(1, 10, 100, True)
     store.observe_guild_channel(1, "Test Guild", 10, "general")
     memory_id = store.add_memory_item(
@@ -595,7 +595,7 @@ def test_conversations_use_bounded_repository_filters(tmp_path):
 
 def test_conversations_surface_failed_turn_status_and_trace(tmp_path):
     service = build_service(tmp_path)
-    store = Store(str(service.repository.path))
+    store = Store.create(str(service.repository.path))
     scope = Scope(1, 10, 100, True)
     token = CURRENT_TURN_ID.set("trace-failed-stored")
     try:
@@ -642,7 +642,7 @@ def test_conversations_surface_failed_turn_status_and_trace(tmp_path):
 
 def build_memory_service(tmp_path):
     database = tmp_path / "memory.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     scope = Scope(1, 10, 100, True)
     store.observe_guild_channel(1, "Memory Guild", 10, "memory")
     token = CURRENT_TURN_ID.set("memory-trace")
@@ -693,7 +693,7 @@ def test_memory_service_filters_and_source_drilldown(tmp_path):
 
 def test_memory_scope_picker_filters_guild_and_dm_without_raw_realms(tmp_path):
     database = tmp_path / "scope-filter-memory.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     guild_scope = Scope(1, 10, 100, True)
     other_guild_scope = Scope(2, 11, 100, True)
     dm_scope = Scope(None, 20, 100)
@@ -775,7 +775,7 @@ def test_cursor_service_shows_structured_extraction_state(tmp_path):
 
 def build_reconciliation_service(tmp_path):
     database = tmp_path / "reconciliation.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     scope = Scope(None, 10, 100)
 
     token = CURRENT_TURN_ID.set("trace-old")
@@ -927,7 +927,7 @@ def test_conversation_service_local_time_filter_and_search_match(tmp_path):
 
 def test_conversation_context_marks_selected_turn(tmp_path):
     service = build_service(tmp_path)
-    row_id = int(service.repository.search_turns(limit=1)[0]["id"])
+    row_id = int(service.repository.search_conversations(limit=1)[0]["id"])
 
     data = service.conversation_context(row_id, before=2, after=2)
 
@@ -942,7 +942,7 @@ def test_conversation_context_marks_selected_turn(tmp_path):
 
 def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
     database = tmp_path / "relationships.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     dm = Scope(None, 10, 100)
     same_target_guild = Scope(1, 20, 100, True)
     store.observe_guild_channel(1, "Profile Guild", 20, "profile")
@@ -1114,7 +1114,7 @@ def test_relationship_profiles_match_runtime_cross_space_projection(tmp_path):
 
 def test_relationship_profiles_include_users_with_only_full_relationships(tmp_path):
     database = tmp_path / "full-only-relationships.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     store.add_memory_item(
         Scope(2, 30, 200, True),
         "globally visible relationship only",
@@ -1147,7 +1147,7 @@ def test_relationship_profiles_include_users_with_only_full_relationships(tmp_pa
 
 def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
     database = tmp_path / "context-state.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     guild = Scope(1, 10, 100)
     dm = Scope(None, 20, 100)
     store.observe_guild_channel(1, "State Guild", 10, "state")
@@ -1257,7 +1257,7 @@ def test_context_state_resolves_modes_capture_and_manual_notes(tmp_path):
 
 def test_context_state_requires_selection_for_multiple_dm_channels(tmp_path):
     database = tmp_path / "context-state-multi-dm.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     first = Scope(None, 20, 100)
     second = Scope(None, 21, 100)
     store.add(first, 1, "first dm", "reply", name="State User")
@@ -1337,7 +1337,7 @@ def test_context_state_rejects_partial_or_invalid_target(tmp_path):
 
 def test_telemetry_views_default_to_current_observability_epoch(tmp_path):
     database = tmp_path / "epochs.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     with store.db:
         store.db.execute(
             """CREATE TABLE observability_epochs (

@@ -15,7 +15,7 @@ from hina_bot.discord.admin_commands import execute_admin_command
 
 @pytest.mark.asyncio
 async def test_state_admin_commands_reuse_store_and_recent_side_effects():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     recent = RecentMessages()
     locks = {}
 
@@ -76,7 +76,7 @@ async def test_state_admin_commands_reuse_store_and_recent_side_effects():
 
 def test_state_admin_post_requires_purge_confirmation_and_enqueues(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    Store(str(database)).close()
+    Store.create(str(database)).close()
     settings = DashboardSettings(
         database_path=str(database),
         usage_log_path=str(tmp_path / "usage.jsonl"),

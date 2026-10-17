@@ -7,6 +7,7 @@ from hina_bot.core.memory_context import (
 )
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.tooling.prepare_database import prepare_database
 
 
 def test_memory_context_keeps_only_strong_causal_rows_with_bounded_ownership():
@@ -66,7 +67,7 @@ def test_memory_context_keeps_only_strong_causal_rows_with_bounded_ownership():
 
 
 def test_store_consumes_request_scoped_memory_context_once():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     context = ({
         "kind": "replied_message",
@@ -104,7 +105,8 @@ def test_store_migrates_existing_turns_table_with_memory_context(tmp_path):
     finally:
         db.close()
 
-    store = Store(str(path))
+    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+    store = Store.create(str(path))
     try:
         columns = {row["name"] for row in store.db.execute("PRAGMA table_info(turns)")}
         assert "memory_context" in columns

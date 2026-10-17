@@ -31,7 +31,7 @@ def write_rows(path, rows):
 
 def dashboard_client(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     scope = Scope(None, 10, 100)
     token = CURRENT_TURN_ID.set("trace-ui")
     try:
@@ -124,16 +124,18 @@ def dashboard_client(tmp_path):
     guild_scope = Scope(1, 20, 100, True)
     store.observe_guild_channel(1, "Dashboard Guild", 10, "general")
     store.observe_guild_channel(1, "Dashboard Guild", 20, "relationships")
-    store.add_shared_call(guild_scope, 57, "Dashboard User", "public dashboard call")
+    with store.db:
+        store._conversations.write_shared_call(guild_scope, 57, "Dashboard User", "public dashboard call")
     shared_through = int(store.db.execute(
         "SELECT id FROM shared_calls WHERE message_id='57'"
     ).fetchone()["id"])
-    store.save_shared_summary(
-        guild_scope,
-        "Dashboard User",
-        "shared dashboard summary",
-        shared_through,
-    )
+    with store.db:
+        store._conversations.write_shared_summary(
+            guild_scope,
+            "Dashboard User",
+            "shared dashboard summary",
+            shared_through,
+        )
     store.add_memory_item(
         guild_scope,
         "same guild raw relationship",

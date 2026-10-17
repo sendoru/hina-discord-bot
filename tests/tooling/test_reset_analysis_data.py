@@ -5,6 +5,7 @@ import pytest
 from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.tooling.prepare_database import prepare_database
 from hina_bot.tooling.reset_analysis_data import (
     UnsafeAnalysisReset,
     build_reset_plan,
@@ -13,7 +14,7 @@ from hina_bot.tooling.reset_analysis_data import (
 
 
 def _seed_safe_database(path):
-    store = Store(str(path))
+    store = Store.create(str(path))
     dm = Scope(None, 10, 100)
     guild = Scope(1, 20, 100, True)
 
@@ -41,14 +42,16 @@ def _seed_safe_database(path):
         error_fingerprint="deadbeef",
     )
 
-    store.add_shared_call(guild, 2, "User", "public call")
+    with store.db:
+        store._conversations.write_shared_call(guild, 2, "User", "public call")
     shared_id = int(
         store.db.execute(
             "SELECT id FROM shared_calls WHERE scope=?",
             (guild.conversation,),
         ).fetchone()["id"]
     )
-    store.save_shared_summary(guild, "User", "shared summary", shared_id)
+    with store.db:
+        store._conversations.write_shared_summary(guild, "User", "shared summary", shared_id)
 
     with store.db:
         store.db.execute(
@@ -81,7 +84,8 @@ def _seed_safe_database(path):
         )
     store.close()
 
-    admin = AdminDatabase(str(path))
+    prepare_database(path, apply=True, offline_confirmed=True, components=('admin',))
+    admin = AdminDatabase.create(str(path))
     with admin.transaction():
         admin.db.execute(
             """INSERT INTO instructions(id,text,enabled)
@@ -174,7 +178,7 @@ def test_reset_deletes_only_raw_analysis_data_and_records_epoch(tmp_path):
 
 def test_pending_persistent_memory_blocks_destructive_reset(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     scope = Scope(None, 10, 100)
     store.add(scope, 1, "not committed yet", "reply")
     store.close()

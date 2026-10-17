@@ -166,7 +166,7 @@ class RoutingTests(unittest.TestCase):
 
 class MemoryTests(unittest.TestCase):
     def setUp(self):
-        self.store = Store(":memory:", history_turns=4)
+        self.store = Store.create(":memory:", history_turns=4)
         self.a = Scope(1, 10, 100, True)
         self.other_user = Scope(1, 10, 200, True)
         self.other_channel = Scope(1, 11, 100, True)
@@ -226,7 +226,8 @@ class MemoryTests(unittest.TestCase):
     def test_public_to_dm_only_same_user(self):
         for i, scope in enumerate([self.a, self.other_user, self.dm], 1):
             self.store.add(scope, i, f"text{i}", "응")
-            self.store.add_shared_call(scope, i, "speaker", f"text{i}")
+            with self.store.db:
+                self.store._conversations.write_shared_call(scope, i, "speaker", f"text{i}")
         candidates = self.store.public_candidates(100)
         self.assertEqual([s.conversation for s in candidates], [self.a.conversation])
         context = self.store.public_context(candidates)
@@ -246,10 +247,12 @@ class MemoryTests(unittest.TestCase):
 
     def test_public_context_keeps_only_public_direct_calls(self):
         self.store.add(self.a, 1, "공개", "응")
-        self.store.add_shared_call(self.a, 1, "speaker", "공개")
+        with self.store.db:
+            self.store._conversations.write_shared_call(self.a, 1, "speaker", "공개")
         private = Scope(1, 10, 100, False)
         self.store.add(private, 2, "비공개", "응")
-        self.store.add_shared_call(private, 2, "speaker", "비공개")
+        with self.store.db:
+            self.store._conversations.write_shared_call(private, 2, "speaker", "비공개")
         context = self.store.public_context([self.a])[0]
         self.assertEqual(context["summary"], "")
         self.assertEqual(context["recent_user_messages"], ["공개"])
@@ -257,7 +260,7 @@ class MemoryTests(unittest.TestCase):
     def test_structured_memory_persistence_after_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "memory.db")
-            first = Store(path)
+            first = Store.create(path)
             first.add(self.a, 1, "취미", "응")
             turn_id = first.history(self.a)[-1]["id"]
             memory_id = first.add_memory_item(
@@ -270,7 +273,7 @@ class MemoryTests(unittest.TestCase):
             first.save_memory_extraction_cursor(self.a, turn_id)
             first.close()
 
-            second = Store(path)
+            second = Store.create(path)
             self.assertTrue(second.seen(1))
             self.assertEqual(second.memory_extraction_cursor(self.a), turn_id)
             self.assertEqual(
@@ -328,14 +331,16 @@ class SharedContextTests(unittest.TestCase):
             self.assertEqual(recent.context(Scope(1, 20, 100), 3), [])
 
     def test_shared_calls_cross_users_but_not_guilds_or_private(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         a, b = Scope(1, 10, 100, True), Scope(1, 20, 200, True)
         for i, source in enumerate([a, b, Scope(2, 30, 300, True),
                                     Scope(1, 40, 400, False), Scope(None, 50, 500)], 1):
-            store.add_shared_call(source, i, "speaker", "called")
+            with store.db:
+                store._conversations.write_shared_call(source, i, "speaker", "called")
         self.assertEqual({s.user_id for s in store.public_candidates(200, 1)}, {100, 200})
         self.assertEqual({s.user_id for s in store.public_candidates(200)}, {200})
-        store.save_shared_summary(a, "A", "A preference", 1)
+        with store.db:
+            store._conversations.write_shared_summary(a, "A", "A preference", 1)
         store.forget(a)
         self.assertEqual(store.shared_summary(a), ("", 0))
         self.assertEqual({s.user_id for s in store.public_candidates(200, 1)}, {200})
