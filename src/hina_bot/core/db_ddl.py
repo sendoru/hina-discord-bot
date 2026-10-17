@@ -1,4 +1,8 @@
-"""Explicit schema statements; caller owns the transaction."""
+"""Target SQLite DDL for the three fixed schema areas.
+
+No connection opening, migration execution or commits live here. db_schema owns
+inspection and the known legacy upgrades; each SQL definition has one owner.
+"""
 
 STORE_DDL = (
     """CREATE TABLE IF NOT EXISTS turns (
@@ -162,3 +166,77 @@ STORE_INDEXES = (
        ON memory_reconciliation_proposals(user_id, origin_realm, origin_channel_id, id)""",
     "CREATE INDEX IF NOT EXISTS channel_metadata_guild ON channel_metadata(guild_id, channel_id)",
 )
+
+SETTINGS_DDL = (
+    """CREATE TABLE IF NOT EXISTS runtime_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+    """CREATE TABLE IF NOT EXISTS runtime_config_startup (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+)
+
+ADMIN_DDL = (
+    """CREATE TABLE IF NOT EXISTS instructions (
+                id TEXT PRIMARY KEY,
+                text TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+                created_at TEXT,
+                updated_at TEXT
+            )""",
+    """CREATE TABLE IF NOT EXISTS runtime_knowledge (
+                id TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('world_fact','interpretation')),
+                content TEXT NOT NULL,
+                keywords TEXT NOT NULL,
+                subjects TEXT NOT NULL,
+                awareness TEXT NOT NULL,
+                timeline TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+                created_at TEXT,
+                updated_at TEXT,
+                PRIMARY KEY(kind,id)
+            )""",
+    """CREATE INDEX IF NOT EXISTS runtime_knowledge_enabled_kind
+                ON runtime_knowledge(enabled,kind)""",
+    """CREATE TABLE IF NOT EXISTS admin_migrations (
+                name TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+)
+
+QUEUE_DDL = (
+    """CREATE TABLE IF NOT EXISTS admin_commands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL UNIQUE,
+            actor TEXT NOT NULL,
+            action TEXT NOT NULL,
+            target TEXT NOT NULL DEFAULT '',
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending','running','succeeded','failed')),
+            result_json TEXT NOT NULL DEFAULT '{}',
+            error_type TEXT NOT NULL DEFAULT '',
+            error_message TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            started_at TEXT,
+            finished_at TEXT
+        )""",
+    """CREATE INDEX IF NOT EXISTS admin_commands_status
+            ON admin_commands(status, id)""",
+)
+
+LEDGER_DDL = """CREATE TABLE schema_migrations (
+    component TEXT NOT NULL, version INTEGER NOT NULL, name TEXT NOT NULL,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(component,version))"""
+
+DDL = {
+    "store": STORE_DDL + STORE_INDEXES + QUEUE_DDL,
+    "settings": SETTINGS_DDL,
+    "admin": ADMIN_DDL,
+}
