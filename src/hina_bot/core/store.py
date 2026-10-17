@@ -25,6 +25,14 @@ from .scope_overrides import resolve_scope_chain
 from .settings_repository import SettingsRepository
 
 
+class SharedSummaryConflict(RuntimeError):
+    """A summary response no longer describes the state read before its request."""
+
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__("Shared summary input changed during LLM request")
+
+
 class Store:
     """Compatibility facade and transaction coordinator for the runtime SQLite connection.
 
@@ -635,6 +643,43 @@ class Store:
 
     def save_shared_summary(self, scope, name, text, through):
         return self._conversations.save_shared_summary(scope, name, text, through)
+
+    def shared_summary_snapshot(self, scope):
+        """Read one coherent input, releasing the transaction before the LLM await."""
+        if self.db.in_transaction:
+            raise RuntimeError("A conflicting SQLite transaction is already active")
+        self.db.execute("BEGIN")
+        try:
+            previous = self._conversations.shared_summary_row(scope)
+            through = previous["through_id"] if previous is not None else 0
+            pending = self._conversations.shared_calls_after(scope, through)
+            self.db.commit()
+            return previous, pending
+        except BaseException:
+            self.db.rollback()
+            raise
+
+    def commit_shared_summary(self, scope, pending, *, expected_summary, text):
+        """Validate the exact input and commit the result/cursor under one write lock."""
+        if self.db.in_transaction:
+            raise RuntimeError("A conflicting SQLite transaction is already active")
+        if not pending:
+            raise ValueError("Cannot commit an empty shared summary batch")
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            if self._conversations.shared_summary_row(scope) != expected_summary:
+                raise SharedSummaryConflict("summary_changed")
+            through = expected_summary["through_id"] if expected_summary is not None else 0
+            current = self._conversations.shared_calls_after(scope, through, limit=len(pending))
+            if [dict(row) for row in current] != [dict(row) for row in pending]:
+                raise SharedSummaryConflict("source_changed")
+            self._conversations.write_shared_summary(
+                scope, pending[-1]["name"], text, pending[-1]["id"],
+            )
+            self.db.commit()
+        except BaseException:
+            self.db.rollback()
+            raise
 
     def public_candidates(self, user_id: int, guild_id: int | None = None):
         return self._conversations.public_candidates(user_id, guild_id)

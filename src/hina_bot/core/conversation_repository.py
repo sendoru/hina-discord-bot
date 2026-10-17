@@ -167,15 +167,32 @@ class ConversationRepository:
                               (scope.conversation,)).fetchone()
         return (row[0], row[1]) if row else ("", 0)
 
+    def shared_summary_row(self, scope):
+        row = self.db.execute("SELECT * FROM shared_summaries WHERE scope=?",
+                              (scope.conversation,)).fetchone()
+        return dict(row) if row is not None else None
+
+    def shared_calls_after(self, scope, through, *, limit=None):
+        sql = "SELECT * FROM shared_calls WHERE scope=? AND id>? ORDER BY id"
+        params = (scope.conversation, through)
+        if limit is not None:
+            sql += " LIMIT ?"
+            params += (limit,)
+        return self.db.execute(sql, params).fetchall()
+
     def pending_shared(self, scope):
         return self.db.execute("SELECT * FROM shared_calls WHERE scope=? AND id>? ORDER BY id",
                                (scope.conversation, self.shared_summary(scope)[1])).fetchall()
 
     def save_shared_summary(self, scope, name, text, through):
         with self.db:
-            self.db.execute("INSERT OR REPLACE INTO shared_summaries VALUES (?,?,?,?,?,?)",
-                            (scope.conversation, scope.realm, str(scope.user_id), name,
-                             text[:1500], through))
+            self.write_shared_summary(scope, name, text, through)
+
+    def write_shared_summary(self, scope, name, text, through):
+        """Write on the caller's transaction; never commit an enclosing guard."""
+        self.db.execute("INSERT OR REPLACE INTO shared_summaries VALUES (?,?,?,?,?,?)",
+                        (scope.conversation, scope.realm, str(scope.user_id), name,
+                         text[:1500], through))
 
     def public_candidates(self, user_id: int, guild_id: int | None = None):
         # Server queries include all speakers in this guild. DM queries include only its owner.

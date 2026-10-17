@@ -1,8 +1,11 @@
 """Shared long-term memory summarization policy and adaptive model routing."""
 
+import asyncio
 import json
 import logging
 import re
+
+from hina_bot.core.store import SharedSummaryConflict
 
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .memory_extraction import (
@@ -72,6 +75,12 @@ def _record_summary_requested(usage, **metrics) -> None:
     emit = getattr(usage, "routing_event", None)
     if callable(emit):
         emit("memory.summary_requested", status="requested", **metrics)
+
+
+def _record_shared_summary_result(usage, status, reason, **metrics):
+    emit = getattr(usage, "routing_event", None)
+    if callable(emit):
+        emit("memory.shared_summary_result", status=status, memory_result_reason=reason, **metrics)
 
 
 def _record_shadow_extraction(usage, status: str, **metrics) -> None:
@@ -316,10 +325,10 @@ class MemorySummaryMixin:
         )
 
     async def summarize_shared(self, store, scope):
-        pending = store.pending_shared(scope)
+        previous, pending = store.shared_summary_snapshot(scope)
         if len(pending) < self.settings.summary_every:
-            return
-        old = store.shared_summary(scope)[0]
+            return False
+        old = previous["text"] if previous is not None else ""
         direct_calls = [
             {"at": turn["created_at"], "user": turn["content"]}
             for turn in pending
@@ -336,31 +345,36 @@ class MemorySummaryMixin:
             direct_calls,
             shared=True,
         )
-        _record_summary_requested(
-            self.usage,
-            **_summary_metrics(
-                memory_kind="shared",
-                pending_turns=len(pending),
-                batch_turns=len(direct_calls),
-                payload=payload,
-                context_items=0,
-                old_memory=old,
-            ),
+        metrics = _summary_metrics(
+            memory_kind="shared", pending_turns=len(pending), batch_turns=len(direct_calls),
+            payload=payload, context_items=0, old_memory=old,
         )
-        response = await self._memory_request(
-            "summarize_shared",
-            SHARED_SUMMARY_POLICY,
-            payload,
-            plan,
-        )
-        if response.status == "completed" and response.output_text.strip():
-            text = normalize_memory_output(response.output_text)
-            store.save_shared_summary(
-                scope,
-                pending[-1]["name"],
-                text,
-                pending[-1]["id"],
+        _record_summary_requested(self.usage, **metrics)
+        reason = "request_failed"
+        try:
+            response = await self._memory_request(
+                "summarize_shared", SHARED_SUMMARY_POLICY, payload, plan,
             )
+            if response.status != "completed" or not response.output_text.strip():
+                reason = "incomplete" if response.status != "completed" else "empty_output"
+                raise RuntimeError("Shared summary result is not complete")
+            text = normalize_memory_output(response.output_text)
+            reason = "storage_failed"
+            store.commit_shared_summary(scope, pending, expected_summary=previous, text=text)
+        except SharedSummaryConflict as exc:
+            _record_shared_summary_result(self.usage, "conflict", exc.reason, **metrics)
+            raise
+        except asyncio.CancelledError:
+            _record_shared_summary_result(self.usage, "cancelled", "cancelled", **metrics)
+            raise
+        except Exception:
+            _record_shared_summary_result(
+                self.usage, "deferred" if reason in {"incomplete", "empty_output"} else "failed",
+                reason, **metrics,
+            )
+            raise
+        _record_shared_summary_result(self.usage, "committed", "saved", **metrics)
+        return True
 
 
 __all__ = [
