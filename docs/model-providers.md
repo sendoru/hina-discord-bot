@@ -274,7 +274,7 @@ provider의 소형 LLM으로 최소 교정을 시도합니다. 모델에는 최�
 
 | 런타임 키 | 기본값 | 설명 |
 | --- | --- | --- |
-| `output_repair_mode` | `off` | `off`: 사용 안 함, `shadow`: 비동기로 교정 결과만 기록, `active`: 검증된 교정 결과로 답변 교체 |
+| `output_repair_mode` | `off` | `off`: 사용 안 함, `shadow`: 비동기로 교정 결과만 기록, `active`: 정상 완료된 비어 있지 않은 교정 결과로 답변 교체 |
 | `output_repair_model` | `auto` | `auto`는 현재 `fast_model`, 아니면 동일 provider에서 지원되는 모델 이름 |
 
 예: `output_repair_mode=shadow`, `output_repair_model=auto`. `active`는 모델별 실측을 마친
@@ -283,8 +283,9 @@ provider의 소형 LLM으로 최소 교정을 시도합니다. 모델에는 최�
 교정 요청에는 최대 512 출력 토큰과 3초 제한을 적용합니다.
 
 정규식은 호출 여부만 결정하며 `[1]` 같은 패턴을 직접 삭제하지 않습니다. 인라인·펜스 코드
-내의 표식만 있으면 교정을 시도하지 않습니다. 비정상 응답·시간 초과·빈 교정·큰 문체 변경은
-모두 원본으로 폴백합니다. `shadow`는 답변 전송을 기다리게 하지 않습니다.
+내의 표식만 있으면 교정을 시도하지 않습니다. 형식 오류 판단과 수정은 교정 모델에 맡기며,
+교정 결과를 정규식·길이·문자열 유사도로 승인하거나 거절하지 않습니다. 호출 실패·미완료 응답·
+빈 교정 결과는 원본으로 폴백합니다. `shadow`는 답변 전송을 기다리게 하지 않습니다.
 
 `usage.jsonl`의 `operation=output_repair`에는 추가 API 토큰/지연시간이 기록되고,
 `operation=output.repair`에는 `status`, 모드, 모델, 원본·후보 문자 수 및 변경 여부만
