@@ -501,4 +501,3 @@ def test_custom_views_and_triggers_refuse_rebuild_before_rename(tmp_path, custom
         legacy.convert_database(path, apply=True, offline_confirmed=True)
     assert signature(path) == before
     assert not (tmp_path / "backups").exists()
-
