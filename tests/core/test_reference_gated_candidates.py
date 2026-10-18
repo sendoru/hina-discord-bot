@@ -4,7 +4,7 @@ from hina_bot.core.store import Store
 
 
 def test_reference_gated_candidate_query_is_owner_active_and_cross_space_only():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     owner_dm = Scope(None, 10, 100)
     current = Scope(1, 20, 100, True)
     same_guild_public = Scope(1, 30, 100, True)
@@ -58,7 +58,7 @@ def test_reference_gated_candidate_query_is_owner_active_and_cross_space_only():
 
 
 def test_reference_gated_candidate_query_excludes_superseded_items():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     current = Scope(1, 20, 100, True)
     try:
@@ -92,7 +92,7 @@ def test_reference_gated_candidate_query_excludes_superseded_items():
 
 
 def test_reference_gated_candidate_query_is_bounded_and_newest_first():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     current = Scope(1, 20, 100, True)
     try:

@@ -14,7 +14,7 @@ from hina_bot.core.store import Store
 
 @pytest.fixture
 def store(tmp_path):
-    instance = Store(str(tmp_path / "contracts.sqlite3"), history_turns=2)
+    instance = Store.create(str(tmp_path / "contracts.sqlite3"), history_turns=2)
     try:
         yield instance
     finally:
@@ -60,11 +60,13 @@ def test_shared_cursor_uses_shared_ids_and_failure_rows_are_not_memory_input(sto
     scope = Scope(1, 10, 100, True)
     for message_id in (101, 102, 103):
         store.add(scope, message_id, str(message_id), "reply")
-    store.add_shared_call(scope, 103, "name", "public")
+    with store.db:
+        store._conversations.write_shared_call(scope, 103, "name", "public")
     shared = store.pending_shared(scope)
     assert len(shared) == 1
     assert shared[0]["id"] != store.history(scope)[-1]["id"]
-    store.save_shared_summary(scope, "name", "summary", shared[0]["id"])
+    with store.db:
+        store._conversations.write_shared_summary(scope, "name", "summary", shared[0]["id"])
     assert store.pending_shared(scope) == []
 
     for message_id in (201, 202, 203):
@@ -120,8 +122,10 @@ def test_atomic_memory_batch_is_invisible_until_commit_and_rolls_back(store):
 def test_current_purge_contract_preserves_failure_and_batch_records(store, operation):
     scope = Scope(1, 10, 100, True)
     store.add(scope, 101, "input", "reply")
-    store.add_shared_call(scope, 101, "name", "input")
-    store.save_shared_summary(scope, "name", "summary", 1)
+    with store.db:
+        store._conversations.write_shared_call(scope, 101, "name", "input")
+    with store.db:
+        store._conversations.write_shared_summary(scope, "name", "summary", 1)
     pending = store.pending_memory_extraction(scope)
     with store.atomic_memory_batch(scope, pending, expected_cursor=0):
         item_id = store.add_memory_item(
@@ -157,7 +161,7 @@ def test_current_purge_contract_preserves_failure_and_batch_records(store, opera
 def test_reopening_store_preserves_schema_rows_and_autoincrement_high_water(tmp_path):
     path = str(tmp_path / "reopen.sqlite3")
     scope = Scope(None, 10, 100)
-    first = Store(path)
+    first = Store.create(path)
     try:
         first.add(scope, 101, "first", "reply")
         first.add(scope, 102, "second", "reply")
@@ -170,7 +174,7 @@ def test_reopening_store_preserves_schema_rows_and_autoincrement_high_water(tmp_
     finally:
         first.close()
 
-    second = Store(path)
+    second = Store.create(path)
     try:
         assert [tuple(row) for row in second.db.execute(
             "SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type,name"

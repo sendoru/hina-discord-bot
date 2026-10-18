@@ -1,13 +1,18 @@
 import argparse
 import json
 import os
+import sqlite3
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from .admin_db import AdminDatabase
-from .instructions import InstructionRegistry
-from .runtime_knowledge import RuntimeKnowledgeRegistry
+from hina_bot.core.admin_db import AdminDatabase
+from hina_bot.core.db_connections import open_existing, open_readonly
+from hina_bot.core.instructions import InstructionRegistry
+from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
+
+from .db_migrations import prepare_connection
+from .maintenance_backup import backup_schema_database, database_signature
 
 MIGRATION_NAME = "legacy-json-admin-v1"
 
@@ -41,7 +46,52 @@ def migrate(args) -> dict[str, dict[str, int]]:
         "world_fact": _load_rows(args.facts, "runtime lore"),
         "interpretation": _load_rows(args.contexts, "context"),
     }
-    database = AdminDatabase(args.database)
+    path = Path(args.database).expanduser()
+    if not args.dry_run and not getattr(args, 'offline_confirmed', False):
+        raise ValueError('Stop all database writers and pass --offline-confirmed')
+    # All dry-run validation uses a disposable clone and the real registries.
+    if args.dry_run:
+        if path.exists():
+            db = sqlite3.connect(":memory:")
+            db.row_factory = sqlite3.Row
+            try:
+                original = open_readonly(path)
+                try:
+                    original.backup(db)
+                finally:
+                    original.close()
+                # Offline import may create/register a missing current admin area
+                # on its disposable copy, just as real import does on its target.
+                prepare_connection(db, ('admin',))
+                database = AdminDatabase(db)
+            except BaseException:
+                db.close()
+                raise
+        else:
+            database = AdminDatabase.copy_to_memory()
+    else:
+        expected = None
+        if path.exists():
+            original = open_readonly(path)
+            try:
+                expected = database_signature(original)
+            finally:
+                original.close()
+            # Includes admin-only/legacy files; no DDL is needed to back them up.
+            backup_schema_database(path)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open('xb'):
+                pass
+        db = open_existing(path)
+        try:
+            prepare_connection(db, ('admin',), expected_signature=expected)
+            db.execute('PRAGMA journal_mode=WAL')
+            database = AdminDatabase(db)
+        except BaseException:
+            db.close()
+            raise
+    expected_import = database_signature(database.db)
     instructions = InstructionRegistry(database)
     facts = RuntimeKnowledgeRegistry(database, kind="world_fact")
     contexts = RuntimeKnowledgeRegistry(database, kind="interpretation")
@@ -53,6 +103,8 @@ def migrate(args) -> dict[str, dict[str, int]]:
     try:
         try:
             with database.transaction():
+                if database_signature(database.db) != expected_import:
+                    raise RuntimeError("Database changed before import; refuse apply")
                 for row in sources["instructions"]:
                     _count(instructions.import_row(row, replace=args.replace), counters["instructions"])
                 for row in sources["world_fact"]:
@@ -104,6 +156,8 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="검증과 충돌 확인만 하고 DB 변경은 롤백합니다",
     )
+    root.add_argument("--offline-confirmed", action="store_true",
+                      help="All database writers have been stopped")
     root.add_argument(
         "--replace",
         action="store_true",

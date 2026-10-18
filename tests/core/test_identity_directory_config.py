@@ -7,7 +7,7 @@ from hina_bot.discord.bot import HinaClient
 
 
 def test_member_intent_and_startup_chunking_are_always_enabled():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     client = HinaClient(
         Settings(discord_token="test"),
         store=store, llm=NS(close=AsyncMock()),

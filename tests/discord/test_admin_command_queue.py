@@ -16,7 +16,7 @@ from hina_bot.discord import admin_commands
 @pytest.mark.parametrize("outcome", ["success", "error", "cancel", "finish_error"])
 async def test_dispatch_preserves_commit_and_restart_contract(tmp_path, monkeypatch, outcome):
     path = tmp_path / "queue.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     observer = sqlite3.connect(path)
     command_id, _ = enqueue_admin_command(
         path, request_id="d" * 32, action="note.set", payload={"text": "private payload"},
@@ -42,7 +42,7 @@ async def test_dispatch_preserves_commit_and_restart_contract(tmp_path, monkeypa
     monkeypatch.setattr(admin_commands, "execute_admin_command", execute)
     if outcome == "finish_error":
         store.db.execute(
-            """CREATE TRIGGER reject_finish BEFORE UPDATE ON admin_commands
+            """CREATE TEMP TRIGGER reject_finish BEFORE UPDATE ON admin_commands
                WHEN NEW.status='succeeded'
                BEGIN SELECT RAISE(ABORT, 'finish failure'); END"""
         )
@@ -72,7 +72,7 @@ async def test_dispatch_preserves_commit_and_restart_contract(tmp_path, monkeypa
             )
 
         store.close()
-        client.store = Store(str(path))
+        client.store = Store.create(str(path))
         admin_commands.initialize_admin_commands(client)
         assert not await admin_commands.run_admin_command_once(client)
         assert calls == [command_id]

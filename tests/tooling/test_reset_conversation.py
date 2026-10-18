@@ -12,12 +12,13 @@ from hina_bot.tooling.reset_conversation import (
 
 
 def seed(path, *, pending=False):
-    store = Store(str(path))
+    store = Store.create(str(path))
     dm = Scope(None, 10, 100)
     guild = Scope(1, 20, 100, True)
     store.add(dm, 101, "recent old DM", "old response", name="DM display name")
     store.add(guild, 102, "recent guild", "old response", name="Guild display name")
-    store.add_shared_call(guild, 103, "Guild display name", "shared text")
+    with store.db:
+        store._conversations.write_shared_call(guild, 103, "Guild display name", "shared text")
     memory = store.add_memory_item(
         dm,
         "사용자는 오렌지를 좋아한다.",
@@ -25,7 +26,8 @@ def seed(path, *, pending=False):
         disclosure="local",
         source_message_ids=("101",),
     )
-    store.save_shared_summary(guild, "Guild display name", "old summary", 1)
+    with store.db:
+        store._conversations.write_shared_summary(guild, "Guild display name", "old summary", 1)
     if not pending:
         store.save_memory_extraction_cursor(dm, store.history(dm)[-1]["id"])
         store.save_memory_extraction_cursor(guild, store.history(guild)[-1]["id"])
@@ -82,7 +84,7 @@ def test_backup_and_reset_preserves_user_memory_and_settings(tmp_path):
     finally:
         backup.close()
 
-    store = Store(str(path))
+    store = Store.create(str(path))
     try:
         assert counts(store.db) == {
             "turns": 0, "shared_calls": 0, "failed_turns": 0, "shared_summaries": 0,
@@ -131,7 +133,7 @@ def test_change_after_backup_is_rejected_before_deletion(tmp_path, monkeypatch):
 
     def backup_then_write(*args, **kwargs):
         result = backup(*args, **kwargs)
-        writer = Store(str(path))
+        writer = Store.create(str(path))
         try:
             writer.add(dm, 999, "new pending source", "reply")
         finally:

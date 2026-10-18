@@ -143,7 +143,7 @@ def test_turn_provenance_normalizes_legacy_unix_source_timestamp():
 
 @pytest.fixture
 async def base_client():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(
         answer=AsyncMock(return_value="응"),
         summarize=AsyncMock(),
@@ -188,7 +188,7 @@ def make_message(channel, guild, *, message_id, author, text, mentions=()):
 
 @pytest.mark.asyncio
 async def test_always_reply_channel_triggers_plain_human_messages_but_not_bot_chatter(tmp_path):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(
         answer=AsyncMock(return_value="응"),
         summarize=AsyncMock(),
@@ -327,7 +327,7 @@ async def test_consecutive_bot_trigger_guard_resets_after_human_activity(base_cl
 async def test_production_wrapper_observes_guild_channel_metadata_for_passive_messages(
     tmp_path,
 ):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(close=AsyncMock())
     client = ProductionHinaClient(
         Settings(
@@ -394,7 +394,7 @@ async def test_production_wrapper_observes_guild_channel_metadata_for_passive_me
 
 @pytest.mark.asyncio
 async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(close=AsyncMock())
     event_path = tmp_path / "events.jsonl"
     client = ProductionHinaClient(
@@ -496,7 +496,7 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
 
 @pytest.mark.asyncio
 async def test_production_wrapper_collects_target_and_reply_context_concurrently(tmp_path):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(close=AsyncMock())
     client = ProductionHinaClient(
         Settings(discord_token="test", openai_api_key="test", cooldown=0, event_log_path=str(tmp_path / "events.jsonl")),
@@ -553,7 +553,7 @@ async def test_production_wrapper_collects_target_and_reply_context_concurrently
 
 @pytest.mark.asyncio
 async def test_production_wrapper_preserves_target_and_reply_results_after_parallel_collection(tmp_path):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(close=AsyncMock())
     client = ProductionHinaClient(
         Settings(discord_token="test", openai_api_key="test", cooldown=0, event_log_path=str(tmp_path / "events.jsonl")),
@@ -612,7 +612,7 @@ async def test_production_wrapper_preserves_target_and_reply_results_after_paral
 
 @pytest.mark.asyncio
 async def test_setup_hook_starts_llm_background_tasks(tmp_path):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(
         close=AsyncMock(),
         start_background_tasks=AsyncMock(),
@@ -687,7 +687,7 @@ async def test_timed_locks_record_channel_and_memory_waits_separately():
 
 @pytest.mark.asyncio
 async def test_cooldown_uses_turn_arrival_time_after_channel_lock_backlog(tmp_path):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(
         answer=AsyncMock(return_value="응"),
         summarize=AsyncMock(),
@@ -936,7 +936,7 @@ async def test_same_channel_next_turn_can_generate_while_prior_memory_update_run
 
 @pytest.mark.asyncio
 async def test_bare_prefix_skips_visual_preflight_and_typing(tmp_path):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     store.set_chat_log_mode_override("global", "off")
     llm = NS(answer=AsyncMock(), close=AsyncMock())
     path = tmp_path / "events.jsonl"
@@ -976,7 +976,7 @@ async def test_bare_prefix_skips_visual_preflight_and_typing(tmp_path):
 
 @pytest.mark.asyncio
 async def test_typing_starts_before_visual_preflight_and_is_not_duplicated(tmp_path):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     store.set_chat_log_mode_override("global", "off")
     llm = NS(close=AsyncMock())
     bot = ProductionHinaClient(
@@ -1028,7 +1028,7 @@ async def test_typing_starts_before_visual_preflight_and_is_not_duplicated(tmp_p
 
 @pytest.mark.asyncio
 async def test_bare_prefix_in_always_reply_dm_keeps_llm_path(tmp_path):
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(close=AsyncMock())
     bot = ProductionHinaClient(
         Settings(discord_token="test", openai_api_key="test", cooldown=0,
@@ -1073,7 +1073,7 @@ async def test_typing_stops_before_reply_send_and_post_reply_memory_work(tmp_pat
     async def exited(*args):
         order.append("typing-end")
 
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     store.set_chat_log_mode_override("global", "off")
     llm = NS(
         answer=AsyncMock(return_value=answer_text),
@@ -1126,7 +1126,7 @@ async def test_typing_stops_before_fallback_reply_send(tmp_path):
     async def exited(*args):
         order.append("typing-end")
 
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     store.set_chat_log_mode_override("global", "off")
     llm = NS(
         answer=AsyncMock(side_effect=RuntimeError("generation failed")),

@@ -12,7 +12,7 @@ from hina_bot.discord.web_bot import HinaClient
 
 @pytest.fixture
 def bot():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     client = HinaClient(
         Settings(discord_token="test", openai_api_key="test", cooldown=0, bot_admin_ids=frozenset({100})),
         store=store,

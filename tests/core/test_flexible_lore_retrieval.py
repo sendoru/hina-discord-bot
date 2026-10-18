@@ -24,7 +24,7 @@ def test_short_profile_fields_match_compound_static_keywords():
 
 
 def test_short_fields_match_compound_runtime_keywords():
-    database = AdminDatabase(":memory:")
+    database = AdminDatabase.create(":memory:")
     try:
         registry = RuntimeKnowledgeRegistry(database, kind="world_fact")
         registry.add(

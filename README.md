@@ -30,8 +30,16 @@ Discord에서 검증하고 있으며, 검증 전에는 버그 수정과 문서 �
 uv sync --extra dev
 cp .env.example .env.local
 # .env.local에 DISCORD_TOKEN과 선택한 provider API key를 입력
+# 기존 DB를 사용한다면 먼저 봇과 모든 DB writer를 중지
+uv run hina-prepare-db --dry-run
+uv run hina-prepare-db --yes --offline-confirmed
 uv run hina-bot
 ```
+
+DB 준비는 최초 설치/스키마 업그레이드 때 명시적으로 실행합니다.
+조회·dry-run·유지보수는 봇 시작 설정 스냅샷을 덮어쓰지 않습니다.
+[DB 초기화·이전·복구 절차](docs/db-initialization.md)를 참고하세요. 구형 비버전 DB는
+일반 준비 명령이 자동 변환하지 않으며, 문서의 `hina-upgrade-legacy-db` 오프라인 절차를 사용합니다.
 
 기본 provider 예시는 OpenAI입니다.
 
@@ -73,7 +81,11 @@ uv run pytest
 Docker Compose:
 
 ```bash
-docker compose up -d --build
+docker compose stop
+docker compose build
+docker compose run --rm hina hina-prepare-db --dry-run
+docker compose run --rm hina hina-prepare-db --yes --offline-confirmed
+docker compose up -d
 docker compose logs -f
 ```
 

@@ -80,7 +80,7 @@ def migrate_epoch_schema(
     """Create a verified snapshot, then migrate only the epoch schema."""
     if not offline_confirmed:
         raise ValueError("Stop all SQLite writers and pass --offline-confirmed")
-    db = _connect_existing(path)
+    db = _connect_existing(path, readonly=True)
     try:
         before = epoch_columns(db)
         _validate_epoch_columns(before)
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--offline-confirmed", action="store_true")
     args = parser.parse_args(argv)
     try:
-        db = _connect_existing(args.database)
+        db = _connect_existing(args.database, readonly=True)
         try:
             before = epoch_columns(db)
             _validate_epoch_columns(before)

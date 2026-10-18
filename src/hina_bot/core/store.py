@@ -10,8 +10,9 @@ from .admin_commands import (
     finish_admin_command,
     mark_interrupted_admin_commands,
 )
-from .chatlog_modes import migrate_legacy_chatlog_settings
 from .conversation_repository import ConversationRepository
+from .db_connections import open_existing
+from .db_schema import initialize_connection, require_current
 from .memory_items import (
     MemoryDisclosure,
     MemoryItem,
@@ -22,7 +23,14 @@ from .memory_repository import MemoryRepository
 from .routing import Scope
 from .scope_overrides import resolve_scope_chain
 from .settings_repository import SettingsRepository
-from .store_schema import initialize_store_schema
+
+
+class SharedSummaryConflict(RuntimeError):
+    """A summary response no longer describes the state read before its request."""
+
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__("Shared summary input changed during LLM request")
 
 
 class Store:
@@ -32,23 +40,57 @@ class Store:
     live in repositories; batch commits and cross-table purges remain coordinated here.
     """
 
-    def __init__(self, path: str, history_turns: int = 12):
-        if path != ":memory:":
-            Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
-        self.db.row_factory = sqlite3.Row
-        self.settings = SettingsRepository(self.db)
-        self._conversations = ConversationRepository(self.db, history_turns)
+    def __init__(self, db: sqlite3.Connection, history_turns: int = 12):
+        """Take ownership of an already prepared connection; performs no SQL."""
+        if not isinstance(db, sqlite3.Connection):
+            raise TypeError("Use open_existing() or create() with a path")
+        self.db = db
+        self.settings = SettingsRepository(db)
+        self._conversations = ConversationRepository(db, history_turns)
         self._atomic_memory_batch_open = False
         self._memories = MemoryRepository(
-            self.db,
-            user_name=lambda scope: self.user_name(scope),
+            db, user_name=lambda scope: self.user_name(scope),
             write_context=lambda: self._memory_write(),
         )
-        initialize_store_schema(self.db)
-        # Apply legacy config migration when the store is opened, even for runtimes
-        # that do not construct the Discord /chatlog command group.
-        migrate_legacy_chatlog_settings(self)
+
+    @classmethod
+    def open_existing(cls, path: str, history_turns: int = 12):
+        db = open_existing(path)
+        try:
+            require_current(db, ('store', 'settings'))
+            db.execute('PRAGMA journal_mode=WAL')
+            db.execute('PRAGMA secure_delete=ON')
+            return cls(db, history_turns)
+        except BaseException:
+            db.close()
+            raise
+
+    @classmethod
+    def create(cls, path: str, history_turns: int = 12):
+        """Explicit bootstrap for a new file or isolated test DB.
+
+        Existing files must be prepared with the backed-up preparation CLI first.
+        """
+        path = str(path)
+        if path != ':memory:':
+            path = str(Path(path).expanduser())
+        if path != ':memory:' and Path(path).exists():
+            return cls.open_existing(path, history_turns)
+        if path != ':memory:':
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            # Refuse to overwrite a file created by another process.
+            with Path(path).open('xb'):
+                pass
+        db = sqlite3.connect(path)
+        db.row_factory = sqlite3.Row
+        try:
+            initialize_connection(db, ('store', 'settings'))
+            db.execute('PRAGMA journal_mode=WAL')
+            db.execute('PRAGMA secure_delete=ON')
+            return cls(db, history_turns)
+        except BaseException:
+            db.close()
+            raise
 
     @property
     def history_turns(self) -> int:
@@ -322,6 +364,26 @@ class Store:
             context_provenance=context_provenance,
         )
 
+    def record_completed_turn(
+        self, scope: Scope, message_id: int, content: str, reply: str, *, name: str = "",
+        memory_context=None, context_provenance=None,
+    ):
+        """Commit a delivered turn and its eligible public projection together."""
+        if self.db.in_transaction:
+            raise RuntimeError("A conflicting SQLite transaction is already active")
+        values = self._conversations.turn_values(
+            scope, message_id, content, reply, name=name, memory_context=memory_context,
+            context_provenance=context_provenance,
+        )
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            self._conversations.write_turn(scope, values)
+            self._conversations.write_shared_call(scope, message_id, name, content)
+            self.db.commit()
+        except BaseException:
+            self.db.rollback()
+            raise
+
     def add_failed_turn(
         self,
         scope: Scope,
@@ -348,10 +410,6 @@ class Store:
             error_type=error_type,
             error_fingerprint=error_fingerprint,
         )
-
-    @staticmethod
-    def _decode_memory_item(row) -> MemoryItem:
-        return MemoryRepository._decode_memory_item(row)
 
     def add_memory_item(
         self,
@@ -590,17 +648,48 @@ class Store:
                 deleted += self._rowcount(cursor)
         return deleted
 
-    def add_shared_call(self, scope, message_id, name, content):
-        return self._conversations.add_shared_call(scope, message_id, name, content)
-
     def shared_summary(self, scope):
         return self._conversations.shared_summary(scope)
 
     def pending_shared(self, scope):
         return self._conversations.pending_shared(scope)
 
-    def save_shared_summary(self, scope, name, text, through):
-        return self._conversations.save_shared_summary(scope, name, text, through)
+    def shared_summary_snapshot(self, scope):
+        """Read one coherent input, releasing the transaction before the LLM await."""
+        if self.db.in_transaction:
+            raise RuntimeError("A conflicting SQLite transaction is already active")
+        self.db.execute("BEGIN")
+        try:
+            previous = self._conversations.shared_summary_row(scope)
+            through = previous["through_id"] if previous is not None else 0
+            pending = self._conversations.shared_calls_after(scope, through)
+            self.db.commit()
+            return previous, pending
+        except BaseException:
+            self.db.rollback()
+            raise
+
+    def commit_shared_summary(self, scope, pending, *, expected_summary, text):
+        """Validate the exact input and commit the result/cursor under one write lock."""
+        if self.db.in_transaction:
+            raise RuntimeError("A conflicting SQLite transaction is already active")
+        if not pending:
+            raise ValueError("Cannot commit an empty shared summary batch")
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            if self._conversations.shared_summary_row(scope) != expected_summary:
+                raise SharedSummaryConflict("summary_changed")
+            through = expected_summary["through_id"] if expected_summary is not None else 0
+            current = self._conversations.shared_calls_after(scope, through, limit=len(pending))
+            if [dict(row) for row in current] != [dict(row) for row in pending]:
+                raise SharedSummaryConflict("source_changed")
+            self._conversations.write_shared_summary(
+                scope, pending[-1]["name"], text, pending[-1]["id"],
+            )
+            self.db.commit()
+        except BaseException:
+            self.db.rollback()
+            raise
 
     def public_candidates(self, user_id: int, guild_id: int | None = None):
         return self._conversations.public_candidates(user_id, guild_id)
@@ -637,10 +726,6 @@ class Store:
 
     def set_memory_mode_override(self, key: str, mode: str | None):
         return self.settings.set_memory_mode_override(key, mode)
-
-    def set_memory_mode(self, scope: Scope, mode: str):
-        """Backward-compatible channel override setter."""
-        self.set_memory_mode_override(scope.channel, mode)
 
     def memory_mode_overrides(self) -> dict[str, str]:
         return self.settings.memory_mode_overrides()

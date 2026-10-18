@@ -467,17 +467,10 @@ class RuntimeSettings:
         object.__setattr__(self, "_base", base)
         object.__setattr__(self, "_store", store)
         object.__setattr__(self, "_overrides", {})
-        store.settings.ensure_runtime_schema()
-        self._migrate_legacy_rag_override()
-        self._capture_startup_snapshot()
         self.reload()
 
-    def _migrate_legacy_rag_override(self) -> None:
-        self._store.settings.migrate_legacy_rag_override(
-            {key: encode_runtime_value(value) for key, value in LEGACY_RAG_MODES.items()}
-        )
-
-    def _capture_startup_snapshot(self) -> None:
+    def capture_startup_snapshot(self) -> None:
+        """Record base environment values only at the actual bot start entrypoint."""
         rows = [
             (attr, encode_runtime_value(getattr(self._base, attr)))
             for attr in RUNTIME_SETTING_SPECS
