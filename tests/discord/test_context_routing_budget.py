@@ -14,7 +14,7 @@ from hina_bot.discord.web_bot import HinaClient, _public_context_request
 
 class ContextBudgetTests(unittest.TestCase):
     def setUp(self):
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
 
     def tearDown(self):
         self.store.close()
@@ -207,7 +207,7 @@ class FakeHistoryChannel:
 
 class HydrationTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
         self.llm = NS(close=AsyncMock())
         self.bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=self.store, llm=self.llm)
         self.bot._connection.user = NS(id=99)

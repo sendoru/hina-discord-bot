@@ -68,8 +68,8 @@ def _text_size(value) -> int:
 class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     """Resolve information/evidence decisions before final request assembly."""
 
-    def __init__(self, settings, client, classifier_client=None):
-        super().__init__(settings, client=client)
+    def __init__(self, settings, client, classifier_client=None, *, admin_db=None):
+        super().__init__(settings, client=client, admin_db=admin_db)
         self.ambient_weather = AmbientWeatherCache()
         self._routing_shadow_tasks: set[asyncio.Task] = set()
         self._retrieval_shadow_tasks: set[asyncio.Task] = set()

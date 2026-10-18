@@ -2,6 +2,20 @@
 
 Baseline: main `6d009da981fe13e77f3bd0733bfe9308395d3e46`.
 
+The sections below record the behavior-preserving #394/#396 stages. Their constructor/
+startup and inspection-opening descriptions are historical: #397 now replaces those
+contracts with [explicit preparation and runtime startup](db-initialization.md).
+The #398 reliability changes are documented separately in
+[database reliability contracts](db-reliability.md).
+The #395 midpoint [schema and compatibility audit](db-schema-audit.md) records
+active fields, write-only audit metadata and removed obsolete initialization APIs.
+The follow-up [DB operation audit](db-operations-audit.md) records unused query/write
+entrypoints, shared connection setup and the transaction/deletion paths retained.
+The [final #397–#398 review](db-final-review.md) consolidates schema ownership into
+`db_ddl.py` and `db_schema.py`; earlier schema filenames below are historical.
+The subsequent [fixed v1 baseline](db-baseline-v1.md) isolates old schema conversion
+in an explicit offline tool; runtime validates current versions/metadata only.
+
 ## Ownership
 
 - `core/store_schema.py`: existing Store DDL, compatibility migrations, and
@@ -161,3 +175,14 @@ retry, registry outer rollback, backup connection closure on success/failure, an
 post-backup conversation/schema changes rejected before execution. Existing legacy
 fixtures, extraction rollback/provenance and purge/reset preservation tests remain
 the regression baseline. This stage needs no operational schema/data migration.
+
+
+## Explicit initialization (#397)
+
+See [DB initialization](db-initialization.md) for current APIs, supported legacy
+shapes, schema history, backup/restore and deployment commands. Constructors bind
+prepared connections; RuntimeSettings loads only; actual bot startup owns base
+snapshot capture. Inspect/plan/dry-run use read-only target connections. DDL and
+legacy transformations run only in explicit preparation, with one owned transaction
+and verified backups for existing files. Queue dispatch, extraction atomicity,
+purge/reset table sets, retention and compound runtime settings writes are preserved.

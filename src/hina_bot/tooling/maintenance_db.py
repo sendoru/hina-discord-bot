@@ -2,14 +2,16 @@
 
 connect_existing transfers ownership to its caller, which closes the connection
 and controls BEGIN/commit/rollback. It does not construct Store or run migrations.
-This preserves the existing read/write opening and PRAGMAs, including for plans;
-changing inspection to a strictly read-only contract belongs to #397.
+Plan callers explicitly use readonly=True: no DDL, secure_delete or checkpoint.
+Execution callers retain their existing writer PRAGMAs and transaction boundaries.
 Query helpers borrow the connection and never commit or close it. Table names
 come only from maintenance code's fixed table lists, never from CLI input.
 """
 
 import sqlite3
 from pathlib import Path
+
+from hina_bot.core.db_connections import open_existing, open_readonly
 
 
 def table_exists(db: sqlite3.Connection, table: str) -> bool:
@@ -28,15 +30,18 @@ def row_count(db: sqlite3.Connection, table: str) -> int:
     return int(db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 
 
-def connect_existing(database_path: str | Path) -> sqlite3.Connection:
+def connect_existing(database_path: str | Path, *, readonly: bool = False) -> sqlite3.Connection:
     path = Path(database_path)
     if not path.is_file():
         raise FileNotFoundError(f"SQLite database does not exist: {path}")
-    db = sqlite3.connect(str(path), timeout=1.0)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA busy_timeout=1000")
-    db.execute("PRAGMA secure_delete=ON")
-    if not table_exists(db, "turns"):
+    db = open_readonly(path) if readonly else open_existing(path)
+    try:
+        db.execute("PRAGMA busy_timeout=1000")
+        if not readonly:
+            db.execute("PRAGMA secure_delete=ON")
+        if not table_exists(db, "turns"):
+            raise ValueError(f"Not a hina runtime database (missing turns table): {path}")
+        return db
+    except BaseException:
         db.close()
-        raise ValueError(f"Not a hina runtime database (missing turns table): {path}")
-    return db
+        raise

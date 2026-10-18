@@ -78,7 +78,7 @@ def _plan_from_connection(path: Path, db: sqlite3.Connection) -> ResetPlan:
 
 
 def inspect_reset(path: str | Path) -> ResetPlan:
-    db = _connect_existing(path)
+    db = _connect_existing(path, readonly=True)
     try:
         return _plan_from_connection(Path(path), db)
     finally:

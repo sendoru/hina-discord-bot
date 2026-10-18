@@ -46,7 +46,7 @@ The dashboard currently exposes the following read-only routes:
 - `/memory/{id}`: memory provenance/source-turn detail
 - `/relationships`: target-scope FULL/raw relationships + effective relationship profile
 - `/state`: effective memory/chat-log inheritance and manual notes
-- `/summaries`: personal/shared legacy summary state
+- `/summaries`: retained shared/public summary status
 - `/memory/cursors`: structured extraction cursor/pending state
 - `/reconciliation`: shadow reconciliation proposal review
 - `/reconciliation/{id}`: old/new memory comparison and extraction context
@@ -56,6 +56,24 @@ The dashboard currently exposes the following read-only routes:
 
 The HTML surface is intentionally desktop-oriented and server-rendered. It uses no client-side
 application state and does not add new content telemetry.
+
+## Required database schema
+
+Startup validates the complete recorded current `store`, `settings`, and `admin`
+schema through the shared read-only validator, before creating the app or command
+writer. Unprepared, older, incomplete, future-version, or drifted business schemas
+are refused instead of returning partial results or hiding memory controls.
+Dashboard never creates a missing database, registers a baseline, or runs migrations.
+
+For an unversioned current schema, inspect with `hina-prepare-db --dry-run` and
+follow the [offline preparation procedure](db-initialization.md). Older schemas
+require the separate `hina-upgrade-legacy-db` offline command. These commands keep
+their existing responsibilities; stop all writers and use their backup procedure.
+The validator checks metadata and migration history, not application row contents.
+
+Current business tables/columns are queried directly. Optional maintenance/audit
+metadata such as `observability_epochs` still works when absent and is read when
+present. Empty cursor rows and missing source messages remain valid data states.
 
 ## Read/write boundary
 
@@ -120,11 +138,10 @@ usage.jsonl
 discord-usage.jsonl
 ```
 
-Old rows are migrated by adding a nullable `turn_id` column. Existing rows remain `NULL`; no
-attempt is made to infer historical correlation.
-
-The read-only repository also tolerates a pre-migration database by returning `turn_id = NULL`
-without modifying it.
+The current schema requires the nullable `turn_id` column. Rows migrated from older
+versions may still contain `NULL` because historical trace correlation cannot be inferred.
+Dashboard refuses pre-migration schema files; it does not synthesize missing columns
+or upgrade the database on read.
 
 ## Telemetry files
 
@@ -324,8 +341,8 @@ not as missing provenance.
 Structured memory has `active`, `superseded`, and `retracted` lifecycle states plus an optional
 `superseded_by` link. Normal bot retrieval uses active rows only, while the dashboard intentionally
 queries the full table so operators can inspect superseded/retracted history and follow replacement links.
-The repository still detects these columns dynamically so older/pre-migration read-only database copies
-remain viewable without dashboard-side schema writes.
+These columns are required by the current schema and queried directly. Older database copies
+must be upgraded offline before Dashboard startup; inspection never changes their schema.
 
 When dashboard write mode is enabled, an active memory detail page can revise only the semantic fields
 `content`, `kind`, `disclosure`, `confidence`, and `relationship_evidence`. The dashboard
@@ -433,9 +450,9 @@ history.
 shared call, and pending shared calls. Personal persistent memory is inspected through `/memory`.
 
 `/memory/cursors` reports the standalone structured extraction cursor, latest retained turn, and pending
-turn count. A scope without a persisted cursor has an effective baseline of 0. Legacy personal-summary
-cursor migration happens in the runtime Store before the obsolete table is dropped; the read-only
-dashboard does not perform migrations.
+turn count. A scope without a persisted cursor has an effective baseline of 0. Any necessary
+legacy personal-summary cursor conversion belongs to the separate offline
+`hina-upgrade-legacy-db` command; neither the runtime Store nor Dashboard migrates older schemas.
 
 ## Reconciliation review
 

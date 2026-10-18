@@ -245,7 +245,7 @@ async def test_answer_store_is_opt_in_and_gemini_only(provider, enabled, expecte
         client=primary,
     )
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         result = await llm.answer(store, Scope(None, 10, 100), "사용자", "안녕")
         assert result == "응."
@@ -261,7 +261,7 @@ async def test_active_runtime_skips_classifier_when_physical_or_local_score_is_a
     classifier_client = client(response(classification(level="low")))
     llm = LLM(settings(), client=primary, classifier_client=classifier_client)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         result = await llm.answer(
             store,
@@ -288,7 +288,7 @@ async def test_active_runtime_uses_classifier_result_for_answer_model(tmp_path):
         classifier_client=classifier_client,
     )
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         secret_request = "P=NP라고 가정하면 polynomial hierarchy에는 무슨 일이 생겨?"
         result = await llm.answer(
@@ -321,7 +321,7 @@ async def test_active_runtime_ambient_only_context_keeps_low_request_on_fast():
         classifier_client=classifier_client,
     )
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         result = await llm.answer(
             store,
@@ -351,7 +351,7 @@ async def test_active_runtime_forwards_current_visuals_to_classifier():
     classifier_client = client(response(classification(level="high")))
     llm = LLM(settings(), client=primary, classifier_client=classifier_client)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     visual = VisualInput(
         data=b"\x89PNG\r\n\x1a\nproblem",
         mime_type="image/png",
@@ -421,7 +421,7 @@ async def test_invalid_classifier_output_does_not_block_answer():
     classifier_client = client(response("I think this is difficult."))
     llm = LLM(settings(), client=primary, classifier_client=classifier_client)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         result = await llm.answer(
             store, Scope(None, 10, 100), "사용자", "이건 어떻게 생각해?"
@@ -482,7 +482,7 @@ async def test_shadow_runtime_does_not_block_or_change_actual_route(tmp_path):
     )
     llm = LLM(config, client=primary, classifier_client=classifier_client)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         result = await asyncio.wait_for(
             llm.answer(store, Scope(None, 10, 100), "사용자", "이건 어떻게 생각해?"),

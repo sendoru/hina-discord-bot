@@ -13,7 +13,7 @@ from hina_bot.discord.web_bot import HinaClient
 
 @pytest.fixture
 def slash_bot():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(close=AsyncMock())
     bot = HinaClient(
         Settings(discord_token="test", openai_api_key="test", cooldown=0, bot_admin_ids=frozenset({100})),
@@ -73,7 +73,7 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
 
 
 def test_production_composition_registers_only_expected_commands_and_contexts():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     settings = RuntimeSettings(
         Settings(discord_token="test", openai_api_key="test", bot_admin_ids=frozenset({100})),
         store,

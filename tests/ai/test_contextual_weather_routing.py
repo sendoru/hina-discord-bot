@@ -40,7 +40,7 @@ async def test_weather_followup_uses_prior_location_but_keeps_visible_message():
         usage_log_path="",
         chat_web_search=True,
     ), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 20, 100)
     store.add(scope, 1, "서울 내일 날씨 어때?", "확인해볼게.")
     try:

@@ -28,7 +28,7 @@ class FakeHistoryChannel:
 
 @pytest.mark.asyncio
 async def test_explicit_reply_is_available_even_when_direct_capture_omits_side_chat():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         set_capture_mode_override(store, "global", "direct")
         recent = TargetAwareRecentMessages(store=store)
@@ -171,7 +171,7 @@ async def test_reply_to_other_bot_is_marked_as_bot_context():
 
 @pytest.fixture
 async def client():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     llm = NS(close=AsyncMock())
     bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=store, llm=llm)
     bot._connection.user = NS(id=99)

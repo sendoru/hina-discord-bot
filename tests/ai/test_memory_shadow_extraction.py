@@ -17,6 +17,8 @@ from hina_bot.ai.memory_summary import MemorySummaryMixin
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, RelationshipEvidence
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.tooling.legacy_database import convert_database
+from hina_bot.tooling.prepare_database import prepare_database
 
 
 def _settings(**overrides):
@@ -277,7 +279,7 @@ def test_parser_preserves_concise_memory_with_scope_and_negation():
 
 
 def test_persist_shadow_items_suppresses_exact_retry_duplicates():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     item = ExtractedMemoryItem(
         content="사용자는 앞으로 답변을 짧게 받기를 원한다.",
@@ -296,7 +298,7 @@ def test_persist_shadow_items_suppresses_exact_retry_duplicates():
 
 
 def test_persist_shadow_relationship_evidence_round_trips():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     item = ExtractedMemoryItem(
         content="사용자는 히나와 편한 대화를 반복해 왔다.",
@@ -322,7 +324,7 @@ def test_persist_shadow_relationship_evidence_round_trips():
 
 
 def test_persist_shadow_items_never_upgrades_private_source_visibility():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(20, 10, 100, True)
     item = ExtractedMemoryItem(
         content="사용자는 프로젝트 A를 진행 중이다.",
@@ -350,7 +352,8 @@ def test_persist_shadow_items_never_upgrades_private_source_visibility():
 def test_legacy_summary_cursor_is_migrated_then_table_dropped(tmp_path):
     path = tmp_path / "legacy-summary.sqlite3"
     scope = Scope(None, 10, 100)
-    store = Store(str(path), history_turns=12)
+    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+    store = Store.create(str(path), history_turns=12)
     _add_turns(store, scope, 101, 6)
     history = store.history(scope)
     baseline = history[3]["id"]
@@ -376,9 +379,11 @@ def test_legacy_summary_cursor_is_migrated_then_table_dropped(tmp_path):
                 1,
             ),
         )
+    store.db.execute("DROP TABLE schema_migrations")
     store.close()
 
-    migrated = Store(str(path), history_turns=12)
+    convert_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+    migrated = Store.create(str(path), history_turns=12)
     try:
         assert migrated.memory_extraction_cursor(scope) == baseline
         assert [
@@ -393,7 +398,7 @@ def test_legacy_summary_cursor_is_migrated_then_table_dropped(tmp_path):
 
 @pytest.mark.asyncio
 async def test_structured_extraction_runs_at_four_turns():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 4)
     extraction = json.dumps({
@@ -420,7 +425,7 @@ async def test_structured_extraction_runs_at_four_turns():
 
 @pytest.mark.asyncio
 async def test_partial_structured_extraction_requires_explicit_min_turns():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 2)
     harness = _harness(_response('{"items":[]}'))
@@ -440,7 +445,7 @@ async def test_partial_structured_extraction_requires_explicit_min_turns():
 
 
 def test_stale_extraction_scope_query_uses_age_and_pending_count():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     stale = Scope(None, 10, 100)
     fresh = Scope(None, 20, 200)
     single = Scope(None, 30, 300)
@@ -469,7 +474,7 @@ def test_stale_extraction_scope_query_uses_age_and_pending_count():
 
 
 def test_stale_extraction_scope_query_respects_structured_cursor():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 4)
     history = store.history(scope)
@@ -491,7 +496,7 @@ def test_stale_extraction_scope_query_respects_structured_cursor():
 
 @pytest.mark.asyncio
 async def test_stale_single_turn_can_be_extracted_with_explicit_minimum():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 1)
     harness = _harness(_response('{"items":[]}'))
@@ -506,7 +511,7 @@ async def test_stale_single_turn_can_be_extracted_with_explicit_minimum():
 
 @pytest.mark.asyncio
 async def test_structured_extraction_processes_fixed_size_batches():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 8)
     harness = _harness(
@@ -528,7 +533,7 @@ async def test_structured_extraction_processes_fixed_size_batches():
 
 @pytest.mark.asyncio
 async def test_second_batch_includes_previous_turns_as_read_only_evidence():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 8)
     harness = _harness(
@@ -553,7 +558,7 @@ async def test_second_batch_includes_previous_turns_as_read_only_evidence():
 
 @pytest.mark.asyncio
 async def test_server_structured_extraction_includes_hina_replies_as_context():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(20, 10, 100, True)
     _add_turns(store, scope, 201, 4)
     harness = _harness(_response('{"items":[]}'))
@@ -567,7 +572,7 @@ async def test_server_structured_extraction_includes_hina_replies_as_context():
 
 @pytest.mark.asyncio
 async def test_previous_evidence_message_id_cannot_be_used_as_new_memory_source():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 8)
     harness = _harness(
@@ -593,7 +598,7 @@ async def test_previous_evidence_message_id_cannot_be_used_as_new_memory_source(
 
 @pytest.mark.asyncio
 async def test_completed_shadow_event_records_result_counts_and_evidence_turns():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 8)
     extraction = json.dumps({
@@ -636,7 +641,7 @@ async def test_completed_shadow_event_records_result_counts_and_evidence_turns()
 
 @pytest.mark.asyncio
 async def test_valid_empty_extraction_advances_cursor():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 4)
     harness = _harness(_response('{"items":[]}'))
@@ -650,7 +655,7 @@ async def test_valid_empty_extraction_advances_cursor():
 
 @pytest.mark.asyncio
 async def test_invalid_extraction_keeps_cursor_for_retry():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 4)
     harness = _harness(
@@ -669,7 +674,7 @@ async def test_invalid_extraction_keeps_cursor_for_retry():
 
 @pytest.mark.asyncio
 async def test_extractor_failure_does_not_advance_cursor():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(20, 10, 100, True)
     _add_turns(store, scope, 201, 4)
     harness = _harness(RuntimeError("shadow extractor unavailable"))
@@ -683,7 +688,7 @@ async def test_extractor_failure_does_not_advance_cursor():
 
 
 def test_server_reconciliation_candidates_follow_disclosure_space():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     public_sibling = Scope(1, 20, 100, True)
     private_sibling = Scope(1, 30, 100, False)
@@ -733,7 +738,7 @@ def test_server_reconciliation_candidates_follow_disclosure_space():
 
 
 def test_dm_reconciliation_candidates_include_all_owner_origins_only():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     guild_a = Scope(1, 20, 100, True)
     guild_private = Scope(1, 30, 100, False)
@@ -811,7 +816,7 @@ def test_parser_keeps_item_but_drops_relation_to_unknown_target():
 
 @pytest.mark.asyncio
 async def test_shadow_reconciliation_applies_high_confidence_correction():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     old_id = store.add_memory_item(
         scope,
@@ -886,7 +891,7 @@ async def test_shadow_reconciliation_applies_high_confidence_correction():
 
 @pytest.mark.asyncio
 async def test_partial_retry_does_not_offer_same_batch_item_as_reconciliation_candidate():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     old_id = store.add_memory_item(
         scope,
@@ -943,7 +948,7 @@ async def test_partial_retry_does_not_offer_same_batch_item_as_reconciliation_ca
 
 @pytest.mark.asyncio
 async def test_reconciliation_apply_failure_retries_existing_proposal():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     old_id = store.add_memory_item(
         scope,
@@ -997,7 +1002,7 @@ async def test_reconciliation_apply_failure_retries_existing_proposal():
 
 
 def test_forget_removes_reconciliation_proposals_with_memory():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     old_id = store.add_memory_item(
         scope,
@@ -1030,7 +1035,7 @@ def test_forget_removes_reconciliation_proposals_with_memory():
 
 
 def test_store_allows_public_same_guild_reconciliation_proposal():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     current = Scope(1, 10, 100, True)
     sibling = Scope(1, 20, 100, True)
     current_id = store.add_memory_item(
@@ -1062,7 +1067,7 @@ def test_store_allows_public_same_guild_reconciliation_proposal():
 
 
 def test_store_rejects_server_reconciliation_outside_disclosure_space():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     current = Scope(1, 10, 100, True)
     other_guild = Scope(2, 20, 100, True)
     current_id = store.add_memory_item(
@@ -1094,7 +1099,7 @@ def test_store_rejects_server_reconciliation_outside_disclosure_space():
 
 
 def test_store_allows_dm_reconciliation_across_owner_origins_only():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     guild_private = Scope(1, 20, 100, False)
     other_user = Scope(1, 20, 200, False)
@@ -1145,7 +1150,7 @@ def test_store_allows_dm_reconciliation_across_owner_origins_only():
 
 @pytest.mark.asyncio
 async def test_atomic_extraction_rolls_back_items_and_cursor_on_cursor_write_failure():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 4)
     extraction = json.dumps({"items": [{
@@ -1185,7 +1190,7 @@ async def test_atomic_extraction_rolls_back_items_and_cursor_on_cursor_write_fai
 
 @pytest.mark.asyncio
 async def test_atomic_extraction_rejects_stale_cursor_without_writing_items():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 4)
     extraction = json.dumps({"items": [{
@@ -1212,7 +1217,7 @@ async def test_atomic_extraction_rejects_stale_cursor_without_writing_items():
 
 @pytest.mark.asyncio
 async def test_atomic_extraction_empty_result_commits_one_batch_and_is_idempotent():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 4)
     harness = _harness(_response('{"items":[]}'))
@@ -1229,7 +1234,7 @@ async def test_atomic_extraction_empty_result_commits_one_batch_and_is_idempoten
 
 @pytest.mark.asyncio
 async def test_atomic_extraction_rejects_changed_source_turns_after_llm():
-    store = Store(":memory:", history_turns=12)
+    store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)
     _add_turns(store, scope, 101, 4)
     extraction = json.dumps({"items": [{

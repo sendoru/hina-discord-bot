@@ -42,7 +42,7 @@ async def test_final_output_check_is_last_even_after_dynamic_instruction():
     )
     llm = LLM(Settings(discord_token="test", openai_api_key="test"), client=client)
     llm.instructions.active_text = lambda: "[관리자 동적 캐릭터 조정]\n- [test] 동적 지침"
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     try:
         await llm.answer(store, scope, "사용자", "이 이미지나 스티커를 봐줘.")

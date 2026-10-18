@@ -4,6 +4,7 @@ from xml.etree import ElementTree
 import pytest
 from fastapi.testclient import TestClient
 
+from hina_bot.core.db_schema import initialize_connection
 from hina_bot.core.observability import CURRENT_TURN_ID
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -16,17 +17,20 @@ from hina_bot.dashboard.telemetry import TelemetryReader
 
 def test_shared_summary_cursor_and_origin_components_preserve_stored_data(tmp_path):
     database = tmp_path / "tables.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
     guild = Scope(1489432315523502251, 1554321651473195059, 221977862859653120, True)
     dm = Scope(None, 456789012345678901, 221977862859653125)
     for index, scope in enumerate((guild, dm), 1):
         store.add(scope, index, "question", "reply", name=f"User {index}")
         store.save_memory_extraction_cursor(scope, store.history(scope)[-1]["id"])
-    store.add_shared_call(guild, 3, "User 1", "shared question")
+    with store.db:
+        store._conversations.write_shared_call(guild, 3, "User 1", "shared question")
     shared_id = int(store.db.execute(
         "SELECT id FROM shared_calls WHERE message_id='3'"
     ).fetchone()["id"])
-    store.save_shared_summary(guild, "User 1", "Shared summary", shared_id)
+    with store.db:
+        store._conversations.write_shared_summary(guild, "User 1", "Shared summary", shared_id)
     long_text = ("사용자는 히나에게 직접적인 애정과 호감을 표현합니다. " * 15).strip()
     old = store.add_memory_item(guild, long_text, kind="relationship", disclosure="implicit")
     new = store.add_memory_item(guild, long_text, kind="relationship", disclosure="implicit")
@@ -98,7 +102,8 @@ def test_shared_summary_cursor_and_origin_components_preserve_stored_data(tmp_pa
 @pytest.mark.parametrize("guild_id", [1489432315523502251, None])
 def test_raw_scope_keys_are_limited_to_diagnostic_views(tmp_path, guild_id):
     database = tmp_path / "all-views.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(guild_id, 1554321651473195059, 221977862859653120, True)
     old = store.add_memory_item(
         scope, "Relationship old", kind="relationship", disclosure="implicit",

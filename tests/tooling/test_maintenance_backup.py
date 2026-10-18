@@ -11,7 +11,7 @@ def test_backup_closes_all_connections_before_publish_or_cleanup(
     tmp_path, monkeypatch, verification_fails,
 ):
     path = tmp_path / "source.sqlite3"
-    Store(str(path)).close()
+    Store.create(str(path)).close()
     connections = []
     connect = sqlite3.connect
     counts = maintenance_backup._counts

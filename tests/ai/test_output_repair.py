@@ -130,7 +130,7 @@ async def test_non_completed_or_empty_repair_preserves_original(
 
 @pytest.mark.asyncio
 async def test_runtime_settings_can_change_mode_and_model_without_restart():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     settings = RuntimeSettings(
         Settings(discord_token="token", provider="gemini", fast_model="default-fast"),
         store,
@@ -219,7 +219,7 @@ async def test_answer_pipeline_applies_repair_before_persisted_discord_reply():
         usage_log_path="", db_path=":memory:", chat_web_search=False,
     )
     llm = LLM(settings, client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         answer = await llm.answer(store, Scope(None, 10, 100), "사용자", "히나야 반가워")
         assert answer == "좋아"

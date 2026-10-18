@@ -4,7 +4,6 @@ Construction performs no SQL. Each write keeps its existing transaction boundary
 callers must not wrap unrelated settings writes in a memory extraction batch.
 """
 
-import json
 import sqlite3
 
 from .scope_overrides import CHATLOG_CAPTURE_NOTE_PREFIX
@@ -76,74 +75,33 @@ class SettingsRepository:
         rows = self.db.execute("SELECT scope,mode FROM chat_log_modes ORDER BY scope").fetchall()
         return {row["scope"]: row["mode"] for row in rows}
 
+    def replace_chatlog_override(self, key, *, enabled, capture):
+        """Commit the two representations of one unified mode together."""
+        if (enabled, capture) not in {
+            (None, None), ("off", "all"), ("on", "all"), ("on", "direct"),
+        }:
+            raise ValueError("Invalid unified chat log setting")
+        if self.db.in_transaction:
+            raise RuntimeError("A conflicting SQLite transaction is already active")
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            if enabled is None:
+                self.db.execute("DELETE FROM chat_log_modes WHERE scope=?", (key,))
+                self.db.execute("DELETE FROM notes WHERE scope=?", (CHATLOG_CAPTURE_NOTE_PREFIX + key,))
+            else:
+                self.db.execute("INSERT OR REPLACE INTO chat_log_modes VALUES (?,?)", (key, enabled))
+                self.db.execute("INSERT OR REPLACE INTO notes VALUES (?,?)",
+                                (CHATLOG_CAPTURE_NOTE_PREFIX + key, capture))
+            self.db.commit()
+        except BaseException:
+            self.db.rollback()
+            raise
+
     def note_rows(self, prefix: str):
         return self.db.execute(
             "SELECT scope,text FROM notes WHERE scope LIKE ? ORDER BY scope",
             (prefix + "%",),
         ).fetchall()
-
-    def replace_legacy_chatlog_settings(self, combined: dict[str, str], marker: str) -> None:
-        """Commit converted overrides and their completion marker together."""
-        with self.db:
-            self.db.execute("DELETE FROM chat_log_modes")
-            self.db.execute(
-                "DELETE FROM notes WHERE scope LIKE ?",
-                (CHATLOG_CAPTURE_NOTE_PREFIX + "%",),
-            )
-            for key, mode in combined.items():
-                self.db.execute(
-                    "INSERT INTO chat_log_modes(scope,mode) VALUES (?,?)",
-                    (key, "off" if mode == "off" else "on"),
-                )
-                self.db.execute(
-                    "INSERT INTO notes(scope,text) VALUES (?,?)",
-                    (CHATLOG_CAPTURE_NOTE_PREFIX + key, "all" if mode == "off" else mode),
-                )
-            self.db.execute(
-                "INSERT OR REPLACE INTO notes(scope,text) VALUES (?,?)",
-                (marker, "1"),
-            )
-
-    def ensure_runtime_schema(self) -> None:
-        self.db.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS runtime_config (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE TABLE IF NOT EXISTS runtime_config_startup (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-
-    def migrate_legacy_rag_override(self, encoded_modes: dict[str, str]) -> None:
-        """Keep pre-existing DB rollout mode when upgrading to RAG_MODE."""
-        row = self.db.execute(
-            "SELECT value FROM runtime_config WHERE key='retrieval_v2_mode'"
-        ).fetchone()
-        if row is None:
-            return
-        current = self.db.execute(
-            "SELECT 1 FROM runtime_config WHERE key='rag_mode'"
-        ).fetchone()
-        with self.db:
-            if current is None:
-                try:
-                    legacy = json.loads(row["value"])
-                except (TypeError, ValueError):
-                    legacy = None
-                if isinstance(legacy, str) and legacy in encoded_modes:
-                    self.db.execute(
-                        "INSERT INTO runtime_config(key,value) VALUES (?,?)",
-                        ("rag_mode", encoded_modes[legacy]),
-                    )
-            self.db.execute(
-                "DELETE FROM runtime_config WHERE key='retrieval_v2_mode'"
-            )
 
     def replace_startup_snapshot(self, rows: list[tuple[str, str]]) -> None:
         with self.db:

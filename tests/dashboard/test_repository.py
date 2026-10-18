@@ -2,6 +2,7 @@ import sqlite3
 
 import pytest
 
+from hina_bot.core.db_schema import SchemaError, initialize_connection
 from hina_bot.core.observability import CURRENT_TURN_ID
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -9,7 +10,8 @@ from hina_bot.dashboard.repository import AdminRepository
 
 
 def populated_database(path):
-    store = Store(str(path))
+    store = Store.create(str(path))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(1, 10, 100, True)
     token = CURRENT_TURN_ID.set("trace-123")
     try:
@@ -38,14 +40,15 @@ def test_repository_reads_turns_and_memory_by_trace(tmp_path):
     assert turns[0]["content"] == "question"
     assert repository.turn_for_trace("trace-123")["reply"] == "answer"
 
-    memories = repository.recent_memory_items()
+    memories = repository.search_memory_items()
     assert len(memories) == 1
     assert memories[0]["content"] == "likes coffee"
 
 
-def test_repository_reads_discord_scope_metadata_without_requiring_it(tmp_path):
+def test_repository_reads_discord_scope_metadata(tmp_path):
     path = tmp_path / "scope-metadata.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
+    initialize_connection(store.db, ("admin",))
     store.observe_guild_channel(1, "Readable Guild", 10, "general")
     store.close()
 
@@ -57,15 +60,6 @@ def test_repository_reads_discord_scope_metadata_without_requiring_it(tmp_path):
     assert metadata["channels"]["10"]["name"] == "general"
     assert metadata["channels"]["10"]["updated_at"]
 
-    legacy = tmp_path / "legacy.sqlite3"
-    db = sqlite3.connect(legacy)
-    db.execute("CREATE TABLE notes (scope TEXT PRIMARY KEY, text TEXT NOT NULL)")
-    db.commit()
-    db.close()
-    assert AdminRepository(legacy).discord_scope_metadata() == {
-        "guilds": {},
-        "channels": {},
-    }
 
 
 def test_repository_connection_is_sqlite_read_only(tmp_path):
@@ -76,6 +70,9 @@ def test_repository_connection_is_sqlite_read_only(tmp_path):
     with repository._connection() as db, pytest.raises(sqlite3.OperationalError):
         db.execute("DELETE FROM turns")
 
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        db.execute("SELECT 1")
+
     writable = sqlite3.connect(path)
     try:
         assert writable.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 1
@@ -83,7 +80,7 @@ def test_repository_connection_is_sqlite_read_only(tmp_path):
         writable.close()
 
 
-def test_repository_handles_pre_turn_id_database_without_migrating_it(tmp_path):
+def test_repository_rejects_pre_turn_id_database_without_migrating_it(tmp_path):
     path = tmp_path / "old.sqlite3"
     db = sqlite3.connect(path)
     db.execute(
@@ -103,10 +100,10 @@ def test_repository_handles_pre_turn_id_database_without_migrating_it(tmp_path):
     db.commit()
     db.close()
 
-    repository = AdminRepository(path)
-    row = repository.recent_turns()[0]
-    assert row["turn_id"] is None
-    assert repository.turn_for_trace("anything") is None
+    before = path.read_bytes()
+    with pytest.raises(SchemaError, match="hina-prepare-db"):
+        AdminRepository(path)
+    assert path.read_bytes() == before
 
     verify = sqlite3.connect(path)
     try:
@@ -116,22 +113,36 @@ def test_repository_handles_pre_turn_id_database_without_migrating_it(tmp_path):
     assert "turn_id" not in columns
 
 
-def test_repository_search_turns_filters_without_writes(tmp_path):
+def test_repository_does_not_treat_a_view_as_the_memory_table(tmp_path):
+    path = tmp_path / "view.sqlite3"
+    db = sqlite3.connect(path)
+    try:
+        db.execute("CREATE VIEW memory_items AS SELECT 1 AS id, 'active' AS status")
+        db.commit()
+    finally:
+        db.close()
+
+    with pytest.raises(SchemaError):
+        AdminRepository(path)
+
+
+def test_repository_search_conversations_filters_without_writes(tmp_path):
     path = tmp_path / "hina.sqlite3"
     populated_database(path)
     repository = AdminRepository(path)
 
-    assert repository.count_turns(query="question") == 1
-    assert repository.count_turns(query="missing") == 0
+    assert repository.count_conversations(query="question") == 1
+    assert repository.count_conversations(query="missing") == 0
 
-    rows = repository.search_turns(user_id="100", query="answer", limit=10)
+    rows = repository.search_conversations(user_id="100", query="answer", limit=10)
     assert len(rows) == 1
     assert rows[0]["message_id"] == "55"
 
 
 def test_repository_conversations_include_failed_turns_without_changing_turn_history(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(1, 10, 100, True)
     success_token = CURRENT_TURN_ID.set("trace-success")
     try:
@@ -183,7 +194,8 @@ def test_repository_conversations_include_failed_turns_without_changing_turn_his
 
 def test_repository_memory_inspection_and_lifecycle_columns(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(1, 10, 100, True)
     token = CURRENT_TURN_ID.set("memory-source-trace")
     try:
@@ -208,9 +220,6 @@ def test_repository_memory_inspection_and_lifecycle_columns(tmp_path):
     store.close()
 
     repository = AdminRepository(path)
-    schema = repository.memory_schema()
-    assert schema["has_lifecycle"] is True
-    assert schema["has_superseded_by"] is True
     assert repository.count_memory_items(user_id="100") == 2
     assert repository.count_memory_items(query="first") == 1
     assert repository.count_memory_items(relationship="yes") == 0
@@ -225,15 +234,14 @@ def test_repository_memory_inspection_and_lifecycle_columns(tmp_path):
     assert len(sources) == 1
     assert sources[0]["turn_id"] == "memory-source-trace"
 
-    assert schema["has_lifecycle"] is True
-    assert schema["has_superseded_by"] is True
     assert repository.count_memory_items(status="active") == 2
     assert repository.count_memory_items(status="superseded") == 0
 
 
 def test_repository_shared_summary_and_extraction_cursor_status(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(None, 10, 100)
     store.add(scope, 1, "first", "reply")
     first_id = int(store.db.execute(
@@ -280,7 +288,8 @@ def test_repository_shared_summary_and_extraction_cursor_status(tmp_path):
 
 def test_repository_reconciliation_review_filters_stats_and_source_sets(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(None, 10, 100)
     store.add(scope, 101, "first source", "reply")
     store.add(scope, 102, "second source", "reply")
@@ -355,24 +364,21 @@ def test_repository_reconciliation_review_filters_stats_and_source_sets(tmp_path
     assert stats["relations"] == {"conflicts": 1, "corrects": 1}
 
 
-def test_repository_reconciliation_review_handles_missing_tables(tmp_path):
+def test_repository_rejects_missing_business_tables(tmp_path):
     path = tmp_path / "old.sqlite3"
     db = sqlite3.connect(path)
     db.execute("CREATE TABLE turns (id INTEGER PRIMARY KEY)")
     db.commit()
     db.close()
 
-    repository = AdminRepository(path)
-
-    assert repository.reconciliation_schema()["available"] is False
-    assert repository.count_reconciliation_proposals() == 0
-    assert repository.search_reconciliation_proposals() == []
-    assert repository.reconciliation_proposal(1) is None
+    with pytest.raises(SchemaError):
+        AdminRepository(path)
 
 
 def test_repository_filters_turn_time_and_reads_neighbor_context(tmp_path):
     path = tmp_path / "turn-time.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(None, 10, 100)
     store.add(scope, 1, "first", "reply one")
     store.add(scope, 2, "second", "reply two")
@@ -388,7 +394,7 @@ def test_repository_filters_turn_time_and_reads_neighbor_context(tmp_path):
 
     repository = AdminRepository(path)
 
-    rows = repository.search_turns(
+    rows = repository.search_conversations(
         created_after="2026-09-22 12:30:00",
         created_before="2026-09-22 13:30:00",
     )
@@ -401,7 +407,8 @@ def test_repository_filters_turn_time_and_reads_neighbor_context(tmp_path):
 
 def test_repository_user_filter_accepts_stored_human_readable_name(tmp_path):
     path = tmp_path / "identity-filter.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
+    initialize_connection(store.db, ("admin",))
     target = Scope(None, 10, 100)
     other = Scope(None, 11, 200)
     store.add(target, 101, "target turn", "reply", name="Dashboard User")
@@ -424,9 +431,9 @@ def test_repository_user_filter_accepts_stored_human_readable_name(tmp_path):
 
     repository = AdminRepository(path)
 
-    turns = repository.search_turns(user_id="dashboard")
+    turns = repository.search_conversations(user_id="dashboard")
     assert [row["user_id"] for row in turns] == ["100"]
-    assert repository.count_turns(user_id="Dashboard User") == 1
+    assert repository.count_conversations(user_id="Dashboard User") == 1
 
     memories = repository.search_memory_items(user_id="board user")
     assert [row["user_id"] for row in memories] == ["100"]

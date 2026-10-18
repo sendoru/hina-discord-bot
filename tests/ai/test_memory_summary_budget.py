@@ -23,8 +23,11 @@ class FakeStore:
     def shared_summary(self, scope):
         return "", 0
 
-    def save_shared_summary(self, scope, name, text, through):
-        self.saved_shared = (name, text[:1500], through)
+    def shared_summary_snapshot(self, scope):
+        return None, self.pending_shared(scope)
+
+    def commit_shared_summary(self, scope, pending, *, expected_summary, text):
+        self.saved_shared = (pending[-1]["name"], text[:1500], pending[-1]["id"])
 
 
 def _summary_llm(output_text: str):
@@ -171,12 +174,18 @@ async def test_shared_empty_memory_advances_cursor_only_for_explicit_completed_r
 
     llm = _summary_llm(output)
     llm.usage.request.return_value.status = status
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 2, 100, public_at_capture=True)
     try:
-        store.add_shared_call(scope, 10, "A", "안녕")
-        store.save_shared_summary(scope, "A", "이전 기억", 0)
-        await llm.summarize_shared(store, scope)
+        with store.db:
+            store._conversations.write_shared_call(scope, 10, "A", "안녕")
+        with store.db:
+            store._conversations.write_shared_summary(scope, "A", "이전 기억", 0)
+        if clears:
+            await llm.summarize_shared(store, scope)
+        else:
+            with pytest.raises(RuntimeError, match="not complete"):
+                await llm.summarize_shared(store, scope)
         saved = store.shared_summary(scope)
         pending = store.pending_shared(scope)
         assert saved == (("", 1) if clears else ("이전 기억", 0))

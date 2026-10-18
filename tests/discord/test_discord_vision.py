@@ -556,7 +556,7 @@ async def test_selected_speaker_context_drives_text_and_visual_from_one_snapshot
         summarize_shared=AsyncMock(),
         close=AsyncMock(),
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     store.set_memory_mode_override("global", "off")
     store.set_chat_log_mode_override("global", "on")
     bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=store, llm=llm)
@@ -663,7 +663,7 @@ async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
         summarize_shared=AsyncMock(),
         close=AsyncMock(),
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=store, llm=llm)
     bot._connection.user = NS(id=99)
     channel = MagicMock()
@@ -718,7 +718,7 @@ async def test_passive_recent_visual_alone_does_not_turn_bare_call_into_image_re
         summarize_shared=AsyncMock(),
         close=AsyncMock(),
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=store, llm=llm)
     bot._connection.user = NS(id=99)
     attachment = NS(

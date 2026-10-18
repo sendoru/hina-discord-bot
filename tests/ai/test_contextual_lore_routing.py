@@ -52,7 +52,7 @@ async def test_lore_followup_uses_previous_entity_but_keeps_visible_message():
         "knowledge": "direct_experience",
         "timeline": "테스트 사건",
     }])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 20, 100)
     store.add(scope, 1, "카요코가 예전에 뭐 했어?", "예전 이야기를 물어보는 거네.")
     try:
@@ -112,7 +112,7 @@ async def test_rag_mode_controls_actual_lore_execution_and_context(mode, expect_
             raise AssertionError("legacy lore retrieval ran when RAG was disabled")
         llm.lore_references = forbidden_retrieval
 
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 20, 100)
     try:
         await llm.answer(store, scope, "사용자", "히나야 생일 언제야?")

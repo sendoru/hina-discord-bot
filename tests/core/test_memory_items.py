@@ -14,7 +14,7 @@ from hina_bot.core.store import Store
 
 class StructuredMemoryStoreTests(unittest.TestCase):
     def setUp(self):
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
         self.guild_a = Scope(1, 10, 100, True)
         self.guild_a_sibling = Scope(1, 11, 100, True)
         self.guild_a_private = Scope(1, 12, 100, False)
@@ -110,7 +110,7 @@ class StructuredMemoryStoreTests(unittest.TestCase):
     def test_structured_items_persist_after_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "memory.db")
-            first = Store(path)
+            first = Store.create(path)
             first.add_memory_item(
                 self.dm,
                 "persistent",
@@ -120,7 +120,7 @@ class StructuredMemoryStoreTests(unittest.TestCase):
             )
             first.close()
 
-            second = Store(path)
+            second = Store.create(path)
             items = second.memory_items(100)
             self.assertEqual(len(items), 1)
             self.assertEqual(items[0].content, "persistent")
@@ -175,7 +175,7 @@ class StructuredMemoryStoreTests(unittest.TestCase):
 
 class StructuredMemoryPrivacyTests(unittest.TestCase):
     def setUp(self):
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
         self.guild_a = Scope(1, 10, 100, True)
         self.guild_a_sibling = Scope(1, 11, 100, True)
         self.guild_a_private = Scope(1, 12, 100, False)

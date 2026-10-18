@@ -21,7 +21,7 @@ class ModeTests(unittest.TestCase):
             self.assertEqual((mode.reads, mode.writes), flags)
 
     def test_global_server_channel_precedence_and_inheritance(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         channel = Scope(1, 10, 100)
         sibling = Scope(1, 20, 200)
         other_guild = Scope(2, 30, 100)
@@ -54,34 +54,34 @@ class ModeTests(unittest.TestCase):
         store.close()
 
     def test_chat_log_modes_remain_independent(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         scope = Scope(1, 10, 100)
         store.set_chat_log_mode_override(scope.channel, "off")
         self.assertFalse(store.chat_log_enabled(scope))
         self.assertEqual(store.memory_mode(scope), "normal")
-        store.set_memory_mode(scope, "off")
+        store.set_memory_mode_override(scope.channel, "off")
         self.assertFalse(store.chat_log_enabled(scope))
         store.close()
 
     def test_existing_channel_override_persists_and_memory_is_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "modes.db")
-            store = Store(path)
+            store = Store.create(path)
             scope = Scope(1, 10, 100)
             store.add(scope, 1, "keep", "keep reply")
-            store.set_memory_mode(scope, "off")
+            store.set_memory_mode_override(scope.channel, "off")
             self.assertEqual(store.memory_mode(Scope(1, 10, 200)), "off")
             self.assertEqual(store.memory_mode(Scope(1, 20, 100)), "normal")
             store.close()
 
-            store = Store(path)
+            store = Store.create(path)
             self.assertEqual(store.memory_mode(scope), "off")
             self.assertEqual(store.memory_mode_override(scope.channel), "off")
             self.assertEqual(store.history(scope)[0]["content"], "keep")
             store.set_memory_mode_override(scope.channel, None)
             self.assertEqual(store.memory_mode(scope), "normal")
             with self.assertRaises(ValueError):
-                store.set_memory_mode(scope, "invalid")
+                store.set_memory_mode_override(scope.channel, "invalid")
             store.close()
 
 
@@ -100,7 +100,7 @@ class PurgeTests(unittest.TestCase):
         )
 
     def test_channel_purge_removes_all_users_in_channel_only(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         first = Scope(1, 10, 100)
         second = Scope(1, 10, 200)
         sibling = Scope(1, 20, 100)
@@ -119,7 +119,7 @@ class PurgeTests(unittest.TestCase):
         store.close()
 
     def test_realm_purge_removes_auto_memory_but_preserves_manual_notes(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         first = Scope(1, 10, 100)
         second = Scope(1, 20, 200)
         other = Scope(2, 30, 300)
@@ -143,7 +143,7 @@ class PurgeTests(unittest.TestCase):
         store.close()
 
     def test_global_purge_preserves_manual_notes_configuration_and_server_notes(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         guild = Scope(1, 10, 100)
         dm = Scope(None, 20, 200)
         self.add_turn(store, guild, 1)
@@ -185,7 +185,7 @@ class ModeCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(group.allowed_installs.user)
 
     async def test_switch_waits_for_inflight_turn_and_preserves_recent_context(self):
-        store, recent, lock = Store(":memory:"), RecentMessages(), asyncio.Lock()
+        store, recent, lock = Store.create(":memory:"), RecentMessages(), asyncio.Lock()
         scope, other = Scope(1, 10, 100), Scope(1, 20, 100)
         recent.add(scope, 1, "A", "current")
         recent.add(other, 2, "A", "other channel")
@@ -208,7 +208,7 @@ class ModeCommandTests(unittest.IsolatedAsyncioTestCase):
         store.close()
 
     async def test_inherit_removes_lower_override_and_status_is_memory_only(self):
-        store, lock = Store(":memory:"), asyncio.Lock()
+        store, lock = Store.create(":memory:"), asyncio.Lock()
         scope = Scope(1, 10, 100)
         store.set_memory_mode_override("global", "off")
         store.set_memory_mode_override("guild:1", "read_only")
@@ -228,7 +228,7 @@ class ModeCommandTests(unittest.IsolatedAsyncioTestCase):
         store.close()
 
     async def test_global_cannot_inherit_and_server_target_requires_guild(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         client = NS(store=store, channel_lock=lambda _: asyncio.Lock())
         group = MemoryCommands(client)
         interaction = NS(guild_id=None, channel_id=10, user=NS(id=100),
@@ -242,7 +242,7 @@ class ModeCommandTests(unittest.IsolatedAsyncioTestCase):
         store.close()
 
     async def test_purge_requires_confirmation_and_server_requires_guild(self):
-        store = Store(":memory:")
+        store = Store.create(":memory:")
         client = NS(store=store, channel_lock=lambda _: asyncio.Lock())
         group = MemoryCommands(client)
         interaction = NS(guild_id=None, channel_id=10, user=NS(id=100),

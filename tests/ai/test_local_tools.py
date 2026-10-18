@@ -394,7 +394,7 @@ async def test_answer_auto_executes_request_scoped_local_tool():
         ),
         NS(status="completed", output_text="<@200>", output=[]),
     ])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     token = CURRENT_LOCAL_TOOLS.set(registry)
     try:
         answer = await llm.answer(

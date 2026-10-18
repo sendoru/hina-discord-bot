@@ -28,7 +28,7 @@ def _item(content, source, *, kind=MemoryKind.FACT, evidence=None):
 
 
 def test_same_content_from_later_batch_is_not_stored_again():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         first = persist_shadow_items_detailed(
@@ -45,7 +45,7 @@ def test_same_content_from_later_batch_is_not_stored_again():
 
 
 def test_identical_content_does_not_cross_source_channel_or_privacy():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     private = Scope(1, 10, 100, False)
     public = Scope(1, 20, 100, True)
     try:
@@ -60,7 +60,7 @@ def test_identical_content_does_not_cross_source_channel_or_privacy():
 
 
 def test_relationship_observations_only_dedupe_equal_evidence():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     content = "사용자는 히나와 편안하게 대화한다."
     first = _item(
@@ -83,7 +83,7 @@ def test_relationship_observations_only_dedupe_equal_evidence():
 
 
 def test_reconciliation_pool_keeps_older_facts_after_many_relationships():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         first = store.add_memory_item(
@@ -108,7 +108,7 @@ def test_reconciliation_pool_keeps_older_facts_after_many_relationships():
 
 
 def test_relationship_duplicate_is_applied_without_changing_owner_profile():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     evidence = RelationshipEvidence(familiarity=2, comfort=3)
     try:
@@ -138,7 +138,7 @@ def test_relationship_duplicate_is_applied_without_changing_owner_profile():
 
 
 def test_relationship_different_evidence_or_scope_remains_unmerged():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:

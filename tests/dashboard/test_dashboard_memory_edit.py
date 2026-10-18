@@ -3,6 +3,7 @@ import sqlite3
 
 from fastapi.testclient import TestClient
 
+from hina_bot.core.db_schema import initialize_connection
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.dashboard.app import create_app
@@ -19,7 +20,8 @@ def _settings(tmp_path, database, *, write_enabled=True):
 
 
 def _memory_database(path):
-    store = Store(str(path))
+    store = Store.create(str(path))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(1, 10, 100, True)
     item_id = store.add_memory_item(
         scope,
@@ -91,7 +93,8 @@ def test_memory_detail_editor_enqueues_only_editable_fields(tmp_path):
 
 def test_memory_detail_renders_revision_history(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(None, 10, 100)
     item_id = store.add_memory_item(
         scope,
@@ -204,7 +207,8 @@ def test_memory_retract_requires_confirmation_and_queues_lifecycle_action(tmp_pa
 
 def test_retracted_memory_detail_is_read_only_but_preserved(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(None, 10, 100)
     item_id = store.add_memory_item(
         scope,

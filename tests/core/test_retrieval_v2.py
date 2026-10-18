@@ -234,7 +234,7 @@ def test_reaction_parity_and_provenance_stays_out_of_model_reference():
 
 @pytest.mark.parametrize("kind,awareness", [("world_fact", "self"), ("interpretation", "inference")])
 def test_runtime_registry_compatibility_without_synthesized_certainty(kind, awareness):
-    database = AdminDatabase(":memory:")
+    database = AdminDatabase.create(":memory:")
     try:
         registry = RuntimeKnowledgeRegistry(database, kind=kind)
         registry.add("test.entry", "휴식 관련 내용", "휴식", "히나", awareness, "장면")

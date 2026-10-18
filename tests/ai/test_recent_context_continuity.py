@@ -12,7 +12,7 @@ from hina_bot.core.store import Store
 
 def test_dm_recent_history_preserves_timestamp_on_both_sides():
     scope = Scope(None, 10, 100)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         store.add(scope, 1, "애옹", "왜 갑자기 고양이 흉내야?", name="A")
         store.db.execute(
@@ -46,7 +46,7 @@ def test_dm_recent_history_preserves_timestamp_on_both_sides():
 
 def test_server_exact_recent_tail_survives_cursor_advancement():
     scope = Scope(1, 10, 100, True)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         for message_id in range(1, 5):
             store.add(
@@ -71,7 +71,7 @@ def test_server_exact_recent_tail_survives_cursor_advancement():
 
 def test_server_exact_recent_tail_deduplicates_live_channel_rows():
     scope = Scope(1, 10, 100, True)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         store.add(scope, 1, "첫 질문", "첫 답변", name="A")
         store.add(scope, 2, "둘째 질문", "둘째 답변", name="A")

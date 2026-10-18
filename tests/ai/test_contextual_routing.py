@@ -12,7 +12,7 @@ from hina_bot.core.store import Store
 
 
 def test_short_followup_reuses_same_speaker_topic():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     rows = [{
         "role": "user",
@@ -52,7 +52,7 @@ def test_classifier_grounding_is_broader_than_route_followup():
 
 
 def test_routing_plan_keeps_visible_turn_separate_from_expanded_query():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     rows = [{
         "role": "user",
@@ -74,7 +74,7 @@ def test_routing_plan_keeps_visible_turn_separate_from_expanded_query():
 
 
 def test_other_speaker_is_not_implicit_anchor():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     rows = [{
         "role": "user",
@@ -90,7 +90,7 @@ def test_other_speaker_is_not_implicit_anchor():
 
 
 def test_explicit_reply_outweighs_rolling_same_speaker_context():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     rows = [
         {"role": "user", "user_id": "100", "content": "다른 주제"},
@@ -115,7 +115,7 @@ def test_statement_does_not_inherit_previous_route():
 
 
 def test_explicit_bot_reply_and_prior_user_request_are_kept_separately():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     rows = [
         {
@@ -141,7 +141,7 @@ def test_explicit_bot_reply_and_prior_user_request_are_kept_separately():
 
 
 def test_conversation_history_is_an_owned_prior_request_source():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     store.add(scope, 1, "이 오류의 원인을 찾아서 고쳐줘", "확인해볼게.")
     try:
@@ -153,7 +153,7 @@ def test_conversation_history_is_an_owned_prior_request_source():
 
 
 def test_external_explicit_reply_does_not_reuse_an_unrelated_complex_request():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     rows = [
         {

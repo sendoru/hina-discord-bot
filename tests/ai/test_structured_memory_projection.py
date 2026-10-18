@@ -52,7 +52,7 @@ def _reference(call):
 
 
 def test_owner_dm_memory_contains_every_owner_item_and_no_other_user_item():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     public = Scope(1, 20, 100, True)
     private = Scope(1, 30, 100, False)
@@ -107,7 +107,7 @@ def test_owner_dm_memory_contains_every_owner_item_and_no_other_user_item():
 
 
 def test_shared_full_memory_contains_only_full_non_relationship_owner_items():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     current = Scope(1, 30, 100, True)
     public_same_guild = Scope(1, 20, 100, True)
     private_other_channel = Scope(1, 40, 100, False)
@@ -156,7 +156,7 @@ def test_shared_full_memory_contains_only_full_non_relationship_owner_items():
 
 
 def test_single_cross_space_observation_projects_numeric_profile_without_raw_text():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     store.add_memory_item(
@@ -184,7 +184,7 @@ def test_single_cross_space_observation_projects_numeric_profile_without_raw_tex
 
 
 def test_owner_dm_profile_uses_all_eligible_owner_relationship_observations():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     same_user_guild = Scope(1, 20, 100, True)
     other_user_dm = Scope(None, 11, 200)
@@ -237,7 +237,7 @@ def test_owner_dm_profile_uses_all_eligible_owner_relationship_observations():
 
 
 def test_repeated_moderate_evidence_accumulates_without_overwriting_global_state():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     for source in ("101", "201"):
@@ -258,7 +258,7 @@ def test_repeated_moderate_evidence_accumulates_without_overwriting_global_state
 
 
 def test_unrelated_relationship_axes_do_not_age_existing_evidence():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     store.add_memory_item(
@@ -287,7 +287,7 @@ def test_unrelated_relationship_axes_do_not_age_existing_evidence():
 
 
 def test_each_relationship_axis_has_its_own_bounded_observation_window():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     store.add_memory_item(
@@ -316,7 +316,7 @@ def test_each_relationship_axis_has_its_own_bounded_observation_window():
 
 
 def test_missing_axis_is_not_interpreted_as_negative_evidence():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     store.add_memory_item(
@@ -336,7 +336,7 @@ def test_missing_axis_is_not_interpreted_as_negative_evidence():
 
 
 def test_relationship_evidence_below_old_threshold_is_weighted_not_dropped():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     store.add_memory_item(
@@ -356,7 +356,7 @@ def test_relationship_evidence_below_old_threshold_is_weighted_not_dropped():
 
 
 def test_zero_confidence_relationship_evidence_is_inert():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     store.add_memory_item(
@@ -373,7 +373,7 @@ def test_zero_confidence_relationship_evidence_is_inert():
 
 
 def test_superseded_memory_is_excluded_from_owner_projection():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     try:
         old_id = store.add_memory_item(
@@ -406,7 +406,7 @@ def test_superseded_memory_is_excluded_from_owner_projection():
 
 
 def test_same_disclosure_space_gets_raw_relationship_memory_not_cross_space_profile():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     source = Scope(1, 20, 100, True)
     same_guild = Scope(1, 30, 100, True)
     store.add_memory_item(
@@ -441,7 +441,7 @@ async def test_dm_response_receives_all_owner_structured_memory_even_when_legacy
         public_memory_in_dm=False,
     )
     llm = LLM(settings, client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     public = Scope(1, 20, 100, True)
     private = Scope(1, 30, 100, False)
@@ -516,7 +516,7 @@ async def test_answer_uses_structured_memory_without_legacy_summary_field():
         ),
         client=client,
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     try:
         store.add_memory_item(
@@ -542,7 +542,7 @@ async def test_server_receives_numeric_implicit_profile_without_cross_space_raw_
     calls = []
     client = _client(calls)
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     try:
@@ -606,7 +606,7 @@ async def test_same_space_response_receives_full_non_relationship_memory():
         ),
         client=client,
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     public_source = Scope(1, 20, 100, True)
     private_source = Scope(1, 40, 100, False)
     same_guild = Scope(1, 30, 100, True)
@@ -659,7 +659,7 @@ async def test_same_space_response_receives_raw_relationship_and_evidence():
     calls = []
     client = _client(calls)
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     source = Scope(1, 20, 100, True)
     same_guild = Scope(1, 30, 100, True)
     try:
@@ -695,7 +695,7 @@ async def test_current_channel_scope_keeps_safe_memory_with_scope_metadata():
     calls = []
     client = _client(calls)
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     dm = Scope(None, 10, 100)
     server = Scope(1, 20, 100, True)
     other_public_channel = Scope(1, 30, 100, True)
@@ -777,7 +777,7 @@ async def test_other_users_relationship_evidence_never_projects():
     calls = []
     client = _client(calls)
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     other_dm = Scope(None, 11, 200)
     server = Scope(1, 20, 100, True)
     try:

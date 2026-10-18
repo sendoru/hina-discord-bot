@@ -10,7 +10,7 @@ from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
 def test_registry_writes_join_outer_admin_transaction(tmp_path):
     path = tmp_path / "admin.sqlite3"
-    database = AdminDatabase(str(path))
+    database = AdminDatabase.create(str(path))
     instructions = InstructionRegistry(database)
     knowledge = RuntimeKnowledgeRegistry(database, kind="world_fact")
     try:

@@ -141,7 +141,7 @@ async def test_full_all_lookup_marks_ambient_and_direct_provenance():
 
 
 def test_visibility_combines_chatlog_and_external_policy():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
     try:
         assert _target_history_visibility(store, scope, strict_egress=False) == "all"

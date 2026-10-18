@@ -119,7 +119,7 @@ async def test_active_classifier_decides_explicit_source_request_needs_web():
     )))
     llm = LLM(settings(), client=primary, classifier_client=classifier_client)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         result = await llm.answer(
             store,
@@ -146,7 +146,7 @@ async def test_active_classifier_promotes_unmarked_version_question_to_required_
     )))
     llm = LLM(settings(), client=primary, classifier_client=classifier_client)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         result = await llm.answer(
             store,
@@ -173,7 +173,7 @@ async def test_active_classifier_can_demote_soft_temporal_auto_to_none():
     )))
     llm = LLM(settings(), client=primary, classifier_client=classifier_client)
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(
             store,
@@ -202,7 +202,7 @@ async def test_hard_required_web_cannot_be_demoted_by_classifier():
         classifier_client=classifier_client,
     )
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(
             store,
@@ -235,7 +235,7 @@ async def test_shadow_classifier_records_web_proposal_without_changing_actual_re
         classifier_client=classifier_client,
     )
     llm.lore = LoreIndex([])
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         await llm.answer(
             store,

@@ -9,7 +9,7 @@ from hina_bot.core.instructions import InstructionRegistry
 class InstructionRegistryTests(unittest.TestCase):
     def test_crud_and_active_text(self):
         with tempfile.TemporaryDirectory() as directory:
-            database = AdminDatabase(str(Path(directory) / "hina.sqlite3"))
+            database = AdminDatabase.create(str(Path(directory) / "hina.sqlite3"))
             registry = InstructionRegistry(database)
 
             self.assertEqual(registry.list(), [])
@@ -45,7 +45,7 @@ class InstructionRegistryTests(unittest.TestCase):
             registry.add("valid-id", "저장할 수 없어야 합니다.")
 
         with tempfile.TemporaryDirectory() as directory:
-            database = AdminDatabase(str(Path(directory) / "hina.sqlite3"))
+            database = AdminDatabase.create(str(Path(directory) / "hina.sqlite3"))
             registry = InstructionRegistry(database)
             for identifier in ("a", "한글", "bad id", "UPPER CASE"):
                 with self.assertRaises(ValueError):
@@ -62,7 +62,7 @@ class InstructionRegistryTests(unittest.TestCase):
             database.close()
 
     def test_legacy_import_keeps_unknown_created_at_null(self):
-        database = AdminDatabase(":memory:")
+        database = AdminDatabase.create(":memory:")
         registry = InstructionRegistry(database)
         registry.import_row({"id": "legacy-rule", "text": "예전 규칙", "enabled": True})
         row = registry.get("legacy-rule")
