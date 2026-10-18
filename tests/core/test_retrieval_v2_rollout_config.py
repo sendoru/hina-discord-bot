@@ -3,9 +3,9 @@ from pathlib import Path
 import pytest
 
 from hina_bot.core.config import Settings, retrieval_v2_expected_backend_key
-from hina_bot.core.db_schema import prepare_connection
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
+from hina_bot.tooling.legacy_database import prepare_connection
 
 
 def _base_env(monkeypatch, tmp_path: Path):
@@ -216,6 +216,7 @@ def test_old_database_override_is_migrated(previous, expected):
             ("retrieval_v2_mode", f'"{previous}"'),
         )
         store.db.commit()
+        store.db.execute("DROP TABLE schema_migrations")
         prepare_connection(store.db, ('settings',))
         settings = RuntimeSettings(
             Settings(discord_token="token", openai_api_key="key"), store

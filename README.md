@@ -38,7 +38,8 @@ uv run hina-bot
 
 DB 준비는 최초 설치/스키마 업그레이드 때 명시적으로 실행합니다.
 조회·dry-run·유지보수는 봇 시작 설정 스냅샷을 덮어쓰지 않습니다.
-[DB 초기화·이전·복구 절차](docs/db-initialization.md)를 참고하세요.
+[DB 초기화·이전·복구 절차](docs/db-initialization.md)를 참고하세요. 구형 비버전 DB는
+일반 준비 명령이 자동 변환하지 않으며, 문서의 `hina-upgrade-legacy-db` 오프라인 절차를 사용합니다.
 
 기본 provider 예시는 OpenAI입니다.
 

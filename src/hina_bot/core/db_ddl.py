@@ -1,7 +1,7 @@
 """Target SQLite DDL for the three fixed schema areas.
 
-No connection opening, migration execution or commits live here. db_schema owns
-inspection and the known legacy upgrades; each SQL definition has one owner.
+No connection opening, migration execution or commits live here. Runtime uses
+fixed v1 metadata signatures; legacy upgrades live only in the offline tool.
 """
 
 STORE_DDL = (
@@ -239,4 +239,53 @@ DDL = {
     "store": STORE_DDL + STORE_INDEXES + QUEUE_DDL,
     "settings": SETTINGS_DDL,
     "admin": ADMIN_DDL,
+}
+
+
+# Fixed v1 ownership and exact sqlite_master signatures. The second spelling,
+# where present, is the inspected operational schema after historical ALTERs.
+# These contain schema metadata only; no database rows or identifiers.
+V1_TABLES = {
+    'store': (
+        'admin_commands',
+        'channel_metadata',
+        'chat_log_modes',
+        'conversation_identity_names',
+        'emoji_registry',
+        'failed_turns',
+        'guild_metadata',
+        'memory_extraction_batches',
+        'memory_extraction_cursors',
+        'memory_item_edit_history',
+        'memory_items',
+        'memory_modes',
+        'memory_reconciliation_proposals',
+        'notes',
+        'shared_calls',
+        'shared_summaries',
+        'turns',
+    ),
+    'settings': (
+        'runtime_config',
+        'runtime_config_startup',
+    ),
+    'admin': (
+        'admin_migrations',
+        'instructions',
+        'runtime_knowledge',
+    ),
+}
+
+V1_SIGNATURES = {
+    'store': {
+        '8287491c5024df5fb6e7026ed48985a3b0f26142c2f1b66b9421d3d04b7ef6eb',
+        'cfa8c973864b6c2d27d1ed6f4113b439851753c1f15c323081239125de1ffb4c',
+    },
+    'settings': {
+        '59919ee407c53fc9cfd95cf9e9ec7753def51d05f2c5ec67a4bc06610b0f41e8',
+    },
+    'admin': {
+        'bfbc0142bacd3806691e2a1927a375e37737907010f1c1adc700aca96a5e8407',
+    },
+    "ledger": {'0b11af7999ed698fe5a9e14a977d9a434603a9880d63e00a69a3b46fa36da0e8'},
 }

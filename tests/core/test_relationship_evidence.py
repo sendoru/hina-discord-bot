@@ -5,7 +5,7 @@ import pytest
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, RelationshipEvidence
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.tooling.prepare_database import prepare_database
+from hina_bot.tooling.legacy_database import convert_database as prepare_database
 
 
 def test_store_migrates_existing_memory_items_with_empty_relationship_evidence(tmp_path):

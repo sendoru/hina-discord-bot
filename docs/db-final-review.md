@@ -1,5 +1,9 @@
 # #397~#398 구조 최종 점검
 
+This records the earlier structural review. The later [fixed baseline review](db-baseline-v1.md)
+separates current-only runtime validation from explicit offline legacy conversion.
+
+
 기준: #407 통합 브랜치 `4ae7761`. #399~#401, main 병합, 운영 DB 실행은 제외한다.
 앞선 [필드 점검](db-schema-audit.md)과 [조작 코드 정리](db-operations-audit.md)에 이어
 schema 검사·이전의 책임과 변경 지점을 최종 점검했다.

@@ -4,7 +4,7 @@ import sqlite3
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.tooling.prepare_database import prepare_database
+from hina_bot.tooling.legacy_database import convert_database as prepare_database
 
 
 def test_store_migrates_turns_with_context_provenance_column(tmp_path):
