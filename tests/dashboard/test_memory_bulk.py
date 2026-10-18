@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 from fastapi.testclient import TestClient
 
+from hina_bot.core.db_schema import SchemaError, initialize_connection
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.dashboard.app import create_app
@@ -18,6 +19,7 @@ from hina_bot.discord.admin_commands import run_admin_command_once
 def bulk_app(tmp_path, request):
     database = tmp_path / "hina.sqlite3"
     store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
     ids = [
         store.add_memory_item(
             Scope(1, 10, 100, True), f"memory {i}", kind="fact", disclosure="local"
@@ -348,17 +350,16 @@ def test_browser_pending_commands_can_be_checked_again(memory_browser):
         assert db.execute("SELECT COUNT(*) FROM admin_commands").fetchone()[0] == 2
 
 
-def test_legacy_memory_schema_hides_bulk_controls(bulk_app):
-    app, database, ids = bulk_app
+def test_startup_rejects_memory_schema_without_revision(bulk_app):
+    _, database, _ = bulk_app
     with sqlite3.connect(database) as db:
         db.execute("ALTER TABLE memory_items DROP COLUMN revision")
-    with TestClient(app) as client:
-        assert "data-memory-bulk-form" not in client.get("/memory").text
-        result = client.post("/memory/bulk-status", data=submission(app, ids[:1])).json()[
-            "results"
-        ][0]
-        assert result["status"] == "failed"
-        assert "revisions" in result["error"]
+    with pytest.raises(SchemaError, match="store schema"):
+        create_app(DashboardSettings(
+            database_path=str(database),
+            usage_log_path=str(database.parent / "usage.jsonl"),
+            event_log_path=str(database.parent / "events.jsonl"),
+        ))
 
 
 @pytest.mark.parametrize("bulk_app", [True, False], indirect=True)
