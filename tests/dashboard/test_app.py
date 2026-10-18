@@ -2,6 +2,7 @@ import json
 
 from fastapi.testclient import TestClient
 
+from hina_bot.core.db_schema import initialize_connection
 from hina_bot.core.observability import CURRENT_TURN_ID
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -32,6 +33,7 @@ def write_rows(path, rows):
 def dashboard_client(tmp_path):
     database = tmp_path / "hina.sqlite3"
     store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
     scope = Scope(None, 10, 100)
     token = CURRENT_TURN_ID.set("trace-ui")
     try:

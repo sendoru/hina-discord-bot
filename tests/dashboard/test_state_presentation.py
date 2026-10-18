@@ -3,6 +3,7 @@ from xml.etree import ElementTree
 
 from fastapi.testclient import TestClient
 
+from hina_bot.core.db_schema import initialize_connection
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.dashboard.app import create_app
@@ -16,6 +17,7 @@ UNKNOWN_KEY = 'legacy:<script>alert("scope")</script>'
 def seed_state(tmp_path):
     database = tmp_path / "state.sqlite3"
     store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
     guild = Scope(1, 10, 100)
     dm = Scope(None, 20, 100)
     store.add(guild, 1, "guild question", "reply", name="Guild User")
