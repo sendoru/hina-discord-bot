@@ -46,7 +46,7 @@ The dashboard currently exposes the following read-only routes:
 - `/memory/{id}`: memory provenance/source-turn detail
 - `/relationships`: target-scope FULL/raw relationships + effective relationship profile
 - `/state`: effective memory/chat-log inheritance and manual notes
-- `/summaries`: personal/shared legacy summary state
+- `/summaries`: retained shared/public summary status
 - `/memory/cursors`: structured extraction cursor/pending state
 - `/reconciliation`: shadow reconciliation proposal review
 - `/reconciliation/{id}`: old/new memory comparison and extraction context
@@ -138,11 +138,10 @@ usage.jsonl
 discord-usage.jsonl
 ```
 
-Old rows are migrated by adding a nullable `turn_id` column. Existing rows remain `NULL`; no
-attempt is made to infer historical correlation.
-
-The read-only repository also tolerates a pre-migration database by returning `turn_id = NULL`
-without modifying it.
+The current schema requires the nullable `turn_id` column. Rows migrated from older
+versions may still contain `NULL` because historical trace correlation cannot be inferred.
+Dashboard refuses pre-migration schema files; it does not synthesize missing columns
+or upgrade the database on read.
 
 ## Telemetry files
 
@@ -451,9 +450,9 @@ history.
 shared call, and pending shared calls. Personal persistent memory is inspected through `/memory`.
 
 `/memory/cursors` reports the standalone structured extraction cursor, latest retained turn, and pending
-turn count. A scope without a persisted cursor has an effective baseline of 0. Legacy personal-summary
-cursor migration happens in the runtime Store before the obsolete table is dropped; the read-only
-dashboard does not perform migrations.
+turn count. A scope without a persisted cursor has an effective baseline of 0. Any necessary
+legacy personal-summary cursor conversion belongs to the separate offline
+`hina-upgrade-legacy-db` command; neither the runtime Store nor Dashboard migrates older schemas.
 
 ## Reconciliation review
 
