@@ -1,16 +1,14 @@
-# Explicit SQLite preparation and runtime startup (#397)
+# Explicit SQLite preparation and runtime startup
 
-Database preparation is now an explicit operation. Opening Store, AdminDatabase,
-RuntimeSettings or an LLM no longer creates/migrates an application database.
-Schema preparation is separate from JSON content import and from actual bot startup.
-Store remains the compatibility facade and extraction/purge transaction coordinator.
+Runtime accepts the recorded current schema only. It never adopts an unversioned
+file, infers a legacy shape, adds columns, or converts settings. Store remains the
+connection owner/transaction coordinator; repositories still borrow its connection.
 
-## Upgrade or first installation
+## Current v1 baseline or a new installation
 
-Stop the bot, Dashboard and every other DB writer before applying preparation.
-Use the same DATABASE_PATH as the bot. The preparation CLI reads `.env.local` and
-`.env` with the same environment precedence as Settings.load, without requiring a
-Discord token or provider key merely to inspect a database.
+Stop the bot, Dashboard and every other writer before applying preparation. Use
+the same DATABASE_PATH as the bot; inspection defaults to dry-run and does not
+require Discord/provider credentials. `.env.local`/`.env` precedence is unchanged.
 
 ```sh
 uv run hina-prepare-db --dry-run
@@ -18,14 +16,21 @@ uv run hina-prepare-db --yes --offline-confirmed
 uv run hina-bot
 ```
 
-Dry-run is the default. Missing paths are reported as a new-database plan without
-creating a file or parent directory. A real application creates a new file with
-exclusive creation, or backs up an existing file before changing its schema.
-`--component store`, `--component settings`, and `--component admin` may be repeated
-for explicit partial preparation; the normal bot needs all three, which is the default.
-An already current database is a no-op without another backup or snapshot write.
+The inspected operational schema is baseline v1. Its business tables, indexes,
+constraints and existing rows are unchanged. An unversioned file in that exact
+known shape is registered in `schema_migrations(component,version,name,applied_at)`:
+store/settings/admin each start at `*-baseline-v1`. Fresh DDL and the inspected
+historical ALTER spelling are the two explicitly accepted store signatures.
+Settings/admin each have one signature. The ledger is separate from JSON content
+import's `admin_migrations`; there is no second version authority.
 
-For Docker Compose, keep the writers stopped while preparing the same volume:
+A current file is a no-op: no backup, journal reconfiguration or snapshot rewrite.
+Missing paths are simulated in memory for inspection; a real new file is created
+exclusively. `--component store`, `settings`, `admin` may select complete areas.
+Partial/older structures within an area are refused rather than repaired. Runtime
+requires the selected areas' complete recorded current history and metadata.
+
+For Docker Compose, keep writers stopped and use the same volume:
 
 ```sh
 docker compose stop
@@ -35,167 +40,84 @@ docker compose run --rm hina hina-prepare-db --yes --offline-confirmed
 docker compose up -d
 ```
 
-`--offline-confirmed` is the operator's assertion, not a process supervisor or a
-lock against an independent process starting later. The write phase rechecks the
-pre-backup database fingerprint under BEGIN IMMEDIATE and refuses changed input.
-Do not run a second bot against the same file.
+`--offline-confirmed` is an operator assertion, not a process supervisor. The
+preparer compares the pre-backup data fingerprint under BEGIN IMMEDIATE and
+rechecks the structures/history. A separate process must not restart as a writer.
 
-## Schema history and supported legacy data
+## Older unversioned databases: a separate offline command
 
-`schema_migrations(component,version,name,applied_at)` is one small history table.
-The initial ordered areas are store, settings and admin, each with baseline version
-1. A fixed preparation function per area is sufficient; there is no generic
-migration framework, ORM, Repository base class or independent repository connection.
-Future revisions must add ordered, explicit migrations rather than relabel old data.
-The existing `admin_migrations` table still records JSON content imports and is not
-used as schema history.
-
-Unversioned databases are inspected before adoption. Owned column definitions,
-primary/unique keys (including sort/collation), CHECK expressions, AUTOINCREMENT
-and required indexes are checked. Unknown/future history and a recorded version
-that disagrees with the real structures are rejected. An unrelated nonempty SQLite
-file is not stamped as Hina. Extra unrelated tables are preserved.
-
-Supported legacy shapes include the existing turns optional columns, memory_items
-without lifecycle/evidence/name fields, the known pre-retraction CHECK, legacy
-memory history/proposal tables without their current CHECK/unique constraints,
-legacy personal summaries, chatlog conversion markers, and the legacy RAG key.
-Personal summaries need only their four cursor columns; historical `name/text/exportable`
-columns are optional because conversion never reads them. The complete pre-upgrade
-table remains in the verified backup. See the [schema audit](db-schema-audit.md).
-Unknown columns, constraints or dependencies that a rebuild would discard cause
-an error. Arbitrary damaged/partial schemas are not repaired automatically.
-When a legacy memory table needs rebuilding, incoming foreign keys and custom
-views/triggers are rejected before mutation. Even unrelated custom views/triggers
-require manual review; the preparer does not parse arbitrary SQL dependencies.
-The compatibility fixtures exercise these paths on actual files.
-
-Known memory table rebuilds copy complete rows and restore sqlite_sequence high
-marks, including deleted highest IDs. Provenance JSON, revision/history, proposals,
-manual settings and cursor meanings are retained. Existing structured cursors win
-when legacy summaries are converted; the old summary table is removed according to
-the existing migration contract, with its complete original available in the backup.
-Malformed legacy data that violates the supported target constraints aborts and
-rolls back; it is never quietly dropped to complete an upgrade.
-
-Reset epoch audit schema variants remain owned by the existing reset/epoch CLI.
-Ordinary opening or bot startup does not drop old epoch counters. Epoch DDL still
-joins the reset caller's transaction and does not commit independently.
-
-## Transactions and backup/restore
-
-The write phase owns one transaction covering selected schema changes, existing
-legacy data transformations and their history records. Initializers execute
-individual statements and never use executescript or make inner commits.
-Failure, including interruption, rolls back the complete preparation transaction.
-Journal mode configuration runs after that commit; failure there is reported as
-committed schema with unsuccessful WAL configuration, not a successful rollback.
-
-Schema preparation backups support inspected admin-only/legacy schemas without
-first adding runtime tables. They use SQLite backup, integrity_check and a streamed
-schema/row/sequence fingerprint comparison, followed by a file SHA-256. The source
-connection is read-only; verification/source/destination connections close explicitly.
-Existing reset/flush backups retain their stricter runtime-table requirements.
-Backups remain private, non-overwriting files (0600) in a separate directory (0700).
-Fingerprinting performs full reads; its cost depends on actual database size.
-
-Before deployment, verify the printed backup path/hash. To recover, stop all writers,
-preserve the failed/new database, and restore a verified full snapshot into a separate
-location first. Check integrity, schema, original rows, ID high marks, provenance,
-revisions, cursors and settings. Avoid mixing a restored database with stale WAL/SHM
-files. The automated recovery test performs a real SQLite backup restore into a
-second file and verifies/reopens it; a hash comparison alone is not a restore rehearsal.
-
-A source rollback to pre-#397 code is not treated as a schema downgrade. The old code
-may reopen the current data because business table formats remain compatible, but
-it will run its old constructor migrations and snapshot writes again. Use a verified
-backup restore if an actual schema downgrade/recovery is required. No automatic
-reverse migration or production DB execution is included in this change.
-
-## Schema code ownership
-
-`core/db_ddl.py` contains the unchanged target SQL for the fixed store/settings/admin
-areas and their baseline ledger. `core/db_schema.py` owns inspection and the known
-legacy upgrades, including Store column additions and chatlog/RAG conversion.
-There is no migration plugin registry or general schema DSL. Store indexes are
-installed once after any table rebuilds, within the same preparation transaction.
-The [final structural review](db-final-review.md) records consolidation, retained
-safety checks, comparison results and verification limits.
-
-## Connection and object ownership
-
-- `open_readonly(path)` uses an encoded SQLite URI with mode=ro/query_only; it never
-  creates the target database, changes journal mode, checkpoints, or initializes schemas.
-- `open_existing(path)` uses mode=rw and cannot recreate a missing file after a path
-  check. Callers own and close the returned connection.
-- `Store.open_existing(path)` validates the store/settings areas and sets the existing
-  writer WAL/secure_delete options. `AdminDatabase.open_existing(path)` validates the
-  admin area and retains a separate writer connection; readonly=True omits writer
-  PRAGMAs. Neither upgrades schemas or writes a startup snapshot.
-- `Store.create(':memory:')` / `AdminDatabase.create(':memory:')` explicitly prepare
-  isolated databases. With a file path these factories create only a new file or
-  open an already prepared one; existing legacy files must use the backed-up CLI.
-- `AdminDatabase.copy_to_memory(source=None)` owns an isolated evaluation/import
-  validation database. An optional source is read-only; only the disposable copy
-  is prepared. Callers close the returned owner. The JSON import CLI lives in
-  `tooling/runtime_migration.py`; its command remains `hina-migrate-runtime`.
-- `Store(connection)` / `AdminDatabase(connection)` transfer ownership of an already
-  prepared sqlite3 connection and perform no SQL. Old path constructor calls fail
-  early with a direction to use create/open_existing.
-- Repositories and Registries borrow their owning database. Domain write boundaries,
-  AdminDatabase's nested import transaction, and Store.atomic_memory_batch's source/
-  cursor checks and no-inner-commit guarantee remain unchanged.
-- An LLM optionally receives an explicitly prepared admin_db and takes its lifetime
-  ownership. With no database supplied, Registry(None) has its existing empty-read/
-  disabled-write behavior. It never opens settings.db_path implicitly.
-
-## Actual runtime start and snapshots
-
-`discord/runtime_entry.py` opens prepared Store/admin connections, loads settings,
-constructs the provider/LLM/bot, then explicitly captures the base startup settings
-before the actual run. Failed initialization closes the resources already opened;
-snapshot insertion failure preserves the previous complete snapshot and prevents run.
-
-RuntimeSettings construction/reload reads overrides only. Snapshot values are still
-the startup environment/base values, not effective DB overrides. Only a deliberate
-bot start captures them; reconnects, CLI inspection, maintenance flush, JSON import
-and evaluation do not replace them. Configuration inheritance, validation, caches,
-Discord buffer invalidation and standalone settings commits retain their contracts.
-The #398 [reliability changes](db-reliability.md) add atomic unified chatlog writes
-and guarded shared-summary commits on the same prepared connections.
-
-## Maintenance, JSON import and evaluation
-
-All maintenance plans use read-only target connections. Actual reset/epoch execution
-retains its original backups, write lock, revalidation, atomic DDL/deletion sets and
-post-commit checkpoint. reset_analysis_data still commits DB changes before deleting
-log files and does not acquire an automatic backup as part of this refactor.
-
-Flush requires a prepared store/settings schema. It keeps the pre-extraction backup
-and existing batch-level extraction commits, but no longer migrates schema or
-captures runtime_config_startup. If preparation is needed, run the explicit CLI
-before flush; do not broaden extraction or retention as part of upgrading.
-
-The legacy JSON import command retains its payload validation, duplicate/replace
-rules and joint Registry rows/content-marker transaction. Dry-run copies an existing
-source via a read-only connection into memory and runs the real Registry validators
-there; a missing target is simulated in memory. The target file/directory/schema/
-startup snapshot remains untouched. Real import requires stopped writers:
+Normal preparation refuses old columns/constraints, old personal summaries and
+unconverted chatlog/RAG data. Only the independently invoked converter loads their
+structure analysis and transformation code:
 
 ```sh
-uv run hina-migrate-runtime --dry-run
-uv run hina-migrate-runtime --offline-confirmed
+uv run hina-upgrade-legacy-db --database /path/to/offline-copy.sqlite3 --dry-run
+uv run hina-upgrade-legacy-db --database /path/to/offline-copy.sqlite3 --yes --offline-confirmed
 ```
 
-Real import takes a verified backup of an existing target, explicitly prepares the
-admin area if needed, then revalidates and imports. Schema preparation and content
-import are separate commits; a failed content import does not pretend to undo a
-previously committed schema preparation. Source JSON files are still not deleted.
+The path must already exist; the converter has no environment-derived default.
+It first inspects read-only, then verifies a private full backup before writing.
+Unknown columns/constraints/indexes, custom views/triggers and incoming foreign
+keys that could be broken by a known table rebuild require manual review. It is
+not a repair tool for arbitrary or corrupt databases.
 
-Evaluation uses isolated in-memory admin data as well as an isolated conversation
-Store. `hina-eval --admin-database PATH` supplies an optional read-only source copied
-into the evaluation memory DB; explicitly configured DATABASE_PATH can also serve
-as this source. It never upgrades or writes the source. The prompt-injection script
-supplies an explicit isolated admin DB too. Evaluations that do not construct an LLM
-are not forced through database initialization. No live provider requests are needed
-for the initialization/cleanup contract tests.
+Supported fixtures retain the known turns optional columns, memory lifecycle/
+evidence/history/proposal upgrades, old personal-summary cursors and chatlog/RAG
+conversion. Existing structured cursors win. The old personal summary is removed
+by its existing conversion contract; its complete original remains in the backup.
+The converter canonicalizes known table/index SQL to the fixed v1 spelling so
+runtime does not need every historical DDL spelling. It preserves every copied
+column value, ID, revision, provenance, timestamp and AUTOINCREMENT high-water,
+including deleted highest IDs. Unsafe dependencies are refused before mutation.
+All conversion/DDL/history writes share one transaction; SQL/commit failure rolls
+back the complete operation. A registered current file is a no-op.
+
+## Ownership, startup and evaluation
+
+- `core/db_ddl.py`: unchanged business DDL plus fixed v1 ownership/signatures.
+- `core/db_schema.py`: current history/metadata validation and fresh creation only.
+  Exact sqlite_master metadata includes attached unexpected indexes/triggers.
+  No SQL normalization changes literal/constraint meaning; an unknown spelling is
+  refused conservatively, even if it might be semantically equivalent.
+- `tooling/db_migrations.py`: explicit baseline and ordered next-version steps;
+  `tooling/prepare_database.py` owns file backup/connection/journal operations.
+- `tooling/legacy_database.py`: old format analysis/conversion. Runtime and normal
+  preparation never import this module. See [baseline review](db-baseline-v1.md).
+- `open_readonly` never creates/migrates/configures writer PRAGMAs. `open_existing`
+  cannot recreate a missing file; callers close owned connections.
+- Store/AdminDatabase constructors bind prepared connections. Their open_existing
+  factories validate the current schema; their create factories create only new
+  areas with current DDL. They do not upgrade an existing file.
+- AdminDatabase.copy_to_memory validates an existing source's current admin schema
+  before a readonly copy, then revalidates the copied snapshot. It initializes only
+  a new isolated memory DB. Prepare an older source offline before evaluation.
+- RuntimeSettings construction/reload reads overrides only. Actual runtime_entry
+  constructs Store/admin/provider/LLM/bot, then captures the base startup snapshot.
+  Failed initialization closes resources; failed snapshot preserves the old one.
+
+The JSON import command remains `hina-migrate-runtime`; source JSON validation,
+registry transactions, backup, dry-run isolation and content markers are separate
+from schema preparation. JSON dry-run explicitly prepares a missing/current admin
+area on its disposable copy, matching real import without touching the source.
+Legacy admin structures still require the separate converter.
+Flush/reset/epoch/analysis maintenance retain their own
+backup and commit contracts. Ordinary opening does not change audit epoch schemas.
+
+## Backup, restore and later versions
+
+Schema backups use SQLite backup (including committed WAL), integrity_check,
+streamed schema/all-row/sequence fingerprints and file SHA-256 verification.
+Backup directories/files remain 0700/0600 and non-overwriting. Full data reads are
+offline operations; runtime validates schema metadata only.
+
+To recover, stop writers and restore a verified snapshot to a separate file first.
+Check integrity, all rows, ID high marks, revisions, sources, cursors and settings.
+Do not mix restored files with stale WAL/SHM. Rehearsals perform a real restore,
+not only a checksum comparison. A missing WAL in a supplied snapshot cannot prove
+that the original server had no uncheckpointed commit when it was copied.
+
+Future changes must append named v1→v2 steps and immutable version signatures;
+see the concrete extension procedure in [db-baseline-v1.md](db-baseline-v1.md).
+No v2 feature, retention/reset/search change, schema downgrade or production apply
+is included here. Old code may run constructor migrations/pruning and is not a
+safe schema rollback; use the verified recovery procedure with writers stopped.

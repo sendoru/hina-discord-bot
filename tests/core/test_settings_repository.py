@@ -5,11 +5,11 @@ import sqlite3
 import pytest
 
 from hina_bot.core.config import Settings
-from hina_bot.core.db_schema import prepare_connection
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.scope_overrides import CHATLOG_CAPTURE_NOTE_PREFIX
 from hina_bot.core.settings_repository import SettingsRepository
 from hina_bot.core.store import Store
+from hina_bot.tooling.legacy_database import prepare_connection
 
 
 @pytest.fixture
@@ -47,11 +47,12 @@ def test_chatlog_migration_marker_failure_rolls_back_all_converted_rows(store):
     before_notes = [tuple(row) for row in store.db.execute("SELECT * FROM notes ORDER BY scope")]
     before_modes = store.chat_log_mode_overrides()
     store.db.execute(
-        """CREATE TRIGGER reject_chatlog_marker BEFORE INSERT ON notes
+        """CREATE TEMP TRIGGER reject_chatlog_marker BEFORE INSERT ON notes
            WHEN NEW.scope='config:chatlog_unified_v1'
            BEGIN SELECT RAISE(ABORT, 'marker failure'); END"""
     )
 
+    store.db.execute("DROP TABLE schema_migrations")
     with pytest.raises(sqlite3.IntegrityError, match="marker failure"):
         prepare_connection(store.db, ('store',))
 
@@ -87,11 +88,12 @@ def test_legacy_rag_delete_failure_rolls_back_new_key(store):
             ('"active"',),
         )
     store.db.execute(
-        """CREATE TRIGGER reject_legacy_delete BEFORE DELETE ON runtime_config
+        """CREATE TEMP TRIGGER reject_legacy_delete BEFORE DELETE ON runtime_config
            WHEN OLD.key='retrieval_v2_mode'
            BEGIN SELECT RAISE(ABORT, 'legacy failure'); END"""
     )
 
+    store.db.execute("DROP TABLE schema_migrations")
     with pytest.raises(sqlite3.IntegrityError, match="legacy failure"):
         prepare_connection(store.db, ('settings',))
 

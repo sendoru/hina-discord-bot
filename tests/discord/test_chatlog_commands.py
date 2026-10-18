@@ -10,6 +10,7 @@ from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.discord.chatlog_capture import set_capture_mode_override
 from hina_bot.discord.chatlog_commands import ChatLogCommands, _set_mode_override
+from hina_bot.tooling.legacy_database import convert_database
 from hina_bot.tooling.prepare_database import prepare_database
 
 
@@ -159,8 +160,7 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         store.close()
 
     def test_legacy_mode_and_capture_settings_are_migrated_to_one_policy(self):
-        # Simulate a pre-migration database, then reopen without constructing
-        # ChatLogCommands. The migration must run as part of Store initialization.
+        # Only the explicit offline converter may transform an old unversioned DB.
         with tempfile.TemporaryDirectory() as tempdir:
             path = str(Path(tempdir) / "legacy.sqlite3")
             prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
@@ -169,9 +169,10 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
             set_capture_mode_override(store, "global", "direct")
             store.set_chat_log_mode_override("guild:1", "off")
             store.set_note("config:chatlog_unified_v1", "")
+            store.db.execute("DROP TABLE schema_migrations")
             store.close()
 
-            prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+            convert_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
             store = Store.create(path)
             try:
                 self.assertEqual(store.note("config:chatlog_unified_v1"), "1")

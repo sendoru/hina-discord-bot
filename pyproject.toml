@@ -17,6 +17,7 @@ dashboard-test = ["playwright>=1.51,<2"]
 
 [project.scripts]
 hina-prepare-db = "hina_bot.tooling.prepare_database:main"
+hina-upgrade-legacy-db = "hina_bot.tooling.legacy_database:main"
 hina-bot = "hina_bot.discord.runtime_entry:main"
 hina-dashboard = "hina_bot.dashboard.app:main"
 hina-lore = "hina_bot.tooling.lore_cli:main"
