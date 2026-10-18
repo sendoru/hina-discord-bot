@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .db_connections import open_existing, open_readonly
-from .db_schema import prepare_connection, require_current
+from .db_schema import initialize_connection, require_current
 
 
 class AdminDatabase:
@@ -49,10 +49,13 @@ class AdminDatabase:
             if source:
                 original = open_readonly(source)
                 try:
+                    require_current(original, ("admin",))
                     original.backup(db)
+                    require_current(db, ("admin",))
                 finally:
                     original.close()
-            prepare_connection(db, ("admin",))
+            else:
+                initialize_connection(db, ("admin",))
             return cls(db)
         except BaseException:
             db.close()
@@ -75,7 +78,7 @@ class AdminDatabase:
         db = sqlite3.connect(path)
         db.row_factory = sqlite3.Row
         try:
-            prepare_connection(db, ('admin',))
+            initialize_connection(db, ('admin',))
             db.execute('PRAGMA journal_mode=WAL')
             return cls(db)
         except BaseException:

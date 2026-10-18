@@ -42,7 +42,7 @@ async def test_dispatch_preserves_commit_and_restart_contract(tmp_path, monkeypa
     monkeypatch.setattr(admin_commands, "execute_admin_command", execute)
     if outcome == "finish_error":
         store.db.execute(
-            """CREATE TRIGGER reject_finish BEFORE UPDATE ON admin_commands
+            """CREATE TEMP TRIGGER reject_finish BEFORE UPDATE ON admin_commands
                WHEN NEW.status='succeeded'
                BEGIN SELECT RAISE(ABORT, 'finish failure'); END"""
         )

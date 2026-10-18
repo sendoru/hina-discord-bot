@@ -3,7 +3,7 @@ import sqlite3
 from hina_bot.core.observability import CURRENT_TURN_ID
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.tooling.prepare_database import prepare_database
+from hina_bot.tooling.legacy_database import convert_database as prepare_database
 
 
 def test_store_migrates_turn_id_and_persists_current_trace(tmp_path):

@@ -12,7 +12,7 @@ from .admin_commands import (
 )
 from .conversation_repository import ConversationRepository
 from .db_connections import open_existing
-from .db_schema import prepare_connection, require_current
+from .db_schema import initialize_connection, require_current
 from .memory_items import (
     MemoryDisclosure,
     MemoryItem,
@@ -84,7 +84,7 @@ class Store:
         db = sqlite3.connect(path)
         db.row_factory = sqlite3.Row
         try:
-            prepare_connection(db, ('store', 'settings'))
+            initialize_connection(db, ('store', 'settings'))
             db.execute('PRAGMA journal_mode=WAL')
             db.execute('PRAGMA secure_delete=ON')
             return cls(db, history_turns)

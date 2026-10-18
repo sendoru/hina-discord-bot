@@ -17,6 +17,7 @@ from hina_bot.ai.memory_summary import MemorySummaryMixin
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, RelationshipEvidence
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.tooling.legacy_database import convert_database
 from hina_bot.tooling.prepare_database import prepare_database
 
 
@@ -378,9 +379,10 @@ def test_legacy_summary_cursor_is_migrated_then_table_dropped(tmp_path):
                 1,
             ),
         )
+    store.db.execute("DROP TABLE schema_migrations")
     store.close()
 
-    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+    convert_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
     migrated = Store.create(str(path), history_turns=12)
     try:
         assert migrated.memory_extraction_cursor(scope) == baseline

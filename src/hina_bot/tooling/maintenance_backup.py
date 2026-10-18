@@ -23,6 +23,15 @@ class BackupInfo:
     bytes: int
 
 
+def database_signature(db):
+    """Stream all schema/rows/sequences for verified offline backup checks."""
+    digest = hashlib.sha256()
+    for line in db.iterdump():
+        digest.update(line.encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
 def _counts(db: sqlite3.Connection) -> dict[str, int]:
     required = (
         "turns", "shared_calls", "shared_summaries", "memory_items",
@@ -45,8 +54,6 @@ def backup_sqlite(path: str | Path, *, backup_dir: str | Path | None = None) -> 
 
 def backup_schema_database(path: str | Path, *, backup_dir=None) -> BackupInfo:
     """Back up an inspected legacy/admin-only DB before any schema mutation."""
-    from hina_bot.core.db_schema import database_signature
-
     return _backup(path, backup_dir=backup_dir, state=database_signature)
 
 
