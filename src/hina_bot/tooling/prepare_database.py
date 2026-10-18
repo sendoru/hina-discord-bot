@@ -8,14 +8,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from hina_bot.core.db_connections import open_existing, open_readonly
-from hina_bot.core.db_schema import (
-    COMPONENTS,
-    database_signature,
-    inspect_connection,
-    prepare_connection,
-)
+from hina_bot.core.db_schema import COMPONENTS
 
-from .maintenance_backup import backup_schema_database
+from .db_migrations import inspect_connection, prepare_connection
+from .maintenance_backup import backup_schema_database, database_signature
 
 
 def prepare_database(

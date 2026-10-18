@@ -13,6 +13,8 @@ The follow-up [DB operation audit](db-operations-audit.md) records unused query/
 entrypoints, shared connection setup and the transaction/deletion paths retained.
 The [final #397–#398 review](db-final-review.md) consolidates schema ownership into
 `db_ddl.py` and `db_schema.py`; earlier schema filenames below are historical.
+The subsequent [fixed v1 baseline](db-baseline-v1.md) isolates old schema conversion
+in an explicit offline tool; runtime validates current versions/metadata only.
 
 ## Ownership
 

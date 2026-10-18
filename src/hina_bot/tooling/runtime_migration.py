@@ -1,17 +1,18 @@
 import argparse
 import json
 import os
+import sqlite3
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.db_connections import open_existing, open_readonly
-from hina_bot.core.db_schema import database_signature, prepare_connection
 from hina_bot.core.instructions import InstructionRegistry
 from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
-from .maintenance_backup import backup_schema_database
+from .db_migrations import prepare_connection
+from .maintenance_backup import backup_schema_database, database_signature
 
 MIGRATION_NAME = "legacy-json-admin-v1"
 
@@ -50,7 +51,24 @@ def migrate(args) -> dict[str, dict[str, int]]:
         raise ValueError('Stop all database writers and pass --offline-confirmed')
     # All dry-run validation uses a disposable clone and the real registries.
     if args.dry_run:
-        database = AdminDatabase.copy_to_memory(path if path.exists() else None)
+        if path.exists():
+            db = sqlite3.connect(":memory:")
+            db.row_factory = sqlite3.Row
+            try:
+                original = open_readonly(path)
+                try:
+                    original.backup(db)
+                finally:
+                    original.close()
+                # Offline import may create/register a missing current admin area
+                # on its disposable copy, just as real import does on its target.
+                prepare_connection(db, ('admin',))
+                database = AdminDatabase(db)
+            except BaseException:
+                db.close()
+                raise
+        else:
+            database = AdminDatabase.copy_to_memory()
     else:
         expected = None
         if path.exists():

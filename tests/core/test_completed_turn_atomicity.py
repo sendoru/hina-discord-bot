@@ -5,11 +5,11 @@ import sqlite3
 
 import pytest
 
-from hina_bot.core.db_schema import inspect_connection
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_CONTEXT
 from hina_bot.core.observability import CURRENT_TURN_ID
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.tooling.db_migrations import inspect_connection
 
 
 @pytest.fixture

@@ -7,7 +7,7 @@ from hina_bot.core.memory_context import (
 )
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.tooling.prepare_database import prepare_database
+from hina_bot.tooling.legacy_database import convert_database as prepare_database
 
 
 def test_memory_context_keeps_only_strong_causal_rows_with_bounded_ownership():

@@ -25,8 +25,16 @@ def test_runtime_startup_capture_and_cleanup(tmp_path, monkeypatch, failure):
         Settings(discord_token="old", model="previous"), store
     ).capture_startup_snapshot()
     if failure == "snapshot":
-        store.db.execute("""CREATE TRIGGER reject_snapshot BEFORE INSERT ON runtime_config_startup
-                            BEGIN SELECT RAISE(ABORT, 'snapshot failed'); END""")
+        real_open = Store.open_existing
+
+        def inject_snapshot_failure(cls, *args, **kwargs):
+            opened = real_open(*args, **kwargs)
+            opened.db.execute("""CREATE TEMP TRIGGER reject_snapshot
+                BEFORE INSERT ON runtime_config_startup
+                BEGIN SELECT RAISE(ABORT, 'snapshot failed'); END""")
+            return opened
+
+        monkeypatch.setattr(Store, "open_existing", classmethod(inject_snapshot_failure))
     store.close()
     settings = Settings(discord_token="test", db_path=str(path), model="new-base")
     monkeypatch.setattr(Settings, "load", classmethod(lambda cls: settings))

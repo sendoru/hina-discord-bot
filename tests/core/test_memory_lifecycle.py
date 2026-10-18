@@ -3,7 +3,7 @@ import sqlite3
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, MemoryStatus
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.tooling.prepare_database import prepare_database
+from hina_bot.tooling.legacy_database import convert_database as prepare_database
 
 
 def _pair(
