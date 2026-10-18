@@ -48,7 +48,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
     "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
-    "output_repair_mode": "최종 답변에 형식 오류가 의심될 때 소형 모델로 최소 교정합니다. off: 사용 안 함, shadow: 비동기 비교만, active: 통과한 교정만 적용합니다.",
+    "output_repair_mode": "최종 답변에 형식 오류가 의심될 때 소형 모델로 최소 교정합니다. off: 사용 안 함, shadow: 비동기 비교만, active: 정상 완료된 비어 있지 않은 교정 결과를 적용합니다.",
     "output_repair_model": "교정에 사용할 모델입니다. auto는 현재 fast_model을 사용합니다. 기본 채팅 provider와 API 키를 공유합니다.",
     "fast_model": "adaptive routing의 fast tier에서 사용할 모델 이름입니다.",
     "smart_model": "adaptive routing의 smart tier에서 사용할 모델 이름입니다.",
