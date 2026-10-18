@@ -7,7 +7,6 @@ replace a successfully generated original answer.
 from __future__ import annotations
 
 import asyncio
-import difflib
 import logging
 import re
 from time import perf_counter
@@ -38,23 +37,6 @@ _MAX_SHADOW_TASKS = 2
 def needs_output_repair(text: str) -> bool:
     # Ignore fenced/inline code for the inexpensive preflight decision.
     return bool(_SUSPECT_FORMAT.search(_CODE.sub("", text)))
-
-
-def _acceptable(original: str, candidate: str) -> bool:
-    """Reject empty or substantial rewrites; accept only local formatting edits."""
-    if not candidate or candidate == original:
-        return candidate == original
-    if len(candidate) > len(original) + 32:
-        return False
-    # Tiny replies can be mostly a spurious citation. Allow exact deletion
-    # of suspicious markers or literal newline decoding even at low ratio.
-    if candidate == _SUSPECT_FORMAT.sub("", original).strip():
-        return True
-    if candidate == original.replace("\\n", "\n").replace("\\r", "\r"):
-        return True
-    if len(candidate) < max(1, len(original) // 2):
-        return False
-    return difflib.SequenceMatcher(None, original, candidate).ratio() >= 0.82
 
 
 class OutputRepair:
@@ -105,8 +87,8 @@ class OutputRepair:
                 status = "non_completed"
                 return original
             candidate = response_text(response)
-            if not _acceptable(original, candidate):
-                status = "rejected"
+            if not candidate:
+                status = "empty"
                 return original
             status = "changed" if candidate != original else "unchanged"
             return candidate
