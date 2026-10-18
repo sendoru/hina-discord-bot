@@ -57,6 +57,24 @@ The dashboard currently exposes the following read-only routes:
 The HTML surface is intentionally desktop-oriented and server-rendered. It uses no client-side
 application state and does not add new content telemetry.
 
+## Required database schema
+
+Startup validates the complete recorded current `store`, `settings`, and `admin`
+schema through the shared read-only validator, before creating the app or command
+writer. Unprepared, older, incomplete, future-version, or drifted business schemas
+are refused instead of returning partial results or hiding memory controls.
+Dashboard never creates a missing database, registers a baseline, or runs migrations.
+
+For an unversioned current schema, inspect with `hina-prepare-db --dry-run` and
+follow the [offline preparation procedure](db-initialization.md). Older schemas
+require the separate `hina-upgrade-legacy-db` offline command. These commands keep
+their existing responsibilities; stop all writers and use their backup procedure.
+The validator checks metadata and migration history, not application row contents.
+
+Current business tables/columns are queried directly. Optional maintenance/audit
+metadata such as `observability_epochs` still works when absent and is read when
+present. Empty cursor rows and missing source messages remain valid data states.
+
 ## Read/write boundary
 
 `AdminRepository` still opens SQLite with `mode=ro` and `PRAGMA query_only=ON`. It never constructs
@@ -324,8 +342,8 @@ not as missing provenance.
 Structured memory has `active`, `superseded`, and `retracted` lifecycle states plus an optional
 `superseded_by` link. Normal bot retrieval uses active rows only, while the dashboard intentionally
 queries the full table so operators can inspect superseded/retracted history and follow replacement links.
-The repository still detects these columns dynamically so older/pre-migration read-only database copies
-remain viewable without dashboard-side schema writes.
+These columns are required by the current schema and queried directly. Older database copies
+must be upgraded offline before Dashboard startup; inspection never changes their schema.
 
 When dashboard write mode is enabled, an active memory detail page can revise only the semantic fields
 `content`, `kind`, `disclosure`, `confidence`, and `relationship_evidence`. The dashboard

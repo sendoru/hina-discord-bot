@@ -14,7 +14,7 @@
   </div>
   <div class="window">
     <strong>Schema</strong>
-    <span>{{ "lifecycle-enabled" if data.schema.has_lifecycle else "pre-lifecycle" }}</span>
+    <span>lifecycle-enabled</span>
   </div>
 </section>
 
@@ -54,9 +54,7 @@
           <option value="{{ value }}" {% if data.filters.disclosure == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
         </select></div>
-        {% if data.schema.has_lifecycle %}
         <div class="filter-field"><label for="filter-memory-status">Status</label><input id="filter-memory-status" name="status" value="{{ data.filters.status }}" placeholder="lifecycle status"></div>
-        {% endif %}
         <div class="filter-field"><label for="filter-memory-relationship">Relationship</label><select id="filter-memory-relationship" name="relationship">
           <option value="">relationship: any</option>
           <option value="yes" {% if data.filters.relationship == "yes" %}selected{% endif %}>relationship only</option>
@@ -95,7 +93,7 @@
   {{ active_filter_chips(request, "/memory", data) }}
 </form>
 
-{% set bulk_enabled = dashboard_write_enabled and data.schema.has_lifecycle and data.schema.has_revision %}
+{% set bulk_enabled = dashboard_write_enabled %}
 {% if bulk_enabled %}
 <section class="panel" data-memory-bulk>
   <form action="/memory/bulk-status" method="post" data-memory-bulk-form>
@@ -125,7 +123,7 @@
           {% if bulk_enabled %}<th class="memory-selection-column">선택</th>{% endif %}
           <th class="memory-id-column">ID</th><th class="memory-user-column">User</th><th>Kind</th><th>Disclosure</th><th class="memory-origin-column">Origin</th>
           <th>Confidence</th><th>Sources</th><th>Relationship</th>
-          {% if data.schema.has_lifecycle %}<th>Status</th>{% endif %}
+          <th>Status</th>
           <th class="memory-updated-column">Updated</th>
         </tr>
       </thead>
@@ -141,13 +139,13 @@
           <td class="numeric">{{ "%.2f"|format(row.confidence) }}</td>
           <td class="numeric">{{ row.source_message_ids_decoded|length }}</td>
           <td>{{ "yes" if row.has_relationship_evidence else "—" }}</td>
-          {% if data.schema.has_lifecycle %}<td>{{ status_badge(row.status) }}</td>{% endif %}
+          <td>{{ status_badge(row.status) }}</td>
           <td>{{ row.updated_at | localtime }}</td>
         </tr>
         <tr class="content-row">
           {% if bulk_enabled %}<td></td>{% endif %}
           <td></td>
-          <td colspan="{{ 9 if data.schema.has_lifecycle else 8 }}">
+          <td colspan="9">
             <div class="memory-preview">{{ row.content }}</div>
             {% if row.search_matches %}
             <div class="search-matches compact-search-matches">

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from hina_bot.core.admin_commands import AdminCommand
 from hina_bot.core.config import Settings
+from hina_bot.core.db_schema import initialize_connection
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
 from hina_bot.dashboard.app import create_app
@@ -59,6 +60,7 @@ async def test_runtime_admin_command_uses_runtime_settings_and_side_effects():
 def test_runtime_dashboard_post_only_enqueues_command(tmp_path):
     database = tmp_path / "hina.sqlite3"
     store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
     RuntimeSettings(Settings(discord_token="test"), store)
     store.close()
     settings = DashboardSettings(
@@ -100,6 +102,7 @@ def test_runtime_dashboard_post_only_enqueues_command(tmp_path):
 def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     database = tmp_path / "hina.sqlite3"
     store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
     settings = RuntimeSettings(
         Settings(
             discord_token="test",
@@ -189,6 +192,7 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
 def test_runtime_collection_dashboard_posts_full_desired_value(tmp_path):
     database = tmp_path / "hina.sqlite3"
     store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
     RuntimeSettings(
         Settings(
             discord_token="test",

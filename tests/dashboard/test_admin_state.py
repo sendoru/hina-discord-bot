@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hina_bot.core.admin_commands import AdminCommand
+from hina_bot.core.db_schema import initialize_connection
 from hina_bot.core.recent import RecentMessages
 from hina_bot.core.store import Store
 from hina_bot.dashboard.app import create_app
@@ -76,7 +77,9 @@ async def test_state_admin_commands_reuse_store_and_recent_side_effects():
 
 def test_state_admin_post_requires_purge_confirmation_and_enqueues(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    Store.create(str(database)).close()
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
+    store.close()
     settings = DashboardSettings(
         database_path=str(database),
         usage_log_path=str(tmp_path / "usage.jsonl"),

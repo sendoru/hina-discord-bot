@@ -12,6 +12,8 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from hina_bot.core.db_schema import SchemaError
+
 from .admin_write import AdminCommandWriter
 from .config import DashboardSettings
 from .filterutils import applied_filters, remove_filter_url
@@ -148,7 +150,7 @@ def main() -> None:
     try:
         settings = DashboardSettings.load()
         app = create_app(settings)
-    except (FileNotFoundError, ValueError) as exc:
+    except (FileNotFoundError, ValueError, SchemaError) as exc:
         raise SystemExit(str(exc)) from None
     uvicorn.run(app, host=settings.host, port=settings.port)
 

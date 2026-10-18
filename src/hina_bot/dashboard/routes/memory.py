@@ -119,8 +119,8 @@ def build_router(
             if item is None:
                 result["error"] = "Memory item not found"
                 continue
-            if item.get("status") != "active" or "revision" not in item:
-                result["error"] = "only active memory items with revisions can be retracted"
+            if item["status"] != "active":
+                result["error"] = "only active memory items can be retracted"
                 continue
             if item["revision"] != revision:
                 result["error"] = "memory item changed; reload before retracting"
@@ -177,7 +177,7 @@ def build_router(
         if data is None:
             raise HTTPException(status_code=404, detail="Memory item not found")
         item = data["item"]
-        if str(item.get("status") or "active") != "active":
+        if item["status"] != "active":
             raise HTTPException(status_code=409, detail="only active memory items can be edited")
 
         try:
@@ -186,7 +186,7 @@ def build_router(
             raise HTTPException(status_code=422, detail="invalid memory revision") from exc
         if expected_revision < 0:
             raise HTTPException(status_code=422, detail="invalid memory revision")
-        if int(item.get("revision") or 0) != expected_revision:
+        if item["revision"] != expected_revision:
             raise HTTPException(
                 status_code=409, detail="memory item changed; reload before editing"
             )
@@ -248,7 +248,7 @@ def build_router(
         if data is None:
             raise HTTPException(status_code=404, detail="Memory item not found")
         item = data["item"]
-        if str(item.get("status") or "active") != "active":
+        if item["status"] != "active":
             raise HTTPException(status_code=409, detail="only active memory items can be retracted")
 
         try:
@@ -257,7 +257,7 @@ def build_router(
             raise HTTPException(status_code=422, detail="invalid memory revision") from exc
         if expected_revision < 0:
             raise HTTPException(status_code=422, detail="invalid memory revision")
-        if int(item.get("revision") or 0) != expected_revision:
+        if item["revision"] != expected_revision:
             raise HTTPException(
                 status_code=409, detail="memory item changed; reload before retracting"
             )
