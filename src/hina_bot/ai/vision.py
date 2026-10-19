@@ -20,14 +20,18 @@ HINA_VISUAL_REFERENCE_LABEL = (
     "사용자 이미지의 인물을 판별할 때 외형 비교 자료로만 사용하세요."
 )
 _MAX_HINA_REFERENCE_BYTES = 5 * 1024 * 1024
+_MAX_HINA_REFERENCE_TOTAL_BYTES = 12 * 1024 * 1024
+_MAX_HINA_REFERENCE_IMAGES = 4
+_HINA_REFERENCE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 
 
-def _load_hina_reference_image(path: str) -> str | None:
-    """Read an operator-provided reference image once at startup."""
-    if not path:
-        return None
+def _load_hina_reference_image(path: Path) -> tuple[str, int] | None:
+    """Read a validated operator-provided image at startup."""
     try:
-        image = Path(path).read_bytes()
+        if path.stat().st_size > _MAX_HINA_REFERENCE_BYTES:
+            log.warning("Hina visual reference ignored (over 5 MiB)")
+            return None
+        image = path.read_bytes()
     except OSError as exc:
         log.warning("Hina visual reference unavailable (%s)", type(exc).__name__)
         return None
@@ -46,8 +50,46 @@ def _load_hina_reference_image(path: str) -> str | None:
         return None
 
     encoded = base64.b64encode(image).decode("ascii")
-    log.info("Hina visual reference ready (%s)", mime_type)
-    return f"data:{mime_type};base64,{encoded}"
+    return f"data:{mime_type};base64,{encoded}", len(image)
+
+
+def _load_hina_reference_images(path: str) -> tuple[str, ...]:
+    """Accept one image or a directory, with stable ordering and size limits."""
+    if not path:
+        return ()
+    source = Path(path)
+    try:
+        if source.is_dir():
+            candidates = sorted(
+                (
+                    item for item in source.iterdir()
+                    if item.is_file() and item.suffix.lower() in _HINA_REFERENCE_SUFFIXES
+                ),
+                key=lambda item: (item.name.casefold(), item.name),
+            )
+        else:
+            candidates = [source]
+    except OSError as exc:
+        log.warning("Hina visual reference directory unavailable (%s)", type(exc).__name__)
+        return ()
+
+    images: list[str] = []
+    used_bytes = 0
+    for candidate in candidates:
+        if len(images) >= _MAX_HINA_REFERENCE_IMAGES:
+            break
+        loaded = _load_hina_reference_image(candidate)
+        if loaded is None:
+            continue
+        image_url, image_bytes = loaded
+        if used_bytes + image_bytes > _MAX_HINA_REFERENCE_TOTAL_BYTES:
+            log.warning("Hina visual reference ignored (total exceeds 12 MiB)")
+            continue
+        images.append(image_url)
+        used_bytes += image_bytes
+    if images:
+        log.info("Hina visual references ready (count=%d)", len(images))
+    return tuple(images)
 
 
 @dataclass(frozen=True)
@@ -202,7 +244,7 @@ def _content_blocks(original) -> list[dict]:
 
 def _with_hina_visual_reference(
     input_value,
-    image_url: str,
+    image_urls: tuple[str, ...],
     *,
     include_media_resolution: bool,
 ):
@@ -221,14 +263,13 @@ def _with_hina_visual_reference(
 
     items = list(input_value)
     item = dict(items[index])
-    image = {"type": "input_image", "image_url": image_url, "detail": "auto"}
-    if include_media_resolution:
-        image["resolution"] = "medium"
-    item["content"] = [
-        {"type": "input_text", "text": HINA_VISUAL_REFERENCE_LABEL},
-        image,
-        *_content_blocks(item.get("content", "")),
-    ]
+    reference_blocks = [{"type": "input_text", "text": HINA_VISUAL_REFERENCE_LABEL}]
+    for image_url in image_urls:
+        image = {"type": "input_image", "image_url": image_url, "detail": "auto"}
+        if include_media_resolution:
+            image["resolution"] = "medium"
+        reference_blocks.append(image)
+    item["content"] = reference_blocks + _content_blocks(item.get("content", ""))
     items[index] = item
     return items
 
@@ -313,11 +354,12 @@ def _augment_input(
 
 class _VisionResponses:
     def __init__(
-        self, responses, *, provider_name: str, reference_image_url: str | None = None,
+        self, responses, *, provider_name: str,
+        reference_image_urls: tuple[str, ...] = (),
     ):
         self._responses = responses
         self._provider_name = provider_name
-        self._reference_image_url = reference_image_url
+        self._reference_image_urls = reference_image_urls
 
     async def create(self, **kwargs):
         visuals = CURRENT_VISUAL_INPUTS.get()
@@ -337,7 +379,7 @@ class _VisionResponses:
         # Passive recent images alone do not activate the fixed reference.
         if (
             self._provider_name == "gemini"
-            and self._reference_image_url
+            and self._reference_image_urls
             and any(
                 visual.context_kind == "current_message"
                 or visual.reference_strength in {"explicit_reply", "prior_explicit_reply"}
@@ -346,10 +388,13 @@ class _VisionResponses:
         ):
             request["input"] = _with_hina_visual_reference(
                 request["input"],
-                self._reference_image_url,
+                self._reference_image_urls,
                 include_media_resolution=include_media_resolution,
             )
-            log.info("vision.hina_visual_reference applied")
+            log.info(
+                "vision.hina_visual_reference applied (count=%d)",
+                len(self._reference_image_urls),
+            )
         request["instructions"] = (
             (request.get("instructions") or "").rstrip() + "\n\n" + VISION_INPUT_POLICY
         ).strip()
@@ -362,14 +407,14 @@ class VisionClient:
     def __init__(self, client, *, reference_image_path: str = ""):
         self._client = client
         self.provider_name = getattr(client, "provider_name", "openai")
-        reference_image_url = (
-            _load_hina_reference_image(reference_image_path)
-            if self.provider_name == "gemini" else None
+        reference_image_urls = (
+            _load_hina_reference_images(reference_image_path)
+            if self.provider_name == "gemini" else ()
         )
         self.responses = _VisionResponses(
             client.responses,
             provider_name=self.provider_name,
-            reference_image_url=reference_image_url,
+            reference_image_urls=reference_image_urls,
         )
 
     async def close(self):
