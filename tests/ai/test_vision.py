@@ -473,3 +473,124 @@ async def test_vision_reference_emoji_metadata_omits_id_without_touching_asset_u
     assert not reference[3]["text"].startswith("[")
     assert not reference[3]["text"].endswith("]")
     assert visual.message_content == "이거 " + raw_emoji
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("context_kind", "reference_strength", "expect_reference"),
+    [
+        ("current_message", "current_message", True),
+        ("replied_message", "explicit_reply", True),
+        ("reply_origin_source", "prior_explicit_reply", True),
+        ("recent_channel_message", "passive_recent", False),
+    ],
+)
+async def test_hina_reference_is_separate_from_discord_visuals(
+    tmp_path, context_kind, reference_strength, expect_reference,
+):
+    reference = tmp_path / "hina.webp"
+    reference.write_bytes(b"RIFF" + b"\\x00" * 4 + b"WEBP" + b"test")
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="gemini")
+    client = VisionClient(raw, reference_image_path=str(reference))
+    original_messages = [
+        {"role": "user", "content": "신뢰할 수 없는 참고 데이터(JSON):\\n{}"},
+        {"role": "user", "content": "이게 누구야?"},
+    ]
+    visual = VisualInput(
+        b"\\x89PNG\\r\\n\\x1a\\nother",
+        "image/png", "attachment", "other.png",
+        context_kind=context_kind, reference_strength=reference_strength,
+        message_id="123",
+    )
+    token = CURRENT_VISUAL_INPUTS.set((visual,))
+    active = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="gemini-3.5-flash-lite", instructions="existing",
+            input=original_messages,
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active)
+        CURRENT_VISUAL_INPUTS.reset(token)
+
+    messages = create.await_args.kwargs["input"]
+    assert len(messages) == 2  # Never invent a new Discord conversation turn.
+    assert original_messages[0]["content"].startswith("신뢰할 수 없는")
+    assert isinstance(original_messages[1]["content"], str)  # No in-place mutation.
+    first = messages[0]["content"]
+    if expect_reference:
+        assert "개발자가 제공한" in first[0]["text"]
+        assert first[1]["image_url"].startswith("data:image/webp;base64,")
+        assert first[1]["resolution"] == "medium"
+        assert sum(
+            block.get("type") == "input_image"
+            for message in messages
+            for block in (message["content"] if isinstance(message["content"], list) else [])
+        ) == 2
+        converted = _gemini_input(messages)
+        assert converted[0]["content"][1]["type"] == "image"
+        assert converted[0]["content"][1]["resolution"] == "medium"
+    else:
+        assert first[0]["text"].startswith("신뢰할 수 없는")
+        assert "개발자가 제공한" not in str(messages)
+        assert sum(
+            block.get("type") == "input_image"
+            for message in messages
+            for block in (message["content"] if isinstance(message["content"], list) else [])
+        ) == 1
+
+
+@pytest.mark.asyncio
+async def test_hina_reference_does_not_change_other_providers_or_inactive_requests(tmp_path):
+    reference = tmp_path / "hina.png"
+    reference.write_bytes(b"\\x89PNG\\r\\n\\x1a\\nref")
+    for provider, active_request in (
+        ("openai", True),
+        ("gemini", False),
+    ):
+        create = AsyncMock(return_value=NS(status="completed"))
+        client = VisionClient(
+            NS(responses=NS(create=create), provider_name=provider),
+            reference_image_path=str(reference),
+        )
+        token = CURRENT_VISUAL_INPUTS.set((
+            VisualInput(b"actual", "image/png", "attachment"),
+        ))
+        active = VISION_REQUEST_ACTIVE.set(active_request)
+        try:
+            await client.responses.create(
+                model="gemini-3.5-flash", instructions="existing",
+                input=[{"role": "user", "content": "질문"}],
+            )
+        finally:
+            VISION_REQUEST_ACTIVE.reset(active)
+            CURRENT_VISUAL_INPUTS.reset(token)
+        assert "개발자가 제공한" not in str(create.await_args.kwargs["input"])
+
+
+@pytest.mark.asyncio
+async def test_missing_or_invalid_hina_reference_falls_back_to_existing_vision(tmp_path):
+    for image_path in (tmp_path / "missing.png", tmp_path / "invalid.png"):
+        if image_path.name == "invalid.png":
+            image_path.write_bytes(b"not an image")
+        create = AsyncMock(return_value=NS(status="completed"))
+        client = VisionClient(
+            NS(responses=NS(create=create), provider_name="gemini"),
+            reference_image_path=str(image_path),
+        )
+        token = CURRENT_VISUAL_INPUTS.set((
+            VisualInput(b"real", "image/png", "attachment"),
+        ))
+        active = VISION_REQUEST_ACTIVE.set(True)
+        try:
+            await client.responses.create(
+                model="gemini-3.5-flash", instructions="existing",
+                input=[{"role": "user", "content": "이게 누구야?"}],
+            )
+        finally:
+            VISION_REQUEST_ACTIVE.reset(active)
+            CURRENT_VISUAL_INPUTS.reset(token)
+        content = create.await_args.kwargs["input"][0]["content"]
+        assert sum(item["type"] == "input_image" for item in content) == 1
+        assert "개발자가 제공한" not in str(content)
