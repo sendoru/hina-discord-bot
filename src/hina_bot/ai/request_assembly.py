@@ -15,6 +15,7 @@ from hina_bot.core.memory_context import (
 from hina_bot.core.relationship_grounding import RELATION_CONTEXT_POLICY
 
 from .context_provenance import build_context_provenance
+from .dialogue_context import project_dialogue_context
 from .discord_emoji_input import normalize_custom_emoji_text, normalized_message_context
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode
@@ -533,6 +534,15 @@ class RequestAssembler(BaseLLM):
                 else "not_planned"
             ),
         )
+        # Project the already-egress-approved rows into separate continuity and
+        # ambient evidence. Keep the original context for audit provenance and
+        # downstream retrieval; only the final answer payload uses this view.
+        provider_context, dialogue_projection = project_dialogue_context(context)
+        self.usage.routing_event(
+            "context.dialogue_projection",
+            status="completed",
+            **dialogue_projection,
+        )
         context_size_metrics = {
             "context_chars_total": _serialized_chars(context),
             "context_structured_memory_chars": _serialized_chars({
@@ -552,9 +562,10 @@ class RequestAssembler(BaseLLM):
             "context_public_chars": _serialized_chars(
                 context.get("public_server_context", [])
             ),
-            "context_channel_chars": _serialized_chars(
-                context.get("channel_recent_messages", [])
-            ),
+            "context_channel_chars": _serialized_chars({
+                key: provider_context.get(key, [])
+                for key in ("speaker_recent_messages", "channel_ambient_messages", "target_user_history")
+            }),
             "context_reply_chars": _serialized_chars(
                 context.get("active_reply_chain", [])
             ),
@@ -576,7 +587,7 @@ class RequestAssembler(BaseLLM):
 
         messages = [{
             "role": "user",
-            "content": reference_context_blocks(context),
+            "content": reference_context_blocks(provider_context),
         }, {
             "role": "user",
             "content": visible_content,
