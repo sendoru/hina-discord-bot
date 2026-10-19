@@ -92,3 +92,12 @@ def test_existing_speaker_thread_does_not_truncate_ambient_scene():
 
     assert len(provider["channel_ambient_messages"]) == len(ambient)
     assert trace["ambient_rows_input"] == trace["ambient_rows_sent"]
+
+
+def test_explicit_current_channel_scope_keeps_full_ambient_history():
+    ambient = [_row(i, "user", 100) for i in range(15)]
+    provider, trace = project_dialogue_context(
+        {"channel_recent_messages": ambient}, preserve_ambient=True,
+    )
+    assert len(provider["channel_ambient_messages"]) == 15
+    assert trace["ambient_rows_sent"] == 15
