@@ -46,8 +46,8 @@ reached the final provider request.
 A message from a user with **no** direct recent speaker thread **and** no
 explicit reply anchor gets at most eight most-recent ambient rows. This bounds
 a preceding conversation's influence without blanking out the scene; e.g., B
-can still react to A's conversation. If a direct same-speaker thread or an
-explicit reply is present, the prior context budget applies unchanged.
+can still react to A's conversation. If a direct same-speaker thread, an explicit reply, or a current-channel
+scope request is present, the prior context budget applies unchanged.
 
 ## Tone mitigation
 
