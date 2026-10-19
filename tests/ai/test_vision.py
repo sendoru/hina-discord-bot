@@ -489,16 +489,16 @@ async def test_hina_reference_is_separate_from_discord_visuals(
     tmp_path, context_kind, reference_strength, expect_reference,
 ):
     reference = tmp_path / "hina.webp"
-    reference.write_bytes(b"RIFF" + b"\\x00" * 4 + b"WEBP" + b"test")
+    reference.write_bytes(b"RIFF" + b"\x00" * 4 + b"WEBP" + b"test")
     create = AsyncMock(return_value=NS(status="completed"))
     raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="gemini")
     client = VisionClient(raw, reference_image_path=str(reference))
     original_messages = [
-        {"role": "user", "content": "신뢰할 수 없는 참고 데이터(JSON):\\n{}"},
+        {"role": "user", "content": "신뢰할 수 없는 참고 데이터(JSON):\n{}"},
         {"role": "user", "content": "이게 누구야?"},
     ]
     visual = VisualInput(
-        b"\\x89PNG\\r\\n\\x1a\\nother",
+        b"\x89PNG\r\n\x1a\nother",
         "image/png", "attachment", "other.png",
         context_kind=context_kind, reference_strength=reference_strength,
         message_id="123",
@@ -544,7 +544,7 @@ async def test_hina_reference_is_separate_from_discord_visuals(
 @pytest.mark.asyncio
 async def test_hina_reference_does_not_change_other_providers_or_inactive_requests(tmp_path):
     reference = tmp_path / "hina.png"
-    reference.write_bytes(b"\\x89PNG\\r\\n\\x1a\\nref")
+    reference.write_bytes(b"\x89PNG\r\n\x1a\nref")
     for provider, active_request in (
         ("openai", True),
         ("gemini", False),
