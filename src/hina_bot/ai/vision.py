@@ -3,9 +3,9 @@
 import base64
 import json
 import logging
-from pathlib import Path
 from contextvars import ContextVar
 from dataclasses import dataclass
+from pathlib import Path
 
 from .discord_emoji_input import normalize_custom_emoji_text
 from .prompts import load_prompt
