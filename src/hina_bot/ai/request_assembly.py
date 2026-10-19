@@ -537,7 +537,9 @@ class RequestAssembler(BaseLLM):
         # Project the already-egress-approved rows into separate continuity and
         # ambient evidence. Keep the original context for audit provenance and
         # downstream retrieval; only the final answer payload uses this view.
-        provider_context, dialogue_projection = project_dialogue_context(context)
+        provider_context, dialogue_projection = project_dialogue_context(
+            context, preserve_ambient=current_channel_only,
+        )
         self.usage.routing_event(
             "context.dialogue_projection",
             status="completed",
