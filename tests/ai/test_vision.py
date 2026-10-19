@@ -1,3 +1,4 @@
+import base64
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
@@ -11,6 +12,7 @@ from hina_bot.ai.vision import (
     VISION_REQUEST_ACTIVE,
     VisionClient,
     VisualInput,
+    _load_hina_reference_images,
 )
 
 
@@ -594,3 +596,92 @@ async def test_missing_or_invalid_hina_reference_falls_back_to_existing_vision(t
         content = create.await_args.kwargs["input"][0]["content"]
         assert sum(item["type"] == "input_image" for item in content) == 1
         assert "개발자가 제공한" not in str(content)
+
+
+@pytest.mark.asyncio
+async def test_hina_reference_directory_injects_multiple_images_in_filename_order(tmp_path):
+    reference_dir = tmp_path / "references"
+    reference_dir.mkdir()
+    png = b"\x89PNG\r\n\x1a\nsecond"
+    jpeg = b"\xff\xd8\xfffirst"
+    (reference_dir / "02-standard.PNG").write_bytes(png)
+    (reference_dir / "01-portrait.JpG").write_bytes(jpeg)
+    (reference_dir / "03-invalid.webp").write_bytes(b"not a webp")
+    (reference_dir / "ignore.txt").write_bytes(jpeg)
+
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="gemini")
+    client = VisionClient(raw, reference_image_path=str(reference_dir))
+    original_messages = [
+        {"role": "user", "content": "신뢰할 수 없는 참고 데이터(JSON):\n{}"},
+        {"role": "user", "content": "이건 누구야?"},
+    ]
+    token = CURRENT_VISUAL_INPUTS.set((
+        VisualInput(png, "image/png", "attachment", "target.png"),
+    ))
+    active = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="gemini-3.5-flash-lite",
+            instructions="existing policy",
+            input=original_messages,
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active)
+        CURRENT_VISUAL_INPUTS.reset(token)
+
+    messages = create.await_args.kwargs["input"]
+    assert len(messages) == 2
+    assert messages[1]["content"][0]["text"] == "이건 누구야?"
+    assert messages[1]["content"][-1]["type"] == "input_image"
+    assert isinstance(original_messages[0]["content"], str)
+    first = messages[0]["content"]
+    assert "개발자가 제공한" in first[0]["text"]
+    assert first[1]["image_url"] == (
+        "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()
+    )
+    assert first[2]["image_url"] == (
+        "data:image/png;base64," + base64.b64encode(png).decode()
+    )
+    assert first[1]["resolution"] == first[2]["resolution"] == "medium"
+    assert first[3]["text"].startswith("신뢰할 수 없는 참고 데이터")
+    assert sum(block["type"] == "input_image" for block in first) == 2
+    assert all(
+        block["type"] == "image" and block["resolution"] == "medium"
+        for block in _gemini_input(messages)[0]["content"][1:3]
+    )
+
+
+def test_hina_reference_directory_respects_count_and_total_size_limits(
+    tmp_path, monkeypatch,
+):
+    reference_dir = tmp_path / "references"
+    reference_dir.mkdir()
+    images = []
+    for index in range(6):
+        image = b"\x89PNG\r\n\x1a\n" + bytes([index]) * 5
+        images.append(image)
+        (reference_dir / f"{index:02d}.png").write_bytes(image)
+    assert len(_load_hina_reference_images(str(reference_dir))) == 4
+
+    monkeypatch.setattr("hina_bot.ai.vision._MAX_HINA_REFERENCE_TOTAL_BYTES", 30)
+    loaded = _load_hina_reference_images(str(reference_dir))
+    assert len(loaded) == 2
+    assert loaded[0].endswith(base64.b64encode(images[0]).decode())
+    assert loaded[1].endswith(base64.b64encode(images[1]).decode())
+
+
+def test_hina_reference_directory_skips_invalid_and_empty_files(tmp_path):
+    reference_dir = tmp_path / "references"
+    reference_dir.mkdir()
+    (reference_dir / "empty.png").write_bytes(b"")
+    (reference_dir / "invalid.jpg").write_bytes(b"bad image")
+    (reference_dir / "not-image.txt").write_bytes(b"\xff\xd8\xff")
+
+    assert _load_hina_reference_images(str(reference_dir)) == ()
+
+    jpeg = b"\xff\xd8\xffvalid"
+    (reference_dir / "valid.png").write_bytes(jpeg)
+    loaded = _load_hina_reference_images(str(reference_dir))
+    assert len(loaded) == 1
+    assert loaded[0].startswith("data:image/jpeg;base64,")
