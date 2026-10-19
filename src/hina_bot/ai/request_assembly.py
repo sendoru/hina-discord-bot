@@ -546,7 +546,7 @@ class RequestAssembler(BaseLLM):
             **dialogue_projection,
         )
         context_size_metrics = {
-            "context_chars_total": _serialized_chars(context),
+            "context_chars_total": _serialized_chars(provider_context),
             "context_structured_memory_chars": _serialized_chars({
                 key: context.get(key)
                 for key in (
