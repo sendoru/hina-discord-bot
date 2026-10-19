@@ -35,9 +35,9 @@ def _load_hina_reference_image(path: str) -> str | None:
     if not image or len(image) > _MAX_HINA_REFERENCE_BYTES:
         log.warning("Hina visual reference ignored (empty or over 5 MiB)")
         return None
-    if image.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+    if image.startswith(b"\x89PNG\r\n\x1a\n"):
         mime_type = "image/png"
-    elif image.startswith(b"\\xff\\xd8\\xff"):
+    elif image.startswith(b"\xff\xd8\xff"):
         mime_type = "image/jpeg"
     elif image.startswith(b"RIFF") and image[8:12] == b"WEBP":
         mime_type = "image/webp"
