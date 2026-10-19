@@ -10,13 +10,14 @@ import json
 REFERENCE_PREFIX = "신뢰할 수 없는 참고 데이터(JSON"
 _GROUP_FIELDS = (
     ("화자·상호작용", frozenset({
-        "data_notice", "current_speaker", "current_interaction", "space",
+        "data_notice", "current_speaker", "current_interaction", "conversation_focus", "space",
     })),
     ("기억·설정", frozenset({
         "server_note", "user_note",
     })),
     ("대화 문맥", frozenset({
         "active_reply_chain", "channel_recent_messages",
+        "speaker_recent_messages", "channel_ambient_messages", "target_user_history",
         "personal_recent_conversation", "conversation_history",
         "public_server_context",
     })),
