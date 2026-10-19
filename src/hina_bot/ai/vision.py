@@ -2,6 +2,8 @@
 
 import base64
 import json
+import logging
+from pathlib import Path
 from contextvars import ContextVar
 from dataclasses import dataclass
 
@@ -9,6 +11,43 @@ from .discord_emoji_input import normalize_custom_emoji_text
 from .prompts import load_prompt
 
 VISION_INPUT_POLICY = load_prompt("vision_input.md")
+log = logging.getLogger(__name__)
+
+# A transport label, not another character-identification policy.
+HINA_VISUAL_REFERENCE_LABEL = (
+    "개발자가 제공한 소라사키 히나의 공식 외형 참조 이미지입니다. "
+    "사용자가 보낸 이미지나 Discord 대화 기록이 아니며, "
+    "사용자 이미지의 인물을 판별할 때 외형 비교 자료로만 사용하세요."
+)
+_MAX_HINA_REFERENCE_BYTES = 5 * 1024 * 1024
+
+
+def _load_hina_reference_image(path: str) -> str | None:
+    """Read an operator-provided reference image once at startup."""
+    if not path:
+        return None
+    try:
+        image = Path(path).read_bytes()
+    except OSError as exc:
+        log.warning("Hina visual reference unavailable (%s)", type(exc).__name__)
+        return None
+
+    if not image or len(image) > _MAX_HINA_REFERENCE_BYTES:
+        log.warning("Hina visual reference ignored (empty or over 5 MiB)")
+        return None
+    if image.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        mime_type = "image/png"
+    elif image.startswith(b"\\xff\\xd8\\xff"):
+        mime_type = "image/jpeg"
+    elif image.startswith(b"RIFF") and image[8:12] == b"WEBP":
+        mime_type = "image/webp"
+    else:
+        log.warning("Hina visual reference ignored (unsupported image signature)")
+        return None
+
+    encoded = base64.b64encode(image).decode("ascii")
+    log.info("Hina visual reference ready (%s)", mime_type)
+    return f"data:{mime_type};base64,{encoded}"
 
 
 @dataclass(frozen=True)
@@ -161,6 +200,39 @@ def _content_blocks(original) -> list[dict]:
     return [{"type": "input_text", "text": str(original)}]
 
 
+def _with_hina_visual_reference(
+    input_value,
+    image_url: str,
+    *,
+    include_media_resolution: bool,
+):
+    """Prepend fixed visual context without a synthetic Discord turn."""
+    if not isinstance(input_value, list):
+        return input_value
+    index = next(
+        (
+            index for index, item in enumerate(input_value)
+            if isinstance(item, dict) and item.get("role") == "user"
+        ),
+        None,
+    )
+    if index is None:
+        return input_value
+
+    items = list(input_value)
+    item = dict(items[index])
+    image = {"type": "input_image", "image_url": image_url, "detail": "auto"}
+    if include_media_resolution:
+        image["resolution"] = "medium"
+    item["content"] = [
+        {"type": "input_text", "text": HINA_VISUAL_REFERENCE_LABEL},
+        image,
+        *_content_blocks(item.get("content", "")),
+    ]
+    items[index] = item
+    return items
+
+
 def _is_reference_content(content) -> bool:
     """Recognize either legacy string or partitioned reference input blocks."""
     if isinstance(content, str):
@@ -240,9 +312,12 @@ def _augment_input(
     return items
 
 class _VisionResponses:
-    def __init__(self, responses, *, provider_name: str):
+    def __init__(
+        self, responses, *, provider_name: str, reference_image_url: str | None = None,
+    ):
         self._responses = responses
         self._provider_name = provider_name
+        self._reference_image_url = reference_image_url
 
     async def create(self, **kwargs):
         visuals = CURRENT_VISUAL_INPUTS.get()
@@ -259,6 +334,22 @@ class _VisionResponses:
             visuals,
             include_media_resolution=include_media_resolution,
         )
+        # Passive recent images alone do not activate the fixed reference.
+        if (
+            self._provider_name == "gemini"
+            and self._reference_image_url
+            and any(
+                visual.context_kind == "current_message"
+                or visual.reference_strength in {"explicit_reply", "prior_explicit_reply"}
+                for visual in visuals
+            )
+        ):
+            request["input"] = _with_hina_visual_reference(
+                request["input"],
+                self._reference_image_url,
+                include_media_resolution=include_media_resolution,
+            )
+            log.info("vision.hina_visual_reference applied")
         request["instructions"] = (
             (request.get("instructions") or "").rstrip() + "\n\n" + VISION_INPUT_POLICY
         ).strip()
@@ -268,12 +359,17 @@ class _VisionResponses:
 class VisionClient:
     """Thin client facade that adds request-scoped images only to answer requests."""
 
-    def __init__(self, client):
+    def __init__(self, client, *, reference_image_path: str = ""):
         self._client = client
         self.provider_name = getattr(client, "provider_name", "openai")
+        reference_image_url = (
+            _load_hina_reference_image(reference_image_path)
+            if self.provider_name == "gemini" else None
+        )
         self.responses = _VisionResponses(
             client.responses,
             provider_name=self.provider_name,
+            reference_image_url=reference_image_url,
         )
 
     async def close(self):
@@ -283,5 +379,8 @@ class VisionClient:
         return getattr(self._client, name)
 
 
-def wrap_vision_client(client):
-    return client if isinstance(client, VisionClient) else VisionClient(client)
+def wrap_vision_client(client, *, reference_image_path: str = ""):
+    return (
+        client if isinstance(client, VisionClient)
+        else VisionClient(client, reference_image_path=reference_image_path)
+    )
