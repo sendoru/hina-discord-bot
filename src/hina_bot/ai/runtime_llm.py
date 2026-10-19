@@ -16,7 +16,8 @@ class LLM(InformationPipeline):
 
     def __init__(self, settings, client=None, classifier_client=None, *, admin_db=None):
         primary_client = wrap_vision_client(
-            client or create_provider_client(settings, settings.provider)
+            client or create_provider_client(settings, settings.provider),
+            reference_image_path=getattr(settings, "vision_hina_reference_path", ""),
         )
         super().__init__(
             settings,
