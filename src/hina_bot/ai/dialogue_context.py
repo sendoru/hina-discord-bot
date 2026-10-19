@@ -13,7 +13,9 @@ from __future__ import annotations
 _FRESH_SPEAKER_AMBIENT_ROWS = 8
 
 
-def project_dialogue_context(context: dict) -> tuple[dict, dict]:
+def project_dialogue_context(
+    context: dict, *, preserve_ambient: bool = False
+) -> tuple[dict, dict]:
     """Separate direct conversational continuity from channel scene.
 
     Keep the original order and metadata of each row. A row is personal
@@ -41,7 +43,7 @@ def project_dialogue_context(context: dict) -> tuple[dict, dict]:
     # Explicit replies can refer to a wider group conversation, and existing
     # direct speaker history must not be displaced. For a *fresh* speaker with
     # neither anchor, an oversized prior exchange is weak scene evidence.
-    if not speaker and not has_active_reply:
+    if not speaker and not has_active_reply and not preserve_ambient:
         ambient = ambient[-_FRESH_SPEAKER_AMBIENT_ROWS:]
 
     projected = dict(context)
