@@ -49,17 +49,6 @@ a preceding conversation's influence without blanking out the scene; e.g., B
 can still react to A's conversation. If a direct same-speaker thread, an explicit reply, or a current-channel
 scope request is present, the prior context budget applies unchanged.
 
-## Tone mitigation
-
-The character and output guidelines distinguish prior Hina messages as
-historical events rather than templates for voice or emotional intensity.
-Irritation in one reply must not automatically intensify in following replies.
-React afresh to topic changes, kindness and changes of speaker rather than
-repeating the same first phrase or increasingly adversarial refusal.
-
-No banned-word list, random tone switch, additional LLM call, per-user anger
-counter or new runtime configuration is introduced.
-
 ## Verification and limitations
 
 Deterministic regression tests assert speaker attribution, new-speaker
