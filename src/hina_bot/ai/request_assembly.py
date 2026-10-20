@@ -195,6 +195,9 @@ _CURRENT_CHANNEL_SCOPE_QUERY = re.compile(
 )
 _SERVER_RECENT_TURNS = 4
 _SERVER_RECENT_CHARS = 4000
+# A raw reply that was natural several hours ago must not set the voice of
+# an unrelated new turn. Older facts remain in structured memory / DB.
+_SERVER_RECENT_MAX_AGE_SECONDS = 30 * 60
 
 
 class RequestAssembler(BaseLLM):
@@ -278,7 +281,13 @@ class RequestAssembler(BaseLLM):
         # topics just to refill the personal-recent quota.
         candidates = []
         used = 0
+        now = datetime.now(UTC)
         for turn in reversed(store.history(scope)):
+            at = datetime.fromisoformat(
+                _context_timestamp(turn["created_at"]).replace("Z", "+00:00")
+            )
+            if (now - at).total_seconds() > _SERVER_RECENT_MAX_AGE_SECONDS:
+                break
             size = len(turn["content"]) + len(turn["reply"])
             if used + size > _SERVER_RECENT_CHARS:
                 break
@@ -295,8 +304,22 @@ class RequestAssembler(BaseLLM):
                 "message_id": str(turn["message_id"]),
                 "at": _context_timestamp(turn["created_at"]),
                 "user": turn["content"],
-                "hina": turn["reply"],
             })
+
+        # The most recent response is enough to resolve an ordinary follow-up.
+        # Earlier exact assistant wording repeatedly primes the same reaction.
+        # A live bot reply to this user already supplies that continuity.
+        live_assistant = any(
+            row.get("role") == "assistant"
+            and row.get("reply_target_is_current_speaker") is True
+            for row in channel_context
+        )
+        if selected and not live_assistant:
+            newest = next(
+                turn for turn in reversed(candidates)
+                if str(turn["message_id"]) == selected[-1]["message_id"]
+            )
+            selected[-1]["hina"] = newest["reply"]
         return selected
 
     async def answer(
