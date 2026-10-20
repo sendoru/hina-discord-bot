@@ -97,10 +97,15 @@ def _annotate_elapsed_minutes(context: dict, *, now: datetime) -> dict:
             if at.tzinfo is None:
                 at = at.replace(tzinfo=UTC)
             age_minutes = int((now_utc - at.astimezone(UTC)).total_seconds() // 60)
+            # Show historical timestamps in the same timezone as the trusted current
+            # clock. This is presentation metadata, not a claim about current state.
+            dated = {
+                **row,
+                "at_local": at.astimezone(now.tzinfo or UTC).isoformat(timespec="minutes"),
+            }
             if age_minutes >= 60:
-                annotated.append({**row, "elapsed_minutes": age_minutes})
-            else:
-                annotated.append(row)
+                dated["elapsed_minutes"] = age_minutes
+            annotated.append(dated)
         projected[section] = annotated
     return projected
 
