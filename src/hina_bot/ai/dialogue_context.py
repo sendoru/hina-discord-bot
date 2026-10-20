@@ -87,30 +87,42 @@ def project_historical_context(context: dict) -> dict:
     return projected
 
 
+def _relation_to_current_speaker(row: dict, current_user_id: str) -> str:
+    """Explicit ownership only; unknown assistant targets remain unknown."""
+    role = str(row.get("role") or "")
+    author = str(row.get("author_user_id") or row.get("user_id") or "")
+    target = str(row.get("reply_target_user_id") or "")
+    if role == "assistant":
+        if not target:
+            return "unknown_addressee"
+        return (
+            "hina_reply_to_current" if current_user_id and target == current_user_id
+            else "hina_reply_to_other"
+        )
+    if role == "user":
+        if not author:
+            return "unknown_author"
+        return (
+            "current_author" if current_user_id and author == current_user_id
+            else "other_author"
+        )
+    return "other_bot" if role == "bot" else "unknown_author"
+
+
 def project_dialogue_context(context: dict) -> dict:
-    """Separate current-speaker exchanges from other participants at final egress."""
+    """Preserve channel interleaving and enrich messages with grounded addressees.
+
+    An explicit reply chain is a separate causal slice. Other channel rows keep
+    the order selected by the collector (including explicit target history).
+    No rows are filtered or reordered by this provider-only projection.
+    """
     projected = project_historical_context(context)
     current = str((context.get("current_speaker") or {}).get("user_id") or "")
-    speaker_rows: list[dict] = []
-    ambient_rows: list[dict] = []
-
-    for row in context.get("channel_recent_messages") or ():
-        role = str(row.get("role") or "")
-        author = str(row.get("author_user_id") or row.get("user_id") or "")
-        target = str(row.get("reply_target_user_id") or "")
-        # Assistant turns belong to their actual addressee, not the bot's own author ID.
-        owned = bool(current) and (
-            (role == "user" and author == current)
-            or (role == "assistant" and target == current)
-        )
-        (speaker_rows if owned else ambient_rows).append(row)
-
-    projected.pop("channel_recent_messages", None)
-    projected["speaker_recent_messages"] = speaker_rows
-    projected["channel_ambient_messages"] = ambient_rows
-    projected["conversation_focus"] = {
-        "current_speaker_in_recent_channel": bool(speaker_rows),
-        "explicit_reply_chain_present": bool(context.get("active_reply_chain")),
-        "ambient_is_other_participants_context": True,
-    }
+    rows = context.get("channel_recent_messages")
+    if isinstance(rows, list):
+        projected["channel_recent_messages"] = [
+            {**row, "relation_to_current_speaker": _relation_to_current_speaker(row, current)}
+            if isinstance(row, dict) else row
+            for row in rows
+        ]
     return projected
