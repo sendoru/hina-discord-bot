@@ -96,15 +96,15 @@ def _annotate_elapsed_minutes(context: dict, *, now: datetime) -> dict:
             # Persisted turns use SQLite UTC; Discord rows already carry their timezone.
             if at.tzinfo is None:
                 at = at.replace(tzinfo=UTC)
-            age_minutes = int((now_utc - at.astimezone(UTC)).total_seconds() // 60)
-            # Show historical timestamps in the same timezone as the trusted current
-            # clock. This is presentation metadata, not a claim about current state.
+            age_seconds = (now_utc - at.astimezone(UTC)).total_seconds()
+            # A local wall-clock label and elapsed age both refer to the trusted
+            # runtime clock. Keep 'at' unchanged, including its original offset.
             dated = {
                 **row,
                 "at_local": at.astimezone(now.tzinfo or UTC).isoformat(timespec="minutes"),
             }
-            if age_minutes >= 60:
-                dated["elapsed_minutes"] = age_minutes
+            if age_seconds >= 0:
+                dated["elapsed_minutes"] = int(age_seconds // 60)
             annotated.append(dated)
         projected[section] = annotated
     return projected
