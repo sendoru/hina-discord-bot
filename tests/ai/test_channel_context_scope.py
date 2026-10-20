@@ -71,7 +71,7 @@ async def test_current_channel_query_keeps_manual_notes_but_excludes_public_cont
         assert reference["server_note"] == "OTHER_CHANNEL_SERVER_NOTE"
         assert reference["user_note"] == "OTHER_CHANNEL_USER_NOTE"
         assert reference["public_server_context"] == []
-        assert reference["channel_recent_messages"][0]["content"] == "CURRENT_CHANNEL_RECENT"
+        assert reference["channel_ambient_messages"][0]["content"] == "CURRENT_CHANNEL_RECENT"
         assert "CURRENT_CHANNEL_PERSONAL" in json.dumps(
             reference["personal_recent_conversation"], ensure_ascii=False
         )
