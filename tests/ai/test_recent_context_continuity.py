@@ -135,7 +135,7 @@ def test_old_nighttime_context_is_aged_against_current_morning_clock():
     assert "시간대·일시적인 상황" in REFERENCE_CONTINUITY_POLICY
 
 
-def test_elapsed_age_respects_offsets_and_avoids_noise_for_recent_turns():
+def test_elapsed_age_respects_offsets_and_includes_recent_turns():
     now = datetime.fromisoformat("2026-10-16T07:22:00+09:00")
     context = {
         "active_reply_chain": [
@@ -153,7 +153,11 @@ def test_elapsed_age_respects_offsets_and_avoids_noise_for_recent_turns():
 
     projected = _annotate_elapsed_minutes(context, now=now)
 
-    assert all("elapsed_minutes" not in row for row in projected["active_reply_chain"])
+    assert projected["active_reply_chain"][0]["elapsed_minutes"] == 59
+    assert projected["active_reply_chain"][0]["at_local"] == "2026-10-16T06:23+09:00"
+    assert "elapsed_minutes" not in projected["active_reply_chain"][1]
+    assert "elapsed_minutes" not in projected["active_reply_chain"][2]
+    assert "elapsed_minutes" not in projected["active_reply_chain"][3]
     assert [row["elapsed_minutes"] for row in projected["channel_recent_messages"]] == [
         407, 407, 60
     ]
