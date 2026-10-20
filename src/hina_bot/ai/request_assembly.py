@@ -15,6 +15,7 @@ from hina_bot.core.memory_context import (
 from hina_bot.core.relationship_grounding import RELATION_CONTEXT_POLICY
 
 from .context_provenance import build_context_provenance
+from .dialogue_context import project_dialogue_context
 from .discord_emoji_input import normalize_custom_emoji_text, normalized_message_context
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode
@@ -95,11 +96,16 @@ def _annotate_elapsed_minutes(context: dict, *, now: datetime) -> dict:
             # Persisted turns use SQLite UTC; Discord rows already carry their timezone.
             if at.tzinfo is None:
                 at = at.replace(tzinfo=UTC)
-            age_minutes = int((now_utc - at.astimezone(UTC)).total_seconds() // 60)
-            if age_minutes >= 60:
-                annotated.append({**row, "elapsed_minutes": age_minutes})
-            else:
-                annotated.append(row)
+            age_seconds = (now_utc - at.astimezone(UTC)).total_seconds()
+            # A local wall-clock label and elapsed age both refer to the trusted
+            # runtime clock. Keep 'at' unchanged, including its original offset.
+            dated = {
+                **row,
+                "at_local": at.astimezone(now.tzinfo or UTC).isoformat(timespec="minutes"),
+            }
+            if age_seconds >= 0:
+                dated["elapsed_minutes"] = int(age_seconds // 60)
+            annotated.append(dated)
         projected[section] = annotated
     return projected
 
@@ -576,7 +582,7 @@ class RequestAssembler(BaseLLM):
 
         messages = [{
             "role": "user",
-            "content": reference_context_blocks(context),
+            "content": reference_context_blocks(project_dialogue_context(context)),
         }, {
             "role": "user",
             "content": visible_content,

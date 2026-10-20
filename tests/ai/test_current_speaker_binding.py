@@ -94,6 +94,9 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
             "relation": "author_of_following_user_message",
         }
         other, other_reply, current, current_reply = reference["channel_recent_messages"]
+        assert [row["relation_to_current_speaker"] for row in reference["channel_recent_messages"]] == [
+            "other_author", "hina_reply_to_other", "current_author", "hina_reply_to_current",
+        ]
         assert other["user_id"] == "111"
         assert other["name"] == "sendol"
         assert other["is_current_speaker"] is False

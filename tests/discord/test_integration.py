@@ -63,15 +63,14 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         await self.llm.answer(self.store, scope, "name", "current-question")
         payload = self.calls[-1]["input"]
         reference = read_reference_context(payload[0]["content"])
-        self.assertEqual(
-            [row["role"] for row in reference["conversation_history"]],
-            ["user", "assistant"],
-        )
-        self.assertEqual(
-            [row["content"] for row in reference["conversation_history"]],
-            ["new", "reply"],
-        )
-        self.assertTrue(all(row["at"].endswith("Z") for row in reference["conversation_history"]))
+        self.assertEqual(len(reference["conversation_history"]), 1)
+        historical = reference["conversation_history"][0]
+        self.assertEqual(historical["context_kind"], "historical_exchange")
+        self.assertEqual(historical["user_message"]["content"], "new")
+        self.assertEqual(historical["assistant_reply"]["content"], "reply")
+        self.assertEqual(historical["user_message"]["author_user_id"], "100")
+        self.assertEqual(historical["assistant_reply"]["reply_target_user_id"], "100")
+        self.assertTrue(historical["at"].endswith("Z"))
         self.assertEqual(payload[-1]["content"], "current-question")
         self.assertEqual(len(self.store.history(scope)), 2)
 
@@ -159,8 +158,8 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(attack, payload["instructions"])
         self.assertEqual([item["role"] for item in payload["input"]], ["user", "user"])
         reference = read_reference_context(payload["input"][0]["content"])
-        self.assertEqual(reference["conversation_history"][0]["content"], attack)
-        self.assertEqual(reference["conversation_history"][1]["role"], "assistant")
+        self.assertEqual(reference["conversation_history"][0]["user_message"]["content"], attack)
+        self.assertEqual(reference["conversation_history"][0]["assistant_reply"]["role"], "assistant")
         self.assertIn("신뢰할 수 없는", payload["instructions"])
 
     async def test_relevant_lore_is_data_not_an_instruction(self):
