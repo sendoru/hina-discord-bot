@@ -93,10 +93,10 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
             "name": "titn",
             "relation": "author_of_following_user_message",
         }
-        other, other_reply = reference["channel_ambient_messages"]
-        current, current_reply = reference["speaker_recent_messages"]
-        assert "channel_recent_messages" not in reference
-        assert reference["conversation_focus"]["current_speaker_in_recent_channel"] is True
+        other, other_reply, current, current_reply = reference["channel_recent_messages"]
+        assert [row["relation_to_current_speaker"] for row in reference["channel_recent_messages"]] == [
+            "other_author", "hina_reply_to_other", "current_author", "hina_reply_to_current",
+        ]
         assert other["user_id"] == "111"
         assert other["name"] == "sendol"
         assert other["is_current_speaker"] is False
@@ -167,7 +167,7 @@ async def test_active_reply_chain_is_structured_separately_from_ambient_context(
         assert [row["message_id"] for row in reference["active_reply_chain"]] == [
             "1", "2", "3"
         ]
-        assert [row["message_id"] for row in reference["channel_ambient_messages"]] == ["4"]
+        assert [row["message_id"] for row in reference["channel_recent_messages"]] == ["4"]
         assert "감사·웃음·사과" in payload["instructions"]
         assert "실제 시각 입력이 제공되지 않았다면" in payload["instructions"]
     finally:
@@ -219,8 +219,7 @@ async def test_other_users_taunt_cannot_become_current_speakers_personal_continu
 
         payload = calls[-1]
         reference = read_reference_context(payload["input"][0]["content"])
-        taunt, reply = reference["channel_ambient_messages"]
-        assert reference["speaker_recent_messages"] == []
+        taunt, reply = reference["channel_recent_messages"]
 
         assert taunt["is_current_speaker"] is False
         assert reply["reply_target_is_current_speaker"] is False
@@ -397,7 +396,7 @@ async def test_plain_explicit_reply_is_always_split_into_active_reply_chain():
         reference = read_reference_context(payload["input"][0]["content"])
 
         assert [row["message_id"] for row in reference["active_reply_chain"]] == ["10"]
-        assert [row["message_id"] for row in reference["channel_ambient_messages"]] == ["11"]
+        assert [row["message_id"] for row in reference["channel_recent_messages"]] == ["11"]
         assert (
             "active_reply_chain > speaker_thread > target_user_history > channel_ambient"
             in payload["instructions"]
@@ -451,7 +450,7 @@ async def test_answer_model_sees_emoji_aliases_but_source_rows_keep_raw_ids():
         assert payload["input"][1]["content"] == "히나야 이거 :18:"
         reference = read_reference_context(payload["input"][0]["content"])
         assert reference["active_reply_chain"][0]["content"] == "도장 어때 :18:"
-        assert reference["channel_ambient_messages"][0]["content"] == "다른 메시지 :18:"
+        assert reference["channel_recent_messages"][0]["content"] == "다른 메시지 :18:"
         assert reference["active_reply_chain"][0]["message_id"] == "101"
         assert reply_row["content"] == f"도장 어때 {raw}"
         assert ambient_row["content"] == f"다른 메시지 {raw}"
