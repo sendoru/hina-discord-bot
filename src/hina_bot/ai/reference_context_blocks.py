@@ -17,6 +17,7 @@ _GROUP_FIELDS = (
     })),
     ("대화 문맥", frozenset({
         "active_reply_chain", "channel_recent_messages",
+        "speaker_recent_messages", "channel_ambient_messages", "conversation_focus",
         "personal_recent_conversation", "conversation_history",
         "public_server_context",
     })),
