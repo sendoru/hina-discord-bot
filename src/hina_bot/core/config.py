@@ -159,6 +159,8 @@ class Settings:
     vision_max_attachments: int = 4
     vision_max_emojis: int = 12
     vision_max_stickers: int = 8
+    # Startup-only: empty disables the fixed image reference.
+    vision_hina_reference_path: str = ""
 
     def api_key_for(self, provider: str) -> str:
         provider = _provider(provider, "provider")
@@ -522,6 +524,7 @@ class Settings:
             vision_max_attachments=vision_max_attachments,
             vision_max_emojis=vision_max_emojis,
             vision_max_stickers=vision_max_stickers,
+            vision_hina_reference_path=os.getenv("VISION_HINA_REFERENCE_PATH", "").strip(),
         )
         if s.special_dm_user_id is not None and s.special_dm_user_id <= 0:
             raise ValueError("SPECIAL_DM_USER_ID는 양의 Discord 사용자 ID여야 합니다.")
