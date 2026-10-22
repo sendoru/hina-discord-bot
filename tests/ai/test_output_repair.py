@@ -58,7 +58,7 @@ def test_preflight_only_routes_probable_format_errors():
     assert not needs_output_repair("정상적인 숫자 [1234567]")
     assert not needs_output_repair("범위 밖 숫자 [123456789012345678901]")
     assert not needs_output_repair("숫자 예시는 `[1562812225691983904]`")
-    assert not needs_output_repair("```txt\\n[1562812225691983904]\\n```")
+    assert not needs_output_repair("```txt\n[1562812225691983904]\n```")
     assert not needs_output_repair("`[1]` and ```txt\n[5]\n```")
     assert not needs_output_repair("HTML 예시는 `<b>안녕</b>`")
     assert not needs_output_repair("```html\n<b>안녕</b>\n```")
