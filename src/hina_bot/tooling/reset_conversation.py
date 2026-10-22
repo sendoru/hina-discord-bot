@@ -212,7 +212,11 @@ def reset_conversation(
                 (now.isoformat(), cutoff_message_id, snapshot.sha256),
             )
             reset_id = int(result.lastrowid)
-            previous_archive_count = (\n                _row_count(db, "conversation_debug_archive")\n                if _table_exists(db, "conversation_debug_archive") else 0\n            )\n            archived = _archive_debug_rows(db, reset_id)
+            previous_archive_count = (
+                _row_count(db, "conversation_debug_archive")
+                if _table_exists(db, "conversation_debug_archive") else 0
+            )
+            archived = _archive_debug_rows(db, reset_id)
             deleted = {}
             for table in RAW_TABLES:
                 result = db.execute(f"DELETE FROM {table}")
@@ -220,6 +224,10 @@ def reset_conversation(
             for table, count in archived.items():
                 if deleted[table] != count:
                     raise RuntimeError(f"Debug archive count mismatch: {table}")
+            if _row_count(db, "conversation_debug_archive") != (
+                previous_archive_count + sum(archived.values())
+            ):
+                raise RuntimeError("Debug archive retained row count mismatch")
             # Be explicit about preserving other tables and extraction sequences.
             for table, count in plan.preserved.items():
                 if _row_count(db, table) != count:
