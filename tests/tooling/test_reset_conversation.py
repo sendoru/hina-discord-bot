@@ -160,6 +160,7 @@ def test_debug_conversations_survive_multiple_resets_without_runtime_leak(tmp_pa
         assert store.pending_memory_extraction(dm) == []
         assert store._conversations.public_candidates(100, 1) == []
         store.add(dm, 999, "new message", "new reply")
+        store.save_memory_extraction_cursor(dm, store.history(dm)[-1]["id"])
     finally:
         store.close()
 
