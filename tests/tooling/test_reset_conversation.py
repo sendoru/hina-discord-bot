@@ -425,3 +425,115 @@ def test_unknown_required_legacy_epoch_column_refuses_without_data_loss(tmp_path
                 "PRAGMA table_info(conversation_reset_epochs)"
             )
         }
+
+
+
+def test_discard_pending_keeps_backup_and_memory_without_extraction(tmp_path):
+    path = tmp_path / "pending.sqlite3"
+    dm, guild, memory = seed(path, pending=True)
+    with sqlite3.connect(path) as db:
+        original_memory = db.execute(
+            "SELECT * FROM memory_items WHERE id=?", (memory,)
+        ).fetchone()
+        cursors_before = db.execute(
+            "SELECT * FROM memory_extraction_cursors ORDER BY scope"
+        ).fetchall()
+        sequence_before = db.execute(
+            "SELECT seq FROM sqlite_sequence WHERE name='turns'"
+        ).fetchone()[0]
+
+    plan, result = reset_conversation(
+        path, offline_confirmed=True, discard_pending=True,
+    )
+    assert not plan.ready
+    assert (plan.pending_turns, plan.pending_scopes) == (2, 2)
+    assert result.backup.path.is_file()
+    assert result.archived == {"turns": 2, "failed_turns": 0}
+    assert result.deleted == {
+        "turns": 2, "shared_calls": 1, "failed_turns": 0, "shared_summaries": 1,
+    }
+    with sqlite3.connect(result.backup.path) as db:
+        assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert counts(db)["turns"] == 2
+        assert db.execute(
+            "SELECT content FROM turns WHERE message_id='101'"
+        ).fetchone()[0] == "recent old DM"
+
+    store = Store.create(str(path))
+    try:
+        assert counts(store.db) == dict.fromkeys(counts(store.db), 0)
+        assert tuple(store.db.execute(
+            "SELECT * FROM memory_items WHERE id=?", (memory,)
+        ).fetchone()) == original_memory
+        assert [tuple(row) for row in store.db.execute(
+            "SELECT * FROM memory_extraction_cursors ORDER BY scope"
+        ).fetchall()] == cursors_before
+        assert store.db.execute(
+            "SELECT seq FROM sqlite_sequence WHERE name='turns'"
+        ).fetchone()[0] == sequence_before
+        assert store.db.execute(
+            "SELECT COUNT(*) FROM conversation_debug_archive"
+        ).fetchone()[0] == 2
+        assert store.history(dm) == []
+        assert store.history(guild) == []
+        assert store.pending_memory_extraction(dm) == []
+        assert store.note(dm.user_note) == "important custom user note"
+        assert store.user_name(dm) == "DM display name"
+        store.add(dm, 104, "new message", "new response")
+        assert [row["message_id"] for row in store.pending_memory_extraction(dm)] == [
+            "104",
+        ]
+    finally:
+        store.close()
+
+
+def test_discard_pending_cli_is_explicit_and_requires_offline(tmp_path, capsys):
+    path = tmp_path / "pending-cli.sqlite3"
+    seed(path, pending=True)
+    assert main(["--database", str(path), "--dry-run"]) == 0
+    assert "Status: BLOCKED" in capsys.readouterr().out
+    assert main(["--database", str(path), "--dry-run", "--discard-pending"]) == 0
+    preview = capsys.readouterr().out
+    assert "2 turns / 2 scopes" in preview
+    assert "will be discarded without flush" in preview
+    assert not (tmp_path / "backups").exists()
+    assert main(["--database", str(path), "--yes", "--discard-pending"]) == 2
+    assert not (tmp_path / "backups").exists()
+    assert main([
+        "--database", str(path), "--yes", "--offline-confirmed",
+    ]) == 2
+    assert not (tmp_path / "backups").exists()
+    assert main([
+        "--database", str(path), "--yes", "--offline-confirmed",
+        "--discard-pending",
+    ]) == 0
+    output = capsys.readouterr().out
+    assert "discarded_pending=2" in output
+
+
+def test_discard_pending_rechecks_plan_after_backup(tmp_path, monkeypatch):
+    import hina_bot.tooling.reset_conversation as mod
+
+    path = tmp_path / "pending-changed.sqlite3"
+    dm, _, _ = seed(path, pending=True)
+    original_backup = mod.backup_sqlite
+
+    def backup_then_write(*args, **kwargs):
+        result = original_backup(*args, **kwargs)
+        store = Store.create(str(path))
+        try:
+            store.add(dm, 999, "arrived after backup", "reply")
+        finally:
+            store.close()
+        return result
+
+    monkeypatch.setattr(mod, "backup_sqlite", backup_then_write)
+    with pytest.raises(RuntimeError, match="Database changed since backup"):
+        mod.reset_conversation(
+            path, offline_confirmed=True, discard_pending=True,
+        )
+    with sqlite3.connect(path) as db:
+        assert counts(db)["turns"] == 3
+        assert db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='conversation_reset_epochs'"
+        ).fetchone() is None
