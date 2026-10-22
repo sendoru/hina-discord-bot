@@ -52,7 +52,9 @@ def test_preflight_only_routes_probable_format_errors():
     assert needs_output_repair("확인해 [1234567]")
     assert needs_output_repair("확인해 [123456789012345678901]")
     assert needs_output_repair("확인해 [11111111111111111111111111111111]")
-    assert needs_output_repair("확인해 [11111111111111111111111111111111:22222222222222222222222222222222]")
+    assert needs_output_repair(
+        "확인해 [11111111111111111111111111111111:22222222222222222222222222222222]"
+    )
     assert needs_output_repair(r"안녕\n다음 줄")
     assert needs_output_repair("정말, 가만히 있<b></b>어주니까")
     assert needs_output_repair("안녕 <strong>친구</strong>")
