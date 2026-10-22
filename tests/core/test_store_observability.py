@@ -3,6 +3,7 @@ import sqlite3
 from hina_bot.core.observability import CURRENT_TURN_ID
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.tooling.legacy_database import convert_database as prepare_database
 
 
 def test_store_migrates_turn_id_and_persists_current_trace(tmp_path):
@@ -21,7 +22,8 @@ def test_store_migrates_turn_id_and_persists_current_trace(tmp_path):
     db.commit()
     db.close()
 
-    store = Store(str(path))
+    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
+    store = Store.create(str(path))
     token = CURRENT_TURN_ID.set("opaque-dashboard-trace")
     try:
         store.add(Scope(1, 10, 100, True), 123, "hello", "reply")
@@ -41,7 +43,7 @@ def test_store_migrates_turn_id_and_persists_current_trace(tmp_path):
 
 
 def test_store_allows_non_runtime_rows_without_trace_id():
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     try:
         store.add(Scope(None, 10, 100), 1, "hello", "reply")
         row = store.history(Scope(None, 10, 100))[0]

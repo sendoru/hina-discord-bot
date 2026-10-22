@@ -14,8 +14,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .maintenance_backup import BackupInfo, backup_sqlite
+from .maintenance_db import (
+    connect_existing as _connect_existing,
+)
+from .maintenance_db import (
+    row_count as _row_count,
+)
+from .maintenance_db import (
+    table_exists as _table_exists,
+)
 from .migrate_conversation_reset_epochs import ensure_epoch_schema
-from .reset_analysis_data import _connect_existing, _row_count, _table_exists
 
 RAW_TABLES = ("turns", "shared_calls", "failed_turns", "shared_summaries")
 PRESERVED_TABLES = (
@@ -47,6 +55,7 @@ class ResetResult:
     reset_id: int
     reset_at: str
     deleted: dict[str, int]
+    archived: dict[str, int]
 
 
 def _plan_from_connection(path: Path, db: sqlite3.Connection) -> ResetPlan:
@@ -70,7 +79,7 @@ def _plan_from_connection(path: Path, db: sqlite3.Connection) -> ResetPlan:
 
 
 def inspect_reset(path: str | Path) -> ResetPlan:
-    db = _connect_existing(path)
+    db = _connect_existing(path, readonly=True)
     try:
         return _plan_from_connection(Path(path), db)
     finally:
@@ -100,13 +109,79 @@ def _remember_names(db: sqlite3.Connection) -> None:
         )
 
 
+def _archive_debug_rows(db: sqlite3.Connection, reset_id: int) -> dict[str, int]:
+    """Keep finished/failed exchanges for dashboard debugging, not runtime context.
+
+    Original row IDs remain stable across resets because the live tables use
+    AUTOINCREMENT. One transaction owns archival and removal, so a failed
+    archive write cannot lose the source conversations.
+    """
+    db.execute(
+        """CREATE TABLE IF NOT EXISTS conversation_debug_archive (
+            record_type TEXT NOT NULL CHECK(record_type IN ('turn','failed')),
+            id INTEGER NOT NULL,
+            reset_id INTEGER NOT NULL,
+            scope TEXT NOT NULL,
+            realm TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            reply TEXT NOT NULL,
+            exportable INTEGER NOT NULL,
+            turn_id TEXT,
+            memory_context TEXT NOT NULL,
+            context_provenance TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            status TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            reply_delivered INTEGER NOT NULL,
+            error_type TEXT NOT NULL,
+            error_fingerprint TEXT NOT NULL,
+            PRIMARY KEY(record_type,id)
+        )"""
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS conversation_debug_archive_trace "
+        "ON conversation_debug_archive(turn_id)"
+    )
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS conversation_debug_archive_scope "
+        "ON conversation_debug_archive(scope,id)"
+    )
+    archived = {}
+    archived["turns"] = db.execute(
+        """INSERT INTO conversation_debug_archive (
+            record_type,id,reset_id,scope,realm,user_id,name,message_id,
+            content,reply,exportable,turn_id,memory_context,context_provenance,
+            created_at,status,stage,reply_delivered,error_type,error_fingerprint
+        )
+        SELECT 'turn',id,?,scope,realm,user_id,name,message_id,
+               content,reply,exportable,turn_id,memory_context,context_provenance,
+               created_at,'completed','',1,'',''
+        FROM turns""", (reset_id,)
+    ).rowcount
+    archived["failed_turns"] = db.execute(
+        """INSERT INTO conversation_debug_archive (
+            record_type,id,reset_id,scope,realm,user_id,name,message_id,
+            content,reply,exportable,turn_id,memory_context,context_provenance,
+            created_at,status,stage,reply_delivered,error_type,error_fingerprint
+        )
+        SELECT 'failed',id,?,scope,realm,user_id,name,message_id,
+               content,reply,0,turn_id,'','',
+               created_at,status,stage,reply_delivered,error_type,error_fingerprint
+        FROM failed_turns""", (reset_id,)
+    ).rowcount
+    return archived
+
+
 def reset_conversation(
     path: str | Path,
     *,
     backup_dir: str | Path | None = None,
     offline_confirmed: bool = False,
 ) -> tuple[ResetPlan, ResetResult]:
-    """Verified full backup then one atomic deletion of only conversation tables."""
+    """Back up, archive debug exchanges and atomically clear runtime context."""
     if not offline_confirmed:
         raise ValueError("Stop all SQLite writers and pass --offline-confirmed")
     path = Path(path)
@@ -130,10 +205,6 @@ def reset_conversation(
             now = datetime.now(UTC)
             cutoff_message_id = (int(now.timestamp() * 1000) - DISCORD_EPOCH_MS) << 22
             ensure_epoch_schema(db)
-            deleted = {}
-            for table in RAW_TABLES:
-                result = db.execute(f"DELETE FROM {table}")
-                deleted[table] = result.rowcount
             result = db.execute(
                 """INSERT INTO conversation_reset_epochs (
                     reset_at,cutoff_message_id,backup_sha256
@@ -141,6 +212,22 @@ def reset_conversation(
                 (now.isoformat(), cutoff_message_id, snapshot.sha256),
             )
             reset_id = int(result.lastrowid)
+            previous_archive_count = (
+                _row_count(db, "conversation_debug_archive")
+                if _table_exists(db, "conversation_debug_archive") else 0
+            )
+            archived = _archive_debug_rows(db, reset_id)
+            deleted = {}
+            for table in RAW_TABLES:
+                result = db.execute(f"DELETE FROM {table}")
+                deleted[table] = result.rowcount
+            for table, count in archived.items():
+                if deleted[table] != count:
+                    raise RuntimeError(f"Debug archive count mismatch: {table}")
+            if _row_count(db, "conversation_debug_archive") != (
+                previous_archive_count + sum(archived.values())
+            ):
+                raise RuntimeError("Debug archive retained row count mismatch")
             # Be explicit about preserving other tables and extraction sequences.
             for table, count in plan.preserved.items():
                 if _row_count(db, table) != count:
@@ -150,7 +237,7 @@ def reset_conversation(
             db.rollback()
             raise
         db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        return plan, ResetResult(snapshot, reset_id, now.isoformat(), deleted)
+        return plan, ResetResult(snapshot, reset_id, now.isoformat(), deleted, archived)
     finally:
         db.close()
 
@@ -158,13 +245,14 @@ def reset_conversation(
 def format_plan(plan: ResetPlan) -> str:
     lines = [
         f"Database: {plan.path}",
-        "Conversation tables to delete:",
+        "Runtime conversation tables to clear:",
         *(f"  {table}: {count}" for table, count in plan.removed.items()),
         (f"Structured memory pending: {plan.pending_turns} turns / "
          f"{plan.pending_scopes} scopes"),
         f"Structured memory rows preserved: {plan.preserved.get('memory_items',0)}",
         "Shared summaries will be deleted (possibly unique information).",
-        "Original conversation and shared summaries remain in the verified full backup.",
+        "Successful/failed exchanges are archived in the database for dashboard debugging.",
+        "Other context and shared summaries remain in the verified full backup.",
         "Telemetry, long-term memories, notes and settings will be preserved.",
         "Status: ready" if plan.ready else "Status: BLOCKED; flush memory first",
     ]
@@ -202,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             f"Reset #{result.reset_id} completed at {result.reset_at}; "
+            f"archived={result.archived}; "
             f"backup={result.backup.path}; sha256={result.backup.sha256}"
         )
         return 0

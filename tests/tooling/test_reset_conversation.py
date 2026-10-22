@@ -2,8 +2,10 @@ import sqlite3
 
 import pytest
 
+from hina_bot.core.db_schema import initialize_connection
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.dashboard.repository import AdminRepository
 from hina_bot.tooling.reset_conversation import (
     inspect_reset,
     main,
@@ -12,12 +14,13 @@ from hina_bot.tooling.reset_conversation import (
 
 
 def seed(path, *, pending=False):
-    store = Store(str(path))
+    store = Store.create(str(path))
     dm = Scope(None, 10, 100)
     guild = Scope(1, 20, 100, True)
     store.add(dm, 101, "recent old DM", "old response", name="DM display name")
     store.add(guild, 102, "recent guild", "old response", name="Guild display name")
-    store.add_shared_call(guild, 103, "Guild display name", "shared text")
+    with store.db:
+        store._conversations.write_shared_call(guild, 103, "Guild display name", "shared text")
     memory = store.add_memory_item(
         dm,
         "사용자는 오렌지를 좋아한다.",
@@ -25,7 +28,8 @@ def seed(path, *, pending=False):
         disclosure="local",
         source_message_ids=("101",),
     )
-    store.save_shared_summary(guild, "Guild display name", "old summary", 1)
+    with store.db:
+        store._conversations.write_shared_summary(guild, "Guild display name", "old summary", 1)
     if not pending:
         store.save_memory_extraction_cursor(dm, store.history(dm)[-1]["id"])
         store.save_memory_extraction_cursor(guild, store.history(guild)[-1]["id"])
@@ -68,6 +72,7 @@ def test_backup_and_reset_preserves_user_memory_and_settings(tmp_path):
     assert result.deleted == {
         "turns": 2, "shared_calls": 1, "failed_turns": 0, "shared_summaries": 1,
     }
+    assert result.archived == {"turns": 2, "failed_turns": 0}
 
     # Backup B is a usable SQLite database, not just a file copy of WAL-less pages.
     backup = sqlite3.connect(result.backup.path)
@@ -82,7 +87,7 @@ def test_backup_and_reset_preserves_user_memory_and_settings(tmp_path):
     finally:
         backup.close()
 
-    store = Store(str(path))
+    store = Store.create(str(path))
     try:
         assert counts(store.db) == {
             "turns": 0, "shared_calls": 0, "failed_turns": 0, "shared_summaries": 0,
@@ -109,6 +114,70 @@ def test_backup_and_reset_preserves_user_memory_and_settings(tmp_path):
     assert telemetry.read_text(encoding="utf-8") == "old trace\n"
 
 
+def test_debug_conversations_survive_multiple_resets_without_runtime_leak(tmp_path):
+    path = tmp_path / "debug.sqlite3"
+    dm, guild, _ = seed(path)
+    store = Store.create(str(path))
+    initialize_connection(store.db, ("admin",))
+    try:
+        with store.db:
+            store.db.execute(
+                "UPDATE turns SET turn_id='debug-success' WHERE message_id='101'"
+            )
+        store._conversations.add_failed_turn(
+            dm, 888, "failed input", name="DM display name",
+            reply="failed output", status="failed", stage="generation",
+            reply_delivered=False, error_type="RuntimeError",
+        )
+        with store.db:
+            store.db.execute(
+                "UPDATE failed_turns SET turn_id='debug-failure' "
+                "WHERE message_id='888'"
+            )
+    finally:
+        store.close()
+
+    _, first = reset_conversation(path, offline_confirmed=True)
+    assert first.archived == {"turns": 2, "failed_turns": 1}
+    with sqlite3.connect(path) as db:
+        assert counts(db) == dict.fromkeys(counts(db), 0)
+        assert db.execute(
+            "SELECT COUNT(*) FROM conversation_debug_archive"
+        ).fetchone()[0] == 3
+
+    # Dashboard still has searchable, trace-linked transcripts; runtime is empty.
+    repo = AdminRepository(path)
+    assert repo.count_conversations() == 3
+    assert repo.count_conversations(query="failed input") == 1
+    assert repo.turn_for_trace("debug-success")["content"] == "recent old DM"
+    assert repo.turn_for_trace("debug-failure")["record_type"] == "failed"
+    assert repo.turn_by_id(1)["content"] == "recent old DM"
+    assert [x["message_id"] for x in repo.turns_for_message_ids(["101"])] == ["101"]
+    assert repo.turn_context(1)[0]["content"] == "recent old DM"
+
+    store = Store.create(str(path))
+    try:
+        assert store.history(dm) == []
+        assert store.history(guild) == []
+        assert store.pending_memory_extraction(dm) == []
+        assert store._conversations.public_candidates(100, 1) == []
+        store.add(dm, 999, "new message", "new reply")
+        store.save_memory_extraction_cursor(dm, store.history(dm)[-1]["id"])
+    finally:
+        store.close()
+
+    _, second = reset_conversation(path, offline_confirmed=True)
+    assert second.archived == {"turns": 1, "failed_turns": 0}
+    repo = AdminRepository(path)
+    assert repo.count_conversations() == 4
+    assert repo.count_conversations(query="recent old DM") == 1
+    assert repo.turn_for_trace("debug-failure")["content"] == "failed input"
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM conversation_debug_archive"
+        ).fetchone()[0] == 4
+
+
 def test_pending_refuses_before_backup_and_deletion(tmp_path):
     path = tmp_path / "test.sqlite3"
     seed(path, pending=True)
@@ -120,6 +189,34 @@ def test_pending_refuses_before_backup_and_deletion(tmp_path):
     assert not (tmp_path / "backups").exists()
     with sqlite3.connect(path) as db:
         assert counts(db)["turns"] == 2
+
+
+def test_change_after_backup_is_rejected_before_deletion(tmp_path, monkeypatch):
+    import hina_bot.tooling.reset_conversation as mod
+
+    path = tmp_path / "changed.sqlite3"
+    dm, _, _ = seed(path)
+    backup = mod.backup_sqlite
+
+    def backup_then_write(*args, **kwargs):
+        result = backup(*args, **kwargs)
+        writer = Store.create(str(path))
+        try:
+            writer.add(dm, 999, "new pending source", "reply")
+        finally:
+            writer.close()
+        return result
+
+    monkeypatch.setattr(mod, "backup_sqlite", backup_then_write)
+    with pytest.raises(RuntimeError, match="Database changed since backup"):
+        mod.reset_conversation(path, offline_confirmed=True)
+    with sqlite3.connect(path) as db:
+        assert counts(db) == {
+            "turns": 3, "shared_calls": 1, "failed_turns": 0, "shared_summaries": 1,
+        }
+        assert db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='conversation_reset_epochs'"
+        ).fetchone() is None
 
 
 def test_missing_offline_confirmation_refuses_before_backup(tmp_path):

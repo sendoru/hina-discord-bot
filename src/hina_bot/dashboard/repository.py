@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
+
+from hina_bot.core.db_connections import open_readonly
+from hina_bot.core.db_schema import require_current
 
 
 class AdminRepository:
@@ -15,18 +18,13 @@ class AdminRepository:
         if not resolved.is_file():
             raise FileNotFoundError(f"Dashboard database is not a file: {resolved}")
         self.path = resolved
-        self._uri = f"{resolved.as_uri()}?mode=ro"
+        with self._connection() as db:
+            require_current(db)
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
-        db = sqlite3.connect(self._uri, uri=True, timeout=5.0)
-        db.row_factory = sqlite3.Row
-        try:
-            db.execute("PRAGMA query_only=ON")
-            db.execute("PRAGMA busy_timeout=5000")
+        with closing(open_readonly(self.path)) as db:
             yield db
-        finally:
-            db.close()
 
     @staticmethod
     def _limit(value: int, *, maximum: int = 1000) -> int:
@@ -43,23 +41,7 @@ class AdminRepository:
         with self._connection() as db:
             db.execute("SELECT 1").fetchone()
 
-    def table_names(self) -> tuple[str, ...]:
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-            ).fetchall()
-        return tuple(str(row["name"]) for row in rows)
-
-    def _has_column(self, table: str, column: str) -> bool:
-        if table not in {"turns"}:
-            raise ValueError("unsupported dashboard schema lookup")
-        with self._connection() as db:
-            rows = db.execute(f"PRAGMA table_info({table})").fetchall()
-        return any(str(row["name"]) == column for row in rows)
-
     def runtime_config_startup_rows(self) -> list[dict[str, object]]:
-        if not self._table_exists("runtime_config_startup"):
-            return []
         with self._connection() as db:
             rows = db.execute(
                 "SELECT key,value,captured_at FROM runtime_config_startup ORDER BY key"
@@ -67,8 +49,6 @@ class AdminRepository:
         return self._dicts(rows)
 
     def runtime_config_rows(self) -> list[dict[str, object]]:
-        if not self._table_exists("runtime_config"):
-            return []
         with self._connection() as db:
             rows = db.execute(
                 "SELECT key,value,updated_at FROM runtime_config ORDER BY key"
@@ -76,8 +56,6 @@ class AdminRepository:
         return self._dicts(rows)
 
     def admin_command_row(self, command_id: int) -> dict[str, object] | None:
-        if not self._table_exists("admin_commands"):
-            return None
         with self._connection() as db:
             row = db.execute(
                 """SELECT id,request_id,actor,action,target,status,result_json,
@@ -87,14 +65,19 @@ class AdminRepository:
             ).fetchone()
         return dict(row) if row is not None else None
 
+    def admin_command_id_for_request(self, request_id: str) -> int | None:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT id FROM admin_commands WHERE request_id=?", (request_id,)
+            ).fetchone()
+        return int(row["id"]) if row is not None else None
+
     def admin_command_rows(
         self,
         *,
         action_prefix: str = "",
         limit: int = 50,
     ) -> list[dict[str, object]]:
-        if not self._table_exists("admin_commands"):
-            return []
         limit = self._limit(limit, maximum=200)
         with self._connection() as db:
             if action_prefix:
@@ -117,8 +100,6 @@ class AdminRepository:
         return self._dicts(rows)
 
     def instruction_rows(self) -> list[dict[str, object]]:
-        if not self._table_exists("instructions"):
-            return []
         with self._connection() as db:
             rows = db.execute(
                 """SELECT id,text,enabled,created_at,updated_at
@@ -127,8 +108,6 @@ class AdminRepository:
         return self._dicts(rows)
 
     def runtime_knowledge_rows(self) -> list[dict[str, object]]:
-        if not self._table_exists("runtime_knowledge"):
-            return []
         with self._connection() as db:
             rows = db.execute(
                 """SELECT id,kind,content,keywords,subjects,awareness,timeline,
@@ -150,8 +129,6 @@ class AdminRepository:
     def scope_mode_overrides(self, table: str) -> list[dict[str, object]]:
         if table not in {"memory_modes", "chat_log_modes"}:
             raise ValueError("unsupported dashboard mode table")
-        if not self._table_exists(table):
-            return []
         with self._connection() as db:
             rows = db.execute(
                 f"SELECT scope,mode FROM {table} ORDER BY scope"
@@ -185,9 +162,6 @@ class AdminRepository:
             "shared_summaries",
             "memory_extraction_cursors",
         ):
-            columns = self._table_columns(table)
-            if not {"scope", "realm", "user_id"}.issubset(columns):
-                continue
             with self._connection() as db:
                 rows = db.execute(
                     f"SELECT scope FROM {table} WHERE realm=? AND user_id=?",
@@ -198,35 +172,29 @@ class AdminRepository:
                 if channel:
                     channels.add(channel)
 
-        memory_columns = self._table_columns("memory_items")
-        if {"origin_realm", "origin_channel_id", "user_id"}.issubset(memory_columns):
-            with self._connection() as db:
-                rows = db.execute(
-                    """SELECT origin_channel_id FROM memory_items
-                       WHERE origin_realm=? AND user_id=?""",
-                    (realm, user_id),
-                ).fetchall()
-            for row in rows:
-                channel = str(row["origin_channel_id"] or "")
-                if channel.isdigit() and int(channel) > 0:
-                    channels.add(channel)
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT origin_channel_id FROM memory_items
+                   WHERE origin_realm=? AND user_id=?""",
+                (realm, user_id),
+            ).fetchall()
+        for row in rows:
+            channel = str(row["origin_channel_id"] or "")
+            if channel.isdigit() and int(channel) > 0:
+                channels.add(channel)
 
-        proposal_columns = self._table_columns("memory_reconciliation_proposals")
-        if {"origin_realm", "origin_channel_id", "user_id"}.issubset(proposal_columns):
-            with self._connection() as db:
-                rows = db.execute(
-                    """SELECT origin_channel_id FROM memory_reconciliation_proposals
-                       WHERE origin_realm=? AND user_id=?""",
-                    (realm, user_id),
-                ).fetchall()
-            for row in rows:
-                channel = str(row["origin_channel_id"] or "")
-                if channel.isdigit() and int(channel) > 0:
-                    channels.add(channel)
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT origin_channel_id FROM memory_reconciliation_proposals
+                   WHERE origin_realm=? AND user_id=?""",
+                (realm, user_id),
+            ).fetchall()
+        for row in rows:
+            channel = str(row["origin_channel_id"] or "")
+            if channel.isdigit() and int(channel) > 0:
+                channels.add(channel)
 
         for table in ("memory_modes", "chat_log_modes"):
-            if not self._table_exists(table):
-                continue
             with self._connection() as db:
                 rows = db.execute(
                     f"SELECT scope FROM {table} WHERE scope LIKE ?",
@@ -237,23 +205,20 @@ class AdminRepository:
                 if channel:
                     channels.add(channel)
 
-        if self._table_exists("notes"):
-            prefix = f"config:chatlog_capture:{realm}:channel:"
-            with self._connection() as db:
-                rows = db.execute(
-                    "SELECT scope FROM notes WHERE scope LIKE ?",
-                    (f"{prefix}%",),
-                ).fetchall()
-            for row in rows:
-                channel = str(row["scope"] or "")[len(prefix):].split(":", 1)[0]
-                if channel.isdigit() and int(channel) > 0:
-                    channels.add(channel)
+        prefix = f"config:chatlog_capture:{realm}:channel:"
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT scope FROM notes WHERE scope LIKE ?",
+                (f"{prefix}%",),
+            ).fetchall()
+        for row in rows:
+            channel = str(row["scope"] or "")[len(prefix):].split(":", 1)[0]
+            if channel.isdigit() and int(channel) > 0:
+                channels.add(channel)
 
         return sorted(channels, key=int)
 
     def note_rows(self) -> list[dict[str, object]]:
-        if not self._table_exists("notes"):
-            return []
         with self._connection() as db:
             rows = db.execute(
                 "SELECT scope,text FROM notes ORDER BY scope"
@@ -262,83 +227,89 @@ class AdminRepository:
 
     def latest_user_names(self) -> dict[tuple[str, str], str]:
         names: dict[tuple[str, str], str] = {}
-        if self._table_exists("turns") and self._has_column("turns", "name"):
-            with self._connection() as db:
-                rows = db.execute(
-                    """SELECT realm,user_id,name FROM turns
-                       WHERE name<>'' ORDER BY id DESC"""
-                ).fetchall()
-            for row in rows:
-                key = (str(row["realm"]), str(row["user_id"]))
-                names.setdefault(key, str(row["name"])[:100])
-        memory_columns = self._table_columns("memory_items")
-        if "user_name" in memory_columns:
-            with self._connection() as db:
-                rows = db.execute(
-                    """SELECT origin_realm AS realm,user_id,user_name
-                       FROM memory_items WHERE user_name<>''
-                       ORDER BY id DESC"""
-                ).fetchall()
-            for row in rows:
-                key = (str(row["realm"]), str(row["user_id"]))
-                names.setdefault(key, str(row["user_name"])[:100])
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT realm,user_id,name FROM turns
+                   WHERE name<>'' ORDER BY id DESC"""
+            ).fetchall()
+        for row in rows:
+            key = (str(row["realm"]), str(row["user_id"]))
+            names.setdefault(key, str(row["name"])[:100])
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT origin_realm AS realm,user_id,user_name
+                   FROM memory_items WHERE user_name<>''
+                   ORDER BY id DESC"""
+            ).fetchall()
+        for row in rows:
+            key = (str(row["realm"]), str(row["user_id"]))
+            names.setdefault(key, str(row["user_name"])[:100])
 
-        for table in ("shared_summaries",):
-            columns = self._table_columns(table)
-            if not {"realm", "user_id", "name"}.issubset(columns):
-                continue
-            with self._connection() as db:
-                rows = db.execute(
-                    f"""SELECT realm,user_id,name FROM {table}
-                        WHERE name<>'' ORDER BY rowid DESC"""
-                ).fetchall()
-            for row in rows:
-                key = (str(row["realm"]), str(row["user_id"]))
-                names.setdefault(key, str(row["name"])[:100])
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT realm,user_id,name FROM shared_summaries
+                   WHERE name<>'' ORDER BY rowid DESC"""
+            ).fetchall()
+        for row in rows:
+            key = (str(row["realm"]), str(row["user_id"]))
+            names.setdefault(key, str(row["name"])[:100])
         return names
 
     def discord_scope_metadata(self) -> dict[str, dict[str, object]]:
         """Return latest human-readable Discord guild/channel metadata when available."""
-        guilds: dict[str, object] = {}
-        channels: dict[str, object] = {}
-        if self._table_exists("guild_metadata"):
-            with self._connection() as db:
-                rows = db.execute(
-                    "SELECT guild_id,name,updated_at FROM guild_metadata ORDER BY guild_id"
-                ).fetchall()
-            guilds = {
-                str(row["guild_id"]): {
-                    "name": str(row["name"] or ""),
-                    "updated_at": str(row["updated_at"] or ""),
-                }
-                for row in rows
+        with self._connection() as db:
+            rows = db.execute(
+                "SELECT guild_id,name,updated_at FROM guild_metadata ORDER BY guild_id"
+            ).fetchall()
+        guilds = {
+            str(row["guild_id"]): {
+                "name": str(row["name"] or ""),
+                "updated_at": str(row["updated_at"] or ""),
             }
-        if self._table_exists("channel_metadata"):
-            with self._connection() as db:
-                rows = db.execute(
-                    """SELECT channel_id,guild_id,name,updated_at
-                       FROM channel_metadata ORDER BY channel_id"""
-                ).fetchall()
-            channels = {
-                str(row["channel_id"]): {
-                    "guild_id": str(row["guild_id"] or ""),
-                    "name": str(row["name"] or ""),
-                    "updated_at": str(row["updated_at"] or ""),
-                }
-                for row in rows
+            for row in rows
+        }
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT channel_id,guild_id,name,updated_at
+                   FROM channel_metadata ORDER BY channel_id"""
+            ).fetchall()
+        channels = {
+            str(row["channel_id"]): {
+                "guild_id": str(row["guild_id"] or ""),
+                "name": str(row["name"] or ""),
+                "updated_at": str(row["updated_at"] or ""),
             }
+            for row in rows
+        }
         return {"guilds": guilds, "channels": channels}
+
+    @staticmethod
+    def _has_debug_archive(db: sqlite3.Connection) -> bool:
+        return db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='conversation_debug_archive'"
+        ).fetchone() is not None
+
+    @classmethod
+    def _turn_sources(cls, db: sqlite3.Connection, fields: str) -> str:
+        source = f"SELECT {fields} FROM turns"
+        if cls._has_debug_archive(db):
+            source += (
+                f" UNION ALL SELECT {fields} FROM conversation_debug_archive"
+                " WHERE record_type='turn'"
+            )
+        return source
 
     def recent_turns(self, *, limit: int = 100) -> list[dict[str, object]]:
         limit = self._limit(limit)
-        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
-        name = "name" if self._has_column("turns", "name") else "'' AS name"
+        fields = (
+            "id,scope,realm,user_id,name,message_id,content,reply,exportable,"
+            "turn_id,memory_context,created_at"
+        )
         with self._connection() as db:
+            source = self._turn_sources(db, fields)
             rows = db.execute(
-                f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
-                           {turn_id},memory_context,created_at
-                    FROM turns ORDER BY id DESC LIMIT ?""",
-                (limit,),
+                f"SELECT * FROM ({source}) ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         return self._dicts(rows)
 
@@ -350,124 +321,34 @@ class AdminRepository:
             .replace("_", "\\_")
         )
 
-    def _turn_filters(
-        self,
-        *,
-        scope: str = "",
-        realm: str = "",
-        user_id: str = "",
-        query: str = "",
-        created_after: str = "",
-        created_before: str = "",
-    ) -> tuple[str, tuple[object, ...]]:
-        clauses: list[str] = []
-        params: list[object] = []
-        if scope:
-            clauses.append("scope=?")
-            params.append(scope)
-        if realm:
-            clauses.append("realm=?")
-            params.append(realm)
-        if user_id:
-            if self._has_column("turns", "name"):
-                escaped_user = self._like(user_id)
-                clauses.append(
-                    "(user_id=? OR name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
-                )
-                params.extend((user_id, f"%{escaped_user}%"))
-            else:
-                clauses.append("user_id=?")
-                params.append(user_id)
-        if query:
-            escaped = self._like(query)
-            clauses.append(
-                "(content LIKE ? ESCAPE '\\' OR reply LIKE ? ESCAPE '\\' "
-                "OR message_id LIKE ? ESCAPE '\\')"
-            )
-            pattern = f"%{escaped}%"
-            params.extend((pattern, pattern, pattern))
-        if created_after:
-            clauses.append("created_at>=?")
-            params.append(created_after)
-        if created_before:
-            clauses.append("created_at<=?")
-            params.append(created_before)
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-        return where, tuple(params)
-
-    def count_turns(
-        self,
-        *,
-        scope: str = "",
-        realm: str = "",
-        user_id: str = "",
-        query: str = "",
-        created_after: str = "",
-        created_before: str = "",
-    ) -> int:
-        where, params = self._turn_filters(
-            scope=scope,
-            realm=realm,
-            user_id=user_id,
-            query=query,
-            created_after=created_after,
-            created_before=created_before,
-        )
+    def count_turns(self) -> int:
+        """Successful-turn total including saved pre-reset debugging history."""
         with self._connection() as db:
-            row = db.execute(f"SELECT COUNT(*) AS count FROM turns{where}", params).fetchone()
-        return int(row["count"]) if row is not None else 0
+            source = self._turn_sources(db, "id")
+            return int(db.execute(
+                f"SELECT COUNT(*) FROM ({source})"
+            ).fetchone()[0])
 
-    def search_turns(
-        self,
-        *,
-        scope: str = "",
-        realm: str = "",
-        user_id: str = "",
-        query: str = "",
-        created_after: str = "",
-        created_before: str = "",
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[dict[str, object]]:
-        limit = self._limit(limit)
-        offset = max(0, int(offset))
-        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
-        name = "name" if self._has_column("turns", "name") else "'' AS name"
-        where, params = self._turn_filters(
-            scope=scope,
-            realm=realm,
-            user_id=user_id,
-            query=query,
-            created_after=created_after,
-            created_before=created_before,
-        )
-        with self._connection() as db:
-            rows = db.execute(
-                f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
-                           {turn_id},memory_context,created_at
-                    FROM turns{where} ORDER BY id DESC LIMIT ? OFFSET ?""",
-                (*params, limit, offset),
-            ).fetchall()
-        return self._dicts(rows)
-
-    def _conversation_union(self) -> str:
-        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
-        name = "name" if self._has_column("turns", "name") else "'' AS name"
-        selects = [
-            f"""SELECT 'turn' AS record_type,id,scope,realm,user_id,{name},message_id,
-                       content,reply,exportable,{turn_id},memory_context,created_at,
-                       'completed' AS status,'' AS stage,1 AS reply_delivered,
-                       '' AS error_type,'' AS error_fingerprint
-                FROM turns"""
-        ]
-        if self._table_exists("failed_turns"):
-            selects.append(
-                """SELECT 'failed' AS record_type,id,scope,realm,user_id,name,message_id,
-                          content,reply,0 AS exportable,turn_id,'' AS memory_context,created_at,
-                          status,stage,reply_delivered,error_type,error_fingerprint
-                   FROM failed_turns"""
-            )
-        return " UNION ALL ".join(selects)
+    @classmethod
+    def _conversation_union(cls, db: sqlite3.Connection) -> str:
+        sql = """SELECT 'turn' AS record_type,id,scope,realm,user_id,name,message_id,
+                         content,reply,exportable,turn_id,memory_context,created_at,
+                         'completed' AS status,'' AS stage,1 AS reply_delivered,
+                         '' AS error_type,'' AS error_fingerprint
+                  FROM turns
+                  UNION ALL
+                  SELECT 'failed' AS record_type,id,scope,realm,user_id,name,message_id,
+                         content,reply,0 AS exportable,turn_id,'' AS memory_context,created_at,
+                         status,stage,reply_delivered,error_type,error_fingerprint
+                  FROM failed_turns"""
+        if cls._has_debug_archive(db):
+            sql += """
+                  UNION ALL
+                  SELECT record_type,id,scope,realm,user_id,name,message_id,
+                         content,reply,exportable,turn_id,memory_context,created_at,
+                         status,stage,reply_delivered,error_type,error_fingerprint
+                  FROM conversation_debug_archive"""
+        return sql
 
     def _conversation_filters(
         self,
@@ -522,7 +403,6 @@ class AdminRepository:
         created_after: str = "",
         created_before: str = "",
     ) -> int:
-        union = self._conversation_union()
         where, params = self._conversation_filters(
             scope=scope,
             realm=realm,
@@ -532,6 +412,7 @@ class AdminRepository:
             created_before=created_before,
         )
         with self._connection() as db:
+            union = self._conversation_union(db)
             row = db.execute(
                 f"SELECT COUNT(*) AS count FROM ({union}) conversations{where}",
                 params,
@@ -552,7 +433,6 @@ class AdminRepository:
     ) -> list[dict[str, object]]:
         limit = self._limit(limit)
         offset = max(0, int(offset))
-        union = self._conversation_union()
         where, params = self._conversation_filters(
             scope=scope,
             realm=realm,
@@ -562,6 +442,7 @@ class AdminRepository:
             created_before=created_before,
         )
         with self._connection() as db:
+            union = self._conversation_union(db)
             rows = db.execute(
                 f"""SELECT * FROM ({union}) conversations{where}
                     ORDER BY created_at DESC,record_type,id DESC
@@ -570,19 +451,15 @@ class AdminRepository:
             ).fetchall()
         return self._dicts(rows)
 
-    def _turn_select(self) -> tuple[str, str]:
-        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
-        name = "name" if self._has_column("turns", "name") else "'' AS name"
-        return turn_id, name
-
     def turn_by_id(self, row_id: int) -> dict[str, object] | None:
-        turn_id, name = self._turn_select()
+        fields = (
+            "id,scope,realm,user_id,name,message_id,content,reply,exportable,"
+            "turn_id,memory_context,created_at"
+        )
         with self._connection() as db:
+            source = self._turn_sources(db, fields)
             row = db.execute(
-                f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
-                           {turn_id},memory_context,created_at
-                    FROM turns WHERE id=?""",
-                (int(row_id),),
+                f"SELECT * FROM ({source}) WHERE id=?", (int(row_id),)
             ).fetchone()
         return dict(row) if row is not None else None
 
@@ -598,20 +475,20 @@ class AdminRepository:
             return []
         before = min(20, max(0, int(before)))
         after = min(20, max(0, int(after)))
-        turn_id, name = self._turn_select()
         fields = (
-            f"id,scope,realm,user_id,{name},message_id,content,reply,exportable,"
-            f"{turn_id},memory_context,created_at"
+            "id,scope,realm,user_id,name,message_id,content,reply,exportable,"
+            "turn_id,memory_context,created_at"
         )
         with self._connection() as db:
+            source = self._turn_sources(db, fields)
             previous = db.execute(
-                f"""SELECT {fields} FROM turns
+                f"""SELECT * FROM ({source})
                     WHERE scope=? AND id<?
                     ORDER BY id DESC LIMIT ?""",
                 (str(target["scope"]), int(row_id), before),
             ).fetchall()
             following = db.execute(
-                f"""SELECT {fields} FROM turns
+                f"""SELECT * FROM ({source})
                     WHERE scope=? AND id>?
                     ORDER BY id ASC LIMIT ?""",
                 (str(target["scope"]), int(row_id), after),
@@ -626,43 +503,31 @@ class AdminRepository:
         trace_id = turn_id.strip()
         if not trace_id:
             return None
-
-        has_turn_trace = self._has_column("turns", "turn_id")
-        has_failed_trace = "turn_id" in self._table_columns("failed_turns")
-        if not has_turn_trace and not has_failed_trace:
-            return None
-
         with self._connection() as db:
-            row = (
-                db.execute(
-                    "SELECT * FROM turns WHERE turn_id=? ORDER BY id DESC LIMIT 1",
-                    (trace_id,),
-                ).fetchone()
-                if has_turn_trace
-                else None
-            )
+            row = db.execute(
+                "SELECT * FROM turns WHERE turn_id=? ORDER BY id DESC LIMIT 1",
+                (trace_id,),
+            ).fetchone()
             if row is not None:
-                value = dict(row)
-                value["record_type"] = "turn"
-                return value
-
-            row = (
-                db.execute(
-                    "SELECT * FROM failed_turns WHERE turn_id=? ORDER BY id DESC LIMIT 1",
+                return {**dict(row), "record_type": "turn"}
+            row = db.execute(
+                "SELECT * FROM failed_turns WHERE turn_id=? ORDER BY id DESC LIMIT 1",
+                (trace_id,),
+            ).fetchone()
+            if row is None and self._has_debug_archive(db):
+                row = db.execute(
+                    "SELECT * FROM conversation_debug_archive "
+                    "WHERE turn_id=? ORDER BY id DESC LIMIT 1",
                     (trace_id,),
                 ).fetchone()
-                if has_failed_trace
-                else None
-            )
+                if row is not None:
+                    return dict(row)
         if row is None:
             return None
-
-        value = dict(row)
-        value["record_type"] = "failed"
-        value["exportable"] = 0
-        value["memory_context"] = ""
-        value["context_provenance"] = ""
-        return value
+        return {
+            **dict(row), "record_type": "failed", "exportable": 0,
+            "memory_context": "", "context_provenance": "",
+        }
 
     def _table_exists(self, table: str) -> bool:
         with self._connection() as db:
@@ -671,13 +536,6 @@ class AdminRepository:
                 (table,),
             ).fetchone()
         return row is not None
-
-    def _table_columns(self, table: str) -> set[str]:
-        if not self._table_exists(table):
-            return set()
-        with self._connection() as db:
-            rows = db.execute(f"PRAGMA table_info({table})").fetchall()
-        return {str(row["name"]) for row in rows}
 
     @staticmethod
     def _decode_json(value: object, default):
@@ -707,19 +565,14 @@ class AdminRepository:
         updated_after: str = "",
         updated_before: str = "",
     ) -> tuple[str, tuple[object, ...]]:
-        columns = self._table_columns("memory_items")
         clauses: list[str] = []
         params: list[object] = []
         if user_id:
-            if "user_name" in columns:
-                escaped_user = self._like(user_id)
-                clauses.append(
-                    "(user_id=? OR user_name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
-                )
-                params.extend((user_id, f"%{escaped_user}%"))
-            else:
-                clauses.append("user_id=?")
-                params.append(user_id)
+            escaped_user = self._like(user_id)
+            clauses.append(
+                "(user_id=? OR user_name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
+            )
+            params.extend((user_id, f"%{escaped_user}%"))
         exact = {
             "origin_realm": origin_realm,
             "origin_channel_id": origin_channel_id,
@@ -735,11 +588,8 @@ class AdminRepository:
             clauses.append("origin_realm LIKE ? ESCAPE '\\'")
             params.append(f"{escaped_realm_prefix}%")
         if status:
-            if "status" in columns:
-                clauses.append("status=?")
-                params.append(status)
-            else:
-                clauses.append("1=0")
+            clauses.append("status=?")
+            params.append(status)
         if relationship == "yes":
             clauses.append("relationship_evidence NOT IN ('{}','')")
         elif relationship == "no":
@@ -769,20 +619,7 @@ class AdminRepository:
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         return where, tuple(params)
 
-    def memory_schema(self) -> dict[str, object]:
-        columns = self._table_columns("memory_items")
-        return {
-            "available": bool(columns),
-            "columns": tuple(sorted(columns)),
-            "has_lifecycle": "status" in columns,
-            "has_superseded_by": "superseded_by" in columns,
-            "has_revision": "revision" in columns,
-            "has_edit_history": self._table_exists("memory_item_edit_history"),
-        }
-
     def count_memory_items(self, **filters) -> int:
-        if not self._table_exists("memory_items"):
-            return 0
         where, params = self._memory_filters(**filters)
         with self._connection() as db:
             row = db.execute(
@@ -793,8 +630,6 @@ class AdminRepository:
     def search_memory_items(
         self, *, limit: int = 50, offset: int = 0, **filters
     ) -> list[dict[str, object]]:
-        if not self._table_exists("memory_items"):
-            return []
         limit = self._limit(limit)
         offset = max(0, int(offset))
         where, params = self._memory_filters(**filters)
@@ -806,8 +641,6 @@ class AdminRepository:
         return self._dicts(rows)
 
     def memory_item(self, item_id: int) -> dict[str, object] | None:
-        if not self._table_exists("memory_items"):
-            return None
         with self._connection() as db:
             row = db.execute(
                 "SELECT * FROM memory_items WHERE id=?", (int(item_id),)
@@ -817,8 +650,6 @@ class AdminRepository:
     def memory_item_edit_history(
         self, item_id: int, *, limit: int = 50
     ) -> list[dict[str, object]]:
-        if not self._table_exists("memory_item_edit_history"):
-            return []
         limit = self._limit(limit, maximum=200)
         with self._connection() as db:
             rows = db.execute(
@@ -834,8 +665,6 @@ class AdminRepository:
     def neighboring_memory_items(
         self, item: dict[str, object], *, limit: int = 8
     ) -> list[dict[str, object]]:
-        if not self._table_exists("memory_items"):
-            return []
         limit = self._limit(limit, maximum=50)
         with self._connection() as db:
             rows = db.execute(
@@ -855,64 +684,41 @@ class AdminRepository:
 
     def turns_for_message_ids(self, message_ids: list[str]) -> list[dict[str, object]]:
         values = tuple(dict.fromkeys(str(value) for value in message_ids if str(value)))
-        if not values or not self._table_exists("turns"):
+        if not values:
             return []
         placeholders = ",".join("?" for _ in values)
-        turn_id = "turn_id" if self._has_column("turns", "turn_id") else "NULL AS turn_id"
-        name = "name" if self._has_column("turns", "name") else "'' AS name"
+        fields = (
+            "id,scope,realm,user_id,name,message_id,content,reply,exportable,"
+            "turn_id,memory_context,created_at"
+        )
         with self._connection() as db:
+            source = self._turn_sources(db, fields)
             rows = db.execute(
-                f"""SELECT id,scope,realm,user_id,{name},message_id,content,reply,exportable,
-                           {turn_id},memory_context,created_at
-                    FROM turns WHERE message_id IN ({placeholders}) ORDER BY id""",
+                f"SELECT * FROM ({source}) WHERE message_id IN ({placeholders}) "
+                "ORDER BY id",
                 values,
             ).fetchall()
         return self._dicts(rows)
-
-    def memory_counts_by_user(self) -> dict[str, int]:
-        if not self._table_exists("memory_items"):
-            return {}
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT user_id,COUNT(*) AS count FROM memory_items GROUP BY user_id"
-            ).fetchall()
-        return {str(row["user_id"]): int(row["count"]) for row in rows}
 
     def relationship_profile_users(
         self,
         *,
         query: str = "",
     ) -> list[dict[str, object]]:
-        columns = self._table_columns("memory_items")
-        if not columns:
-            return []
-        clauses = [
-            "kind='relationship'",
-        ]
-        if "status" in columns:
-            clauses.append("status='active'")
+        clauses = ["kind='relationship'", "status='active'"]
         params: list[object] = []
-        user_name = (
-            "MAX(NULLIF(user_name,'')) AS user_name"
-            if "user_name" in columns
-            else "'' AS user_name"
-        )
         if query:
             escaped = self._like(query)
             pattern = f"%{escaped}%"
-            if "user_name" in columns:
-                clauses.append(
-                    "(user_id LIKE ? ESCAPE '\\' OR user_name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
-                )
-                params.extend((pattern, pattern))
-            else:
-                clauses.append("user_id LIKE ? ESCAPE '\\'")
-                params.append(pattern)
+            clauses.append(
+                "(user_id LIKE ? ESCAPE '\\' OR user_name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
+            )
+            params.extend((pattern, pattern))
         where = " AND ".join(clauses)
         with self._connection() as db:
             rows = db.execute(
-                f"""SELECT user_id,{user_name},COUNT(*) AS observation_count,
-                           MAX(updated_at) AS latest_updated_at
+                f"""SELECT user_id,MAX(NULLIF(user_name,'')) AS user_name,
+                           COUNT(*) AS observation_count,MAX(updated_at) AS latest_updated_at
                     FROM memory_items
                     WHERE {where}
                     GROUP BY user_id
@@ -922,93 +728,47 @@ class AdminRepository:
         return self._dicts(rows)
 
     def relationship_profile_items(self, user_id: str) -> list[dict[str, object]]:
-        columns = self._table_columns("memory_items")
-        if not columns:
-            return []
-        clauses = [
-            "user_id=?",
-            "kind='relationship'",
-        ]
-        if "status" in columns:
-            clauses.append("status='active'")
         with self._connection() as db:
             rows = db.execute(
-                f"""SELECT * FROM memory_items
-                    WHERE {' AND '.join(clauses)}
-                    ORDER BY id""",
+                """SELECT * FROM memory_items
+                   WHERE user_id=? AND kind='relationship' AND status='active'
+                   ORDER BY id""",
                 (str(user_id),),
             ).fetchall()
         return self._dicts(rows)
 
     def shared_summary_status(self) -> list[dict[str, object]]:
-        if not self._table_exists("shared_summaries"):
-            return []
-        has_calls = self._table_exists("shared_calls")
-        pending = (
-            """(SELECT COUNT(*) FROM shared_calls c
-                 WHERE c.scope=s.scope AND c.id>s.through_id)"""
-            if has_calls
-            else "0"
-        )
-        latest = (
-            "(SELECT MAX(id) FROM shared_calls c WHERE c.scope=s.scope)"
-            if has_calls
-            else "NULL"
-        )
         with self._connection() as db:
             rows = db.execute(
-                f"""SELECT s.*, {pending} AS pending_calls,
-                           {latest} AS latest_call_id
-                    FROM shared_summaries s ORDER BY s.rowid DESC"""
+                """SELECT s.*,
+                          (SELECT COUNT(*) FROM shared_calls c
+                           WHERE c.scope=s.scope AND c.id>s.through_id) AS pending_calls,
+                          (SELECT MAX(id) FROM shared_calls c
+                           WHERE c.scope=s.scope) AS latest_call_id
+                   FROM shared_summaries s ORDER BY s.rowid DESC"""
             ).fetchall()
         return self._dicts(rows)
 
     def extraction_cursor_status(self) -> list[dict[str, object]]:
-        if not self._table_exists("turns"):
-            return []
-        has_cursors = self._table_exists("memory_extraction_cursors")
-        scope_parts = ["SELECT scope, realm, user_id FROM turns"]
-        if has_cursors:
-            scope_parts.append(
-                "SELECT scope, realm, user_id FROM memory_extraction_cursors"
-            )
-        scopes_sql = " UNION ".join(scope_parts)
-        cursor_join = (
-            "LEFT JOIN memory_extraction_cursors c ON c.scope=sc.scope"
-            if has_cursors
-            else ""
-        )
-        cursor_fields = (
-            "c.through_id AS extraction_through_id, "
-            "c.updated_at AS extraction_updated_at,"
-            if has_cursors
-            else "NULL AS extraction_through_id, NULL AS extraction_updated_at,"
-        )
-        effective = "COALESCE(c.through_id,0)" if has_cursors else "0"
-        initialized = "CASE WHEN c.scope IS NULL THEN 0 ELSE 1 END" if has_cursors else "0"
-
         with self._connection() as db:
             rows = db.execute(
-                f"""WITH scopes AS ({scopes_sql})
-                    SELECT sc.scope,sc.realm,sc.user_id,
-                           {cursor_fields}
-                           {effective} AS effective_through_id,
-                           {initialized} AS initialized,
-                           (SELECT COUNT(*) FROM turns t
-                            WHERE t.scope=sc.scope AND t.id>{effective}) AS pending_turns,
-                           (SELECT MAX(id) FROM turns t WHERE t.scope=sc.scope) AS latest_turn_id
-                    FROM scopes sc
-                    {cursor_join}
-                    ORDER BY pending_turns DESC, sc.scope"""
-            ).fetchall()
-        return self._dicts(rows)
-
-    def recent_memory_items(self, *, limit: int = 100) -> list[dict[str, object]]:
-        limit = self._limit(limit)
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT * FROM memory_items ORDER BY id DESC LIMIT ?",
-                (limit,),
+                """WITH scopes AS (
+                       SELECT scope,realm,user_id FROM turns
+                       UNION
+                       SELECT scope,realm,user_id FROM memory_extraction_cursors
+                   )
+                   SELECT sc.scope,sc.realm,sc.user_id,
+                          c.through_id AS extraction_through_id,
+                          c.updated_at AS extraction_updated_at,
+                          COALESCE(c.through_id,0) AS effective_through_id,
+                          CASE WHEN c.scope IS NULL THEN 0 ELSE 1 END AS initialized,
+                          (SELECT COUNT(*) FROM turns t
+                           WHERE t.scope=sc.scope AND t.id>COALESCE(c.through_id,0))
+                              AS pending_turns,
+                          (SELECT MAX(id) FROM turns t WHERE t.scope=sc.scope) AS latest_turn_id
+                   FROM scopes sc
+                   LEFT JOIN memory_extraction_cursors c ON c.scope=sc.scope
+                   ORDER BY pending_turns DESC,sc.scope"""
             ).fetchall()
         return self._dicts(rows)
 
@@ -1130,18 +890,7 @@ class AdminRepository:
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         return where, tuple(params)
 
-    def reconciliation_schema(self) -> dict[str, object]:
-        proposal_columns = self._table_columns("memory_reconciliation_proposals")
-        memory_columns = self._table_columns("memory_items")
-        return {
-            "available": bool(proposal_columns and memory_columns),
-            "proposal_columns": tuple(sorted(proposal_columns)),
-            "memory_columns": tuple(sorted(memory_columns)),
-        }
-
     def count_reconciliation_proposals(self, **filters) -> int:
-        if not self.reconciliation_schema()["available"]:
-            return 0
         where, params = self._proposal_filters(**filters)
         with self._connection() as db:
             row = db.execute(
@@ -1157,8 +906,6 @@ class AdminRepository:
     def search_reconciliation_proposals(
         self, *, limit: int = 50, offset: int = 0, **filters
     ) -> list[dict[str, object]]:
-        if not self.reconciliation_schema()["available"]:
-            return []
         limit = self._limit(limit)
         offset = max(0, int(offset))
         where, params = self._proposal_filters(**filters)
@@ -1172,8 +919,6 @@ class AdminRepository:
         return self._dicts(rows)
 
     def reconciliation_proposal(self, proposal_id: int) -> dict[str, object] | None:
-        if not self.reconciliation_schema()["available"]:
-            return None
         with self._connection() as db:
             row = db.execute(
                 f"""{self._proposal_select()}
@@ -1183,14 +928,6 @@ class AdminRepository:
         return dict(row) if row is not None else None
 
     def reconciliation_stats(self, **filters) -> dict[str, object]:
-        if not self.reconciliation_schema()["available"]:
-            return {
-                "total": 0,
-                "average_confidence": None,
-                "retry_suspects": 0,
-                "relationship_proposals": 0,
-                "relations": {},
-            }
         where, params = self._proposal_filters(**filters)
         base = """
             FROM memory_reconciliation_proposals p
@@ -1243,23 +980,3 @@ class AdminRepository:
                 for row in relations
             },
         }
-
-    def recent_reconciliation_proposals(
-        self, *, limit: int = 100
-    ) -> list[dict[str, object]]:
-        limit = self._limit(limit)
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT * FROM memory_reconciliation_proposals ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return self._dicts(rows)
-
-    def shared_summaries(self, *, limit: int = 100) -> list[dict[str, object]]:
-        limit = self._limit(limit)
-        with self._connection() as db:
-            rows = db.execute(
-                "SELECT * FROM shared_summaries ORDER BY rowid DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return self._dicts(rows)

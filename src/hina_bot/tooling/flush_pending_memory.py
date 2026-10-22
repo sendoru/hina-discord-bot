@@ -16,6 +16,8 @@ from hina_bot.ai.memory_summary import MemorySummaryMixin
 from hina_bot.ai.providers import create_provider_client
 from hina_bot.ai.usage import UsageLogger
 from hina_bot.core.config import Settings
+from hina_bot.core.db_connections import open_readonly
+from hina_bot.core.db_schema import require_current
 from hina_bot.core.routing import Scope
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.scope_overrides import MemoryMode
@@ -54,6 +56,11 @@ def _decode_scope(row) -> Scope:
 
 
 def pending_scopes(db: sqlite3.Connection) -> tuple[PendingScope, ...]:
+    """Inspect a borrowed connection in extraction order; no commit or close.
+
+    Maintenance-only SQL serves both the read-only preview and the running flush.
+    It must not initialize Store merely to inspect pending work.
+    """
     db.row_factory = sqlite3.Row
     rows = db.execute(
         """SELECT t.scope,t.realm,t.user_id,COUNT(*) AS pending,
@@ -71,7 +78,7 @@ def inspect_pending(path: str | Path) -> tuple[PendingScope, ...]:
     candidate = Path(path)
     if not candidate.is_file():
         raise FileNotFoundError(f"Database not found: {candidate}")
-    db = sqlite3.connect(f"file:{candidate.resolve()}?mode=ro", uri=True)
+    db = open_readonly(candidate)
     try:
         return pending_scopes(db)
     finally:
@@ -100,7 +107,7 @@ async def flush_pending(store: Store, worker) -> tuple[int, tuple[str, ...]]:
         if not MemoryMode(store.memory_mode(scope)).writes:
             failures.append(f"{scope.conversation}: memory writes are disabled")
             continue
-        while store.pending_memory_extraction(scope):
+        while store.pending_memory_extraction(scope, limit=1):
             previous = store.memory_extraction_cursor(scope)
             try:
                 committed = await worker.extract_structured_memory(
@@ -136,11 +143,16 @@ async def run_flush(
 ) -> FlushResult:
     """Execute only on a stopped bot. A pre-extraction full SQLite backup is mandatory."""
     database = Path(path)
+    inspection = open_readonly(database)
+    try:
+        require_current(inspection, ('store', 'settings'))
+    finally:
+        inspection.close()
     backup = backup_sqlite(database, backup_dir=backup_dir)
     base = Settings.load()
     if Path(base.db_path).resolve() != database.resolve():
         base = replace(base, db_path=str(database))
-    store = Store(str(database), history_turns=base.history_turns)
+    store = Store.open_existing(str(database), history_turns=base.history_turns)
     worker = None
     try:
         settings = RuntimeSettings(base, store)

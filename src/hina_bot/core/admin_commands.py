@@ -1,3 +1,12 @@
+"""Queue SQL and validation, with the existing independent commit boundaries.
+
+Enqueue owns and closes a short-lived dashboard writer connection. Runtime
+claim/finish/interruption functions borrow Store's connection and never close it.
+Each commits its own transition, so callers must invoke them outside other write
+transactions. Domain actions and their side effects are dispatched separately.
+Schema creation belongs to explicit preparation, not enqueue or consumption.
+"""
+
 from __future__ import annotations
 
 import json
@@ -6,6 +15,8 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .db_connections import open_existing
 
 _ACTION_RE = re.compile(r"[a-z][a-z0-9_.-]{1,63}")
 _REQUEST_ID_RE = re.compile(r"[a-f0-9]{32}")
@@ -20,31 +31,6 @@ class AdminCommand:
     action: str
     target: str
     payload: dict[str, Any]
-
-
-def ensure_admin_command_schema(db: sqlite3.Connection) -> None:
-    db.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS admin_commands (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            request_id TEXT NOT NULL UNIQUE,
-            actor TEXT NOT NULL,
-            action TEXT NOT NULL,
-            target TEXT NOT NULL DEFAULT '',
-            payload_json TEXT NOT NULL DEFAULT '{}',
-            status TEXT NOT NULL DEFAULT 'pending'
-                CHECK(status IN ('pending','running','succeeded','failed')),
-            result_json TEXT NOT NULL DEFAULT '{}',
-            error_type TEXT NOT NULL DEFAULT '',
-            error_message TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            started_at TEXT,
-            finished_at TEXT
-        );
-        CREATE INDEX IF NOT EXISTS admin_commands_status
-            ON admin_commands(status, id);
-        """
-    )
 
 
 def _validate_action(action: str) -> str:
@@ -81,8 +67,8 @@ def enqueue_admin_command(
 ) -> tuple[int, bool]:
     """Append one command without granting the dashboard arbitrary DB write access.
 
-    The production Store owns schema creation. This function intentionally fails if
-    the bot has not created the queue table yet.
+    Explicit database preparation owns schema creation. This function fails if
+    the queue table has not been prepared yet.
     """
 
     path = Path(database_path).expanduser().resolve(strict=True)
@@ -96,15 +82,13 @@ def enqueue_admin_command(
         raise ValueError("admin command actor is too long")
     encoded = _encode_payload(payload or {})
 
-    db = sqlite3.connect(path, timeout=5.0)
-    db.row_factory = sqlite3.Row
+    db = open_existing(path)
     try:
-        db.execute("PRAGMA busy_timeout=5000")
         if db.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='admin_commands'"
         ).fetchone() is None:
             raise RuntimeError(
-                "admin command queue is unavailable; start the updated bot once first"
+                "admin command queue is unavailable; run hina-prepare-db first"
             )
         try:
             with db:

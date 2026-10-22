@@ -53,7 +53,9 @@ def test_hoshino_regression_has_profiles_positive_year_comparison_and_direct_rel
     bundle = relation_bundle(grounded)
     selected = {item.candidate.candidate_id: item.candidate for item in bundle.relations}
     assert not bundle.facts
-    assert len(selected) == 5
+    # New reviewed relation evidence may be added without changing core required facts.
+    assert len(selected) >= 5
+    assert "canon.eden.hina_hoshino.reunion_and_cooperation" in selected
     hina = selected["canon.hina.basic.profile"]
     hoshino = selected["canon.hoshino.basic.profile"]
     comparison = selected["canon.hina_hoshino.same_school_year"]
@@ -201,7 +203,7 @@ def test_duplicate_relation_rows_are_deduped_before_shared_packing():
 
 
 def test_runtime_metadata_is_not_synthesized_from_subject_or_admin_ownership():
-    database = AdminDatabase(":memory:")
+    database = AdminDatabase.create(":memory:")
     try:
         registry = RuntimeKnowledgeRegistry(database, kind="world_fact")
         registry.add("pair", "히나 호시노 관계", "관계", "히나,호시노", "self")

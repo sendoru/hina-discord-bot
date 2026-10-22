@@ -2,48 +2,88 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+from .db_connections import open_existing, open_readonly
+from .db_schema import initialize_connection, require_current
+
 
 class AdminDatabase:
-    """SQLite storage shared by runtime instructions and dynamic knowledge."""
+    """Own the existing admin connection, shared by instruction/knowledge registries.
 
-    def __init__(self, path: str):
-        if not path:
-            raise ValueError("DATABASE_PATH가 필요합니다.")
-        if path != ":memory:":
-            Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
-        self.db.row_factory = sqlite3.Row
+    Runtime entrypoints/CLI explicitly open it; LLM receives ownership and closes
+    its supplied database on shutdown. Standalone callers close their own instance.
+    Registries borrow it and use transaction() for standalone writes or to join
+    an enclosing transaction() such as a legacy import. This does not join a
+    Store transaction or an arbitrary externally issued BEGIN. Preparation is
+    explicit; construction only accepts an already prepared owned connection.
+    """
+
+    def __init__(self, db: sqlite3.Connection):
+        """Take ownership of a prepared connection without SQL or file creation."""
+        if not isinstance(db, sqlite3.Connection):
+            raise TypeError("Use open_existing() or create() with a path")
+        self.db = db
         self._transaction_depth = 0
-        self.db.executescript("""
-            PRAGMA journal_mode=WAL;
-            PRAGMA busy_timeout=5000;
-            CREATE TABLE IF NOT EXISTS instructions (
-                id TEXT PRIMARY KEY,
-                text TEXT NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
-                created_at TEXT,
-                updated_at TEXT
-            );
-            CREATE TABLE IF NOT EXISTS runtime_knowledge (
-                id TEXT NOT NULL,
-                kind TEXT NOT NULL CHECK(kind IN ('world_fact','interpretation')),
-                content TEXT NOT NULL,
-                keywords TEXT NOT NULL,
-                subjects TEXT NOT NULL,
-                awareness TEXT NOT NULL,
-                timeline TEXT NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
-                created_at TEXT,
-                updated_at TEXT,
-                PRIMARY KEY(kind,id)
-            );
-            CREATE INDEX IF NOT EXISTS runtime_knowledge_enabled_kind
-                ON runtime_knowledge(enabled,kind);
-            CREATE TABLE IF NOT EXISTS admin_migrations (
-                name TEXT PRIMARY KEY,
-                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
+
+    @classmethod
+    def open_existing(cls, path: str, *, readonly: bool = False):
+        db = open_readonly(path) if readonly else open_existing(path)
+        try:
+            require_current(db, ('admin',))
+            if not readonly:
+                db.execute('PRAGMA journal_mode=WAL')
+            return cls(db)
+        except BaseException:
+            db.close()
+            raise
+
+    @classmethod
+    def copy_to_memory(cls, source=None):
+        """Own a disposable admin copy for evaluation/import validation.
+
+        The optional source is opened read-only; only the in-memory destination
+        is prepared. The returned owner must be closed by its caller.
+        """
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        try:
+            if source:
+                original = open_readonly(source)
+                try:
+                    require_current(original, ("admin",))
+                    original.backup(db)
+                    require_current(db, ("admin",))
+                finally:
+                    original.close()
+            else:
+                initialize_connection(db, ("admin",))
+            return cls(db)
+        except BaseException:
+            db.close()
+            raise
+
+    @classmethod
+    def create(cls, path: str):
+        """Explicit initialization for new/isolated databases, never an upgrade."""
+        if not path:
+            raise ValueError('DATABASE_PATH가 필요합니다.')
+        path = str(path)
+        if path != ':memory:':
+            path = str(Path(path).expanduser())
+        if path != ':memory:' and Path(path).exists():
+            return cls.open_existing(path)
+        if path != ':memory:':
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            with Path(path).open('xb'):
+                pass
+        db = sqlite3.connect(path)
+        db.row_factory = sqlite3.Row
+        try:
+            initialize_connection(db, ('admin',))
+            db.execute('PRAGMA journal_mode=WAL')
+            return cls(db)
+        except BaseException:
+            db.close()
+            raise
 
     @contextmanager
     def transaction(self):

@@ -223,7 +223,9 @@ GEMINI_SMART_THINKING_LEVEL=medium
 MEMORY_MAX_OUTPUT_TOKENS=4096
 ```
 
-Gemini는 Interactions API를 직접 사용합니다. `CHAT_WEB_SEARCH=true`일 때 검색이 필요한 일반 답변은
+Gemini는 Interactions API를 직접 사용합니다. 현재 메시지에 URL이 포함되거나 Google Search를 허용한 답변에는
+`url_context`를 함께 제공할 수 있으며, 실제 링크 조회는 모델이 판단합니다.
+`CHAT_WEB_SEARCH=true`일 때 검색이 필요한 일반 답변은
 내부 `web_search` 요청을 Interactions API의 `google_search` 도구로 변환합니다.
 검색·코드 실행·로컬 함수가 함께 있어도 Interactions API에 전달하며, 검색·코드 실행은 서버가 처리하고
 로컬 함수 호출만 클라이언트가 이어서 실행합니다. `required` 검색은 지침으로 요청하고
@@ -264,15 +266,15 @@ adaptive에서는 `LLM_FAST_MODEL`과 `LLM_SMART_MODEL` 모두 실제 채팅 이
 
 ## 선택적 출력 형식 교정
 
-Discord 응답에 실수로 포함된 인용 표식이나 리터럴 `\\n` 등의 **형식 오류가 의심될 때만** 같은
-provider의 소형 LLM으로 최소 교정을 시도합니다. 모델에는 최초 답변 텍스트와 짧은 교정 지침만
+Discord 응답에 실수로 포함된 인용 표식, 리터럴 `\\n`, 일반 대화에 섞인 `<b></b>` 같은
+HTML 태그 등의 **형식 오류가 의심될 때만** 같은 provider의 소형 LLM으로 최소 교정을 시도합니다. 모델에는 최초 답변 텍스트와 짧은 교정 지침만
 전달하며 원본 대화 문맥, 기억, 이미지, 도구, 캐릭터 프롬프트는 다시 보내지 않습니다.
 
 추가 `.env` 설정을 만들지 않고 기존 대시보드의 Runtime Settings에서 두 항목만 설정합니다.
 
 | 런타임 키 | 기본값 | 설명 |
 | --- | --- | --- |
-| `output_repair_mode` | `off` | `off`: 사용 안 함, `shadow`: 비동기로 교정 결과만 기록, `active`: 검증된 교정 결과로 답변 교체 |
+| `output_repair_mode` | `off` | `off`: 사용 안 함, `shadow`: 비동기로 교정 결과만 기록, `active`: 정상 완료된 비어 있지 않은 교정 결과로 답변 교체 |
 | `output_repair_model` | `auto` | `auto`는 현재 `fast_model`, 아니면 동일 provider에서 지원되는 모델 이름 |
 
 예: `output_repair_mode=shadow`, `output_repair_model=auto`. `active`는 모델별 실측을 마친
@@ -280,9 +282,13 @@ provider의 소형 LLM으로 최소 교정을 시도합니다. 모델에는 최�
 기존 API 키를 사용하므로 별도 provider/key/temperature/timeout/token-budget 환경변수는 없습니다.
 교정 요청에는 최대 512 출력 토큰과 3초 제한을 적용합니다.
 
-정규식은 호출 여부만 결정하며 `[1]` 같은 패턴을 직접 삭제하지 않습니다. 인라인·펜스 코드
-내의 표식만 있으면 교정을 시도하지 않습니다. 비정상 응답·시간 초과·빈 교정·큰 문체 변경은
-모두 원본으로 폴백합니다. `shadow`는 답변 전송을 기다리게 하지 않습니다.
+정규식은 호출 여부만 결정하며 `[1]`이나 HTML 태그를 직접 삭제하지 않습니다. 인라인·펜스 코드
+내의 표식만 있으면 교정을 시도하지 않습니다. 알려진 HTML 태그 형태를 선별해 감지하므로 Discord
+멘션·커스텀 이모지 등 꺾쇠괄호 구문 자체는 교정 대상이 아닙니다. 코드 밖에서 HTML을 의도적으로
+인용·설명한 경우에도 교정 모델이 원문을 유지하도록 지시하며, 일반 대화에 우발적으로 삽입된
+태그만 제거할 때는 앞뒤 글자 사이에 공백을 추가하지 않도록 합니다. 형식 오류 판단과 수정은
+교정 모델에 맡기며, 교정 결과를 정규식·길이·문자열 유사도로 승인하거나 거절하지 않습니다. 호출 실패·미완료 응답·
+빈 교정 결과는 원본으로 폴백합니다. `shadow`는 답변 전송을 기다리게 하지 않습니다.
 
 `usage.jsonl`의 `operation=output_repair`에는 추가 API 토큰/지연시간이 기록되고,
 `operation=output.repair`에는 `status`, 모드, 모델, 원본·후보 문자 수 및 변경 여부만

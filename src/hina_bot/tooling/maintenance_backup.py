@@ -10,6 +10,7 @@ import hashlib
 import os
 import sqlite3
 import uuid
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +21,15 @@ class BackupInfo:
     path: Path
     sha256: str
     bytes: int
+
+
+def database_signature(db):
+    """Stream all schema/rows/sequences for verified offline backup checks."""
+    digest = hashlib.sha256()
+    for line in db.iterdump():
+        digest.update(line.encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
 
 
 def _counts(db: sqlite3.Connection) -> dict[str, int]:
@@ -38,6 +48,16 @@ def _counts(db: sqlite3.Connection) -> dict[str, int]:
 
 
 def backup_sqlite(path: str | Path, *, backup_dir: str | Path | None = None) -> BackupInfo:
+    """Strict runtime backup; preserve reset/flush table requirements."""
+    return _backup(path, backup_dir=backup_dir, state=_counts)
+
+
+def backup_schema_database(path: str | Path, *, backup_dir=None) -> BackupInfo:
+    """Back up an inspected legacy/admin-only DB before any schema mutation."""
+    return _backup(path, backup_dir=backup_dir, state=database_signature)
+
+
+def _backup(path, *, backup_dir, state) -> BackupInfo:
     """Create and verify a non-overwriting SQLite backup, including WAL frames.
 
     Caller MUST stop all writers first. Source changes during backup fail the row
@@ -67,19 +87,19 @@ def backup_sqlite(path: str | Path, *, backup_dir: str | Path | None = None) -> 
     try:
         handle = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         os.close(handle)
-        source = sqlite3.connect(str(source_path), timeout=5)
-        before = _counts(source)
+        source = sqlite3.connect(source_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5)
+        before = state(source)
         snapshot = sqlite3.connect(str(temporary))
         try:
             source.backup(snapshot)
         finally:
             snapshot.close()
-        with sqlite3.connect(f"file:{temporary.resolve()}?mode=ro", uri=True) as check:
+        with closing(sqlite3.connect(temporary.resolve().as_uri() + "?mode=ro", uri=True)) as check:
             if check.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise RuntimeError("SQLite backup integrity_check failed")
-            if _counts(check) != before:
+            if state(check) != before:
                 raise RuntimeError("SQLite backup row count mismatch; stop all writers")
-        if _counts(source) != before:
+        if state(source) != before:
             raise RuntimeError("SQLite changed during snapshot; stop all writers")
 
         digest = hashlib.sha256()

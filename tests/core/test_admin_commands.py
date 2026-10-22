@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 from hina_bot.core.admin_commands import (
     claim_next_admin_command,
     enqueue_admin_command,
@@ -11,7 +13,7 @@ from hina_bot.core.store import Store
 
 def test_admin_command_queue_is_idempotent_and_scrubs_payload(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     store.close()
 
     request_id = "a" * 32
@@ -51,9 +53,41 @@ def test_admin_command_queue_is_idempotent_and_scrubs_payload(tmp_path):
     db.close()
 
 
+@pytest.mark.parametrize("invalid_payload", ["{", "[]"])
+def test_store_claim_skips_invalid_payload_in_id_order_and_commits(tmp_path, invalid_payload):
+    path = tmp_path / "queue.sqlite3"
+    store = Store.create(str(path))
+    observer = sqlite3.connect(path)
+    try:
+        ids = [enqueue_admin_command(
+            path, request_id=character * 32, action="note.set", payload={"text": character},
+        )[0] for character in ("a", "b", "c")]
+        with observer:
+            observer.execute(
+                "UPDATE admin_commands SET payload_json=? WHERE id=?",
+                (invalid_payload, ids[0]),
+            )
+        command = store.claim_next_admin_command()
+        assert command.id == ids[1]
+        assert command.payload == {"text": "b"}
+        assert observer.execute(
+            "SELECT status,payload_json FROM admin_commands ORDER BY id"
+        ).fetchall() == [("failed", "{}"), ("running", '{"text":"b"}'),
+                         ("pending", '{"text":"c"}')]
+        store.finish_admin_command(command.id, error_type="ValueError", error_message="rejected")
+        assert observer.execute(
+            "SELECT status,payload_json,error_type FROM admin_commands WHERE id=?", (command.id,),
+        ).fetchone() == ("failed", "{}", "ValueError")
+        assert store.claim_next_admin_command().id == ids[2]
+        assert not store.db.in_transaction
+    finally:
+        observer.close()
+        store.close()
+
+
 def test_interrupted_admin_commands_are_failed_without_retry(tmp_path):
     path = tmp_path / "hina.sqlite3"
-    store = Store(str(path))
+    store = Store.create(str(path))
     store.close()
 
     enqueue_admin_command(
@@ -78,3 +112,20 @@ def test_interrupted_admin_commands_are_failed_without_retry(tmp_path):
     assert row["error_type"] == "InterruptedAdminCommand"
     assert claim_next_admin_command(db) is None
     db.close()
+
+
+def test_enqueue_cannot_recreate_a_database_removed_after_path_validation(tmp_path, monkeypatch):
+    from hina_bot.core import admin_commands
+
+    path = tmp_path / 'removed.sqlite3'
+    Store.create(str(path)).close()
+    connect = sqlite3.connect
+
+    def remove_before_open(*args, **kwargs):
+        path.unlink()
+        return connect(*args, **kwargs)
+
+    monkeypatch.setattr(admin_commands.sqlite3, 'connect', remove_before_open)
+    with pytest.raises(sqlite3.OperationalError):
+        enqueue_admin_command(path, request_id='f' * 32, action='note.set')
+    assert not path.exists()

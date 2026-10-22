@@ -12,7 +12,7 @@ import sqlite3
 from pathlib import Path
 
 from .maintenance_backup import BackupInfo, backup_sqlite
-from .reset_analysis_data import _connect_existing
+from .maintenance_db import connect_existing as _connect_existing
 
 TABLE = "conversation_reset_epochs"
 CURRENT_COLUMNS = frozenset({"id", "reset_at", "cutoff_message_id", "backup_sha256"})
@@ -80,7 +80,7 @@ def migrate_epoch_schema(
     """Create a verified snapshot, then migrate only the epoch schema."""
     if not offline_confirmed:
         raise ValueError("Stop all SQLite writers and pass --offline-confirmed")
-    db = _connect_existing(path)
+    db = _connect_existing(path, readonly=True)
     try:
         before = epoch_columns(db)
         _validate_epoch_columns(before)
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--offline-confirmed", action="store_true")
     args = parser.parse_args(argv)
     try:
-        db = _connect_existing(args.database)
+        db = _connect_existing(args.database, readonly=True)
         try:
             before = epoch_columns(db)
             _validate_epoch_columns(before)

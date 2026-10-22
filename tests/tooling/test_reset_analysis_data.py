@@ -5,15 +5,17 @@ import pytest
 from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.tooling.prepare_database import prepare_database
 from hina_bot.tooling.reset_analysis_data import (
     UnsafeAnalysisReset,
     build_reset_plan,
     reset_analysis_data,
 )
+from hina_bot.tooling.reset_conversation import reset_conversation
 
 
 def _seed_safe_database(path):
-    store = Store(str(path))
+    store = Store.create(str(path))
     dm = Scope(None, 10, 100)
     guild = Scope(1, 20, 100, True)
 
@@ -41,14 +43,16 @@ def _seed_safe_database(path):
         error_fingerprint="deadbeef",
     )
 
-    store.add_shared_call(guild, 2, "User", "public call")
+    with store.db:
+        store._conversations.write_shared_call(guild, 2, "User", "public call")
     shared_id = int(
         store.db.execute(
             "SELECT id FROM shared_calls WHERE scope=?",
             (guild.conversation,),
         ).fetchone()["id"]
     )
-    store.save_shared_summary(guild, "User", "shared summary", shared_id)
+    with store.db:
+        store._conversations.write_shared_summary(guild, "User", "shared summary", shared_id)
 
     with store.db:
         store.db.execute(
@@ -81,7 +85,8 @@ def _seed_safe_database(path):
         )
     store.close()
 
-    admin = AdminDatabase(str(path))
+    prepare_database(path, apply=True, offline_confirmed=True, components=('admin',))
+    admin = AdminDatabase.create(str(path))
     with admin.transaction():
         admin.db.execute(
             """INSERT INTO instructions(id,text,enabled)
@@ -172,9 +177,30 @@ def test_reset_deletes_only_raw_analysis_data_and_records_epoch(tmp_path):
         db.close()
 
 
+def test_analysis_reset_also_clears_saved_debug_conversation_archive(tmp_path):
+    database = tmp_path / "hina.sqlite3"
+    _seed_safe_database(database)
+    reset_conversation(database, offline_confirmed=True)
+
+    plan = build_reset_plan(
+        database, usage_log_path="", event_log_path="",
+    )
+    assert plan.safe
+    assert plan.raw_rows["conversation_debug_archive"] == 2
+
+    reset_analysis_data(
+        database, usage_log_path="", event_log_path="", apply=True,
+    )
+    with sqlite3.connect(database) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM conversation_debug_archive"
+        ).fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0] == 1
+
+
 def test_pending_persistent_memory_blocks_destructive_reset(tmp_path):
     database = tmp_path / "hina.sqlite3"
-    store = Store(str(database))
+    store = Store.create(str(database))
     scope = Scope(None, 10, 100)
     store.add(scope, 1, "not committed yet", "reply")
     store.close()

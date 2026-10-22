@@ -142,7 +142,6 @@ class ReconciliationService(MemoryService):
                 "created_after": created_after.strip(),
                 "created_before": created_before.strip(),
             },
-            "schema": self.repository.reconciliation_schema(),
             "time_ranges": self.time_ranges(),
         }
 

@@ -27,24 +27,20 @@
     <div><dt>Kind</dt><dd>{{ data.item.kind }}</dd></div>
     <div><dt>Disclosure</dt><dd>{{ data.item.disclosure }}</dd></div>
     <div><dt>Confidence</dt><dd>{{ "%.3f"|format(data.item.confidence) }}</dd></div>
-    {% if data.schema.has_revision %}<div><dt>Revision</dt><dd>{{ data.item.revision }}</dd></div>{% endif %}
+    <div><dt>Revision</dt><dd>{{ data.item.revision }}</dd></div>
     <div><dt>Captured</dt><dd>{{ "public" if data.item.origin_public_at_capture else "private" }}</dd></div>
     <div><dt>Origin realm</dt><dd>{{ scope_realm(data.item.origin_display, data.item.guild_name) }}{{ scope_raw(data.item.origin_display, label="Realm key") }}</dd></div>
     <div><dt>Origin channel</dt><dd>{{ channel_ref(data.item.origin_channel_id, data.item.channel_name) }}</dd></div>
     <div><dt>Created</dt><dd>{{ data.item.created_at | localtime }}</dd></div>
     <div><dt>Updated</dt><dd>{{ data.item.updated_at | localtime }}</dd></div>
-    {% if data.schema.has_lifecycle %}
     <div><dt>Status</dt><dd>{{ status_badge(data.item.status) }}</dd></div>
-    {% endif %}
-    {% if data.schema.has_superseded_by %}
     <div><dt>Superseded by</dt><dd>{% if data.item.superseded_by %}<a href="/memory/{{ data.item.superseded_by }}">#{{ data.item.superseded_by }}</a>{% else %}—{% endif %}</dd></div>
-    {% endif %}
   </dl>
   <h3>Content</h3>
   <div class="message">{{ data.item.content }}</div>
 </section>
 
-{% if data.schema.has_revision and data.item.status == "active" %}
+{% if data.item.status == "active" %}
 <details class="panel" data-memory-editor>
   <summary><strong>Edit memory</strong></summary>
   <p class="muted">내용과 의미 필드만 수정합니다. owner, origin, source message, lifecycle 상태는 그대로 유지됩니다.</p>
@@ -92,7 +88,7 @@
 <section class="notice warning">Retracted memory는 runtime retrieval과 reconciliation에서 제외되며, provenance 확인을 위해 이 dashboard에는 남아 있습니다.</section>
 {% endif %}
 
-{% if data.schema.has_revision and data.item.status == "active" %}
+{% if data.item.status == "active" %}
 <section class="panel">
   <h2>Lifecycle</h2>
   <p class="muted">Retract는 row를 삭제하지 않고 active memory에서 제외합니다. 실제 데이터 삭제는 기존 forget/purge 경로를 사용합니다.</p>

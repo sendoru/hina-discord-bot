@@ -35,9 +35,9 @@ class MemoryService(ReadService):
     @staticmethod
     def _memory_row(row: dict[str, object]) -> dict[str, object]:
         value = dict(row)
-        value["origin_display"] = parse_scope_key(str(value.get("origin_realm") or ""))
-        sources = _decode_json(value.get("source_message_ids"), [])
-        evidence = _decode_json(value.get("relationship_evidence"), {})
+        value["origin_display"] = parse_scope_key(str(value["origin_realm"] or ""))
+        sources = _decode_json(value["source_message_ids"], [])
+        evidence = _decode_json(value["relationship_evidence"], {})
         value["source_message_ids_decoded"] = (
             tuple(str(item) for item in sources) if isinstance(sources, list) else ()
         )
@@ -47,40 +47,38 @@ class MemoryService(ReadService):
         value["has_relationship_evidence"] = bool(
             value["relationship_evidence_decoded"]
         )
-        value["status"] = value.get("status")
-        value["superseded_by"] = value.get("superseded_by")
         return value
 
     @staticmethod
     def _typed_memory_item(row: dict[str, object]) -> MemoryItem:
-        sources = _decode_json(row.get("source_message_ids"), [])
-        evidence = _decode_json(row.get("relationship_evidence"), {})
+        sources = _decode_json(row["source_message_ids"], [])
+        evidence = _decode_json(row["relationship_evidence"], {})
         return MemoryItem(
             id=int(row["id"]),
             user_id=str(row["user_id"]),
-            user_name=str(row.get("user_name") or ""),
-            content=str(row.get("content") or ""),
+            user_name=str(row["user_name"]),
+            content=str(row["content"]),
             kind=MemoryKind(str(row["kind"])),
             origin_realm=str(row["origin_realm"]),
             origin_channel_id=str(row["origin_channel_id"]),
-            origin_public_at_capture=bool(row.get("origin_public_at_capture")),
+            origin_public_at_capture=bool(row["origin_public_at_capture"]),
             disclosure=MemoryDisclosure(str(row["disclosure"])),
             source_message_ids=(
                 tuple(str(item) for item in sources)
                 if isinstance(sources, list)
                 else ()
             ),
-            confidence=float(row.get("confidence") or 0.0),
-            created_at=str(row.get("created_at") or ""),
-            updated_at=str(row.get("updated_at") or ""),
-            revision=int(row.get("revision") or 0),
+            confidence=float(row["confidence"] or 0.0),
+            created_at=str(row["created_at"] or ""),
+            updated_at=str(row["updated_at"] or ""),
+            revision=int(row["revision"]),
             relationship_evidence=RelationshipEvidence.from_mapping(
                 evidence if isinstance(evidence, dict) else {}
             ),
-            status=MemoryStatus(str(row.get("status") or "active")),
+            status=MemoryStatus(str(row["status"])),
             superseded_by=(
                 int(row["superseded_by"])
-                if row.get("superseded_by") is not None
+                if row["superseded_by"] is not None
                 else None
             ),
         )
@@ -364,7 +362,6 @@ class MemoryService(ReadService):
                 "updated_after": updated_after.strip(),
                 "updated_before": updated_before.strip(),
             },
-            "schema": self.repository.memory_schema(),
             "time_ranges": self.time_ranges(),
         }
 
@@ -451,7 +448,6 @@ class MemoryService(ReadService):
             "sources": sources,
             "neighbors": neighbors,
             "history": history,
-            "schema": self.repository.memory_schema(),
             "editor": {
                 "kinds": tuple(kind.value for kind in MemoryKind),
                 "disclosures": tuple(value.value for value in MemoryDisclosure),

@@ -14,14 +14,16 @@ GENERAL_RP_OUTPUT_POLICY = load_prompt("general_rp_output.md")
 class LLM(InformationPipeline):
     """Production LLM orchestrating routing, vision, memory, and RP policy."""
 
-    def __init__(self, settings, client=None, classifier_client=None):
+    def __init__(self, settings, client=None, classifier_client=None, *, admin_db=None):
         primary_client = wrap_vision_client(
-            client or create_provider_client(settings, settings.provider)
+            client or create_provider_client(settings, settings.provider),
+            reference_image_path=getattr(settings, "vision_hina_reference_path", ""),
         )
         super().__init__(
             settings,
             client=primary_client,
             classifier_client=classifier_client,
+            admin_db=admin_db,
         )
         self.character = self.character.rstrip() + "\n\n" + GENERAL_RP_OUTPUT_POLICY
 

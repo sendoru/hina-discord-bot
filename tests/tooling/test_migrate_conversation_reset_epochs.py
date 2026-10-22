@@ -15,7 +15,7 @@ from hina_bot.tooling.migrate_conversation_reset_epochs import (
 
 
 def _legacy_database(path, *, has_hash=False):
-    store = Store(str(path))
+    store = Store.create(str(path))
     scope = Scope(None, 10, 100)
     store.add(scope, 101, "original conversation", "original reply")
     store.add_memory_item(
@@ -115,6 +115,28 @@ def test_migration_rejects_unexpected_columns_without_data_loss(tmp_path):
     with sqlite3.connect(path) as db:
         assert "discarded_shared_turns" in epoch_columns(db)
         assert "unexpected_required" in epoch_columns(db)
+        assert db.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 1
+
+
+def test_schema_change_after_backup_refuses_migration(tmp_path, monkeypatch):
+    from hina_bot.tooling import migrate_conversation_reset_epochs as mod
+
+    path = tmp_path / "changed.sqlite3"
+    _legacy_database(path)
+    backup = mod.backup_sqlite
+
+    def backup_then_change(*args, **kwargs):
+        result = backup(*args, **kwargs)
+        with sqlite3.connect(path) as db:
+            db.execute("ALTER TABLE conversation_reset_epochs ADD COLUMN unexpected TEXT")
+        return result
+
+    monkeypatch.setattr(mod, "backup_sqlite", backup_then_change)
+    with pytest.raises(RuntimeError, match="Epoch schema changed since backup"):
+        mod.migrate_epoch_schema(path, offline_confirmed=True)
+    with sqlite3.connect(path) as db:
+        assert "discarded_shared_turns" in epoch_columns(db)
+        assert "backup_sha256" not in epoch_columns(db)
         assert db.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 1
 
 

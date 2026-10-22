@@ -43,7 +43,7 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 222, True)
     channel_context = [{
         "message_id": "100",
@@ -94,6 +94,9 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
             "relation": "author_of_following_user_message",
         }
         other, other_reply, current, current_reply = reference["channel_recent_messages"]
+        assert [row["relation_to_current_speaker"] for row in reference["channel_recent_messages"]] == [
+            "other_author", "hina_reply_to_other", "current_author", "hina_reply_to_current",
+        ]
         assert other["user_id"] == "111"
         assert other["name"] == "sendol"
         assert other["is_current_speaker"] is False
@@ -131,7 +134,7 @@ async def test_active_reply_chain_is_structured_separately_from_ambient_context(
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     chain = [{
         "message_id": "1", "author_user_id": "100", "user_id": "100",
@@ -185,7 +188,7 @@ async def test_other_users_taunt_cannot_become_current_speakers_personal_continu
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 222, True)
     channel_context = [{
         "message_id": "200",
@@ -240,7 +243,7 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     interaction = {
         "speaker": {
@@ -313,7 +316,7 @@ async def test_verified_current_user_mention_can_be_reused_when_explicitly_reque
         Settings(discord_token="test", openai_api_key="test", external_context_policy="full"),
         client=client,
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     interaction = {
         "speaker": {
@@ -365,7 +368,7 @@ async def test_plain_explicit_reply_is_always_split_into_active_reply_chain():
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     channel_context = [{
         "message_id": "10",
@@ -425,7 +428,7 @@ async def test_answer_model_sees_emoji_aliases_but_source_rows_keep_raw_ids():
         ),
         client=client,
     )
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(1, 10, 222, True)
     raw = "<:18:1495269226938630315>"
     reply_row = {

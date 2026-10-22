@@ -46,7 +46,7 @@ The dashboard currently exposes the following read-only routes:
 - `/memory/{id}`: memory provenance/source-turn detail
 - `/relationships`: target-scope FULL/raw relationships + effective relationship profile
 - `/state`: effective memory/chat-log inheritance and manual notes
-- `/summaries`: personal/shared legacy summary state
+- `/summaries`: retained shared/public summary status
 - `/memory/cursors`: structured extraction cursor/pending state
 - `/reconciliation`: shadow reconciliation proposal review
 - `/reconciliation/{id}`: old/new memory comparison and extraction context
@@ -56,6 +56,24 @@ The dashboard currently exposes the following read-only routes:
 
 The HTML surface is intentionally desktop-oriented and server-rendered. It uses no client-side
 application state and does not add new content telemetry.
+
+## Required database schema
+
+Startup validates the complete recorded current `store`, `settings`, and `admin`
+schema through the shared read-only validator, before creating the app or command
+writer. Unprepared, older, incomplete, future-version, or drifted business schemas
+are refused instead of returning partial results or hiding memory controls.
+Dashboard never creates a missing database, registers a baseline, or runs migrations.
+
+For an unversioned current schema, inspect with `hina-prepare-db --dry-run` and
+follow the [offline preparation procedure](db-initialization.md). Older schemas
+require the separate `hina-upgrade-legacy-db` offline command. These commands keep
+their existing responsibilities; stop all writers and use their backup procedure.
+The validator checks metadata and migration history, not application row contents.
+
+Current business tables/columns are queried directly. Optional maintenance/audit
+metadata such as `observability_epochs` still works when absent and is read when
+present. Empty cursor rows and missing source messages remain valid data states.
 
 ## Read/write boundary
 
@@ -120,11 +138,10 @@ usage.jsonl
 discord-usage.jsonl
 ```
 
-Old rows are migrated by adding a nullable `turn_id` column. Existing rows remain `NULL`; no
-attempt is made to infer historical correlation.
-
-The read-only repository also tolerates a pre-migration database by returning `turn_id = NULL`
-without modifying it.
+The current schema requires the nullable `turn_id` column. Rows migrated from older
+versions may still contain `NULL` because historical trace correlation cannot be inferred.
+Dashboard refuses pre-migration schema files; it does not synthesize missing columns
+or upgrade the database on read.
 
 ## Telemetry files
 
@@ -324,8 +341,8 @@ not as missing provenance.
 Structured memory has `active`, `superseded`, and `retracted` lifecycle states plus an optional
 `superseded_by` link. Normal bot retrieval uses active rows only, while the dashboard intentionally
 queries the full table so operators can inspect superseded/retracted history and follow replacement links.
-The repository still detects these columns dynamically so older/pre-migration read-only database copies
-remain viewable without dashboard-side schema writes.
+These columns are required by the current schema and queried directly. Older database copies
+must be upgraded offline before Dashboard startup; inspection never changes their schema.
 
 When dashboard write mode is enabled, an active memory detail page can revise only the semantic fields
 `content`, `kind`, `disclosure`, `confidence`, and `relationship_evidence`. The dashboard
@@ -433,9 +450,9 @@ history.
 shared call, and pending shared calls. Personal persistent memory is inspected through `/memory`.
 
 `/memory/cursors` reports the standalone structured extraction cursor, latest retained turn, and pending
-turn count. A scope without a persisted cursor has an effective baseline of 0. Legacy personal-summary
-cursor migration happens in the runtime Store before the obsolete table is dropped; the read-only
-dashboard does not perform migrations.
+turn count. A scope without a persisted cursor has an effective baseline of 0. Any necessary
+legacy personal-summary cursor conversion belongs to the separate offline
+`hina-upgrade-legacy-db` command; neither the runtime Store nor Dashboard migrates older schemas.
 
 ## Reconciliation review
 
@@ -553,3 +570,32 @@ python tests/dashboard/check_browser_ui.py --browser /usr/bin/chromium
 
 밀리초까지의 날짜는 native 날짜 컨트롤을 유지하고 불필요한 소수 초의 0을 제거합니다.
 이보다 정밀한 값만 텍스트 입력으로 표시하므로 컨트롤 변경으로 정밀도를 잃지 않습니다.
+
+### Memory 일괄 상태 변경
+
+쓰기 모드에서 `/memory`의 체크박스로 현재 페이지의 active 항목을 선택하거나 전체 선택·
+선택 해제할 수 있습니다. 모바일 카드와 데스크톱 표는 같은 선택을 공유하며 필터·페이지
+이동 시 선택을 초기화합니다. 일괄 작업은 최대 50개입니다.
+
+기존 수동 lifecycle 작업과 동일하게 `active → retracted`만 허용합니다. `superseded`는
+reconciliation에서 결정하며 복구·재활성화 작업은 제공하지 않습니다. 실행 전에 runtime
+memory에서 제외됨을 확인합니다. 내용·출처와 기존 개별 편집·retract 기능은 유지합니다.
+
+`POST /memory/bulk-status`는 기존 CSRF·쓰기 권한 검증을 거치며 form의 `status`, `confirm`,
+`items` JSON 배열(`item_id`, `expected_revision`)을 검증합니다. 각 항목은 독립된 기존
+`memory.item.retract` 명령으로 처리합니다. runtime에서 scope lock과 revision을 다시
+검사하므로 일부 실패가 다른 항목의 적용을 막지 않습니다. 동일 제출의 재전송은 기존
+명령을 재사용합니다. 화면은 항목별 성공·실패·처리 중 상태를 표시하며 완료 후 현재 필터와
+페이지를 유지해 목록을 갱신하고 선택을 초기화합니다. 20초 내 처리되지 않으면 선택을
+잠근 상태에서 결과 다시 조회 버튼을 제공합니다. 봇이 실행 중이어야 명령이 처리됩니다.
+
+API 및 runtime 회귀 테스트는 기본 pytest에 포함됩니다. 브라우저 회귀 테스트 실행:
+
+```bash
+python -m pip install -e '.[dev,dashboard-test]'
+python -m playwright install chromium
+pytest -q tests/dashboard/test_memory_bulk.py
+```
+
+CI의 `dashboard-browser` job은 Chromium으로 선택·모바일 동기화·확인 취소·부분 실패·
+완료 갱신·페이지 경계를 검사합니다.

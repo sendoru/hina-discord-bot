@@ -13,7 +13,11 @@ dependencies = ["discord.py>=2.7,<3", "openai>=1.68,<3", "python-dotenv>=1.0,<2"
 dashboard = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1", "jinja2>=3.1,<4"]
 dev = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11,<1", "httpx>=0.27,<1", "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "jinja2>=3.1,<4"]
 
+dashboard-test = ["playwright>=1.51,<2"]
+
 [project.scripts]
+hina-prepare-db = "hina_bot.tooling.prepare_database:main"
+hina-upgrade-legacy-db = "hina_bot.tooling.legacy_database:main"
 hina-bot = "hina_bot.discord.runtime_entry:main"
 hina-dashboard = "hina_bot.dashboard.app:main"
 hina-lore = "hina_bot.tooling.lore_cli:main"
@@ -23,7 +27,7 @@ hina-reset-analysis-data = "hina_bot.tooling.reset_analysis_data:main"
 hina-flush-memory = "hina_bot.tooling.flush_pending_memory:main"
 hina-reset-conversation = "hina_bot.tooling.reset_conversation:main"
 hina-migrate-reset-epochs = "hina_bot.tooling.migrate_conversation_reset_epochs:main"
-hina-migrate-runtime = "hina_bot.core.runtime_migration:main"
+hina-migrate-runtime = "hina_bot.tooling.runtime_migration:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

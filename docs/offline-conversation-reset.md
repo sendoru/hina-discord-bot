@@ -7,12 +7,19 @@
 
 - **보존:** 구조화 장기기억 `memory_items`, revision/edit history, 관계·정정 제안,
   extraction cursor와 batch journal, `sqlite_sequence`, 메모리/채팅 설정,
-  notes, 런타임 지침과 지식, 관리 메타데이터, Trace/usage/event JSONL.
-- **초기화:** `turns`, `shared_calls`, `failed_turns`, `shared_summaries`.
+  notes, 런타임 지침과 지식, 관리 메타데이터, Trace/usage/event JSONL,
+  그리고 디버깅용 `conversation_debug_archive`.
+- **초기화:** 운영용 `turns`, `shared_calls`, `failed_turns`, `shared_summaries`.
+  `turns`와 `failed_turns`는 삭제 전 디버그 아카이브에 복사하며,
+  대시보드의 대화/Trace 조회에서는 예전 기록을 계속 볼 수 있다.
   공유 요약에만 남아 있던 정보는 운영 컨텍스트에서 사라진다. 전체 DB 백업에 원본을 보관한다.
 - **Discord backfill:** reset 시각 이전의 메시지는 봇이 재시작된 뒤에도 최근 채널 문맥으로
   자동 재수집하지 않는다. 사용자가 **직접** 과거 메시지를 인용/답장하는 경우는 새 입력으로 간주한다.
 - **임시/실험 DB에서 먼저 검증하고** 사용자 데이터를 포함한 운영 DB에는 명시적 승인 전 적용하지 않는다.
+
+스키마 업그레이드가 필요하면 먼저 [명시적 DB 준비 절차](db-initialization.md)를
+실행한다. flush/reset의 조회·계획은 DB를 초기화하지 않고, flush 실행도 봇 시작
+스냅샷을 덮어쓰지 않는다.
 
 ## 1. 정상 실행 순서
 
@@ -47,7 +54,10 @@
    ```
 
    초기화 명령도 자체적으로 전체 SQLite 백업 B를 새 파일에 만들고 검사한 뒤,
-   하나의 트랜잭션에서 네 conversation 테이블만 정리한다.
+   하나의 트랜잭션에서 성공/실패 대화를 디버깅 전용 아카이브로 복사하고
+   네 운영 conversation 테이블을 정리한다. 아카이브는 봇의 최근 대화,
+   공개 문맥, 장기기억 추출 입력으로 사용하지 않는다.
+   연속해서 초기화해도 기존 아카이브 기록은 유지된다.
    구형 `conversation_reset_epochs`의 사용하지 않는
    `discarded_structured_turns`/`discarded_shared_turns` 컬럼은
    초기화 트랜잭션 안에서 자동으로 제거된다. 기존 epoch의
@@ -83,6 +93,9 @@ SQLite 3.35 이상이 필요하다 (`ALTER TABLE DROP COLUMN` 지원).
 
 ## 3. 주의 사항
 
+- 보관된 디버그 기록에는 **개인 대화 원문**이 계속 남는다. 이 명령은 개인정보 완전 삭제용이 아니다.
+  별도 `hina-reset-analysis-data`는 이 디버그 아카이브도 삭제한다.
+  기존 retention 정책에 따라 초기화 *이전에* 이미 제거된 턴은 복구하지 못한다.
 - 백업에는 **개인 대화 원문과 비공개 기억**이 담긴다. 공개 파일 서버, 웹 URL,
   Discord 채널이나 GitHub에 업로드하면 안 된다. 백업 파일(0600)과 디렉터리(0700)를 보호한다.
 - 복구 시 봇과 DB writer를 중단하고, 원본을 보관한 뒤 SQLite 파일과

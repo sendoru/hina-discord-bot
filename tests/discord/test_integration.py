@@ -1,5 +1,6 @@
 """SDK/adapter contract tests; no Discord login or paid API requests."""
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,7 +48,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
             Settings(discord_token="test", openai_api_key="test", summary_every=2, external_context_policy="full"),
             client=client,
         )
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
 
     async def asyncTearDown(self):
         await self.llm.close()
@@ -62,15 +63,14 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         await self.llm.answer(self.store, scope, "name", "current-question")
         payload = self.calls[-1]["input"]
         reference = read_reference_context(payload[0]["content"])
-        self.assertEqual(
-            [row["role"] for row in reference["conversation_history"]],
-            ["user", "assistant"],
-        )
-        self.assertEqual(
-            [row["content"] for row in reference["conversation_history"]],
-            ["new", "reply"],
-        )
-        self.assertTrue(all(row["at"].endswith("Z") for row in reference["conversation_history"]))
+        self.assertEqual(len(reference["conversation_history"]), 1)
+        historical = reference["conversation_history"][0]
+        self.assertEqual(historical["context_kind"], "historical_exchange")
+        self.assertEqual(historical["user_message"]["content"], "new")
+        self.assertEqual(historical["assistant_reply"]["content"], "reply")
+        self.assertEqual(historical["user_message"]["author_user_id"], "100")
+        self.assertEqual(historical["assistant_reply"]["reply_target_user_id"], "100")
+        self.assertTrue(historical["at"].endswith("Z"))
         self.assertEqual(payload[-1]["content"], "current-question")
         self.assertEqual(len(self.store.history(scope)), 2)
 
@@ -119,9 +119,11 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
     async def test_shared_summary_contains_only_direct_calls(self):
         source = Scope(1, 10, 100, True)
         self.store.add(source, 1, "first call", "passive-context-secret")
-        self.store.add_shared_call(source, 1, "A", "first call")
+        with self.store.db:
+            self.store._conversations.write_shared_call(source, 1, "A", "first call")
         self.store.add(source, 2, "second call", "another-passive-secret")
-        self.store.add_shared_call(source, 2, "A", "second call")
+        with self.store.db:
+            self.store._conversations.write_shared_call(source, 2, "A", "second call")
         await self.llm.summarize_shared(self.store, source)
         payload = self.calls[-1]["input"]
         self.assertIn("first call", payload)
@@ -156,8 +158,8 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(attack, payload["instructions"])
         self.assertEqual([item["role"] for item in payload["input"]], ["user", "user"])
         reference = read_reference_context(payload["input"][0]["content"])
-        self.assertEqual(reference["conversation_history"][0]["content"], attack)
-        self.assertEqual(reference["conversation_history"][1]["role"], "assistant")
+        self.assertEqual(reference["conversation_history"][0]["user_message"]["content"], attack)
+        self.assertEqual(reference["conversation_history"][0]["assistant_reply"]["role"], "assistant")
         self.assertIn("신뢰할 수 없는", payload["instructions"])
 
     async def test_relevant_lore_is_data_not_an_instruction(self):
@@ -195,7 +197,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
 @unittest.skipUnless(AVAILABLE, "Install project dev dependencies to test SDK/Discord adapters")
 class AdapterTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        self.store = Store(":memory:")
+        self.store = Store.create(":memory:")
         self.llm = NS(answer=AsyncMock(return_value="안녕"), extract_structured_memory=AsyncMock(), summarize_shared=AsyncMock(), close=AsyncMock())
         self.tempdir = tempfile.TemporaryDirectory()
         self.event_path = Path(self.tempdir.name) / "events.jsonl"
@@ -299,6 +301,69 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.llm.extract_structured_memory.assert_awaited_once()
         self.llm.summarize_shared.assert_awaited_once()
 
+    async def test_public_projection_failure_rolls_back_success_without_resending_reply(self):
+        self.store.db.execute("""CREATE TEMP TRIGGER reject_shared BEFORE INSERT ON shared_calls
+            BEGIN SELECT RAISE(ABORT, 'private-storage-error'); END""")
+        await self.bot.on_message(self.message())
+        self.channel.send.assert_awaited_once()
+        self.assertFalse(self.store.seen(1))
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM shared_calls").fetchone()[0], 0)
+        failed = self.store.db.execute("SELECT * FROM failed_turns").fetchone()
+        self.assertEqual(failed["stage"], "memory_persist")
+        self.assertEqual(failed["reply"], "안녕")
+        self.assertEqual(failed["reply_delivered"], 1)
+        self.llm.extract_structured_memory.assert_not_awaited()
+        self.llm.summarize_shared.assert_not_awaited()
+        raw = self.event_path.read_text()
+        self.assertNotIn("private-storage-error", raw)
+        rows = [json.loads(line) for line in raw.splitlines()]
+        self.assertFalse(any(row["event"] == "turn.completed" for row in rows))
+        terminal = next(row for row in rows if row["event"] == "turn.failed")
+        self.assertTrue(terminal["reply_delivered"])
+        self.assertEqual(terminal["stage"], "memory_persist")
+        self.assertEqual(terminal["error_type"], "IntegrityError")
+        self.assertEqual(terminal["turn_id"], failed["turn_id"])
+
+        # Failure audit does not participate in seen(), so a later redelivery is
+        # still processable. There is no automatic retry or exactly-once delivery.
+        self.store.db.execute("DROP TRIGGER reject_shared")
+        await self.bot.on_message(self.message())
+        self.assertEqual(self.channel.send.await_count, 2)
+        self.assertTrue(self.store.seen(1))
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM shared_calls").fetchone()[0], 1)
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM failed_turns").fetchone()[0], 1)
+
+    async def test_failure_audit_write_error_preserves_original_failure_and_delivery(self):
+        for table in ("shared_calls", "failed_turns"):
+            self.store.db.execute(f"""CREATE TEMP TRIGGER reject_{table} BEFORE INSERT ON {table}
+                BEGIN SELECT RAISE(ABORT, 'private-storage-error'); END""")
+        await self.bot.on_message(self.message())
+        self.channel.send.assert_awaited_once()
+        self.assertFalse(self.store.seen(1))
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM failed_turns").fetchone()[0], 0)
+        raw = self.event_path.read_text()
+        self.assertNotIn("private-storage-error", raw)
+        rows = [json.loads(line) for line in raw.splitlines()]
+        self.assertTrue(any(row["event"] == "turn.persistence_failed" for row in rows))
+        terminal = next(row for row in rows if row["event"] == "turn.failed")
+        self.assertEqual(terminal["raw_turn_persistence"], "failed")
+        self.assertEqual(terminal["stage"], "memory_persist")
+        self.assertEqual(terminal["error_type"], "IntegrityError")
+        self.assertTrue(terminal["reply_delivered"])
+
+    async def test_failure_audit_lookup_error_does_not_replace_the_original_terminal_error(self):
+        self.store.db.execute("""CREATE TEMP TRIGGER reject_shared BEFORE INSERT ON shared_calls
+            BEGIN SELECT RAISE(ABORT, 'private-storage-error'); END""")
+        self.store.seen = MagicMock(side_effect=[False, sqlite3.OperationalError("audit unavailable")])
+        await self.bot.on_message(self.message())
+        self.channel.send.assert_awaited_once()
+        rows = [json.loads(line) for line in self.event_path.read_text().splitlines()]
+        self.assertTrue(any(row["event"] == "turn.persistence_failed" for row in rows))
+        terminal = next(row for row in rows if row["event"] == "turn.failed")
+        self.assertEqual(terminal["raw_turn_persistence"], "failed")
+        self.assertEqual(terminal["error_type"], "IntegrityError")
+        self.assertEqual(terminal["stage"], "memory_persist")
+
     async def test_structured_memory_failure_does_not_block_shared_summary(self):
         self.llm.extract_structured_memory.side_effect = RuntimeError("structured-failure")
 
@@ -332,7 +397,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_stale_memory_sweep_skips_non_writable_scope(self):
         scope = Scope(1, 10, 100)
-        self.store.set_memory_mode(scope, "read_only")
+        self.store.set_memory_mode_override(scope.channel, "read_only")
         self.store.stale_memory_extraction_scopes = MagicMock(return_value=[scope])
 
         await self.bot._sweep_stale_structured_memory()
@@ -413,7 +478,8 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(row["content"] == "히나야 /서버메모 override" for row in recent))
 
     async def test_current_visibility_and_membership_rechecked(self):
-        self.store.add_shared_call(Scope(1, 10, 100, True), 500, "speaker", "공개")
+        with self.store.db:
+            self.store._conversations.write_shared_call(Scope(1, 10, 100, True), 500, "speaker", "공개")
         member = NS(id=100)
         self.guild.get_channel = MagicMock(return_value=self.channel)
         self.guild.fetch_member = AsyncMock(return_value=member)
@@ -426,7 +492,8 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.bot.public_sources(100), [])
 
     async def test_threads_excluded(self):
-        self.store.add_shared_call(Scope(1, 10, 100, True), 500, "speaker", "공개")
+        with self.store.db:
+            self.store._conversations.write_shared_call(Scope(1, 10, 100, True), 500, "speaker", "공개")
         self.guild.get_channel = MagicMock(return_value=MagicMock(spec=discord.Thread))
         self.bot.get_guild = MagicMock(return_value=self.guild)
         self.assertEqual(await self.bot.public_sources(100), [])
@@ -446,7 +513,8 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("A의 일반 발언", str(dict(calls[0])))
 
     async def test_other_speakers_public_sources_available_in_server(self):
-        self.store.add_shared_call(Scope(1, 10, 200, True), 500, "B", "나는 커피를 좋아해")
+        with self.store.db:
+            self.store._conversations.write_shared_call(Scope(1, 10, 200, True), 500, "B", "나는 커피를 좋아해")
         self.guild.get_channel = MagicMock(return_value=self.channel)
         self.guild.fetch_member = AsyncMock(return_value=NS(id=100))
         self.bot.get_guild = MagicMock(return_value=self.guild)
@@ -455,7 +523,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_memory_off_skips_persistent_memory_but_keeps_recent_context(self):
         scope = Scope(1, 10, 100)
-        self.store.set_memory_mode(scope, "off")
+        self.store.set_memory_mode_override(scope.channel, "off")
         self.bot.public_sources = AsyncMock()
         await self.bot.on_message(self.message("ordinary", id=1))
         await self.bot.on_message(self.message("히나야 current", id=2))
@@ -480,7 +548,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
     async def test_read_only_replies_without_persisting(self):
         scope = Scope(1, 10, 100)
         self.store.add(scope, 500, "old", "old reply")
-        self.store.set_memory_mode(scope, "read_only")
+        self.store.set_memory_mode_override(scope.channel, "read_only")
         await self.bot.on_message(self.message())
         self.assertTrue(self.llm.answer.call_args.kwargs["use_memory"])
         self.assertEqual([r["content"] for r in self.store.history(scope)], ["old"])
@@ -491,7 +559,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_write_only_saves_without_response_context(self):
         scope = Scope(1, 10, 100)
-        self.store.set_memory_mode(scope, "write_only")
+        self.store.set_memory_mode_override(scope.channel, "write_only")
         await self.bot.on_message(self.message())
         self.assertFalse(self.llm.answer.call_args.kwargs["use_memory"])
         self.assertTrue(self.store.seen(1))

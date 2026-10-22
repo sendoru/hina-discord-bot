@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hina_bot.ai.information_pipeline import InformationPipeline
-from hina_bot.ai.managed_tools import CODE_EXECUTION_POLICY, managed_tool_config
+from hina_bot.ai.managed_tools import (
+    CODE_EXECUTION_POLICY,
+    ManagedToolCapability,
+    managed_tool_config,
+)
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -46,6 +50,9 @@ def client(text: str, *, provider="gemini"):
 
 def test_managed_code_execution_maps_to_provider_native_tools():
     assert managed_tool_config("gemini") == [{"type": "code_execution"}]
+    assert managed_tool_config("gemini", capabilities=(
+        ManagedToolCapability.URL_CONTEXT,
+    )) == [{"type": "url_context"}]
     assert managed_tool_config("openai") == [{
         "type": "code_interpreter",
         "container": {"type": "auto"},
@@ -57,7 +64,7 @@ def test_managed_code_execution_maps_to_provider_native_tools():
 async def test_normal_gemini_chat_exposes_managed_code_execution_in_one_model_call(tmp_path):
     fake = client("3.9가 더 커.")
     llm = InformationPipeline(settings(tmp_path), client=fake)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         answer = await llm.answer(
@@ -83,7 +90,7 @@ async def test_normal_gemini_chat_exposes_managed_code_execution_in_one_model_ca
 async def test_non_numeric_gemini_chat_still_only_makes_one_model_call(tmp_path):
     fake = client("응, 무슨 일이야?")
     llm = InformationPipeline(settings(tmp_path), client=fake)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         answer = await llm.answer(
@@ -104,10 +111,31 @@ async def test_non_numeric_gemini_chat_still_only_makes_one_model_call(tmp_path)
 
 
 @pytest.mark.asyncio
+async def test_gemini_link_message_exposes_url_context_without_forcing_fetch(tmp_path):
+    fake = client("그 문서에 대해 이야기해보자.")
+    llm = InformationPipeline(settings(tmp_path), client=fake)
+    store = Store.create(":memory:")
+    scope = Scope(None, 10, 100)
+    try:
+        await llm.answer(
+            store, scope, "사용자",
+            "히나야 https://example.com/docs 이거 어떤 문서야?",
+            channel_context=[],
+        )
+        request = fake.responses.create.await_args.kwargs
+        assert {"type": "url_context"} in request["tools"]
+        assert "tool_choice" not in request or request["tool_choice"] == "auto"
+        assert "신뢰할 수 없는 참고 자료" in request["instructions"]
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
 async def test_normal_openai_chat_exposes_code_interpreter_in_one_model_call(tmp_path):
     fake = client("3.9가 더 커.", provider="openai")
     llm = InformationPipeline(settings(tmp_path, provider="openai"), client=fake)
-    store = Store(":memory:")
+    store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     try:
         answer = await llm.answer(
