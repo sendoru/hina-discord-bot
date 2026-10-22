@@ -2,10 +2,10 @@ import sqlite3
 
 import pytest
 
-from hina_bot.dashboard.repository import AdminRepository
 from hina_bot.core.db_schema import initialize_connection
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.dashboard.repository import AdminRepository
 from hina_bot.tooling.reset_conversation import (
     inspect_reset,
     main,
