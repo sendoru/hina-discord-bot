@@ -31,7 +31,7 @@ PRESERVED_TABLES = (
     "memory_reconciliation_proposals", "memory_extraction_cursors",
     "memory_extraction_batches", "memory_modes", "chat_log_modes", "notes",
     "runtime_config", "instructions", "runtime_knowledge", "emoji_registry",
-    "guild_metadata", "channel_metadata", "conversation_debug_archive",
+    "guild_metadata", "channel_metadata",
 )
 DISCORD_EPOCH_MS = 1420070400000
 
@@ -212,7 +212,7 @@ def reset_conversation(
                 (now.isoformat(), cutoff_message_id, snapshot.sha256),
             )
             reset_id = int(result.lastrowid)
-            archived = _archive_debug_rows(db, reset_id)
+            previous_archive_count = (\n                _row_count(db, "conversation_debug_archive")\n                if _table_exists(db, "conversation_debug_archive") else 0\n            )\n            archived = _archive_debug_rows(db, reset_id)
             deleted = {}
             for table in RAW_TABLES:
                 result = db.execute(f"DELETE FROM {table}")
