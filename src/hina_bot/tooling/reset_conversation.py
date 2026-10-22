@@ -180,26 +180,28 @@ def reset_conversation(
     *,
     backup_dir: str | Path | None = None,
     offline_confirmed: bool = False,
+    discard_pending: bool = False,
 ) -> tuple[ResetPlan, ResetResult]:
     """Back up, archive debug exchanges and atomically clear runtime context."""
     if not offline_confirmed:
         raise ValueError("Stop all SQLite writers and pass --offline-confirmed")
     path = Path(path)
     plan = inspect_reset(path)
-    if not plan.ready:
+    if not plan.ready and not discard_pending:
         raise RuntimeError(
             f"Unextracted structured memory: {plan.pending_turns} turns "
-            f"across {plan.pending_scopes} scopes; run hina-flush-memory first"
+            f"across {plan.pending_scopes} scopes; run hina-flush-memory first "
+            "or explicitly pass --discard-pending"
         )
 
-    # This post-flush snapshot B is the immediate rollback point.
+    # Verified pre-reset snapshot is the rollback point, with or without flush.
     snapshot = backup_sqlite(path, backup_dir=backup_dir)
     db = _connect_existing(path)
     try:
         db.execute("BEGIN IMMEDIATE")
         try:
             locked = _plan_from_connection(path, db)
-            if locked != plan or not locked.ready:
+            if locked != plan or (not locked.ready and not discard_pending):
                 raise RuntimeError("Database changed since backup; refuse reset")
             _remember_names(db)
             now = datetime.now(UTC)
@@ -242,7 +244,13 @@ def reset_conversation(
         db.close()
 
 
-def format_plan(plan: ResetPlan) -> str:
+def format_plan(plan: ResetPlan, *, discard_pending: bool = False) -> str:
+    if plan.ready:
+        status = "Status: ready"
+    elif discard_pending:
+        status = "Status: ready; unextracted memory will be discarded without flush"
+    else:
+        status = "Status: BLOCKED; flush memory first or pass --discard-pending"
     lines = [
         f"Database: {plan.path}",
         "Runtime conversation tables to clear:",
@@ -254,7 +262,7 @@ def format_plan(plan: ResetPlan) -> str:
         "Successful/failed exchanges are archived in the database for dashboard debugging.",
         "Other context and shared summaries remain in the verified full backup.",
         "Telemetry, long-term memories, notes and settings will be preserved.",
-        "Status: ready" if plan.ready else "Status: BLOCKED; flush memory first",
+        status,
     ]
     return "\n".join(lines)
 
@@ -269,6 +277,10 @@ def _parser() -> argparse.ArgumentParser:
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--yes", action="store_true")
     parser.add_argument("--offline-confirmed", action="store_true")
+    parser.add_argument(
+        "--discard-pending", action="store_true",
+        help="Discard unextracted memory turns instead of requiring a memory flush",
+    )
     return parser
 
 
@@ -276,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         plan = inspect_reset(args.database)
-        print(format_plan(plan))
+        print(format_plan(plan, discard_pending=args.discard_pending))
         if not args.yes:
             print("Dry-run only; no conversation rows changed.")
             return 0
@@ -287,10 +299,12 @@ def main(argv: list[str] | None = None) -> int:
             args.database,
             backup_dir=args.backup_dir,
             offline_confirmed=True,
+            discard_pending=args.discard_pending,
         )
         print(
             f"Reset #{result.reset_id} completed at {result.reset_at}; "
             f"archived={result.archived}; "
+            f"discarded_pending={plan.pending_turns if args.discard_pending else 0}; "
             f"backup={result.backup.path}; sha256={result.backup.sha256}"
         )
         return 0
