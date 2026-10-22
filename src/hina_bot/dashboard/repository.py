@@ -283,14 +283,33 @@ class AdminRepository:
         }
         return {"guilds": guilds, "channels": channels}
 
+    @staticmethod
+    def _has_debug_archive(db: sqlite3.Connection) -> bool:
+        return db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='conversation_debug_archive'"
+        ).fetchone() is not None
+
+    @classmethod
+    def _turn_sources(cls, db: sqlite3.Connection, fields: str) -> str:
+        source = f"SELECT {fields} FROM turns"
+        if cls._has_debug_archive(db):
+            source += (
+                f" UNION ALL SELECT {fields} FROM conversation_debug_archive"
+                " WHERE record_type='turn'"
+            )
+        return source
+
     def recent_turns(self, *, limit: int = 100) -> list[dict[str, object]]:
         limit = self._limit(limit)
+        fields = (
+            "id,scope,realm,user_id,name,message_id,content,reply,exportable,"
+            "turn_id,memory_context,created_at"
+        )
         with self._connection() as db:
+            source = self._turn_sources(db, fields)
             rows = db.execute(
-                """SELECT id,scope,realm,user_id,name,message_id,content,reply,exportable,
-                           turn_id,memory_context,created_at
-                    FROM turns ORDER BY id DESC LIMIT ?""",
-                (limit,),
+                f"SELECT * FROM ({source}) ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         return self._dicts(rows)
 
@@ -303,13 +322,16 @@ class AdminRepository:
         )
 
     def count_turns(self) -> int:
-        """Successful-turn total for telemetry coverage; excludes failure audits."""
+        """Successful-turn total including saved pre-reset debugging history."""
         with self._connection() as db:
-            return int(db.execute("SELECT COUNT(*) FROM turns").fetchone()[0])
+            source = self._turn_sources(db, "id")
+            return int(db.execute(
+                f"SELECT COUNT(*) FROM ({source})"
+            ).fetchone()[0])
 
-    @staticmethod
-    def _conversation_union() -> str:
-        return """SELECT 'turn' AS record_type,id,scope,realm,user_id,name,message_id,
+    @classmethod
+    def _conversation_union(cls, db: sqlite3.Connection) -> str:
+        sql = """SELECT 'turn' AS record_type,id,scope,realm,user_id,name,message_id,
                          content,reply,exportable,turn_id,memory_context,created_at,
                          'completed' AS status,'' AS stage,1 AS reply_delivered,
                          '' AS error_type,'' AS error_fingerprint
@@ -319,6 +341,14 @@ class AdminRepository:
                          content,reply,0 AS exportable,turn_id,'' AS memory_context,created_at,
                          status,stage,reply_delivered,error_type,error_fingerprint
                   FROM failed_turns"""
+        if cls._has_debug_archive(db):
+            sql += """
+                  UNION ALL
+                  SELECT record_type,id,scope,realm,user_id,name,message_id,
+                         content,reply,exportable,turn_id,memory_context,created_at,
+                         status,stage,reply_delivered,error_type,error_fingerprint
+                  FROM conversation_debug_archive"""
+        return sql
 
     def _conversation_filters(
         self,
@@ -373,7 +403,6 @@ class AdminRepository:
         created_after: str = "",
         created_before: str = "",
     ) -> int:
-        union = self._conversation_union()
         where, params = self._conversation_filters(
             scope=scope,
             realm=realm,
@@ -383,6 +412,7 @@ class AdminRepository:
             created_before=created_before,
         )
         with self._connection() as db:
+            union = self._conversation_union(db)
             row = db.execute(
                 f"SELECT COUNT(*) AS count FROM ({union}) conversations{where}",
                 params,
@@ -403,7 +433,6 @@ class AdminRepository:
     ) -> list[dict[str, object]]:
         limit = self._limit(limit)
         offset = max(0, int(offset))
-        union = self._conversation_union()
         where, params = self._conversation_filters(
             scope=scope,
             realm=realm,
@@ -413,6 +442,7 @@ class AdminRepository:
             created_before=created_before,
         )
         with self._connection() as db:
+            union = self._conversation_union(db)
             rows = db.execute(
                 f"""SELECT * FROM ({union}) conversations{where}
                     ORDER BY created_at DESC,record_type,id DESC
@@ -422,12 +452,14 @@ class AdminRepository:
         return self._dicts(rows)
 
     def turn_by_id(self, row_id: int) -> dict[str, object] | None:
+        fields = (
+            "id,scope,realm,user_id,name,message_id,content,reply,exportable,"
+            "turn_id,memory_context,created_at"
+        )
         with self._connection() as db:
+            source = self._turn_sources(db, fields)
             row = db.execute(
-                """SELECT id,scope,realm,user_id,name,message_id,content,reply,exportable,
-                           turn_id,memory_context,created_at
-                    FROM turns WHERE id=?""",
-                (int(row_id),),
+                f"SELECT * FROM ({source}) WHERE id=?", (int(row_id),)
             ).fetchone()
         return dict(row) if row is not None else None
 
@@ -448,14 +480,15 @@ class AdminRepository:
             "turn_id,memory_context,created_at"
         )
         with self._connection() as db:
+            source = self._turn_sources(db, fields)
             previous = db.execute(
-                f"""SELECT {fields} FROM turns
+                f"""SELECT * FROM ({source})
                     WHERE scope=? AND id<?
                     ORDER BY id DESC LIMIT ?""",
                 (str(target["scope"]), int(row_id), before),
             ).fetchall()
             following = db.execute(
-                f"""SELECT {fields} FROM turns
+                f"""SELECT * FROM ({source})
                     WHERE scope=? AND id>?
                     ORDER BY id ASC LIMIT ?""",
                 (str(target["scope"]), int(row_id), after),
@@ -481,6 +514,14 @@ class AdminRepository:
                 "SELECT * FROM failed_turns WHERE turn_id=? ORDER BY id DESC LIMIT 1",
                 (trace_id,),
             ).fetchone()
+            if row is None and self._has_debug_archive(db):
+                row = db.execute(
+                    "SELECT * FROM conversation_debug_archive "
+                    "WHERE turn_id=? ORDER BY id DESC LIMIT 1",
+                    (trace_id,),
+                ).fetchone()
+                if row is not None:
+                    return dict(row)
         if row is None:
             return None
         return {
@@ -646,11 +687,15 @@ class AdminRepository:
         if not values:
             return []
         placeholders = ",".join("?" for _ in values)
+        fields = (
+            "id,scope,realm,user_id,name,message_id,content,reply,exportable,"
+            "turn_id,memory_context,created_at"
+        )
         with self._connection() as db:
+            source = self._turn_sources(db, fields)
             rows = db.execute(
-                f"""SELECT id,scope,realm,user_id,name,message_id,content,reply,exportable,
-                           turn_id,memory_context,created_at
-                    FROM turns WHERE message_id IN ({placeholders}) ORDER BY id""",
+                f"SELECT * FROM ({source}) WHERE message_id IN ({placeholders}) "
+                "ORDER BY id",
                 values,
             ).fetchall()
         return self._dicts(rows)

@@ -42,6 +42,8 @@ SQLite:
 
 - `turns`
 - `shared_calls`
+- `failed_turns`
+- `conversation_debug_archive` (대화 초기화가 만든 디버깅 보관 기록, 테이블이 존재하면 삭제)
 
 Telemetry:
 
