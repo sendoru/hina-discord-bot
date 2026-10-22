@@ -48,6 +48,11 @@ def test_preflight_only_routes_probable_format_errors():
     assert needs_output_repair("당황스러웠어......[1562812225691983904]")
     assert needs_output_repair("출처가 이상해 [12345678]")
     assert needs_output_repair("출처가 이상해 [12345678901234567890]")
+    assert needs_output_repair("확인해 [1:2]")
+    assert needs_output_repair("확인해 [1234567]")
+    assert needs_output_repair("확인해 [123456789012345678901]")
+    assert needs_output_repair("확인해 [11111111111111111111111111111111]")
+    assert needs_output_repair("확인해 [11111111111111111111111111111111:22222222222222222222222222222222]")
     assert needs_output_repair(r"안녕\n다음 줄")
     assert needs_output_repair("정말, 가만히 있<b></b>어주니까")
     assert needs_output_repair("안녕 <strong>친구</strong>")
@@ -55,9 +60,11 @@ def test_preflight_only_routes_probable_format_errors():
     assert needs_output_repair("잘 지내<BR/>")
     assert not needs_output_repair("좋아! :hina:")
     assert not needs_output_repair("선택지는 [가] 또는 [나]")
-    assert not needs_output_repair("정상적인 숫자 [1234567]")
-    assert not needs_output_repair("범위 밖 숫자 [123456789012345678901]")
+    assert not needs_output_repair("32자 초과 숫자 [111111111111111111111111111111111]")
+    assert not needs_output_repair("32자 초과 식별자 [111111111111111111111111111111111:2]")
+    assert not needs_output_repair("콜론으로 이어진 식별자 [1:2:3]")
     assert not needs_output_repair("숫자 예시는 `[1562812225691983904]`")
+    assert not needs_output_repair("숫자 예시는 `[1:2]`")
     assert not needs_output_repair("```txt\n[1562812225691983904]\n```")
     assert not needs_output_repair("`[1]` and ```txt\n[5]\n```")
     assert not needs_output_repair("HTML 예시는 `<b>안녕</b>`")
@@ -69,6 +76,8 @@ def test_preflight_only_routes_probable_format_errors():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("original", "reply", "status"), [
     ("좋아 [1]", "좋아", "changed"),
+    ("좋아 [1:2]", "좋아", "changed"),
+    ("정상적인 숫자 [1234567]", "정상적인 숫자 [1234567]", "unchanged"),
     (
         "무슨 영문인지 몰라서 당황스러웠어......[1562812225691983904]",
         "무슨 영문인지 몰라서 당황스러웠어......",
