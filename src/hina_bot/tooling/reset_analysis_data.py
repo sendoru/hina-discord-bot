@@ -25,6 +25,7 @@ from .maintenance_db import (
 )
 
 RAW_TABLES = ("turns", "shared_calls", "failed_turns")
+OPTIONAL_RAW_TABLES = ("conversation_debug_archive",)
 PRESERVED_TABLES = (
     "memory_items",
     "memory_item_edit_history",
@@ -150,6 +151,10 @@ def build_reset_plan(
     db = _connect_existing(path, readonly=True)
     try:
         raw_rows = {table: _row_count(db, table) for table in RAW_TABLES}
+        raw_rows.update({
+            table: _row_count(db, table) for table in OPTIONAL_RAW_TABLES
+            if _table_exists(db, table)
+        })
         preserved_rows = {
             table: _row_count(db, table)
             for table in PRESERVED_TABLES
@@ -202,7 +207,11 @@ def reset_analysis_data(
         # between the dry-run plan and destructive DELETEs.
         locked_plan = ResetPlan(
             plan.database_path,
-            {table: _row_count(db, table) for table in RAW_TABLES},
+            {
+                table: _row_count(db, table)
+                for table in (*RAW_TABLES, *OPTIONAL_RAW_TABLES)
+                if _table_exists(db, table)
+            },
             {
                 table: _row_count(db, table)
                 for table in PRESERVED_TABLES
@@ -220,9 +229,8 @@ def reset_analysis_data(
                    reset_at TEXT NOT NULL
                )"""
         )
-        for table in RAW_TABLES:
-            if _table_exists(db, table):
-                db.execute(f"DELETE FROM {table}")
+        for table in locked_plan.raw_rows:
+            db.execute(f"DELETE FROM {table}")
         cursor = db.execute(
             "INSERT INTO observability_epochs(reset_at) VALUES (?)",
             (reset_at,),

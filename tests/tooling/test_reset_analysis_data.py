@@ -11,6 +11,7 @@ from hina_bot.tooling.reset_analysis_data import (
     build_reset_plan,
     reset_analysis_data,
 )
+from hina_bot.tooling.reset_conversation import reset_conversation
 
 
 def _seed_safe_database(path):
@@ -174,6 +175,27 @@ def test_reset_deletes_only_raw_analysis_data_and_records_epoch(tmp_path):
         assert epoch[1] == result.reset_at
     finally:
         db.close()
+
+
+def test_analysis_reset_also_clears_saved_debug_conversation_archive(tmp_path):
+    database = tmp_path / "hina.sqlite3"
+    _seed_safe_database(database)
+    reset_conversation(database, offline_confirmed=True)
+
+    plan = build_reset_plan(
+        database, usage_log_path="", event_log_path="",
+    )
+    assert plan.safe
+    assert plan.raw_rows["conversation_debug_archive"] == 2
+
+    reset_analysis_data(
+        database, usage_log_path="", event_log_path="", apply=True,
+    )
+    with sqlite3.connect(database) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM conversation_debug_archive"
+        ).fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0] == 1
 
 
 def test_pending_persistent_memory_blocks_destructive_reset(tmp_path):
