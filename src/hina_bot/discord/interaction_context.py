@@ -26,6 +26,7 @@ def build_interaction_context(
     replied=(),
     *,
     include_mention_names: bool = True,
+    trigger_kind: str | None = None,
 ) -> dict:
     """Return only Discord-known structure; semantic roles stay model-owned."""
     author = getattr(message, "author", None)
@@ -65,12 +66,15 @@ def build_interaction_context(
         }
         break
 
-    return {
+    context = {
         "speaker": _identity(author, bot_id) if author is not None else None,
         "self": self_identity,
         "mentions": mentions,
         "reply_target": reply_target,
     }
+    if trigger_kind is not None:
+        context["trigger_kind"] = trigger_kind
+    return context
 
 
 __all__ = ["build_interaction_context"]
