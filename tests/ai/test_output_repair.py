@@ -42,19 +42,29 @@ def make_repair(*, mode="active", reply="좋아", model="auto", provider="gemini
     return OutputRepair(settings, vision, usage), client, usage
 
 
-def test_preflight_only_routes_probable_syntax_errors():
+def test_preflight_only_routes_probable_format_errors():
     assert needs_output_repair("좋아 [1]")
     assert needs_output_repair("좋아[18:1495269226938630315]")
     assert needs_output_repair(r"안녕\n다음 줄")
+    assert needs_output_repair("정말, 가만히 있<b></b>어주니까")
+    assert needs_output_repair("안녕 <strong>친구</strong>")
+    assert needs_output_repair('인사 <span class="emphasis">안녕</span>')
+    assert needs_output_repair("잘 지내<BR/>")
     assert not needs_output_repair("좋아! :hina:")
     assert not needs_output_repair("선택지는 [가] 또는 [나]")
     assert not needs_output_repair("`[1]` and ```txt\n[5]\n```")
+    assert not needs_output_repair("HTML 예시는 `<b>안녕</b>`")
+    assert not needs_output_repair("```html\n<b>안녕</b>\n```")
+    assert not needs_output_repair("<@12345> <@&12345> <:hina:12345> <t:1234567890:F>")
+    assert not needs_output_repair("이 값은 <limit>이라는 변수야")
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("original", "reply", "status"), [
     ("좋아 [1]", "좋아", "changed"),
     ("<b>안녕</b> [1]", "안녕", "changed"),
+    ("정말, 가만히 있<b></b>어주니까", "정말, 가만히 있어주니까", "changed"),
+    ("문서에는 <b>강조</b>라고 적혀 있어.", "문서에는 <b>강조</b>라고 적혀 있어.", "unchanged"),
     (r'코드는 `items[1]`과 `"\n"`이야. [1]',
      r'코드는 `items[1]`과 `"\n"`이야. [1]', "unchanged"),
 ])
@@ -81,11 +91,13 @@ async def test_active_uses_fast_model_no_original_context_or_images(original, re
 async def test_off_or_healthy_output_skips_second_request():
     repair, _, usage = make_repair(mode="off")
     assert await repair.apply("안녕 [1]") == "안녕 [1]"
+    assert await repair.apply("가만히 있<b></b>어") == "가만히 있<b></b>어"
     assert usage.calls == []
     repair.settings = Settings(
         discord_token="token", output_repair_mode="active",
     )
     assert await repair.apply("평범한 인사.") == "평범한 인사."
+    assert await repair.apply("`<b>코드</b>`") == "`<b>코드</b>`"
     assert usage.calls == []
     await repair.close()
 
@@ -93,7 +105,7 @@ async def test_off_or_healthy_output_skips_second_request():
 @pytest.mark.asyncio
 async def test_shadow_does_not_change_answer_and_emits_comparison():
     repair, _, usage = make_repair(mode="shadow", reply="좋아")
-    assert await repair.apply("좋아 [1]") == "좋아 [1]"
+    assert await repair.apply("가만히 있<b></b>어") == "가만히 있<b></b>어"
     await repair.close()
     assert len(usage.calls) == 1
     assert usage.events[-1][1]["output_repair_changed"] is True
@@ -101,10 +113,11 @@ async def test_shadow_does_not_change_answer_and_emits_comparison():
 
 
 @pytest.mark.asyncio
-async def test_failure_falls_back_to_original():
+@pytest.mark.parametrize("original", ["좋아 [1]", "가만히 있<b></b>어"])
+async def test_failure_falls_back_to_original(original):
     repair, _, usage = make_repair()
     usage.error = TimeoutError("sensitive-provider-message")
-    assert await repair.apply("좋아 [1]") == "좋아 [1]"
+    assert await repair.apply(original) == original
     assert usage.events[-1][1]["status"] == "failed"
     assert "sensitive-provider-message" not in str(usage.events)
     await repair.close()
@@ -177,7 +190,11 @@ async def test_shadow_backpressure_sends_original_immediately():
 
 
 @pytest.mark.asyncio
-async def test_answer_pipeline_applies_repair_before_persisted_discord_reply():
+@pytest.mark.parametrize(("raw", "corrected"), [
+    ("좋아 [1]", "좋아"),
+    ("정말, 가만히 있<b></b>어주니까", "정말, 가만히 있어주니까"),
+])
+async def test_answer_pipeline_applies_repair_before_persisted_discord_reply(raw, corrected):
     """Integration: two provider requests, only corrected text returned to bot."""
     import json
 
@@ -192,7 +209,7 @@ async def test_answer_pipeline_applies_repair_before_persisted_discord_reply():
     def handler(request):
         body = json.loads(request.content)
         requests.append(body)
-        text = "좋아 [1]" if len(requests) == 1 else "좋아"
+        text = raw if len(requests) == 1 else corrected
         return httpx.Response(200, json={
             "id": f"resp_{len(requests)}",
             "object": "response",
@@ -222,11 +239,11 @@ async def test_answer_pipeline_applies_repair_before_persisted_discord_reply():
     store = Store.create(":memory:")
     try:
         answer = await llm.answer(store, Scope(None, 10, 100), "사용자", "히나야 반가워")
-        assert answer == "좋아"
+        assert answer == corrected
         assert len(requests) == 2
         assert requests[0]["model"] == "answer-model"
         assert requests[1]["model"] == "small-model"
-        assert requests[1]["input"] == "좋아 [1]"
+        assert requests[1]["input"] == raw
         assert "tools" not in requests[1]
         assert "current_speaker" not in str(requests[1])
         assert "lore_reference" not in str(requests[1])
