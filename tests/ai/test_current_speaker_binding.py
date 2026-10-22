@@ -231,7 +231,11 @@ async def test_other_users_taunt_cannot_become_current_speakers_personal_continu
         store.close()
 
 @pytest.mark.asyncio
-async def test_current_interaction_metadata_reaches_existing_answer_request():
+@pytest.mark.parametrize("external_context_policy", ["full", "bot_interactions_only"])
+@pytest.mark.parametrize("trigger_kind", [None, "explicit", "implicit"])
+async def test_current_interaction_metadata_reaches_existing_answer_request(
+    external_context_policy, trigger_kind,
+):
     calls = []
 
     def handler(request):
@@ -242,7 +246,10 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
-    llm = LLM(Settings(discord_token="test", openai_api_key="test", external_context_policy="full"), client=client)
+    llm = LLM(Settings(
+        discord_token="test", openai_api_key="test",
+        external_context_policy=external_context_policy,
+    ), client=client)
     store = Store.create(":memory:")
     scope = Scope(1, 10, 100, True)
     interaction = {
@@ -275,8 +282,9 @@ async def test_current_interaction_metadata_reaches_existing_answer_request():
             "role": "bot",
             "is_self": False,
         },
-        "trigger_kind": "implicit",
     }
+    if trigger_kind is not None:
+        interaction["trigger_kind"] = trigger_kind
     token = CURRENT_INTERACTION_CONTEXT.set(interaction)
     try:
         await llm.answer(

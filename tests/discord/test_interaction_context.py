@@ -114,7 +114,6 @@ def test_third_party_only_mention_keeps_authoritative_self_identity_in_strict_mo
     }]
 
 
-
 def test_trigger_kind_is_only_added_for_a_selected_reply():
     message = NS(author=user(100, "사용자"), mentions=[])
 

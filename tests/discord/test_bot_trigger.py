@@ -497,7 +497,10 @@ async def test_production_wrapper_forwards_only_explicit_bot_calls(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_production_wrapper_distinguishes_automatic_and_explicit_human_turns(tmp_path):
+@pytest.mark.parametrize("dm_always_reply", [False, True])
+async def test_production_wrapper_distinguishes_automatic_and_explicit_human_turns(
+    tmp_path, dm_always_reply,
+):
     store = Store.create(":memory:")
     llm = NS(close=AsyncMock())
     client = ProductionHinaClient(
@@ -506,7 +509,8 @@ async def test_production_wrapper_distinguishes_automatic_and_explicit_human_tur
             openai_api_key="test",
             cooldown=0,
             always_reply_channel_ids=frozenset({10}),
-            dm_always_reply=True,
+            dm_always_reply=dm_always_reply,
+            call_prefixes=("히나야", "히나님"),
             event_log_path=str(tmp_path / "events.jsonl"),
         ),
         store=store,
@@ -547,10 +551,28 @@ async def test_production_wrapper_distinguishes_automatic_and_explicit_human_tur
         await client.on_message(make_message(
             channel, None, message_id=35, author=human, text="DM에서 잡담",
         ))
+        await client.on_message(make_message(
+            normal_channel, guild, message_id=36, author=human, text="히나님 안녕",
+        ))
+        await client.on_message(make_message(
+            channel, guild, message_id=37, author=human,
+            text="<@200> 내일 보자", mentions=(200,),
+        ))
+        reply_without_ping = make_message(
+            channel, guild, message_id=38, author=human, text="그랬구나",
+        )
+        reply_without_ping.reference = NS(message_id=29)
+        await client.on_message(reply_without_ping)
+        await client.on_message(make_message(
+            channel, None, message_id=39, author=human, text="히나야 안녕",
+        ))
 
     assert recorded == [
-        "implicit", "explicit", "explicit", None, "explicit", "implicit",
+        "implicit", "explicit", "explicit", None, "explicit",
+        "implicit" if dm_always_reply else None,
+        "explicit", "implicit", "implicit", "explicit",
     ]
+    assert CURRENT_INTERACTION_CONTEXT.get() is None
     await client.close()
 
 
