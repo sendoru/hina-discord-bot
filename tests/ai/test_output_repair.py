@@ -45,6 +45,16 @@ def make_repair(*, mode="active", reply="좋아", model="auto", provider="gemini
 def test_preflight_only_routes_probable_format_errors():
     assert needs_output_repair("좋아 [1]")
     assert needs_output_repair("좋아[18:1495269226938630315]")
+    assert needs_output_repair("당황스러웠어......[1562812225691983904]")
+    assert needs_output_repair("출처가 이상해 [12345678]")
+    assert needs_output_repair("출처가 이상해 [12345678901234567890]")
+    assert needs_output_repair("확인해 [1:2]")
+    assert needs_output_repair("확인해 [1234567]")
+    assert needs_output_repair("확인해 [123456789012345678901]")
+    assert needs_output_repair("확인해 [11111111111111111111111111111111]")
+    assert needs_output_repair(
+        "확인해 [11111111111111111111111111111111:22222222222222222222222222222222]"
+    )
     assert needs_output_repair(r"안녕\n다음 줄")
     assert needs_output_repair("정말, 가만히 있<b></b>어주니까")
     assert needs_output_repair("안녕 <strong>친구</strong>")
@@ -52,6 +62,12 @@ def test_preflight_only_routes_probable_format_errors():
     assert needs_output_repair("잘 지내<BR/>")
     assert not needs_output_repair("좋아! :hina:")
     assert not needs_output_repair("선택지는 [가] 또는 [나]")
+    assert not needs_output_repair("32자 초과 숫자 [111111111111111111111111111111111]")
+    assert not needs_output_repair("32자 초과 식별자 [111111111111111111111111111111111:2]")
+    assert not needs_output_repair("콜론으로 이어진 식별자 [1:2:3]")
+    assert not needs_output_repair("숫자 예시는 `[1562812225691983904]`")
+    assert not needs_output_repair("숫자 예시는 `[1:2]`")
+    assert not needs_output_repair("```txt\n[1562812225691983904]\n```")
     assert not needs_output_repair("`[1]` and ```txt\n[5]\n```")
     assert not needs_output_repair("HTML 예시는 `<b>안녕</b>`")
     assert not needs_output_repair("```html\n<b>안녕</b>\n```")
@@ -62,6 +78,18 @@ def test_preflight_only_routes_probable_format_errors():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("original", "reply", "status"), [
     ("좋아 [1]", "좋아", "changed"),
+    ("좋아 [1:2]", "좋아", "changed"),
+    ("정상적인 숫자 [1234567]", "정상적인 숫자 [1234567]", "unchanged"),
+    (
+        "무슨 영문인지 몰라서 당황스러웠어......[1562812225691983904]",
+        "무슨 영문인지 몰라서 당황스러웠어......",
+        "changed",
+    ),
+    (
+        "문서에서 [1562812225691983904]는 메시지 ID를 뜻해.",
+        "문서에서 [1562812225691983904]는 메시지 ID를 뜻해.",
+        "unchanged",
+    ),
     ("<b>안녕</b> [1]", "안녕", "changed"),
     ("정말, 가만히 있<b></b>어주니까", "정말, 가만히 있어주니까", "changed"),
     ("문서에는 <b>강조</b>라고 적혀 있어.", "문서에는 <b>강조</b>라고 적혀 있어.", "unchanged"),
@@ -91,6 +119,9 @@ async def test_active_uses_fast_model_no_original_context_or_images(original, re
 async def test_off_or_healthy_output_skips_second_request():
     repair, _, usage = make_repair(mode="off")
     assert await repair.apply("안녕 [1]") == "안녕 [1]"
+    assert await repair.apply("당황스러웠어......[1562812225691983904]") == (
+        "당황스러웠어......[1562812225691983904]"
+    )
     assert await repair.apply("가만히 있<b></b>어") == "가만히 있<b></b>어"
     assert usage.calls == []
     repair.settings = Settings(
@@ -98,6 +129,9 @@ async def test_off_or_healthy_output_skips_second_request():
     )
     assert await repair.apply("평범한 인사.") == "평범한 인사."
     assert await repair.apply("`<b>코드</b>`") == "`<b>코드</b>`"
+    assert await repair.apply("`[1562812225691983904]`") == (
+        "`[1562812225691983904]`"
+    )
     assert usage.calls == []
     await repair.close()
 
@@ -193,6 +227,10 @@ async def test_shadow_backpressure_sends_original_immediately():
 @pytest.mark.parametrize(("raw", "corrected"), [
     ("좋아 [1]", "좋아"),
     ("정말, 가만히 있<b></b>어주니까", "정말, 가만히 있어주니까"),
+    (
+        "나도 무슨 영문인지 몰라서 당황스러웠어......[1562812225691983904]",
+        "나도 무슨 영문인지 몰라서 당황스러웠어......",
+    ),
 ])
 async def test_answer_pipeline_applies_repair_before_persisted_discord_reply(raw, corrected):
     """Integration: two provider requests, only corrected text returned to bot."""
