@@ -5,7 +5,8 @@
 ## 항상 주입하는 내용
 
 - 고정 신뢰·보안·몰입 경계(`prompts/integration/base.md` → `POLICY`)
-- 히나의 핵심 성격, 말투, 반복 연출 방지, 소수의 선택적 장난 규칙(`prompts/hina.md`)
+- 히나의 핵심 성격, 말투, 소수의 선택적 장난 규칙(`prompts/hina.md`)
+- 현재 대화에 대한 반응과 과거 답변 반복 방지(`integration/turn_response.md`, `integration/continuity.md`)
 - 현재 대화의 관계 모드(`ordinary_relationship.md` 또는 `special_dm.md`)
 - 대화 장소별 반응 지침(`integration/conversation_dm.md` 또는 `integration/conversation_guild.md`)
 - 현재 시각과 지역 fallback에 필요한 짧은 runtime context
