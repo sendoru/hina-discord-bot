@@ -3,13 +3,9 @@ from hina_bot.core.memory_context import CURRENT_EGRESS_DECISION
 from .egress_policy import filter_channel_context, filter_public_context
 from .information_pipeline import InformationPipeline
 from .memory_summary import SHARED_SUMMARY_POLICY
-from .prompts import load_prompt
 from .providers import create_provider_client
 from .routing_plan import build_routing_plan
 from .vision import VISION_REQUEST_ACTIVE, wrap_vision_client
-
-GENERAL_RP_OUTPUT_POLICY = load_prompt("general_rp_output.md")
-
 
 class LLM(InformationPipeline):
     """Production LLM orchestrating routing, vision, memory, and RP policy."""
@@ -25,7 +21,6 @@ class LLM(InformationPipeline):
             classifier_client=classifier_client,
             admin_db=admin_db,
         )
-        self.character = self.character.rstrip() + "\n\n" + GENERAL_RP_OUTPUT_POLICY
 
     async def answer(
         self,
@@ -87,7 +82,6 @@ class LLM(InformationPipeline):
 
 
 __all__ = [
-    "GENERAL_RP_OUTPUT_POLICY",
     "LLM",
     "SHARED_SUMMARY_POLICY",
 ]
