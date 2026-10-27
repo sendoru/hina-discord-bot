@@ -79,9 +79,7 @@ async def test_answer_uses_exactly_one_space_prompt_without_changing_relationshi
         assert (special in instructions) is is_special
         assert (ordinary in instructions) is not is_special
         assert llm.character in instructions
-        assert "자동 응답 채널에서는" in instructions if not is_dm else (
-            "자동 응답 채널에서는" not in instructions
-        )
+        assert ("자동 응답 채널에서는" in instructions) is not is_dm
     finally:
         await llm.close()
         store.close()
