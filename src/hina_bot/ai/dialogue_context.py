@@ -23,6 +23,8 @@ def _historical_exchange(row: dict, current_user_id: str) -> dict:
         "role": "assistant",
         **({"reply_target_user_id": current_user_id} if current_user_id else {}),
         "content": row["hina"],
+        **({"provenance_class": row["provenance_class"]}
+           if row.get("provenance_class") == "reference_derived" else {}),
     }
     return result
 
@@ -59,6 +61,8 @@ def _project_dm_history(rows: list[dict], current_user_id: str) -> list[dict]:
                     "role": "assistant",
                     **({"reply_target_user_id": current_user_id} if current_user_id else {}),
                     "content": reply["content"],
+                    **({"provenance_class": reply["provenance_class"]}
+                       if reply.get("provenance_class") == "reference_derived" else {}),
                 },
             })
             index += 2

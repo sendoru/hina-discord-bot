@@ -11,6 +11,7 @@ from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
     CURRENT_EGRESS_DECISION,
+    history_lookup_provenance,
 )
 from hina_bot.core.relationship_grounding import RELATION_CONTEXT_POLICY
 
@@ -260,7 +261,9 @@ class RequestAssembler(BaseLLM):
             at = _context_timestamp(turn["created_at"])
             history.extend((
                 {"role": "user", "at": at, "content": turn["content"]},
-                {"role": "assistant", "at": at, "content": turn["reply"]},
+                {"role": "assistant", "at": at, "content": turn["reply"],
+                 **({"provenance_class": "reference_derived"}
+                    if history_lookup_provenance(turn) else {})},
             ))
         return history, message_ids
 
@@ -302,6 +305,8 @@ class RequestAssembler(BaseLLM):
                 "at": _context_timestamp(turn["created_at"]),
                 "user": turn["content"],
                 "hina": turn["reply"],
+                **({"provenance_class": "reference_derived"}
+                   if history_lookup_provenance(turn) else {}),
             })
         return selected
 
@@ -329,6 +334,17 @@ class RequestAssembler(BaseLLM):
         routing_content = routing.routing_query
 
         channel_context = self._bind_current_speaker(channel_context or [], scope.user_id)
+        reply_metadata = getattr(store, 'chat_history_reply_metadata', None)
+        if callable(reply_metadata):
+            derived = reply_metadata(scope, [
+                row['message_id'] for row in channel_context
+                if row.get('role') == 'assistant' and row.get('message_id')
+            ][:100])
+            channel_context = [
+                dict(row, provenance_class='reference_derived')
+                if str(row.get('message_id')) in derived else row
+                for row in channel_context
+            ]
         current_channel_only = self._current_channel_scope_only(scope, routing_content)
         history, history_message_ids = (
             self._dm_conversation_history(
