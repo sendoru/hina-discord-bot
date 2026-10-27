@@ -7,6 +7,7 @@ from .providers import create_provider_client
 from .routing_plan import build_routing_plan
 from .vision import VISION_REQUEST_ACTIVE, wrap_vision_client
 
+
 class LLM(InformationPipeline):
     """Production LLM orchestrating routing, vision, memory, and RP policy."""
 
