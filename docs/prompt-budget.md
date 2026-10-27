@@ -17,6 +17,20 @@
 Python 모듈은 상수 이름과 조건부 조립 로직만 유지하고, `load_prompt()`로 리소스를 읽습니다.
 현재 시각·기능 상태처럼 런타임 값을 삽입하는 instruction builder는 코드에 남깁니다.
 
+## 지침별 책임
+
+- `prompts/hina.md`: 히나의 성격, 감정 표현, 장난, 배려. 특정 과거 응답을 현재 감정으로 고정하지 않음
+- `integration/dialogue_context.md`: Discord의 현재 화자·멘션·답장 대상과 채널 참여자의 귀속 판단
+- `integration/continuity.md`: 과거 대화의 근거 순위, 시간 차이, 이전 답변의 표현을 그대로 반복하지 않기
+- `integration/reply_continuity.md`: 명시적 답장 체인이 있을 때만 연결된 인과관계 보강
+- `integration/turn_response.md`: 이번 발화에 대한 실제 답변·내용 중심 설명·후속 제안 절제
+- `integration/final_output.md`: Discord 최종 출력 표현과 대본식 형식 억제
+- `integration/conversation_dm.md` / `integration/conversation_guild.md`: 공간의 공개성에 따른 자연스러운 반응 범위. 두 파일 중 하나만 주입
+- `ordinary_relationship.md` / `special_dm.md`: 관계 모드·호칭과 이에 따른 친밀감의 근거. 공간 지침과 독립적
+
+상시 대화 지침을 작은 파일로 계속 추가하기보다 기존 책임 위치를 먼저 검토합니다.
+검색·이미지·기억·도구 등 조건부 지침은 필요한 요청에만 주입하는 특성이 있으므로 분리합니다.
+
 ## lore로만 두는 내용
 
 인물별 관계, 직책, 프로필, 사건, 장비, 시점·인지 범위처럼 질문에 따라 필요한 사실은
