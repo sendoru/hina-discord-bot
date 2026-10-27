@@ -159,6 +159,8 @@ def _reference_instruction_parts(context: dict) -> tuple[str, ...]:
 CURRENT_SPEAKER_POLICY = load_prompt("current_speaker.md")
 
 CURRENT_INTERACTION_POLICY = load_prompt("current_interaction.md")
+DM_SPACE_POLICY = load_prompt("conversation_dm.md")
+GUILD_SPACE_POLICY = load_prompt("conversation_guild.md")
 
 WORLD_CORE_POLICY = load_prompt("world_core.md")
 
@@ -596,6 +598,7 @@ class RequestAssembler(BaseLLM):
         )
 
         relationship_policy = self.relationship_instructions(scope)
+        space_policy = DM_SPACE_POLICY if scope.guild_id is None else GUILD_SPACE_POLICY
         runtime_policy = runtime_instruction(runtime)
         capability_policy = capability_status_instruction(
             web_search_enabled=self.settings.chat_web_search
@@ -622,6 +625,7 @@ class RequestAssembler(BaseLLM):
             self.character,
             *([compact_lore.text] if compact_lore and compact_lore.text else []),
             relationship_policy,
+            space_policy,
             capability_policy,
         ]
         v2_bundle = information_plan.retrieval_v2_bundle
@@ -651,7 +655,7 @@ class RequestAssembler(BaseLLM):
             "instruction_relationship_chars": len(relationship_policy),
             "instruction_runtime_chars": len(runtime_policy) + len(capability_policy),
             "instruction_memory_chars": 0,
-            "instruction_context_policy_chars": 0,
+            "instruction_context_policy_chars": len(space_policy),
             "instruction_search_chars": 0,
             "instruction_world_chars": 0,
             "instruction_tools_chars": 0,
