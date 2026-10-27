@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import discord
 
 from hina_bot.ai.egress_policy import strict_policy
-from hina_bot.ai.local_tools import CURRENT_LOCAL_TOOLS
+from hina_bot.ai.local_tools import CURRENT_LOCAL_TOOLS, LocalToolRegistry
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
@@ -18,6 +18,7 @@ from hina_bot.core.routing import Scope, trigger_text
 
 from .bot import CURRENT_TYPING_ACTIVE, CURRENT_TYPING_STOP
 from .bot import HinaClient as BaseHinaClient
+from .chat_history_tool import register_chat_history_tool
 from .chatlog_capture import capture_mode
 from .interaction_context import build_interaction_context
 from .member_directory import channel_member_tool_registry
@@ -216,12 +217,18 @@ class HinaClient(BaseHinaClient):
             after = max(after, discord.utils.snowflake_time(cutoff_id))
         policy = capture_mode(self.store, scope)
         try:
+            historical = []
             async for old in history(
                 limit=self.recent.limit,
                 before=message,
                 after=after,
                 oldest_first=False,
             ):
+                historical.append(old)
+            derived_replies = self.store.chat_history_reply_metadata(
+                scope, [old.id for old in historical if old.author.id == self.user.id],
+            )
+            for old in historical:
                 if cutoff_id and old.id <= cutoff_id:
                     continue
                 if old.webhook_id is not None:
@@ -263,6 +270,11 @@ class HinaClient(BaseHinaClient):
                     has_visual=has_visual,
                     capture_turn_provenance=False,
                 )
+                if str(old.id) in derived_replies:
+                    for row in self.recent.buffers.get(self.recent._key(scope), ()):
+                        if row['message_id'] == old.id:
+                            row['provenance_class'] = 'reference_derived'
+                            row['history_lookup'] = derived_replies[str(old.id)]
         except discord.HTTPException as exc:
             log.warning("Recent channel history backfill failed (%s)", type(exc).__name__)
             return
@@ -568,9 +580,12 @@ class HinaClient(BaseHinaClient):
             if preflight_turn_id is not None
             else None
         )
-        local_tools_token = CURRENT_LOCAL_TOOLS.set(
-            channel_member_tool_registry(message, self.user.id)
+        registry = LocalToolRegistry()
+        channel_member_tool_registry(message, self.user.id, registry=registry)
+        register_chat_history_tool(
+            registry, message, self.user.id, self.store, self.settings, events=self.events,
         )
+        local_tools_token = CURRENT_LOCAL_TOOLS.set(registry if registry else None)
         try:
             return await super().on_message(message)
         finally:
