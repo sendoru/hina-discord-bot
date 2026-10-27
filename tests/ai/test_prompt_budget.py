@@ -30,6 +30,11 @@ def test_relationship_prompts_stay_small():
     assert len(_prompt("special_dm.md").encode("utf-8")) <= 800
 
 
+def test_conversation_space_prompts_stay_small():
+    assert len(_integration_prompt("conversation_dm.md").encode("utf-8")) <= 1000
+    assert len(_integration_prompt("conversation_guild.md").encode("utf-8")) <= 1000
+
+
 def test_always_on_static_prompt_budget():
     common = (
         POLICY
@@ -43,5 +48,6 @@ def test_always_on_static_prompt_budget():
         + _integration_prompt("final_output.md")
     )
 
-    assert len(common + _prompt("ordinary_relationship.md")) <= 10000
-    assert len(common + _prompt("special_dm.md")) <= 10000
+    for relationship in ("ordinary_relationship.md", "special_dm.md"):
+        for space in ("conversation_dm.md", "conversation_guild.md"):
+            assert len(common + _prompt(relationship) + _integration_prompt(space)) <= 11000
