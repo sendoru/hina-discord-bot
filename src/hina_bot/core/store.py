@@ -176,6 +176,9 @@ class Store:
     def history(self, scope: Scope):
         return self._conversations.history(scope)
 
+    def chat_history_records(self, scope: Scope, message_ids):
+        return self._conversations.chat_history_records(scope, message_ids)
+
     @staticmethod
     def _memory_batch_source_hash(rows) -> str:
         """Fingerprint the exact turns approved by the LLM before committing."""
