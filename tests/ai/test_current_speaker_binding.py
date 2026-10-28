@@ -6,7 +6,7 @@ from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.reference_context_blocks import read_reference_context
-from hina_bot.ai.request_assembly import CURRENT_INTERACTION_POLICY, CURRENT_SPEAKER_POLICY
+from hina_bot.ai.request_assembly import DIALOGUE_CONTEXT_POLICY
 from hina_bot.core.config import Settings
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.routing import Scope
@@ -109,9 +109,9 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
         assert current_reply["reply_target_is_current_speaker"] is True
         assert "is_current_speaker" not in channel_context[0]
         assert "reply_target_is_current_speaker" not in channel_context[1]
-        assert CURRENT_SPEAKER_POLICY.strip() in payload["instructions"]
-        assert "is_current_speaker" in CURRENT_SPEAKER_POLICY
-        assert "reply_target_is_current_speaker" in CURRENT_SPEAKER_POLICY
+        assert DIALOGUE_CONTEXT_POLICY.strip() in payload["instructions"]
+        assert "is_current_speaker" in DIALOGUE_CONTEXT_POLICY
+        assert "reply_target_is_current_speaker" in DIALOGUE_CONTEXT_POLICY
         assert "현재 화자의 현재 발화에 먼저 답하세요" in payload["instructions"]
         assert payload["input"][1] == {"role": "user", "content": "안녕"}
         assert "speaker_name" not in reference
@@ -224,8 +224,8 @@ async def test_other_users_taunt_cannot_become_current_speakers_personal_continu
         assert taunt["is_current_speaker"] is False
         assert reply["reply_target_is_current_speaker"] is False
         assert reference["current_speaker"]["user_id"] == "222"
-        assert CURRENT_SPEAKER_POLICY.strip() in payload["instructions"]
-        assert "active_reply_chain" in CURRENT_SPEAKER_POLICY
+        assert DIALOGUE_CONTEXT_POLICY.strip() in payload["instructions"]
+        assert "active_reply_chain" in DIALOGUE_CONTEXT_POLICY
     finally:
         await llm.close()
         store.close()
@@ -297,11 +297,11 @@ async def test_current_interaction_metadata_reaches_existing_answer_request(
         reference = read_reference_context(payload["input"][0]["content"])
 
         assert reference["current_interaction"] == interaction
-        assert CURRENT_INTERACTION_POLICY.strip() in payload["instructions"]
-        assert "self.user_id" in CURRENT_INTERACTION_POLICY
-        assert "mentions[].user_id" in CURRENT_INTERACTION_POLICY
-        assert "reply_target" in CURRENT_INTERACTION_POLICY
-        assert "trigger_kind" in CURRENT_INTERACTION_POLICY
+        assert DIALOGUE_CONTEXT_POLICY.strip() in payload["instructions"]
+        assert "self.user_id" in DIALOGUE_CONTEXT_POLICY
+        assert "mentions[].user_id" in DIALOGUE_CONTEXT_POLICY
+        assert "reply_target" in DIALOGUE_CONTEXT_POLICY
+        assert "trigger_kind" in DIALOGUE_CONTEXT_POLICY
         assert payload["input"][1]["content"] == "<@200>야, <@99> 좀 쓰다듬어줘"
     finally:
         CURRENT_INTERACTION_CONTEXT.reset(token)
@@ -354,9 +354,9 @@ async def test_verified_current_user_mention_can_be_reused_when_explicitly_reque
         reference = read_reference_context(payload["input"][0]["content"])
 
         assert reference["current_interaction"]["mentions"][0]["user_id"] == "200"
-        assert CURRENT_INTERACTION_POLICY.strip() in payload["instructions"]
-        assert "is_self=false, is_bot=false" in CURRENT_INTERACTION_POLICY
-        assert "<@user_id>" in CURRENT_INTERACTION_POLICY
+        assert DIALOGUE_CONTEXT_POLICY.strip() in payload["instructions"]
+        assert "is_self=false, is_bot=false" in DIALOGUE_CONTEXT_POLICY
+        assert "<@user_id>" in DIALOGUE_CONTEXT_POLICY
     finally:
         CURRENT_INTERACTION_CONTEXT.reset(token)
         await llm.close()
