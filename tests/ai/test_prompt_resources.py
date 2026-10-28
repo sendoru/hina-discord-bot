@@ -3,8 +3,7 @@ from hina_bot.ai.managed_tools import CODE_EXECUTION_POLICY
 from hina_bot.ai.prompts import load_prompt
 from hina_bot.ai.request_assembly import (
     CURRENT_CHANNEL_SCOPE_POLICY,
-    CURRENT_INTERACTION_POLICY,
-    CURRENT_SPEAKER_POLICY,
+    DIALOGUE_CONTEXT_POLICY,
     DM_SPACE_POLICY,
     FINAL_OUTPUT_CHECK_POLICY,
     GUILD_SPACE_POLICY,
@@ -29,8 +28,7 @@ def test_static_answer_policies_are_loaded_from_named_resources():
         "continuity.md": REFERENCE_CONTINUITY_POLICY,
         "reply_continuity.md": REPLY_CONTINUITY_POLICY,
         "reference_provenance.md": REFERENCE_PROVENANCE_POLICY,
-        "current_speaker.md": CURRENT_SPEAKER_POLICY,
-        "current_interaction.md": CURRENT_INTERACTION_POLICY,
+        "dialogue_context.md": DIALOGUE_CONTEXT_POLICY,
         "conversation_dm.md": DM_SPACE_POLICY,
         "conversation_guild.md": GUILD_SPACE_POLICY,
         "world_core.md": WORLD_CORE_POLICY,

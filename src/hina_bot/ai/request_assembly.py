@@ -156,9 +156,7 @@ def _reference_instruction_parts(context: dict) -> tuple[str, ...]:
     return tuple(parts)
 
 
-CURRENT_SPEAKER_POLICY = load_prompt("current_speaker.md")
-
-CURRENT_INTERACTION_POLICY = load_prompt("current_interaction.md")
+DIALOGUE_CONTEXT_POLICY = load_prompt("dialogue_context.md")
 DM_SPACE_POLICY = load_prompt("conversation_dm.md")
 GUILD_SPACE_POLICY = load_prompt("conversation_guild.md")
 
@@ -619,8 +617,7 @@ class RequestAssembler(BaseLLM):
         instruction_parts = [
             POLICY,
             reference_policies[0],
-            CURRENT_SPEAKER_POLICY,
-            CURRENT_INTERACTION_POLICY,
+            DIALOGUE_CONTEXT_POLICY,
             WORLD_CORE_POLICY,
             self.character,
             *([compact_lore.text] if compact_lore and compact_lore.text else []),
@@ -647,7 +644,7 @@ class RequestAssembler(BaseLLM):
                 + (len(REACTION_CONTEXT_POLICY) if reaction_guides else 0)
             ),
             "instruction_identity_chars": (
-                len(CURRENT_SPEAKER_POLICY) + len(CURRENT_INTERACTION_POLICY)
+                len(DIALOGUE_CONTEXT_POLICY)
             ),
             "instruction_world_core_chars": len(WORLD_CORE_POLICY),
             "instruction_character_chars": len(self.character),
