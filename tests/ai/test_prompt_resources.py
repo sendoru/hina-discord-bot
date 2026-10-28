@@ -20,7 +20,6 @@ from hina_bot.ai.request_assembly import (
     WORLD_FACT_DETAIL_POLICY,
     WORLD_WEB_SEARCH_POLICY,
 )
-from hina_bot.ai.runtime_llm import GENERAL_RP_OUTPUT_POLICY
 from hina_bot.ai.vision import VISION_INPUT_POLICY
 
 
@@ -44,7 +43,6 @@ def test_static_answer_policies_are_loaded_from_named_resources():
         "current_channel_scope.md": CURRENT_CHANNEL_SCOPE_POLICY,
         "target_history.md": TARGET_HISTORY_POLICY,
         "structured_memory.md": STRUCTURED_MEMORY_POLICY,
-        "general_rp_output.md": GENERAL_RP_OUTPUT_POLICY,
         "code_execution.md": CODE_EXECUTION_POLICY,
         "vision_input.md": VISION_INPUT_POLICY,
     }
