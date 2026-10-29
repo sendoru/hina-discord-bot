@@ -13,7 +13,6 @@ from hina_bot.core.runtime_config import (
 )
 from hina_bot.core.store import Store
 
-
 DOMAINS = ("answer", "memory", "classifier", "output_repair", "knowledge")
 
 
