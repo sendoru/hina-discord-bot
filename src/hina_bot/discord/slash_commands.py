@@ -283,9 +283,8 @@ def upgrade_memory_group(client):
                 "삭제하지 않았어요. 실제로 삭제하려면 confirm을 true로 선택해 주세요.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
-        async with client.channel_lock(scope):
-            async with client.memory_lock(scope):
-                client.store.forget(scope)
+        async with client.channel_lock(scope), client.memory_lock(scope):
+            client.store.forget(scope)
         await interaction.followup.send(
             "이 서버 또는 DM에서 자동으로 쌓인 대화 기록과 구조화 기억을 삭제했어요. "
             "직접 저장한 /note 메모와 최근 채널 대화 문맥은 그대로 유지돼요.",
