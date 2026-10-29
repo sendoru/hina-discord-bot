@@ -123,7 +123,7 @@
     if (busy || selected.size === 0) return;
     const deleting = status.value === 'delete';
     if (deleting) {
-      if (window.prompt(`선택한 memory ${selected.size}개를 DB에서 영구 삭제합니다.\\n수정/조정 이력도 삭제되며 되돌릴 수 없습니다. 원본 대화/백업은 남습니다.\\n진행하려면 DELETE를 입력하세요.`) !== 'DELETE') return;
+      if (window.prompt(`선택한 memory ${selected.size}개를 DB에서 영구 삭제합니다.\n수정/조정 이력도 삭제되며 되돌릴 수 없습니다. 원본 대화/백업은 남습니다.\n진행하려면 DELETE를 입력하세요.`) !== 'DELETE') return;
     } else if (!window.confirm(`선택한 memory ${selected.size}개를 retracted로 변경할까요?\n내용과 출처는 보존되지만 runtime memory에서 제외됩니다.`)) return;
     const body = new URLSearchParams(new FormData(form));
     body.set('confirm', deleting ? 'delete' : 'yes');

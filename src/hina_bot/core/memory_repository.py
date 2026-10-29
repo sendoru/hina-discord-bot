@@ -326,7 +326,9 @@ class MemoryRepository:
                 (item_id, item_id),
             )
             self.db.execute(
-                "UPDATE memory_items SET superseded_by=NULL WHERE superseded_by=?",
+                """UPDATE memory_items
+                   SET superseded_by=NULL,revision=revision+1,updated_at=CURRENT_TIMESTAMP
+                   WHERE superseded_by=?""",
                 (item_id,),
             )
             deleted = self.db.execute(
