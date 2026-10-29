@@ -177,7 +177,7 @@ def upgrade_memory_group(client):
         newest = list(reversed(items))
         for item in newest[(page - 1) * page_size:page * page_size]:
             content = discord.utils.escape_markdown(
-                discord.utils.escape_mentions(item.content.replace("\\n", " "))
+                discord.utils.escape_mentions(item.content.replace("\n", " "))
             )
             origin = (
                 "DM" if item.origin_realm.startswith("dm:")
@@ -261,11 +261,11 @@ def upgrade_memory_group(client):
         effective = client.store.memory_mode(scope)
         reads, writes = memory_mode_capabilities(effective)
         await interaction.response.send_message(
-            f"내 개인 설정: **{owner}** (전체 서버·DM 공통)\\n"
-            f"관리자 설정: **{admin['effective']}** ({admin['source']})\\n"
-            f"현재 공간 최종: **{effective}**\\n"
+            f"내 개인 설정: **{owner}** (전체 서버·DM 공통)\n"
+            f"관리자 설정: **{admin['effective']}** ({admin['source']})\n"
+            f"현재 공간 최종: **{effective}**\n"
             f"기존 장기기억 사용: {'켜짐' if reads else '꺼짐'} / "
-            f"새 장기기억 저장: {'켜짐' if writes else '꺼짐'}\\n"
+            f"새 장기기억 저장: {'켜짐' if writes else '꺼짐'}\n"
             "최근 채널 문맥과 /note 수동 메모는 별도 설정이에요.",
             ephemeral=True,
         )
