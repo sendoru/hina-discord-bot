@@ -551,7 +551,7 @@ class HinaClient(discord.Client):
 
         def persist_failed_turn(status: str, failed_stage: str, error_fields: dict, reply: str):
             nonlocal raw_turn_persistence, raw_turn_persistence_reason
-            if not save_memory:
+            if not save_memory or not MemoryMode(self.store.memory_mode(scope)).writes:
                 raw_turn_persistence = "skipped"
                 raw_turn_persistence_reason = "memory_writes_disabled"
                 return
