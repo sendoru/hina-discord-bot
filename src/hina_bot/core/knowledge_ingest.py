@@ -227,7 +227,10 @@ class KnowledgeIngestor:
                 "schema": INGEST_SCHEMA,
             }},
             max_output_tokens=3500,
-            store=False,
+            store=(
+                self.llm.settings.provider == "gemini"
+                and self.llm.settings.gemini_store_interactions
+            ),
         )
         if response.status != "completed" or not response.output_text.strip():
             raise ValueError("knowledge 구조화 응답을 완료하지 못했습니다.")
