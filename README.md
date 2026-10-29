@@ -327,11 +327,14 @@ Discord 호출의 접수, 처리 제외 사유, 응답 생성·전송, 기억 �
 로깅을 끌 수 있습니다. 이벤트 로그에도 메시지·응답 원문, 사용자/서버/채널 ID, URL을 기록하지 않습니다.
 
 일반 provider 호출은 기본적으로 `store=False`를 사용합니다. Gemini는
-`GEMINI_STORE_INTERACTIONS=true`를 켜면 **모든 Gemini 호출**(일반 대화, 장기기억
-추출·요약, semantic/web 분류, 출력 후처리, 지식 등록, 도구 후속 요청 등)을
-provider 측에 저장하도록 강제합니다. 각 호출이 `store=False`를 지정해도 전역 설정이 우선합니다.
-`GEMINI_STORE_CLASSIFIER_INTERACTIONS`는 전역 설정이 꺼져 있을 때 분류기 호출만
-선택적으로 저장하기 위한 호환 설정입니다.
+`GEMINI_STORE_INTERACTIONS`가 전체 호출(대화, 장기기억 추출·요약, 분류,
+출력 후처리, 지식 등록 등)의 **기본 저장 여부**를 정합니다. 영역별 설정
+`GEMINI_STORE_ANSWER_INTERACTIONS`, `GEMINI_STORE_MEMORY_INTERACTIONS`,
+`GEMINI_STORE_CLASSIFIER_INTERACTIONS`, `GEMINI_STORE_OUTPUT_REPAIR_INTERACTIONS`,
+`GEMINI_STORE_KNOWLEDGE_INTERACTIONS`가 **명시적으로 존재할 때만**
+해당 영역에 한해 전역 값을 덮어씁니다. 미설정은 `inherit`으로 취급하고,
+`false`는 명시적인 저장 해제입니다. 대시보드의 영역별 런타임 설정도
+`inherit / on / off`를 지원하며, DB override > .env > 전역 기본값 순서로 동작합니다.
 AI Studio Logs에서 필요한 raw request/response를 확인하는 디버깅 중에만 켜는 것을 권장합니다.
 이 경우를 포함해 provider의 모든 데이터 보관 정책에서 제외된다는 의미는 아니므로, 운영자는 사용하는
 provider의 데이터 정책을 별도로 확인해야 합니다.
