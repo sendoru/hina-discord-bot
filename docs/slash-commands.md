@@ -18,10 +18,20 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 
 | 명령 | 기능 |
 | --- | --- |
-| `/memory show` | 현재 채널에서 자동으로 요약된 내 장기 기억 확인 |
-| `/memory clear confirm:true` | 해당 서버 또는 DM에서 자동으로 쌓인 내 대화 기록·요약 삭제 |
+| `/memory show area:current page:1` | 현재 서버/DM에서 생성한 내 활성 기억을 ID와 함께 페이지별 조회 |
+| `/memory show area:all page:1` | 내 모든 서버 및 DM에서 생성한 활성 기억 조회 (나에게만 표시) |
+| `/memory remove item_id:<ID> confirm:true` | 내 활성 기억 하나를 `retracted`로 철회 (원본 및 감사 이력은 유지) |
+| `/memory preference value:normal\|read_only\|off` | 사용자별 전역 기억 읽기·쓰기 동의 설정 |
+| `/memory status` | 개인 설정과 관리자 정책의 교집합인 실제 읽기·쓰기 상태 확인 |
+| `/memory clear confirm:true` | 해당 서버 또는 DM에서 자동으로 쌓인 내 대화 기록·기억 삭제 |
 
-`/memory clear`는 직접 저장한 `/note` 메모와 최근 채널 대화 문맥을 삭제하지 않습니다.
+모든 명령 응답은 실행한 사용자에게만 표시됩니다. 개인 설정은 Discord 사용자 ID 기준으로
+모든 서버와 DM에 적용되며, 기존 관리자 전역/서버/채널 설정에서 금지한 권한을 되살릴 수 없습니다.
+`normal`은 읽기·쓰기, `read_only`는 읽기만, `off`는 둘 다 중지합니다.
+`off`는 기존 기억을 지우지 않으며, 비활성화 기간의 새 대화는 자동 기억에 기록하지 않습니다.
+다시 `normal`로 전환해도 `retracted`로 철회한 기억은 복원되지 않습니다.
+`/memory clear`는 직접 저장한 `/note` 메모와 최근 채널 대화 문맥, 개인 기억 설정을 삭제하지 않습니다.
+철회된 기억은 모델 조회에서 제외되지만 원본 DB와 감사 기록은 보존되며 이후 대화에서 다시 추출될 수 있습니다.
 
 ## 수동 메모
 
