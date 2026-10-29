@@ -33,7 +33,7 @@ async def test_memory_requests_respect_global_gemini_store(
     worker.usage = NS(request=AsyncMock(return_value=NS(status="completed")))
     plan = NS(
         model="memory-model", max_output_tokens=123,
-        thinking_level="minimal", telemetry=lambda: {},
+        thinking_level="minimal", telemetry=dict,
     )
 
     await worker._memory_request(
