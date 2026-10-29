@@ -956,10 +956,10 @@ class _GeminiResponses:
             **kwargs,
         }
 
-        # Master opt-in applies to all Gemini calls, regardless of the caller's
-        # per-operation store flag (memory, classifier, repair, and continuations).
-        if getattr(self.settings, "gemini_store_interactions", False):
-            tool_kwargs["store"] = True
+        # Callers resolve domain overrides; bare requests inherit the global default.
+        tool_kwargs.setdefault(
+            "store", bool(getattr(self.settings, "gemini_store_interactions", False))
+        )
 
         mode = getattr(self.settings, "gemini_search_api_mode", "auto")
         if mode not in GEMINI_SEARCH_API_MODES:
