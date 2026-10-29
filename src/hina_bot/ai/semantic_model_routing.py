@@ -310,12 +310,9 @@ class SemanticModelRouter:
             "instructions": _CLASSIFIER_POLICY,
             "input": _classifier_input(payload, visual_inputs),
             "max_output_tokens": self.settings.routing_classifier_max_output_tokens,
-            "store": (
-                self.settings.routing_classifier_provider == "gemini"
-                and (
-                    self.settings.gemini_store_interactions
-                    or self.settings.gemini_store_classifier_interactions
-                )
+            "store": gemini_store_enabled(
+                self.settings, "classifier",
+                provider=self.settings.routing_classifier_provider,
             ),
         }
         if self.settings.routing_classifier_provider == "gemini":
