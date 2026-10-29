@@ -757,10 +757,7 @@ class RequestAssembler(BaseLLM):
             "instructions": instructions,
             "input": messages,
             "max_output_tokens": model_plan.max_output_tokens,
-            "store": (
-                self.settings.provider == "gemini"
-                and self.settings.gemini_store_interactions
-            ),
+            "store": gemini_store_enabled(self.settings, "answer"),
         }
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
