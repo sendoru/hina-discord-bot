@@ -67,6 +67,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "memory_routing_smart_threshold": "장기 기억 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
     "channel_context_chars": "최근 서버 채널 문맥에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다. 0이면 전달하지 않습니다.",
     "history_max_chars": "DM 최근 대화에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다.",
+    "personal_memory_read_mode": "개인 장기기억 조회 방식입니다. legacy는 기존 전체 주입, selective는 상시 프로필과 선택적 FTS5 검색 도구를 사용합니다.",
     "cooldown": "같은 사용자의 연속 호출을 제한하는 cooldown 시간(초)입니다.",
     "summary_every": "기존 text summary를 갱신하기 전에 필요한 새 대화 턴 수입니다. HISTORY_TURNS 이하여야 합니다.",
     "structured_memory_every": "structured memory extractor가 한 번에 처리할 새 대화 턴 수입니다. HISTORY_TURNS 이하여야 합니다.",
@@ -119,6 +120,10 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         choices=tuple(sorted(EXTERNAL_CONTEXT_POLICIES)),
     ),
     "chat_web_search": _runtime_spec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
+    "personal_memory_read_mode": _runtime_spec(
+        "personal_memory_read_mode", "PERSONAL_MEMORY_READ_MODE", "string",
+        choices=("legacy", "selective"),
+    ),
     "rag_mode": _runtime_spec(
         "rag_mode",
         "RAG_MODE",
