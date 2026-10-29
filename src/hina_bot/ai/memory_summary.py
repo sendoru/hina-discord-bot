@@ -5,6 +5,7 @@ import json
 import logging
 import re
 
+from hina_bot.core.config import gemini_store_enabled
 from hina_bot.core.store import SharedSummaryConflict
 
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
@@ -131,10 +132,7 @@ class MemorySummaryMixin:
             "instructions": instructions,
             "input": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             "max_output_tokens": plan.max_output_tokens,
-            "store": (
-                self.settings.provider == "gemini"
-                and self.settings.gemini_store_interactions
-            ),
+            "store": gemini_store_enabled(self.settings, "memory"),
         }
         route_metadata = plan.telemetry()
         if self.settings.provider == "gemini":
