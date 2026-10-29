@@ -1371,7 +1371,7 @@ async def test_gemini_master_store_switch_reads_runtime_value_each_call():
     try:
         await responses.create(model="gemini-test", input="first", store=False)
         settings.gemini_store_interactions = True
-        await responses.create(model="gemini-test", input="second", store=False)
+        await responses.create(model="gemini-test", input="second")
     finally:
         await http.aclose()
-    assert [payload["store"] for payload in payloads] == [False, False]
+    assert [payload["store"] for payload in payloads] == [False, True]
