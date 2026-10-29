@@ -1,6 +1,7 @@
 import json
 import re
 
+from .config import gemini_store_enabled
 from .runtime_knowledge import KNOWLEDGE_LEVELS, RuntimeKnowledgeRegistry
 
 MAX_INGEST_CHARS = 6000
