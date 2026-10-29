@@ -32,13 +32,13 @@ from .retrieval_request import build_resolved_retrieval_request
 from .retrieval_v2_rollout import RetrievalV2Controller, build_ambient_scene
 from .routing_plan import RoutingPlan
 from .rp_output_policy import provenance_mode
+from .selective_memory import project_selective_context
 from .semantic_model_routing import (
     SemanticModelRouter,
     apply_web_classification,
     semantic_result,
 )
 from .structured_memory_context import structured_memory_context
-from .selective_memory import project_selective_context
 from .vision import CURRENT_VISUAL_INPUTS
 
 _IN_WORLD_PRESENT_STATE_QUERY = re.compile(
