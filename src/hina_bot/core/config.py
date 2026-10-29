@@ -9,6 +9,21 @@ from dotenv import load_dotenv
 SUPPORTED_MODEL_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
 GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
 GEMINI_SEARCH_API_MODES = frozenset({"auto", "interactions", "generate_content"})
+GEMINI_STORE_DOMAINS = frozenset({
+    "answer", "memory", "classifier", "output_repair", "knowledge",
+})
+
+
+def gemini_store_enabled(settings, domain: str, *, provider: str | None = None) -> bool:
+    """Resolve an optional domain-specific storage override over the global switch."""
+    if domain not in GEMINI_STORE_DOMAINS:
+        raise ValueError(f"Unknown Gemini logging domain: {domain}")
+    if (provider or getattr(settings, "provider", None)) != "gemini":
+        return False
+    override = getattr(settings, f"gemini_store_{domain}_interactions", None)
+    if override is not None:
+        return override
+    return bool(getattr(settings, "gemini_store_interactions", False))
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
