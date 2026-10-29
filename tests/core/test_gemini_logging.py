@@ -59,6 +59,7 @@ def test_env_absence_and_explicit_false_have_different_semantics(monkeypatch, tm
     monkeypatch.setenv("DISCORD_TOKEN", "token")
     monkeypatch.setenv("LLM_PROVIDER", "gemini")
     monkeypatch.setenv("LLM_MODEL", "gemini-test")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setenv("GEMINI_STORE_INTERACTIONS", "true")
     for domain in DOMAINS:
         monkeypatch.delenv(f"GEMINI_STORE_{domain.upper()}_INTERACTIONS", raising=False)
