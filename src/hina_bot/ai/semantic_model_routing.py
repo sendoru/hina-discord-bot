@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, replace
 
+from hina_bot.core.config import gemini_store_enabled
+
 from .model_routing import ModelPlan, build_model_plan
 
 _CLASSIFIER_POLICY = """You classify two independent properties of one user request:
@@ -310,9 +312,9 @@ class SemanticModelRouter:
             "instructions": _CLASSIFIER_POLICY,
             "input": _classifier_input(payload, visual_inputs),
             "max_output_tokens": self.settings.routing_classifier_max_output_tokens,
-            "store": (
-                self.settings.routing_classifier_provider == "gemini"
-                and self.settings.gemini_store_classifier_interactions
+            "store": gemini_store_enabled(
+                self.settings, "classifier",
+                provider=self.settings.routing_classifier_provider,
             ),
         }
         if self.settings.routing_classifier_provider == "gemini":

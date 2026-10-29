@@ -91,7 +91,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.fast_output_tokens == 4096
     assert settings.smart_output_tokens == 8192
     assert settings.gemini_store_interactions is False
-    assert settings.gemini_store_classifier_interactions is False
+    assert settings.gemini_store_classifier_interactions is None
     assert settings.gemini_search_api_mode == "auto"
     assert settings.routing_classifier_mode == "off"
     assert settings.routing_classifier_provider == "openai"
@@ -239,7 +239,7 @@ def test_runtime_settings_fall_back_to_code_defaults_without_db_override():
         assert settings.gemini_fast_thinking_level == "minimal"
         assert settings.gemini_smart_thinking_level == "medium"
         assert settings.gemini_store_interactions is False
-        assert settings.gemini_store_classifier_interactions is False
+        assert settings.gemini_store_classifier_interactions is None
         assert settings.gemini_search_api_mode == "auto"
         assert settings.model_routing_smart_threshold == pytest.approx(2.0)
         assert settings.memory_routing_smart_threshold == pytest.approx(2.0)

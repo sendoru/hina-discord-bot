@@ -956,6 +956,11 @@ class _GeminiResponses:
             **kwargs,
         }
 
+        # Callers resolve domain overrides; bare requests inherit the global default.
+        tool_kwargs.setdefault(
+            "store", bool(getattr(self.settings, "gemini_store_interactions", False))
+        )
+
         mode = getattr(self.settings, "gemini_search_api_mode", "auto")
         if mode not in GEMINI_SEARCH_API_MODES:
             raise ValueError("GEMINI_SEARCH_API_MODE가 잘못되었습니다.")

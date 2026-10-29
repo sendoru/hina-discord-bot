@@ -23,6 +23,8 @@ def _runtime_edit_value(value: object) -> str:
         return ", ".join(str(item) for item in sorted(value))
     if isinstance(value, bool):
         return "on" if value else "off"
+    if value is None:
+        return "inherit"
     if value == "":
         return ""
     return str(value)
@@ -58,6 +60,12 @@ def _collection_meta(spec) -> dict[str, object]:
 
 
 def _scalar_editor_meta(spec) -> dict[str, object]:
+    if spec.kind == "optional_bool":
+        return {
+            "editor_type": "select",
+            "editor_choices": ("inherit", "off", "on"),
+            "editor_required": True,
+        }
     if spec.kind == "bool":
         return {
             "editor_type": "select",
@@ -100,6 +108,7 @@ def _scalar_editor_meta(spec) -> dict[str, object]:
 def _runtime_help_meta(spec) -> dict[str, object]:
     type_labels = {
         "bool": "boolean",
+        "optional_bool": "inherit / boolean",
         "int": "integer",
         "float": "number",
         "string": "string",
@@ -109,7 +118,9 @@ def _runtime_help_meta(spec) -> dict[str, object]:
     }
     constraints: list[str] = []
 
-    if spec.kind == "bool":
+    if spec.kind == "optional_bool":
+        constraints.append("inherit / on / off")
+    elif spec.kind == "bool":
         constraints.append("on / off")
     elif spec.choices:
         constraints.append("choices: " + " / ".join(spec.choices))

@@ -60,9 +60,13 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "gemini_thinking_level": "Gemini fixed routing에서 사용할 추론 강도입니다.",
     "gemini_fast_thinking_level": "Gemini adaptive fast tier에서 사용할 추론 강도입니다.",
     "gemini_smart_thinking_level": "Gemini adaptive smart tier에서 사용할 추론 강도입니다.",
-    "gemini_store_interactions": "일반 채팅 answer의 Gemini interaction을 provider 측 로그에 저장할지 정합니다.",
+    "gemini_store_interactions": "Gemini API 호출 저장의 전역 기본값입니다. 영역별 설정이 inherit일 때 적용됩니다.",
+    "gemini_store_answer_interactions": "대화 답변의 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
+    "gemini_store_memory_interactions": "기억 추출·요약 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
+    "gemini_store_output_repair_interactions": "출력 후처리 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
+    "gemini_store_knowledge_interactions": "지식 등록 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
     "gemini_search_api_mode": "Gemini 검색에 사용할 API 선택입니다. auto는 Interactions 우선·특정 도구 오류 시 GenerateContent 폴백, interactions/generate_content는 강제 모드입니다.",
-    "gemini_store_classifier_interactions": "semantic/web routing classifier의 Gemini interaction을 provider 측 로그에 저장할지 별도로 정합니다.",
+    "gemini_store_classifier_interactions": "semantic/web routing classifier 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
     "model_routing_smart_threshold": "채팅 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
     "memory_routing_smart_threshold": "장기 기억 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
     "channel_context_chars": "최근 서버 채널 문맥에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다. 0이면 전달하지 않습니다.",
@@ -189,6 +193,20 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "gemini_store_interactions": _runtime_spec(
         "gemini_store_interactions", "GEMINI_STORE_INTERACTIONS", "bool"
     ),
+    "gemini_store_answer_interactions": _runtime_spec(
+        "gemini_store_answer_interactions", "GEMINI_STORE_ANSWER_INTERACTIONS", "optional_bool"
+    ),
+    "gemini_store_memory_interactions": _runtime_spec(
+        "gemini_store_memory_interactions", "GEMINI_STORE_MEMORY_INTERACTIONS", "optional_bool"
+    ),
+    "gemini_store_output_repair_interactions": _runtime_spec(
+        "gemini_store_output_repair_interactions",
+        "GEMINI_STORE_OUTPUT_REPAIR_INTERACTIONS", "optional_bool"
+    ),
+    "gemini_store_knowledge_interactions": _runtime_spec(
+        "gemini_store_knowledge_interactions",
+        "GEMINI_STORE_KNOWLEDGE_INTERACTIONS", "optional_bool"
+    ),
     "gemini_search_api_mode": _runtime_spec(
         "gemini_search_api_mode",
         "GEMINI_SEARCH_API_MODE",
@@ -198,7 +216,7 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "gemini_store_classifier_interactions": _runtime_spec(
         "gemini_store_classifier_interactions",
         "GEMINI_STORE_CLASSIFIER_INTERACTIONS",
-        "bool",
+        "optional_bool",
     ),
     "model_routing_smart_threshold": _runtime_spec(
         "model_routing_smart_threshold",
@@ -290,8 +308,10 @@ def runtime_setting_attr(key: str) -> str:
 
 def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) -> Any:
     text = raw.strip()
-    if spec.kind == "bool":
+    if spec.kind in {"bool", "optional_bool"}:
         lowered = text.lower()
+        if spec.kind == "optional_bool" and lowered == "inherit":
+            return None
         if lowered in _TRUE:
             return True
         if lowered in _FALSE:
@@ -371,7 +391,9 @@ def encode_runtime_value(value: Any) -> str:
 
 def decode_runtime_value(spec: RuntimeSettingSpec, encoded: str, *, settings=None) -> Any:
     value = json.loads(encoded)
-    if spec.kind == "bool":
+    if spec.kind in {"bool", "optional_bool"}:
+        if spec.kind == "optional_bool" and value is None:
+            return None
         if type(value) is not bool:
             raise ValueError("stored value is not boolean")
         return value
@@ -409,6 +431,8 @@ def format_runtime_value(value: Any) -> str:
         return ", ".join(str(item) for item in sorted(value)) or "(비움)"
     if isinstance(value, bool):
         return "on" if value else "off"
+    if value is None:
+        return "inherit"
     if value == "":
         return "(비움)"
     return str(value)
