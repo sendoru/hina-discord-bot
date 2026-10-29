@@ -228,8 +228,8 @@ class KnowledgeIngestor:
             }},
             max_output_tokens=3500,
             store=(
-                self.llm.settings.provider == "gemini"
-                and self.llm.settings.gemini_store_interactions
+                getattr(self.llm.settings, "provider", None) == "gemini"
+                and getattr(self.llm.settings, "gemini_store_interactions", False)
             ),
         )
         if response.status != "completed" or not response.output_text.strip():
