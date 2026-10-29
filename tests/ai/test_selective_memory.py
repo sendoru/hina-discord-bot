@@ -1,6 +1,7 @@
 """Selective-memory privacy, ranking, local tool and answer integration."""
 
 import json
+from dataclasses import replace
 
 import httpx
 import pytest
@@ -74,7 +75,7 @@ def test_fts_search_enforces_owner_and_channel_privacy_before_ranking():
         assert "로봇 다른 서버의 개인 기록" not in texts
         assert "로봇 타 서버 명시적 참조 필요" not in texts
         assert "로봇 다른 사람의 비밀" not in texts
-        dm_results = search_memory_items(store.memory_items(100), Scope(None, 55, 100), "로봇")
+        dm_results = search_memory_items(store.memory_items(100), Scope(None, 55, 100), "비공개")
         assert "로봇 비공개 채널의 비밀 기록" in [x["content"] for x in dm_results]
     finally:
         store.close()
@@ -144,7 +145,7 @@ async def test_answer_mode_switch_changes_projection_and_exposes_tool(tmp_path):
         assert "Neovim" in json.dumps(selective["input"], ensure_ascii=False)
         assert "옛날 특정" not in json.dumps(selective["input"], ensure_ascii=False)
 
-        llm.settings.personal_memory_read_mode = "legacy"
+        llm.settings = replace(llm.settings, personal_memory_read_mode="legacy")
         await llm.answer(store, scope, "User", "안녕")
         legacy = calls[-1]
         assert "search_memory" not in [tool.get("name") for tool in legacy.get("tools", [])]
