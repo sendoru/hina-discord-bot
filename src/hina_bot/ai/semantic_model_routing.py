@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, replace
 
+from hina_bot.core.config import gemini_store_enabled
+
 from .model_routing import ModelPlan, build_model_plan
 
 _CLASSIFIER_POLICY = """You classify two independent properties of one user request:
