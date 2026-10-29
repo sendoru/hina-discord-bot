@@ -89,7 +89,10 @@ class OutputRepair:
                 "instructions": _REPAIR_INSTRUCTIONS,
                 "input": original,
                 "max_output_tokens": _MAX_OUTPUT_TOKENS,
-                "store": False,
+                "store": (
+                    self.settings.provider == "gemini"
+                    and self.settings.gemini_store_interactions
+                ),
             }
             if self.settings.provider == "gemini":
                 request["thinking_level"] = "minimal"
