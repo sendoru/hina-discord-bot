@@ -134,6 +134,7 @@ class Settings:
     structured_memory_sweep_interval_seconds: int = 60 * 60
     history_turns: int = 12
     history_max_chars: int = 12000
+    personal_memory_read_mode: str = "legacy"
     usage_log_path: str = "data/logs/usage.jsonl"
     event_log_path: str = "data/logs/events.jsonl"
     channel_context_chars: int = 6000
@@ -502,6 +503,7 @@ class Settings:
             channel_context_chars=int(os.getenv("CHANNEL_CONTEXT_CHARS", "6000")),
             history_turns=int(os.getenv("HISTORY_TURNS", "12")),
             history_max_chars=int(os.getenv("HISTORY_MAX_CHARS", "12000")),
+            personal_memory_read_mode=os.getenv("PERSONAL_MEMORY_READ_MODE", "legacy").strip().lower(),
             usage_log_path=os.getenv("USAGE_LOG_PATH", "data/logs/usage.jsonl"),
             event_log_path=os.getenv("EVENT_LOG_PATH", "data/logs/events.jsonl"),
             lore_path=os.getenv("LORE_PATH", ""),
@@ -526,6 +528,8 @@ class Settings:
             vision_max_stickers=vision_max_stickers,
             vision_hina_reference_path=os.getenv("VISION_HINA_REFERENCE_PATH", "").strip(),
         )
+        if s.personal_memory_read_mode not in {"legacy", "selective"}:
+            raise ValueError("PERSONAL_MEMORY_READ_MODE는 legacy 또는 selective여야 합니다.")
         if s.special_dm_user_id is not None and s.special_dm_user_id <= 0:
             raise ValueError("SPECIAL_DM_USER_ID는 양의 Discord 사용자 ID여야 합니다.")
         vision_total = s.vision_max_attachments + s.vision_max_emojis + s.vision_max_stickers
