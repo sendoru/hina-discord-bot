@@ -25,6 +25,24 @@
     const submitter = event.submitter;
     if (!(submitter instanceof HTMLElement)) return;
     const target = submitter.dataset.confirmRetract;
+    const deleteTarget = submitter.dataset.confirmDelete;
+    if (deleteTarget) {
+      if (window.prompt(
+        `Memory를 영구 삭제할까요?\\n\\n${deleteTarget}\\n\\nDB의 해당 기억과 수정/조정 이력이 삭제되며 되돌릴 수 없습니다. 원본 대화/백업은 유지됩니다.\\n진행하려면 DELETE를 입력하세요.`,
+      ) !== "DELETE") {
+        event.preventDefault();
+        return;
+      }
+      let confirmation = submitted.querySelector('input[name="confirm"]');
+      if (!(confirmation instanceof HTMLInputElement)) {
+        confirmation = document.createElement("input");
+        confirmation.type = "hidden";
+        confirmation.name = "confirm";
+        submitted.appendChild(confirmation);
+      }
+      confirmation.value = "delete";
+      return;
+    }
     if (!target) return;
 
     if (!window.confirm(

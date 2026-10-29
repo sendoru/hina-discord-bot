@@ -296,6 +296,46 @@ class MemoryRepository:
                 raise RuntimeError("Memory item disappeared during retraction")
             return self._decode_memory_item(updated)
 
+    def delete_memory_item(self, item_id: int, *, expected_revision: int) -> None:
+        """Permanently delete one structured item and its item-owned records.
+
+        Other memories are never reactivated: superseded rows pointing here keep
+        their lifecycle status but lose the dangling superseded_by link.
+        """
+        item_id = int(item_id)
+        expected_revision = int(expected_revision)
+        if item_id <= 0 or expected_revision < 0:
+            raise ValueError("Invalid memory item deletion target")
+
+        with self.db:
+            row = self.db.execute(
+                "SELECT revision FROM memory_items WHERE id=?", (item_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError("Memory item not found")
+            if int(row["revision"]) != expected_revision:
+                raise ValueError("Memory item has changed; reload before deleting")
+
+            self.db.execute(
+                "DELETE FROM memory_item_edit_history WHERE memory_item_id=?",
+                (item_id,),
+            )
+            self.db.execute(
+                """DELETE FROM memory_reconciliation_proposals
+                   WHERE new_memory_item_id=? OR target_memory_item_id=?""",
+                (item_id, item_id),
+            )
+            self.db.execute(
+                "UPDATE memory_items SET superseded_by=NULL WHERE superseded_by=?",
+                (item_id,),
+            )
+            deleted = self.db.execute(
+                "DELETE FROM memory_items WHERE id=? AND revision=?",
+                (item_id, expected_revision),
+            )
+            if deleted.rowcount != 1:
+                raise ValueError("Memory item has changed; reload before deleting")
+
     def reference_gated_memory_candidates(self, scope: Scope, *, limit: int = 24):
         """Return recent active owner memories whose cross-space access is reference-gated."""
 
