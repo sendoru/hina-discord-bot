@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import httpx
 
 from hina_bot.core.ambient_retrieval import AMBIENT_CONTEXT_POLICY
+from hina_bot.core.config import gemini_store_enabled
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
@@ -757,10 +758,7 @@ class RequestAssembler(BaseLLM):
             "instructions": instructions,
             "input": messages,
             "max_output_tokens": model_plan.max_output_tokens,
-            "store": (
-                self.settings.provider == "gemini"
-                and self.settings.gemini_store_interactions
-            ),
+            "store": gemini_store_enabled(self.settings, "answer"),
         }
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level

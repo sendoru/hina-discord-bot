@@ -11,6 +11,8 @@ import logging
 import re
 from time import perf_counter
 
+from hina_bot.core.config import gemini_store_enabled
+
 from .web_search_text import response_text
 
 log = logging.getLogger("hina")
@@ -89,7 +91,7 @@ class OutputRepair:
                 "instructions": _REPAIR_INSTRUCTIONS,
                 "input": original,
                 "max_output_tokens": _MAX_OUTPUT_TOKENS,
-                "store": False,
+                "store": gemini_store_enabled(self.settings, "output_repair"),
             }
             if self.settings.provider == "gemini":
                 request["thinking_level"] = "minimal"
