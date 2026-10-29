@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import httpx
 
 from hina_bot.core.ambient_retrieval import AMBIENT_CONTEXT_POLICY
+from hina_bot.core.config import gemini_store_enabled
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
