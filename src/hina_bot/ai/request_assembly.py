@@ -615,9 +615,10 @@ class RequestAssembler(BaseLLM):
         if selected_profile_ids is not None:
             local_tool_registry = memory_tool_registry(
                 local_tool_registry, store, scope,
-                on_search=lambda count: self.usage.routing_event(
+                on_search=lambda ids: self.usage.routing_event(
                     "memory.search", status="completed",
-                    memory_search_selected=count,
+                    memory_search_selected=len(ids),
+                    memory_search_ids=list(ids),
                 ),
             )
         local_tool_schemas = (
