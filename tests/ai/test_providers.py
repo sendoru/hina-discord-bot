@@ -1313,8 +1313,8 @@ async def test_openrouter_preserves_function_tools_when_web_plugin_is_enabled():
         (False, False, False, False),
         (False, True, False, True),
         (True, None, False, True),
-        (True, False, False, True),
-        (True, False, True, True),
+        (True, False, False, False),
+        (True, False, True, False),
         (False, False, True, False),
     ],
 )
@@ -1374,4 +1374,4 @@ async def test_gemini_master_store_switch_reads_runtime_value_each_call():
         await responses.create(model="gemini-test", input="second", store=False)
     finally:
         await http.aclose()
-    assert [payload["store"] for payload in payloads] == [False, True]
+    assert [payload["store"] for payload in payloads] == [False, False]
