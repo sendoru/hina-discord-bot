@@ -217,7 +217,10 @@ Discord에서는 현재 서버·채널을 대상으로 하는 즉시 조작을 �
 ### 자동 기억 및 수동 메모
 
 ```text
-/memory show
+/memory show area:all page:1
+/memory remove item_id:<ID> confirm:true
+/memory preference value:off
+/memory status
 /memory clear
 /memory mode
 /memory purge
@@ -227,8 +230,10 @@ Discord에서는 현재 서버·채널을 대상으로 하는 즉시 조작을 �
 /state show
 ```
 
-`/memory show/clear`는 본인의 자동 기억을 관리하며, `/memory mode/purge`와
-`/state show`는 봇 관리자 전용입니다. `/memory purge`는 채널·현재 서버 범위만
+`/memory show/remove/preference/status/clear`는 본인의 자동 기억을 관리하며,
+`/memory mode/purge`와 `/state show`는 봇 관리자 전용입니다.
+개인 `preference`는 전체 서버·DM에 적용되지만 관리자의 읽기·쓰기 제한을 우회하지 않습니다.
+`remove`는 기억을 모델 조회에서 철회하며 저장된 감사 이력을 지우지는 않습니다. `/memory purge`는 채널·현재 서버 범위만
 허용하며 전역 purge는 Discord에서 제공하지 않습니다. `/note`의 사용자 메모는
 자신이 관리하고, 서버 공통 메모의 변경에는 `Manage Server` 권한이 필요합니다.
 
