@@ -11,6 +11,8 @@ import logging
 import re
 from time import perf_counter
 
+from hina_bot.core.config import gemini_store_enabled
+
 from .web_search_text import response_text
 
 log = logging.getLogger("hina")
