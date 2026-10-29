@@ -956,6 +956,11 @@ class _GeminiResponses:
             **kwargs,
         }
 
+        # Master opt-in applies to all Gemini calls, regardless of the caller's
+        # per-operation store flag (memory, classifier, repair, and continuations).
+        if getattr(self.settings, "gemini_store_interactions", False):
+            tool_kwargs["store"] = True
+
         mode = getattr(self.settings, "gemini_search_api_mode", "auto")
         if mode not in GEMINI_SEARCH_API_MODES:
             raise ValueError("GEMINI_SEARCH_API_MODE가 잘못되었습니다.")
