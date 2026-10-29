@@ -245,6 +245,39 @@ The same decision is visible in trace provenance without copying memory text int
 status are persisted with the bounded context provenance snapshot. Failed turns still emit only the
 content-free counts/status through the `context.provenance` lifecycle row.
 
+## Optional selective read mode (first live experiment)
+
+`PERSONAL_MEMORY_READ_MODE` is a runtime setting independent of lore `RAG_MODE`.
+Its default is `legacy`, which preserves the existing answer context and tools.
+Set it to `selective` to change **reads only**. Extraction, reconciliation,
+revision/retraction, relationship aggregation, and disclosure rules do not change.
+
+- For each answer, send at most five active stable preference/boundary/fact/task
+  memories (up to 1,400 content characters). Events are not part of this
+  always-on profile. This is a deliberately conservative, deterministic ranking
+  and not an automatically generated profile document.
+- Retain the relationship evidence projection and existing gated factual recall;
+  don't present the entire owner DM memory history to the answer model.
+- Offer `search_memory` only in selective mode. The model may request up to
+  two searches per answer for specific historical details. Searches are bounded
+  to four items / 2,100 content characters and use an ephemeral SQLite FTS5
+  index over active, FULL-authorized memories owned by the current speaker.
+  Hidden, implicit-only, and unapproved reference-gated memories never enter
+  that search index; owner-DM access still follows the existing policy.
+- No embeddings, new model classifier, persistent FTS tables, migration, or
+  additional LLM pass are required. FTS5 uses lexical matching and can miss
+  paraphrased or ambiguous memories. Missing evidence must not be invented.
+- Observability: `memory.read` records the mode/profile item count,
+  `memory.search` records the number returned, and normal context provenance
+  reflects selected profile item IDs. Raw memory/query text is not logged.
+
+For a live trial, change `PERSONAL_MEMORY_READ_MODE` to `selective` in the
+runtime configuration (Dashboard or `/config set`). Revert it to `legacy`
+immediately if recall quality or prompt behavior regresses. A read-disabled
+memory mode still wins over this setting, and the current per-channel privacy
+boundaries remain in force. This initial experiment does not add raw Discord
+history lookup.
+
 ## Still out of scope
 
 Shadow extraction still does not:
