@@ -208,11 +208,21 @@ async def test_classifier_input_contains_semantic_context_but_no_objective_load(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("enabled", [False, True])
-async def test_classifier_store_is_separate_gemini_opt_in(enabled):
+@pytest.mark.parametrize(
+    ("global_enabled", "classifier_enabled", "expected"),
+    [
+        (False, False, False),
+        (False, True, True),
+        (True, False, True),
+        (True, True, True),
+    ],
+)
+async def test_classifier_store_follows_global_or_separate_opt_in(
+    global_enabled, classifier_enabled, expected,
+):
     config = settings(
-        gemini_store_interactions=True,
-        gemini_store_classifier_interactions=enabled,
+        gemini_store_interactions=global_enabled,
+        gemini_store_classifier_interactions=classifier_enabled,
     )
     classifier_client = client(response(classification()))
     router = SemanticModelRouter(config, classifier_client, UsageLogger(""))
@@ -221,7 +231,7 @@ async def test_classifier_store_is_separate_gemini_opt_in(enabled):
 
     assert outcome.status == "completed"
     request = classifier_client.responses.create.await_args.kwargs
-    assert request["store"] is enabled
+    assert request["store"] is expected
 
 
 @pytest.mark.asyncio
