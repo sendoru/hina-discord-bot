@@ -48,9 +48,9 @@ SMART_MAX_OUTPUT_TOKENS=8192
 MEMORY_MAX_OUTPUT_TOKENS=4096
 GEMINI_FAST_THINKING_LEVEL=minimal
 GEMINI_SMART_THINKING_LEVEL=medium
-# 일반 채팅 answer interaction 저장
+# Gemini 전체 호출(대화, 기억 추출/요약, 분류기, 후처리 등) 저장
 GEMINI_STORE_INTERACTIONS=false
-# semantic/web routing classifier interaction은 별도 opt-in
+# 전역 저장이 꺼진 경우 분류기 interaction만 별도 opt-in
 GEMINI_STORE_CLASSIFIER_INTERACTIONS=false
 
 # 선택 사항: off | shadow | active
