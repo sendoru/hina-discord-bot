@@ -38,6 +38,7 @@ from .semantic_model_routing import (
     semantic_result,
 )
 from .structured_memory_context import structured_memory_context
+from .selective_memory import project_selective_context
 from .vision import CURRENT_VISUAL_INPUTS
 
 _IN_WORLD_PRESENT_STATE_QUERY = re.compile(
@@ -519,6 +520,15 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 else ()
             ),
         )
+        reader = getattr(store, "memory_items", None)
+        if (
+            use_memory
+            and self.settings.personal_memory_read_mode == "selective"
+            and callable(reader)
+        ):
+            structured_memory, _ = project_selective_context(
+                structured_memory, reader(scope.user_id), scope,
+            )
         context = {
             "server_note": (
                 store.note(scope.realm)
