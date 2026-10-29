@@ -194,7 +194,7 @@ def memory_tool_registry(
             raise LocalToolError("memory_unavailable")
         result = search_memory_items(reader(scope.user_id), scope, query)
         if on_search is not None:
-            on_search(len(result))
+            on_search(tuple(row["id"] for row in result))
         return {"items": result, "count": len(result)}
 
     registry.register(SEARCH_MEMORY_TOOL, search)
