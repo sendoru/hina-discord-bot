@@ -1303,3 +1303,75 @@ async def test_openrouter_preserves_function_tools_when_web_plugin_is_enabled():
     assert kwargs["tools"] == [function_tool]
     assert kwargs["tool_choice"] == "auto"
     assert kwargs["extra_body"]["plugins"] == [{"id": "web", "max_results": 3}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("master_enabled", "requested_store", "use_generate_content", "expected"),
+    [
+        (False, None, False, False),
+        (False, False, False, False),
+        (False, True, False, True),
+        (True, None, False, True),
+        (True, False, False, True),
+        (True, False, True, True),
+        (False, False, True, False),
+    ],
+)
+async def test_gemini_master_store_switch_controls_all_provider_requests(
+    master_enabled, requested_store, use_generate_content, expected,
+):
+    payloads = []
+
+    async def handler(request: httpx.Request):
+        payloads.append(__import__("json").loads(request.content))
+        if use_generate_content:
+            return httpx.Response(200, json={
+                "candidates": [{"content": {"parts": [{"text": "ok"}]},
+                                "finishReason": "STOP"}],
+            })
+        return httpx.Response(200, json={
+            "id": "interaction-test", "status": "completed",
+            "steps": [], "usage": {},
+        })
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    settings = NS(
+        gemini_store_interactions=master_enabled,
+        gemini_search_api_mode="generate_content" if use_generate_content else "auto",
+    )
+    kwargs = {"model": "gemini-test", "input": "hello"}
+    if requested_store is not None:
+        kwargs["store"] = requested_store
+    if use_generate_content:
+        kwargs["tools"] = [{"type": "web_search"}]
+    try:
+        await _GeminiResponses(http, settings=settings).create(**kwargs)
+    finally:
+        await http.aclose()
+
+    assert len(payloads) == 1
+    assert payloads[0]["store"] is expected
+
+
+@pytest.mark.asyncio
+async def test_gemini_master_store_switch_reads_runtime_value_each_call():
+    payloads = []
+
+    async def handler(request: httpx.Request):
+        payloads.append(__import__("json").loads(request.content))
+        return httpx.Response(200, json={
+            "id": "interaction-test", "status": "completed",
+            "steps": [], "usage": {},
+        })
+
+    settings = NS(gemini_store_interactions=False, gemini_search_api_mode="auto")
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    responses = _GeminiResponses(http, settings=settings)
+    try:
+        await responses.create(model="gemini-test", input="first", store=False)
+        settings.gemini_store_interactions = True
+        await responses.create(model="gemini-test", input="second", store=False)
+    finally:
+        await http.aclose()
+    assert [payload["store"] for payload in payloads] == [False, True]
