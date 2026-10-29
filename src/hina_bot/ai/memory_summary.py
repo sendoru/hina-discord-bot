@@ -131,7 +131,10 @@ class MemorySummaryMixin:
             "instructions": instructions,
             "input": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             "max_output_tokens": plan.max_output_tokens,
-            "store": False,
+            "store": (
+                self.settings.provider == "gemini"
+                and self.settings.gemini_store_interactions
+            ),
         }
         route_metadata = plan.telemetry()
         if self.settings.provider == "gemini":
