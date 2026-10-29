@@ -98,6 +98,12 @@ class LocalToolRegistry:
             raise ValueError(f"Duplicate local tool: {spec.name}")
         self._tools[spec.name] = _RegisteredTool(spec, handler)
 
+    def copy(self) -> LocalToolRegistry:
+        """Copy registered handlers for per-answer temporary additions."""
+        registry = LocalToolRegistry()
+        registry._tools = self._tools.copy()
+        return registry
+
     def schemas(self) -> list[dict]:
         return [registered.spec.provider_schema() for registered in self._tools.values()]
 
