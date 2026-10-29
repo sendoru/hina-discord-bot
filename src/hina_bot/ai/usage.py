@@ -523,6 +523,7 @@ class UsageLogger:
             "search_route_proposed_mode", "search_route_locked", "search_route_reason",
             "semantic_web_need", "semantic_web_codes", "semantic_web_uncertain",
             "memory_kind", "memory_result_reason", "pending_turns", "batch_turns", "payload_chars",
+            "memory_read_mode", "memory_profile_items", "memory_search_selected",
             "context_items", "old_memory_chars", "candidate_items", "evidence_turns",
             "accepted_items", "stored_items", "duplicate_items", "rejected_items",
             "proposal_items", "applied_reconciliations", "deferred_reconciliations",
