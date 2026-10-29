@@ -211,9 +211,11 @@ async def test_classifier_input_contains_semantic_context_but_no_objective_load(
 @pytest.mark.parametrize(
     ("global_enabled", "classifier_enabled", "expected"),
     [
+        (False, None, False),
         (False, False, False),
         (False, True, True),
-        (True, False, True),
+        (True, None, True),
+        (True, False, False),
         (True, True, True),
     ],
 )
