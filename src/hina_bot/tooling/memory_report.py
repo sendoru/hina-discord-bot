@@ -653,6 +653,8 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
                     "batch_turns", "accepted_items", "stored_items", "duplicate_items",
                     "rejected_items", "proposal_items", "applied_reconciliations",
                     "deferred_reconciliations", "rejected_relations",
+                    "annotated_items", "reconfirmed_items", "suppressed_relationship_items",
+                    "directive_items", "verified_directives", "rejected_directives",
                 )
             },
         },

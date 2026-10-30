@@ -51,8 +51,50 @@ and lifecycle markers (`last_confirmed_at`, `confirmations`, `last_used_at`, `pr
 - Relationship items are not annotated; they keep the relationship projection path.
 
 The table is created by `hina-prepare-db` (see [DB initialization](db-initialization.md)). In this
-stage nothing reads it yet: extraction v2 and backfill populate it, and the response path stays legacy
-until P2.
+stage the response path does not read it yet; extraction v2 and backfill populate it, and the response
+path stays legacy until P2.
+
+`observed_at` and `last_confirmed_at` use the stored turn time (UTC, `YYYY-MM-DD HH:MM:SS`), so
+they compare as strings. `event_at` is a local calendar date (`YYYY-MM-DD` or `YYYY-MM`) in
+`RUNTIME_TIMEZONE`.
+
+### Extraction v2
+
+The shadow extractor now returns the annotation fields next to each non-relationship item. Each
+input turn carries `at_local` and `weekday` in `RUNTIME_TIMEZONE`, so a relative date such as
+"다음 주 화요일" becomes an absolute `event_at`. The prompt walks through tense, stability, usage,
+audience and importance in that order; `kind` remains only for compatibility.
+
+The parser never trusts a judgment it cannot check (#449 principle 6):
+
+- `evidence` must be a substring of a cited user utterance (NFKC, case and whitespace ignored).
+  Otherwise it is cleared, `evidence_mismatch` is recorded and `ambient` drops to `contextual`.
+- A past or completed marker in the evidence of an `ongoing` item records `past_marker_ongoing` and
+  drops `ambient` to `contextual`; the time scope itself is left for review.
+- Missing judgments fall back to `contextual`/`unknown`; a `boundary` item falls back to a boundary
+  directive so a boundary is never lost. Malformed `event_at`/`recurrence` values are dropped.
+- `planned`/`episodic` items without a date record `undated_event`; P2 expires them 30 days after
+  `observed_at`.
+- `audience=server` is narrowed to `owner` for sensitive items and for anything not captured in a
+  public guild channel.
+
+Directive items get one more small request (`verify_memory_directives`) before the commit. The
+verifier sees only the directive items and the user utterances they cite: `keep` marks the item
+verified, `temporary` (boundaries only) keeps it verified as a short ongoing boundary, and `reject`
+demotes it to `contextual` with `directive_rejected`. A failed or malformed verification keeps the
+directive but unverified (`directive_unverified`), so a boundary is not silently dropped. Directives
+are not demoted by the evidence or tense checks above; the verifier decides.
+
+Annotations commit in the same transaction as their items and the extraction cursor. A same-space
+re-mention of an active item is counted as a confirmation (`confirmations + 1`, latest
+`last_confirmed_at`) instead of a new row, and so is an applied `duplicate` reconciliation. A
+`corrects` proposal whose new item has the same `slot` as its target is auto-applied from confidence
+0.8 instead of 0.95. Relationship observations are skipped when an active relationship item from the
+same channel and visibility, created within 14 days of the batch, already shows every axis at least
+as high (#449 decision 18).
+
+The `memory.shadow_extraction` completed event adds `annotated_items`, `reconfirmed_items`,
+`suppressed_relationship_items`, `directive_items`, `verified_directives` and `rejected_directives`.
 
 ## Disclosure semantics
 

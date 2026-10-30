@@ -13,6 +13,7 @@ from .admin_commands import (
 from .conversation_repository import ConversationRepository
 from .db_connections import open_existing
 from .db_schema import initialize_connection, require_current
+from .memory_annotations import MemoryAnnotation
 from .memory_items import (
     MemoryDisclosure,
     MemoryItem,
@@ -495,6 +496,18 @@ class Store:
 
     def reference_gated_memory_candidates(self, scope: Scope, *, limit: int = 24):
         return self._memories.reference_gated_memory_candidates(scope, limit=limit)
+
+    def memory_annotation(self, item_id: int) -> MemoryAnnotation | None:
+        return self._memories.memory_annotation(item_id)
+
+    def memory_annotations(self, item_ids) -> dict[int, MemoryAnnotation]:
+        return self._memories.memory_annotations(item_ids)
+
+    def upsert_memory_annotation(self, annotation: MemoryAnnotation) -> None:
+        self._memories.upsert_memory_annotation(annotation)
+
+    def reconfirm_memory_annotation(self, item_id: int, observed_at: str) -> bool:
+        return self._memories.reconfirm_memory_annotation(item_id, observed_at)
 
     def memory_reconciliation_candidates(self, scope: Scope, *, limit: int = 24):
         return self._memories.memory_reconciliation_candidates(scope, limit=limit)

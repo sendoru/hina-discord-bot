@@ -216,7 +216,8 @@ class ReconciliationService(MemoryService):
                 row
                 for row in trace.usage
                 if row.get("operation")
-                in {"extract_memory_items_shadow", "memory.shadow_extraction"}
+                in {"extract_memory_items_shadow", "verify_memory_directives",
+                    "memory.shadow_extraction"}
             )
             extraction_traces.append(
                 {
