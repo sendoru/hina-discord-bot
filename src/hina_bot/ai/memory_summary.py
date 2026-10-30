@@ -21,6 +21,7 @@ from .memory_extraction import (
     persist_reconciliation_proposals,
     persist_shadow_items_detailed,
     select_reconciliation_candidates,
+    shadow_extraction_payload,
 )
 from .memory_model_routing import build_memory_model_plan
 
@@ -226,25 +227,15 @@ class MemorySummaryMixin:
         reconciliation_candidates = build_reconciliation_candidates(
             candidate_items, candidate_annotations
         )
-        payload = {
-            "speaker_id": str(scope.user_id),
-            "speaker_name": _speaker_name(pending),
-            "origin": {
-                "realm": scope.realm,
-                "channel_id": str(scope.channel_id),
-            },
-            "turns": turns,
-            **(
-                {"recent_evidence_context": evidence_context}
-                if evidence_context
-                else {}
-            ),
-            **(
-                {"existing_memory_candidates": reconciliation_candidates}
-                if reconciliation_candidates
-                else {}
-            ),
-        }
+        payload = shadow_extraction_payload(
+            speaker_id=str(scope.user_id),
+            speaker_name=_speaker_name(pending),
+            realm=scope.realm,
+            channel_id=str(scope.channel_id),
+            turns=turns,
+            evidence_context=evidence_context,
+            candidates=reconciliation_candidates,
+        )
         plan = build_memory_model_plan(
             self.settings,
             "",

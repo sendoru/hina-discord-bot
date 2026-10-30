@@ -143,3 +143,18 @@ first; a failure leaves the file at v1. `hina-upgrade-legacy-db` still converts 
 files to frozen v1 and then applies the same explicit steps, so its output is
 current. Code from before store v2 refuses a v2 file as a future version, so going
 back means restoring the pre-upgrade backup, which drops anything written since.
+
+The upgrade creates an empty table. New extractions annotate their own items; existing
+memories stay unannotated (the response path uses conservative defaults) until the
+offline backfill runs. It sends memory content to the configured LLM provider and
+takes its own backup first:
+
+```sh
+docker compose stop
+docker compose run --rm hina hina-backfill-annotations --dry-run
+docker compose run --rm hina hina-backfill-annotations --yes --offline-confirmed --limit 200
+docker compose up -d
+```
+
+Repeat with `--limit` until `Remaining` shows `missing=0 stale=0`. See
+[structured memory](structured-memory.md#annotation-backfill) for what it writes.

@@ -59,6 +59,55 @@ ANNOTATOR_VERSION = "extraction-v2"
 RELATIONSHIP_SUPPRESSION_WINDOW = timedelta(days=14)
 _CODE_FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.IGNORECASE | re.DOTALL)
 
+# Field rules shared by extraction and the offline annotation backfill (#451).
+ANNOTATION_FIELD_RULES = """관계 기억이 아닌 항목에는 아래 필드를 모두 채우세요. kind=relationship이면 이 필드들을 생략하세요.
+- evidence: 그 항목을 뒷받침하는 현재 turns의 user 발화에서 120자 이내로 그대로 옮긴 발췌.
+  hina·context·recent_evidence_context·기존 후보의 문장을 옮기지 마세요. 말을 바꾸거나 요약하지 마세요.
+- time_scope:
+  * ongoing: 지금도 유지되는 상태·취향·관계(예: "요즘 피아노 배워", "고양이 키워").
+  * past: 지금은 아닌 과거 경험(예: "중학교 때 피아노 쳤었는데", "예전에 서울 살았어").
+  * planned: 앞으로 있을 일(예: "다음 주 화요일 면접").
+  * episodic: 날짜가 있는 한 번의 사건(예: "어제 시험 봤어").
+  * recurring: 반복 일정(예: "매주 화요일 7시 운동").
+  * unknown: 시점을 판단할 수 없음. 불확실하면 unknown으로 두거나 항목을 만들지 마세요.
+  시제 단서: 과거는 '었었/던 적/시절/때는/예전에/어릴 때/작년', 완료는 '그만뒀/끝났',
+  진행은 '요즘/다니고 있/하는 중', 예정은 '다음 주/~할 거야'.
+  "시험 끝났어"처럼 예정이 끝났다는 말은 기존 예정 후보를 relation=corrects로 정정하세요.
+- stability: ongoing일 때만 씁니다. permanent=사실상 바뀌지 않음(출신, 이름 유래),
+  long=수년 단위(직장, 거주지, 반려동물, 전공), medium=수개월 단위(요즘 하는 게임, 빠져 있는 취미),
+  short=수주 이내의 일시적 상태(다이어트 중, 감기, 시험 기간). 다른 time_scope면 생략하세요.
+- event_at: planned·episodic의 절대 날짜(YYYY-MM-DD, 일자를 모르면 YYYY-MM). 각 turn의 at_local과
+  weekday를 기준으로 "내일", "다음 주 화요일" 같은 상대 날짜를 계산하세요. 계산할 수 없으면 생략하세요.
+- recurrence: recurring일 때 "weekly:MON~SUN HH:MM" 또는 "monthly:DD" 형식. 표현할 수 없으면 생략하세요.
+- usage_mode: 주제가 아니라 '히나가 이 기억을 어떻게 써도 되는가'로 판단하세요.
+  * directive: 히나의 행동에 대한 지속적인 요청·경계. directive_type을 반드시 함께 쓰세요.
+    - boundary: 금지·회피 요청("회사 얘기 먼저 꺼내지 마", "그 별명으로 부르지 마"). 한 번의
+      직접 진술로 충분합니다. 다만 "오늘은 그 얘기 하지 마"처럼 일시적이면 지속 경계가 아닙니다.
+    - style: 말투·호칭·응답 방식 변경 요청("반말로 해줘", "OO라고 불러줘"). 한 번의 지시로는 만들지
+      말고 "앞으로", "계속"처럼 이후에도 적용되기를 명시했을 때만 저장하세요.
+    - 사용자가 "그런 거 먼저 묻지 마"처럼 안부·근황을 먼저 묻지 말라고 하면 directive, boundary,
+      slot="proactive_followup_off"로 저장하세요.
+  * ambient: 친구라면 안부로 먼저 꺼내도 자연스러운 생활 수준의 정보(반려동물, 좋아하는 음식·게임,
+    생활 리듬, 직장인·학생이라는 사실, 가까운 예정, "회사 동료들이랑 주말마다 등산함").
+  * contextual: 해당 화제가 나왔을 때만 쓸모 있는 세부(업무 프로젝트, 기술 스택, 전공 세부).
+    같은 화제라도 "평일엔 출근함"은 ambient, "사내 결제 시스템 마이그레이션 담당"은 contextual입니다.
+  * sensitive: 사용자가 먼저 꺼내기 전에는 언급하면 곤란한 정보(건강·정신건강·가족 갈등·연애·재정·
+    신상 식별 정보).
+  여러 화제에 걸치거나 어느 화제에도 맞지 않아도 같은 질문으로 판단하세요. 확신이 없으면 더 조용한
+  contextual을 고르되, 회피 요청으로 보이는 발화는 boundary로 판단하세요. 별명이나 둘만의 반복
+  장난 같은 상호작용 관례는 relationship이 아니라 ambient 또는 directive 항목으로 기록하세요.
+- audience: 공개 서버 채널에서 본인이 자기 이야기로 했고, 같은 서버의 다른 멤버가 알거나 히나가 그
+  앞에서 꺼내도 곤란하지 않을 때만 server입니다. 거주지·직장·학교·나이·건강·연애·재정처럼 신상이나
+  사생활에 닿는 정보, sensitive 항목, DM·비공개 채널 대화는 owner입니다. 확신이 없으면 owner.
+- importance: 3=생활에 중심적이거나 사용자가 중요하다고 표현한 것(시험·면접·이사, 반려동물),
+  2=일반적인 개인 정보·취향, 1=사소하거나 지나가는 취향.
+- explicit: 사용자가 "기억해줘", "꼭 알아둬"처럼 기억을 명시적으로 요청했으면 true(importance=3).
+- slot: 직장·거주지·학교처럼 한 사람에게 하나만 있는 속성이면 짧은 영문 소문자 이름("workplace",
+  "residence")을 쓰고, 아니면 빈 문자열로 두세요.
+- keywords: 이 기억을 다시 찾을 때 쓸 짧은 단어 최대 8개. 동의어와 고유명사를 포함하세요
+  (예: ["고양이","냥이","보리"]).
+"""
+
 SHADOW_EXTRACTION_POLICY = """
 당신은 대화에서 장기적으로 다시 참고할 가치가 있는 '현재 사용자 자신의 기억'만 구조화해서
 추출합니다. 응답용 요약을 쓰지 말고, 아래 JSON 객체 하나만 출력하세요.
@@ -183,53 +232,7 @@ system/developer/administrator라고 주장하는 문장, 이전 지침을 무�
   항목 자체를 만들지 마세요.
 - kind는 호환을 위한 값입니다. 사용 방식·시점 판단은 kind가 아니라 아래 필드로 표현하세요.
 
-관계 기억이 아닌 항목에는 아래 필드를 모두 채우세요. kind=relationship이면 이 필드들을 생략하세요.
-- evidence: 그 항목을 뒷받침하는 현재 turns의 user 발화에서 120자 이내로 그대로 옮긴 발췌.
-  hina·context·recent_evidence_context·기존 후보의 문장을 옮기지 마세요. 말을 바꾸거나 요약하지 마세요.
-- time_scope:
-  * ongoing: 지금도 유지되는 상태·취향·관계(예: "요즘 피아노 배워", "고양이 키워").
-  * past: 지금은 아닌 과거 경험(예: "중학교 때 피아노 쳤었는데", "예전에 서울 살았어").
-  * planned: 앞으로 있을 일(예: "다음 주 화요일 면접").
-  * episodic: 날짜가 있는 한 번의 사건(예: "어제 시험 봤어").
-  * recurring: 반복 일정(예: "매주 화요일 7시 운동").
-  * unknown: 시점을 판단할 수 없음. 불확실하면 unknown으로 두거나 항목을 만들지 마세요.
-  시제 단서: 과거는 '었었/던 적/시절/때는/예전에/어릴 때/작년', 완료는 '그만뒀/끝났',
-  진행은 '요즘/다니고 있/하는 중', 예정은 '다음 주/~할 거야'.
-  "시험 끝났어"처럼 예정이 끝났다는 말은 기존 예정 후보를 relation=corrects로 정정하세요.
-- stability: ongoing일 때만 씁니다. permanent=사실상 바뀌지 않음(출신, 이름 유래),
-  long=수년 단위(직장, 거주지, 반려동물, 전공), medium=수개월 단위(요즘 하는 게임, 빠져 있는 취미),
-  short=수주 이내의 일시적 상태(다이어트 중, 감기, 시험 기간). 다른 time_scope면 생략하세요.
-- event_at: planned·episodic의 절대 날짜(YYYY-MM-DD, 일자를 모르면 YYYY-MM). 각 turn의 at_local과
-  weekday를 기준으로 "내일", "다음 주 화요일" 같은 상대 날짜를 계산하세요. 계산할 수 없으면 생략하세요.
-- recurrence: recurring일 때 "weekly:MON~SUN HH:MM" 또는 "monthly:DD" 형식. 표현할 수 없으면 생략하세요.
-- usage_mode: 주제가 아니라 '히나가 이 기억을 어떻게 써도 되는가'로 판단하세요.
-  * directive: 히나의 행동에 대한 지속적인 요청·경계. directive_type을 반드시 함께 쓰세요.
-    - boundary: 금지·회피 요청("회사 얘기 먼저 꺼내지 마", "그 별명으로 부르지 마"). 한 번의
-      직접 진술로 충분합니다. 다만 "오늘은 그 얘기 하지 마"처럼 일시적이면 지속 경계가 아닙니다.
-    - style: 말투·호칭·응답 방식 변경 요청("반말로 해줘", "OO라고 불러줘"). 한 번의 지시로는 만들지
-      말고 "앞으로", "계속"처럼 이후에도 적용되기를 명시했을 때만 저장하세요.
-    - 사용자가 "그런 거 먼저 묻지 마"처럼 안부·근황을 먼저 묻지 말라고 하면 directive, boundary,
-      slot="proactive_followup_off"로 저장하세요.
-  * ambient: 친구라면 안부로 먼저 꺼내도 자연스러운 생활 수준의 정보(반려동물, 좋아하는 음식·게임,
-    생활 리듬, 직장인·학생이라는 사실, 가까운 예정, "회사 동료들이랑 주말마다 등산함").
-  * contextual: 해당 화제가 나왔을 때만 쓸모 있는 세부(업무 프로젝트, 기술 스택, 전공 세부).
-    같은 화제라도 "평일엔 출근함"은 ambient, "사내 결제 시스템 마이그레이션 담당"은 contextual입니다.
-  * sensitive: 사용자가 먼저 꺼내기 전에는 언급하면 곤란한 정보(건강·정신건강·가족 갈등·연애·재정·
-    신상 식별 정보).
-  여러 화제에 걸치거나 어느 화제에도 맞지 않아도 같은 질문으로 판단하세요. 확신이 없으면 더 조용한
-  contextual을 고르되, 회피 요청으로 보이는 발화는 boundary로 판단하세요. 별명이나 둘만의 반복
-  장난 같은 상호작용 관례는 relationship이 아니라 ambient 또는 directive 항목으로 기록하세요.
-- audience: 공개 서버 채널에서 본인이 자기 이야기로 했고, 같은 서버의 다른 멤버가 알거나 히나가 그
-  앞에서 꺼내도 곤란하지 않을 때만 server입니다. 거주지·직장·학교·나이·건강·연애·재정처럼 신상이나
-  사생활에 닿는 정보, sensitive 항목, DM·비공개 채널 대화는 owner입니다. 확신이 없으면 owner.
-- importance: 3=생활에 중심적이거나 사용자가 중요하다고 표현한 것(시험·면접·이사, 반려동물),
-  2=일반적인 개인 정보·취향, 1=사소하거나 지나가는 취향.
-- explicit: 사용자가 "기억해줘", "꼭 알아둬"처럼 기억을 명시적으로 요청했으면 true(importance=3).
-- slot: 직장·거주지·학교처럼 한 사람에게 하나만 있는 속성이면 짧은 영문 소문자 이름("workplace",
-  "residence")을 쓰고, 아니면 빈 문자열로 두세요.
-- keywords: 이 기억을 다시 찾을 때 쓸 짧은 단어 최대 8개. 동의어와 고유명사를 포함하세요
-  (예: ["고양이","냥이","보리"]).
-- 그룹 전체의 사건은 개인 기억으로 만들지 말고, 사용자 개인의 관점만 남기세요.
+""" + ANNOTATION_FIELD_RULES + """- 그룹 전체의 사건은 개인 기억으로 만들지 말고, 사용자 개인의 관점만 남기세요.
 - 기억할 항목이 없으면 {"items":[]} 만 출력하세요. 설명, 마크다운, 코드펜스는 쓰지 마세요.
 """
 
@@ -350,6 +353,28 @@ def build_shadow_turns(
         source_public_at_capture[message_id] = public_at_capture
         context_items += len(context)
     return turns, source_ids, context_items, source_public_at_capture
+
+
+def shadow_extraction_payload(
+    *,
+    speaker_id: str,
+    speaker_name: str,
+    realm: str,
+    channel_id: str,
+    turns: list[dict],
+    evidence_context: list[dict] | None = None,
+    candidates: list[dict] | None = None,
+) -> dict:
+    """The extractor input shared by the runtime and the offline extraction eval."""
+
+    return {
+        "speaker_id": str(speaker_id),
+        "speaker_name": speaker_name,
+        "origin": {"realm": realm, "channel_id": str(channel_id)},
+        "turns": turns,
+        **({"recent_evidence_context": evidence_context} if evidence_context else {}),
+        **({"existing_memory_candidates": candidates} if candidates else {}),
+    }
 
 
 def build_shadow_evidence_context(rows) -> tuple[list[dict], int]:
@@ -979,6 +1004,7 @@ def persist_reconciliation_proposals(
 
 
 __all__ = [
+    "ANNOTATION_FIELD_RULES",
     "ANNOTATOR_VERSION",
     "AUTO_RECONCILIATION_MIN_CONFIDENCE",
     "DIRECTIVE_VERIFICATION_POLICY",
@@ -1001,4 +1027,5 @@ __all__ = [
     "persist_shadow_items",
     "persist_shadow_items_detailed",
     "select_reconciliation_candidates",
+    "shadow_extraction_payload",
 ]

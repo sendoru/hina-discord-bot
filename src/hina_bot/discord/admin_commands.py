@@ -5,6 +5,7 @@ import logging
 
 from hina_bot.core.admin_commands import AdminCommand
 from hina_bot.core.chatlog_modes import set_unified_chatlog_mode
+from hina_bot.core.memory_items import memory_item_scope as _memory_item_scope
 from hina_bot.core.routing import Scope
 from hina_bot.core.runtime_config import RuntimeSettings, format_runtime_value
 from hina_bot.core.scope_overrides import scope_target_key
@@ -12,35 +13,6 @@ from hina_bot.core.scope_overrides import scope_target_key
 from .config_commands import apply_runtime_setting_side_effects
 
 log = logging.getLogger("hina")
-
-
-def _memory_item_scope(item) -> Scope:
-    try:
-        user_id = int(item.user_id)
-        channel_id = int(item.origin_channel_id)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("stored memory item has invalid scope") from exc
-    if user_id <= 0 or channel_id <= 0:
-        raise ValueError("stored memory item has invalid scope")
-
-    realm = str(item.origin_realm)
-    if realm == f"dm:{user_id}":
-        guild_id = None
-    elif realm.startswith("guild:"):
-        try:
-            guild_id = int(realm.removeprefix("guild:"))
-        except ValueError as exc:
-            raise ValueError("stored memory item has invalid scope") from exc
-        if guild_id <= 0:
-            raise ValueError("stored memory item has invalid scope")
-    else:
-        raise ValueError("stored memory item has invalid scope")
-    return Scope(
-        guild_id,
-        channel_id,
-        user_id,
-        public_at_capture=bool(item.origin_public_at_capture),
-    )
 
 
 async def execute_admin_command(client, command: AdminCommand) -> dict[str, object]:

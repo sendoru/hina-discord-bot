@@ -210,6 +210,37 @@ def memory_access(
     return MemoryAccess.HIDDEN
 
 
+def memory_item_scope(item) -> Scope:
+    """Rebuild the authoritative owner/origin scope from a stored memory item."""
+
+    try:
+        user_id = int(item.user_id)
+        channel_id = int(item.origin_channel_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("stored memory item has invalid scope") from exc
+    if user_id <= 0 or channel_id <= 0:
+        raise ValueError("stored memory item has invalid scope")
+
+    realm = str(item.origin_realm)
+    if realm == f"dm:{user_id}":
+        guild_id = None
+    elif realm.startswith("guild:"):
+        try:
+            guild_id = int(realm.removeprefix("guild:"))
+        except ValueError as exc:
+            raise ValueError("stored memory item has invalid scope") from exc
+        if guild_id <= 0:
+            raise ValueError("stored memory item has invalid scope")
+    else:
+        raise ValueError("stored memory item has invalid scope")
+    return Scope(
+        guild_id,
+        channel_id,
+        user_id,
+        public_at_capture=bool(item.origin_public_at_capture),
+    )
+
+
 __all__ = [
     "MEMORY_CONTENT_MAX_CHARS",
     "RELATIONSHIP_EVIDENCE_AXES",
@@ -220,5 +251,6 @@ __all__ = [
     "RelationshipEvidence",
     "ValidatedMemoryFields",
     "memory_access",
+    "memory_item_scope",
     "validate_memory_item_fields",
 ]
