@@ -75,6 +75,7 @@ _PAST_MARKERS = re.compile(
 )
 
 LINT_EVIDENCE_MISMATCH = "evidence_mismatch"
+LINT_SOURCE_UNAVAILABLE = "source_unavailable"
 LINT_PAST_MARKER = "past_marker_ongoing"
 LINT_UNDATED_EVENT = "undated_event"
 LINT_INVALID_EVENT_AT = "invalid_event_at"
@@ -347,6 +348,7 @@ __all__ = [
     "LINT_INVALID_EVENT_AT",
     "LINT_INVALID_RECURRENCE",
     "LINT_PAST_MARKER",
+    "LINT_SOURCE_UNAVAILABLE",
     "LINT_UNDATED_EVENT",
     "PROACTIVE_COUNT_MAX",
     "SLOT_MAX_CHARS",

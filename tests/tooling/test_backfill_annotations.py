@@ -11,7 +11,7 @@ from hina_bot.ai.memory_extraction import parse_annotation
 from hina_bot.ai.memory_summary import MemorySummaryMixin
 from hina_bot.core.memory_annotations import (
     LINT_DIRECTIVE_UNVERIFIED,
-    LINT_EVIDENCE_MISMATCH,
+    LINT_SOURCE_UNAVAILABLE,
     Annotator,
     UsageMode,
 )
@@ -93,8 +93,8 @@ async def test_backfill_annotates_with_sources_and_keeps_lifecycle():
         _response([
             {"index": 0, "evidence": "고양이 보리 키워", "time_scope": "ongoing", "stability": "long",
              "usage_mode": "ambient", "slot": "", "keywords": ["보리"]},
-            {"index": 1, "evidence": "", "time_scope": "ongoing", "usage_mode": "directive",
-             "directive_type": "boundary"},
+            # The model calls the legacy boundary contextual; it stays a boundary candidate.
+            {"index": 1, "evidence": "", "time_scope": "ongoing", "usage_mode": "contextual"},
             {"index": 2, "evidence": "", "time_scope": "ongoing", "usage_mode": "ambient"},
         ]),
     )
@@ -113,12 +113,13 @@ async def test_backfill_annotates_with_sources_and_keeps_lifecycle():
     )
     boundary = store.memory_annotation(ids["boundary"])
     assert boundary.usage_mode == UsageMode.DIRECTIVE and not boundary.verified
+    assert boundary.directive_type.value == "boundary"
     assert LINT_DIRECTIVE_UNVERIFIED in boundary.lint_flags
     stale = store.memory_annotation(ids["stale"])
     assert stale.item_revision == 1 and stale.confirmations == 2
     assert stale.last_confirmed_at == "2026-10-15 00:00:00"
     assert stale.usage_mode == UsageMode.CONTEXTUAL  # unquoted ambient is demoted
-    assert LINT_EVIDENCE_MISMATCH in stale.lint_flags
+    assert LINT_SOURCE_UNAVAILABLE in stale.lint_flags
     assert store.memory_annotation(ids["admin"]).annotator == Annotator.ADMIN
     assert store.memory_annotation(ids["muted"]) is None
     assert store.memory_annotation(ids["relationship"]) is None

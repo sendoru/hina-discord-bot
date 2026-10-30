@@ -373,10 +373,14 @@ event date or recurrence, usage mode and directive verification, audience, impor
 keywords, the verified evidence quote, observation/confirmation/use timestamps, proactive state,
 lint flags, annotator and the item revision it was written for. The panel is labelled `current`,
 `stale` (the item was edited after annotation; runtime treats it as defaults until re-annotated)
-or `missing` (no row yet; run `hina-backfill-annotations`). Relationship items have no annotation.
+or `missing` (no row yet; run `hina-backfill-annotations`). A stale annotation's judgments fall back
+to defaults, except that a stale directive stays a directive until re-annotation. Relationship items
+have no annotation.
 
 The memory list's **Annotation** filter is the review queue, derived from the tables rather than
-stored separately: `missing`, `stale`, `lint flagged` and `admin reviewed`.
+stored separately: `missing` and `stale` (active items only, the backfill's work list),
+`lint flagged`, `backfilled (review)` for checking backfill output before P2 reads annotations, and
+`admin reviewed`.
 
 With write mode enabled, an active item's annotation can be edited. The dashboard validates the
 fields with the same helper the runtime uses and queues `memory.annotation.set` with the item ID,

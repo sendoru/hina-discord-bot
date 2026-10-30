@@ -22,6 +22,7 @@ from hina_bot.core.memory_annotations import (
     LINT_INVALID_EVENT_AT,
     LINT_INVALID_RECURRENCE,
     LINT_PAST_MARKER,
+    LINT_SOURCE_UNAVAILABLE,
     LINT_UNDATED_EVENT,
     SLOT_MAX_CHARS,
     Annotator,
@@ -479,7 +480,8 @@ def parse_annotation(raw: dict, kind: MemoryKind, cited: list[dict]) -> MemoryAn
         # Unquoted judgments cannot justify proactive use. Directives are not demoted here:
         # boundaries must persist (principle 6) and the verification pass checks them.
         evidence = ""
-        flags.append(LINT_EVIDENCE_MISMATCH)
+        # Backfilled items whose source turns are gone had nothing to quote.
+        flags.append(LINT_EVIDENCE_MISMATCH if utterances else LINT_SOURCE_UNAVAILABLE)
         if usage == UsageMode.AMBIENT:
             usage = UsageMode.CONTEXTUAL
     elif time_scope == TimeScope.ONGOING and has_past_marker(evidence):

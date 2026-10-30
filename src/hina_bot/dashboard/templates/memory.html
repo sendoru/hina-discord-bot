@@ -67,7 +67,7 @@
         </select></div>
         <div class="filter-field"><label for="filter-memory-annotation">Annotation</label><select id="filter-memory-annotation" name="annotation">
           <option value="">annotation: any</option>
-          {% for value, label in [("missing", "missing (needs backfill)"), ("stale", "stale (edited after annotation)"), ("flagged", "lint flagged"), ("admin", "admin reviewed")] %}
+          {% for value, label in [("missing", "missing (needs backfill)"), ("stale", "stale (edited after annotation)"), ("flagged", "lint flagged"), ("backfill", "backfilled (review)"), ("admin", "admin reviewed")] %}
           <option value="{{ value }}" {% if data.filters.annotation == value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select></div>

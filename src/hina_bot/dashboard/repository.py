@@ -601,13 +601,18 @@ class AdminRepository:
             "WHERE a.memory_item_id=memory_items.id{})"
         )
         if annotation == "missing":
-            clauses.append(f"kind!='relationship' AND NOT {annotated.format('')}")
+            clauses.append(
+                f"status='active' AND kind!='relationship' AND NOT {annotated.format('')}"
+            )
         elif annotation == "stale":
-            clauses.append(annotated.format(" AND a.item_revision<memory_items.revision"))
+            clauses.append("status='active' AND " + annotated.format(
+                " AND a.item_revision<memory_items.revision"
+            ))
         elif annotation == "flagged":
             clauses.append(annotated.format(" AND a.lint_flags NOT IN ('[]','')"))
-        elif annotation == "admin":
-            clauses.append(annotated.format(" AND a.annotator='admin'"))
+        elif annotation in {"admin", "backfill"}:
+            clauses.append(annotated.format(" AND a.annotator=?"))
+            params.append(annotation)
         if confidence_min is not None:
             clauses.append("confidence>=?")
             params.append(float(confidence_min))
