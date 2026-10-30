@@ -10,10 +10,13 @@ from hina_bot.core.store import SharedSummaryConflict
 
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
 from .memory_extraction import (
+    DIRECTIVE_VERIFICATION_POLICY,
     SHADOW_EXTRACTION_POLICY,
+    apply_directive_verification,
     build_reconciliation_candidates,
     build_shadow_evidence_context,
     build_shadow_turns,
+    directive_verification_payload,
     parse_shadow_extraction,
     persist_reconciliation_proposals,
     persist_shadow_items_detailed,
@@ -146,6 +149,31 @@ class MemorySummaryMixin:
             **request,
         )
 
+    async def _verify_memory_directives(self, items, source_turns):
+        """Second-pass check of directive items; returns (items, checked, verified, demoted).
+
+        A failed or malformed verification never drops a directive: it stays
+        unverified so later retrieval can keep it out of the always-on tier.
+        """
+
+        payload = directive_verification_payload(items, source_turns)
+        if not payload:
+            return items, 0, 0, 0
+        text = None
+        try:
+            response = await self._memory_request(
+                "verify_memory_directives",
+                DIRECTIVE_VERIFICATION_POLICY,
+                payload,
+                build_memory_model_plan(self.settings, "", payload, shared=False),
+            )
+            if response.status == "completed":
+                text = response.output_text
+        except Exception as exc:  # noqa: BLE001 - verification failure keeps items unverified
+            log.warning("Structured memory directive verification failed (%s)", type(exc).__name__)
+        items, verified, demoted = apply_directive_verification(items, text)
+        return items, len(payload["items"]), verified, demoted
+
     async def _extract_memory_items_shadow(
         self, store, scope, pending, *, expected_cursor: int
     ) -> bool:
@@ -163,6 +191,7 @@ class MemorySummaryMixin:
         ) = build_shadow_turns(
             pending,
             include_replies=True,
+            zone_name=getattr(self.settings, "runtime_timezone", "") or "Asia/Seoul",
         )
         if not turns:
             return False
@@ -190,7 +219,13 @@ class MemorySummaryMixin:
             candidate_items = select_reconciliation_candidates(
                 eligible_candidates, turns, limit=24
             )
-        reconciliation_candidates = build_reconciliation_candidates(candidate_items)
+        candidate_annotations = {}
+        annotation_reader = getattr(store, "memory_annotations", None)
+        if callable(annotation_reader) and candidate_items:
+            candidate_annotations = annotation_reader([item.id for item in candidate_items])
+        reconciliation_candidates = build_reconciliation_candidates(
+            candidate_items, candidate_annotations
+        )
         payload = {
             "speaker_id": str(scope.user_id),
             "speaker_name": _speaker_name(pending),
@@ -237,15 +272,23 @@ class MemorySummaryMixin:
             if response.status != "completed" or not response.output_text.strip():
                 _record_shadow_extraction(self.usage, "empty", **metrics)
                 return False
+            source_turns = {turn["message_id"]: turn for turn in turns}
             parsed = parse_shadow_extraction(
                 response.output_text,
                 allowed_source_ids=allowed_source_ids,
                 allowed_target_item_ids={item.id for item in candidate_items},
+                source_turns=source_turns,
             )
             if not parsed.valid:
                 _record_shadow_extraction(self.usage, "invalid", **metrics)
                 log.warning("Structured memory shadow extraction returned invalid output")
                 return False
+            (
+                items,
+                directive_items,
+                verified_directives,
+                rejected_directives,
+            ) = await self._verify_memory_directives(parsed.items, source_turns)
             # A user's memory preference can change while the extraction API runs.
             # Stop before the atomic commit; no disabled-period data should be stored.
             if hasattr(store, "memory_mode") and store.memory_mode(scope) in {"off", "read_only"}:
@@ -260,23 +303,26 @@ class MemorySummaryMixin:
                 persisted = persist_shadow_items_detailed(
                     store,
                     scope,
-                    parsed.items,
+                    items,
                     source_public_at_capture=source_public_at_capture,
+                    batch_observed_at=max(str(turn["at"]) for turn in turns),
                 )
                 proposal_count = 0
                 applied_reconciliations = 0
                 deferred_reconciliations = 0
+                reconfirmed_items = persisted.reconfirmed
                 proposal_writer = getattr(store, "add_memory_reconciliation_proposal", None)
                 if callable(proposal_writer):
                     reconciliation = persist_reconciliation_proposals(
                         store,
                         scope,
-                        parsed.items,
+                        items,
                         persisted.item_ids,
                     )
                     proposal_count = reconciliation.stored
                     applied_reconciliations = reconciliation.applied
                     deferred_reconciliations = reconciliation.deferred
+                    reconfirmed_items += reconciliation.reconfirmed
             completed_metrics = {
                 **metrics,
                 "accepted_items": len(parsed.items),
@@ -288,6 +334,12 @@ class MemorySummaryMixin:
                 "deferred_reconciliations": deferred_reconciliations,
                 "rejected_relations": parsed.rejected_relations,
                 "rejected_relationship_evidence": parsed.rejected_relationship_evidence,
+                "annotated_items": persisted.annotated,
+                "reconfirmed_items": reconfirmed_items,
+                "suppressed_relationship_items": persisted.suppressed_relationships,
+                "directive_items": directive_items,
+                "verified_directives": verified_directives,
+                "rejected_directives": rejected_directives,
             }
             _record_shadow_extraction(
                 self.usage,

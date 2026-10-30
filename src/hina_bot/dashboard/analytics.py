@@ -23,6 +23,7 @@ _MEMORY_OPERATIONS = {
     "summarize_memory",
     "summarize_shared_memory",
     "extract_memory_items_shadow",
+    "verify_memory_directives",
 }
 _NEAR_THRESHOLD = 0.25
 

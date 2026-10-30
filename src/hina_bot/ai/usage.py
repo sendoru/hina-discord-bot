@@ -527,6 +527,8 @@ class UsageLogger:
             "accepted_items", "stored_items", "duplicate_items", "rejected_items",
             "proposal_items", "applied_reconciliations", "deferred_reconciliations",
             "rejected_relations", "rejected_relationship_evidence",
+            "annotated_items", "reconfirmed_items", "suppressed_relationship_items",
+            "directive_items", "verified_directives", "rejected_directives",
             "context_channel_items", "context_reply_items", "context_public_items",
             "context_structured_items", "context_lore_items", "context_visual_items",
             "context_adapter_blocked", "context_provider_blocked",
