@@ -275,3 +275,21 @@ def test_summary_result_telemetry_uses_allowed_metadata_without_raw_content(tmp_
     row = json.loads(path.read_text())
     assert row["memory_result_reason"] == "source_changed"
     assert "secret" not in path.read_text()
+
+
+@pytest.mark.asyncio
+async def test_personal_off_while_shared_summary_inflight_prevents_commit(stores):
+    first, second, scope = stores
+    llm = PausedSummary()
+    task = asyncio.create_task(llm.summarize_shared(first, scope))
+    try:
+        await asyncio.wait_for(llm.entered.wait(), 2)
+        second.set_user_memory_mode(scope.user_id, "off")
+        llm.release.set()
+        assert await asyncio.wait_for(task, 2) is False
+        assert second.shared_summary(scope) == ("old-secret", 0)
+        assert llm.usage.routing_event.call_args.kwargs["status"] == "deferred"
+    finally:
+        llm.release.set()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)

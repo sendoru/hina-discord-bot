@@ -21,7 +21,7 @@ from .memory_items import (
 )
 from .memory_repository import MemoryRepository
 from .routing import Scope
-from .scope_overrides import resolve_scope_chain
+from .scope_overrides import memory_mode_capabilities, resolve_scope_chain
 from .settings_repository import SettingsRepository
 
 
@@ -721,8 +721,35 @@ class Store:
             overrides[scope.realm] = self.memory_mode_override(scope.realm)
         return resolve_scope_chain(overrides, scope, default="normal")
 
+    @staticmethod
+    def _user_memory_key(user_id: int | str) -> str:
+        user = int(user_id)
+        if user <= 0:
+            raise ValueError("Invalid Discord user id")
+        return f"user:{user}"
+
+    def user_memory_mode(self, user_id: int | str) -> str:
+        """The owner's global read/write preference, independent of admin scope rules."""
+        return self.memory_mode_override(self._user_memory_key(user_id)) or "normal"
+
+    def set_user_memory_mode(self, user_id: int | str, mode: str) -> None:
+        if mode not in {"normal", "read_only", "off"}:
+            raise ValueError("Invalid user memory preference")
+        self.set_memory_mode_override(
+            self._user_memory_key(user_id), None if mode == "normal" else mode
+        )
+
     def memory_mode(self, scope: Scope) -> str:
-        return str(self.memory_mode_chain(scope)["effective"])
+        """Intersect administrator policy and the current speaker's preference."""
+        admin = memory_mode_capabilities(str(self.memory_mode_chain(scope)["effective"]))
+        owner = memory_mode_capabilities(self.user_memory_mode(scope.user_id))
+        flags = (admin[0] and owner[0], admin[1] and owner[1])
+        return {
+            (True, True): "normal",
+            (True, False): "read_only",
+            (False, True): "write_only",
+            (False, False): "off",
+        }[flags]
 
     def set_memory_mode_override(self, key: str, mode: str | None):
         return self.settings.set_memory_mode_override(key, mode)

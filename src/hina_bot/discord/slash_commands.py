@@ -8,7 +8,9 @@ from discord import app_commands
 
 from hina_bot.core.routing import Scope
 from hina_bot.core.runtime_config import RuntimeSettings
+from hina_bot.core.scope_overrides import memory_mode_capabilities
 
+from .admin_commands import _memory_item_scope
 from .chatlog_commands import ChatLogCommands
 from .config_commands import ConfigCommands
 from .knowledge_commands import KnowledgeCommands
@@ -28,7 +30,10 @@ DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니�
 현재 서버·채널을 빠르게 조정할 때는 슬래시 명령을, 전체 조회·편집에는 Dashboard를 사용합니다.
 
 자동 장기 기억
-`/memory show` — 현재 서버 또는 DM에서 형성된 내 구조화 장기 기억 확인
+`/memory show` — 현재 공간 또는 모든 공간의 내 기억을 페이지별로 조회
+`/memory remove` — ID로 내 기억 하나 철회 (확인 필요)
+`/memory preference` — 내 기억 사용/저장 설정 (모든 서버 및 DM 공통)
+`/memory status` — 내 설정과 관리자 정책을 합친 실제 기억 상태
 `/memory clear` — 현재 서버 또는 DM에서 내 자동 대화 기억 삭제
 `/memory mode` — 봇 관리자용 자동 기억 설정
 `/memory purge` — 봇 관리자용 범위별 자동 기억 초기화
@@ -137,30 +142,133 @@ def upgrade_memory_group(client):
 
     group.interaction_check = selective_check
 
-    @app_commands.command(name="show", description="현재 서버 또는 DM의 구조화 장기 기억 확인")
-    async def show(interaction: discord.Interaction):
+    @app_commands.command(name="show", description="현재 공간 또는 모든 공간의 내 장기기억 조회")
+    @app_commands.describe(area="조회 범위", page="페이지 번호 (한 페이지 8개)")
+    @app_commands.choices(area=[
+        app_commands.Choice(name="현재 서버 또는 DM", value="current"),
+        app_commands.Choice(name="모든 서버 및 DM", value="all"),
+    ])
+    async def show(interaction: discord.Interaction, area: str = "current", page: int = 1):
         try:
             scope = _scope(interaction)
         except ValueError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
+        if area not in {"current", "all"} or page < 1:
+            await interaction.response.send_message("조회 범위 또는 페이지 번호가 올바르지 않아요.", ephemeral=True)
+            return
         items = client.store.memory_items(
-            scope.user_id,
-            origin_realm=scope.realm,
+            scope.user_id, origin_realm=scope.realm if area == "current" else None
         )
         if not items:
             await interaction.response.send_message(
-                "이 서버 또는 DM에서 형성된 장기 기억이 아직 없어요.",
+                "조회 범위에 활성 장기기억이 없어요.", ephemeral=True,
+            )
+            return
+        page_size = 8
+        total_pages = (len(items) + page_size - 1) // page_size
+        if page > total_pages:
+            await interaction.response.send_message(
+                f"페이지는 1~{total_pages} 사이로 선택해 주세요.", ephemeral=True,
+            )
+            return
+        label = "모든 서버 및 DM" if area == "all" else "현재 서버 또는 DM"
+        lines = [f"{label}의 내 활성 장기기억 {len(items)}개 — {page}/{total_pages} 페이지"]
+        newest = list(reversed(items))
+        for item in newest[(page - 1) * page_size:page * page_size]:
+            content = discord.utils.escape_markdown(
+                discord.utils.escape_mentions(item.content.replace("\n", " "))
+            )
+            origin = (
+                "DM" if item.origin_realm.startswith("dm:")
+                else f"서버 {item.origin_realm.removeprefix('guild:')}"
+            )
+            lines.append(
+                f"• **#{item.id}** [{item.kind.value}] {content} "
+                f"(`{item.disclosure.value}`, {origin})"
+            )
+        lines.append("개별 철회: `/memory remove item_id:<번호> confirm:true`")
+        await _send_ephemeral_pages(interaction, _text_pages(lines))
+
+    @app_commands.command(name="remove", description="ID로 내 활성 장기기억 하나 철회")
+    @app_commands.describe(item_id="/memory show에서 확인한 기억 ID", confirm="철회를 확인하려면 true")
+    async def remove(
+        interaction: discord.Interaction, item_id: int, confirm: bool = False,
+    ):
+        if item_id <= 0:
+            await interaction.response.send_message("올바른 기억 ID를 입력해 주세요.", ephemeral=True)
+            return
+        item = client.store.memory_item(item_id)
+        if item is None or item.user_id != str(interaction.user.id):
+            await interaction.response.send_message("본인의 기억에서 해당 ID를 찾지 못했어요.", ephemeral=True)
+            return
+        if item.status.value != "active":
+            await interaction.response.send_message("이미 활성 상태가 아닌 기억이에요.", ephemeral=True)
+            return
+        if not confirm:
+            await interaction.response.send_message(
+                f"기억 #{item_id}을(를) 철회하려면 confirm을 true로 선택해 주세요. "
+                "철회된 기억은 응답에 사용되지 않지만 감사 기록은 남아요.",
                 ephemeral=True,
             )
             return
-        lines = [f"이 서버 또는 DM에서 형성된 장기 기억 {len(items)}개"]
-        for item in items[-50:]:
-            lines.append(
-                f"• [{item.kind.value}] {item.content} "
-                f"(`{item.disclosure.value}`)"
-            )
-        await _send_ephemeral_pages(interaction, _text_pages(lines))
+        origin = _memory_item_scope(item)
+        await interaction.response.defer(ephemeral=True)
+        async with client.memory_lock(origin):
+            try:
+                client.store.retract_memory_item(item_id, expected_revision=item.revision)
+            except ValueError:
+                await interaction.followup.send(
+                    "기억 상태가 변경되었어요. 다시 조회한 뒤 시도해 주세요.", ephemeral=True,
+                )
+                return
+        await interaction.followup.send(
+            f"기억 #{item_id}을(를) 철회했어요. 새 대화에서 다시 기억될 가능성은 있어요.",
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="preference", description="내 개인 장기기억의 읽기/저장 설정")
+    @app_commands.describe(value="내 기억 사용 설정 (모든 서버와 DM에 공통 적용)")
+    @app_commands.choices(value=[
+        app_commands.Choice(name="normal — 기억 사용 및 저장", value="normal"),
+        app_commands.Choice(name="read_only — 기존 기억만 사용", value="read_only"),
+        app_commands.Choice(name="off — 사용 및 저장 중단", value="off"),
+    ])
+    async def preference(interaction: discord.Interaction, value: str):
+        try:
+            client.store.set_user_memory_mode(interaction.user.id, value)
+            scope = _scope(interaction)
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+        effective = client.store.memory_mode(scope)
+        await interaction.response.send_message(
+            f"내 장기기억 설정을 **{value}**(으)로 변경했어요. 모든 서버와 DM에 적용돼요. "
+            f"현재 공간에서 실제 적용되는 모드는 **{effective}**예요. "
+            "기존 기억과 직접 저장한 /note 메모는 삭제하지 않아요.",
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="status", description="내 기억 설정과 현재 공간의 최종 읽기/저장 상태")
+    async def status(interaction: discord.Interaction):
+        try:
+            scope = _scope(interaction)
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+        owner = client.store.user_memory_mode(scope.user_id)
+        admin = client.store.memory_mode_chain(scope)
+        effective = client.store.memory_mode(scope)
+        reads, writes = memory_mode_capabilities(effective)
+        await interaction.response.send_message(
+            f"내 개인 설정: **{owner}** (전체 서버·DM 공통)\n"
+            f"관리자 설정: **{admin['effective']}** ({admin['source']})\n"
+            f"현재 공간 최종: **{effective}**\n"
+            f"기존 장기기억 사용: {'켜짐' if reads else '꺼짐'} / "
+            f"새 장기기억 저장: {'켜짐' if writes else '꺼짐'}\n"
+            "최근 채널 문맥과 /note 수동 메모는 별도 설정이에요.",
+            ephemeral=True,
+        )
 
     @app_commands.command(name="clear", description="이 서버 또는 DM에서의 내 자동 장기 기억 삭제")
     @app_commands.describe(confirm="삭제를 확인하려면 true")
@@ -174,15 +282,16 @@ def upgrade_memory_group(client):
             await interaction.response.send_message(
                 "삭제하지 않았어요. 실제로 삭제하려면 confirm을 true로 선택해 주세요.", ephemeral=True)
             return
-        async with client.channel_lock(scope):
+        await interaction.response.defer(ephemeral=True)
+        async with client.channel_lock(scope), client.memory_lock(scope):
             client.store.forget(scope)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "이 서버 또는 DM에서 자동으로 쌓인 대화 기록과 구조화 기억을 삭제했어요. "
             "직접 저장한 /note 메모와 최근 채널 대화 문맥은 그대로 유지돼요.",
             ephemeral=True,
         )
 
-    for command in (show, clear):
+    for command in (show, remove, preference, status, clear):
         group.add_command(command)
 
     return group
