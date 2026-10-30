@@ -27,6 +27,7 @@ from hina_bot.core.memory_annotations import (
     LINT_INVALID_RECURRENCE,
     LINT_KIND_DEFAULTED,
     LINT_PAST_MARKER,
+    LINT_RECURRENCE_MISSING,
     LINT_UNDATED_EVENT,
     Annotator,
     Audience,
@@ -474,6 +475,10 @@ def test_verifier_accepts_a_bare_results_array():
 @pytest.mark.parametrize(("value", "valid"), [
     ("weekly:TUE 19:00", True),
     ("weekly:TUE", True),  # "매주 화요일 저녁": weekday without a clock time
+    ("weekly:SAT,SUN", True),  # "주말마다"
+    ("weekly:MON,WED 19:00", True),
+    ("weekly:SAT,SAT", False),
+    ("weekly:SAT,", False),
     ("monthly:15", True),
     ("weekly:tue", False),
     ("weekly:TUE 24:00", False),
@@ -533,3 +538,18 @@ def test_relationship_with_invalid_disclosure_is_kept_without_annotation():
     (item,) = parsed.items
     assert item.kind == MemoryKind.RELATIONSHIP and item.disclosure == MemoryDisclosure.LOCAL
     assert item.annotation is None
+
+
+@pytest.mark.parametrize(("recurrence", "flags"), [
+    ("weekly:SAT,SUN", set()),
+    (None, {LINT_RECURRENCE_MISSING}),
+    ("", {LINT_RECURRENCE_MISSING}),  # empty means omitted, not malformed
+    ("weekend", {LINT_RECURRENCE_MISSING, LINT_INVALID_RECURRENCE}),
+])
+def test_recurring_without_usable_recurrence_is_flagged(recurrence, flags):
+    annotation = parse_annotation({
+        "evidence": "주말마다 등산 다녀", "time_scope": "recurring", "recurrence": recurrence,
+        "event_at": "", "usage_mode": "ambient",
+    }, MemoryKind.FACT, [{"user": "회사 동료들이랑 주말마다 등산 다녀", "at": AT}])
+
+    assert set(annotation.lint_flags) == flags
