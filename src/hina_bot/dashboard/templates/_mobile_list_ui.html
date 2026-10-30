@@ -21,7 +21,7 @@
     </dl>
   </details>
   {% elif kind == "memory" %}
-  {% if bulk_enabled %}<label class="memory-mobile-select"><input type="checkbox" class="memory-select" data-memory-select="{{ row.id }}" data-revision="{{ row.revision }}" {% if row.status != 'active' %}disabled{% endif %}> Memory #{{ row.id }} 선택</label>{% endif %}
+  {% if bulk_enabled %}<label class="memory-mobile-select"><input type="checkbox" class="memory-select" data-memory-select="{{ row.id }}" data-revision="{{ row.revision }}" data-memory-status="{{ row.status }}" {% if row.status != 'active' %}disabled{% endif %}> Memory #{{ row.id }} 선택</label>{% endif %}
   <div class="mobile-result-head">{{ status_badge(row.status) }}<time>{{ row.updated_at | localtime }}</time></div>
   <a class="mobile-result-title" href="{{ detail_url('/memory/' ~ row.id, request, '/memory') }}">Memory #{{ row.id }}</a>
   <div class="mobile-result-preview">{{ row.content }}</div>

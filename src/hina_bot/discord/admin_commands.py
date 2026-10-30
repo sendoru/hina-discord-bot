@@ -123,6 +123,24 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
             "status": retracted.status.value,
         }
 
+    if command.action == "memory.item.delete":
+        payload = command.payload
+        try:
+            item_id = int(payload["item_id"])
+            expected_revision = int(payload["expected_revision"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("invalid memory item delete target") from exc
+        if item_id <= 0 or expected_revision < 0:
+            raise ValueError("invalid memory item delete target")
+
+        item = client.store.memory_item(item_id)
+        if item is None:
+            raise ValueError("Memory item not found")
+        scope = _memory_item_scope(item)
+        async with client.memory_lock(scope):
+            client.store.delete_memory_item(item_id, expected_revision=expected_revision)
+        return {"item_id": item_id, "deleted": True}
+
     if command.action.startswith(("memory.", "chatlog.", "note.")):
         payload = command.payload
         guild_raw = payload.get("guild_id")

@@ -11,7 +11,7 @@
   {% if request.url.path.startswith('/admin/runtime') %}<script defer src="{{ static_asset('runtime-config.js') }}"></script>{% endif %}
   {% if request.url.path.startswith('/admin/prompts') %}<script defer src="{{ static_asset('prompt-state.js') }}"></script>{% endif %}
   {% if request.url.path == "/memory" %}<script defer src="{{ static_asset('memory-bulk.js') }}"></script>{% endif %}
-  {% if request.url.path.startswith('/memory/') and request.url.path != '/memory/cursors' %}<script defer src="{{ static_asset('memory-editor.js') }}"></script>{% endif %}
+  {% if request.url.path == '/memory' or (request.url.path.startswith('/memory/') and request.url.path != '/memory/cursors') %}<script defer src="{{ static_asset('memory-editor.js') }}"></script>{% endif %}
 </head>
 <body>
   <a class="skip-link" href="#main-content">본문 바로가기</a>

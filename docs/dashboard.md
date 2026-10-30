@@ -352,8 +352,17 @@ memory lock, and updates the row in place. Each successful change stores the pre
 in `memory_item_edit_history` and increments `memory_items.revision`; stale revisions are rejected.
 This preserves item IDs, creation/source provenance, relationship-recency ordering, and reconciliation
 references. Active items also expose a separate confirmed `memory.item.retract` action. Retraction
-keeps the row and provenance but removes it from runtime/reconciliation candidates; actual deletion
-continues to use the existing forget/purge paths. Superseded and retracted items remain read-only.
+keeps the row and provenance but removes it from runtime/reconciliation candidates. All lifecycle
+states expose a separate irreversible `memory.item.delete` action, and the list supports batch
+retraction (active only) or permanent deletion (any state), up to 50 selected rows per request.
+The UI requires typing `DELETE`, while the server requires an explicit confirmation marker, CSRF
+token, and current revision before queueing. The bot acquires the persisted item's memory lock
+and deletes the selected memory row and its edit history/reconciliation proposals atomically.
+Other memories that referenced the deleted row via `superseded_by` retain their state and
+lose only that reference (with a revision bump); they are never reactivated. Source conversations,
+extraction cursors, telemetry, and external backups are not erased by item deletion.
+This action is not a user-wide forget or a privacy erasure of all source records.
+Superseded and retracted items remain read-only for editing and retraction.
 Manual add, restore/undo, and pinning remain separate follow-up features.
 
 ### Effective relationship profiles

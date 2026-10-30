@@ -162,3 +162,45 @@ async def test_memory_item_retract_uses_stored_scope_and_memory_lock_only():
     assert retracted.status.value == "retracted"
     assert retracted.revision == 1
     store.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_item_delete_uses_stored_scope_and_removes_item():
+    store = Store.create(":memory:")
+    scope = Scope(1, 10, 100, True)
+    item_id = store.add_memory_item(
+        scope, "delete me", kind="fact", disclosure="local"
+    )
+    acquired = []
+    lock = asyncio.Lock()
+
+    class TrackingLock:
+        async def __aenter__(self):
+            acquired.append(("guild:1", 10, 100))
+            await lock.acquire()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            lock.release()
+
+    client = NS(store=store, memory_lock=lambda _: TrackingLock())
+    result = await execute_admin_command(
+        client,
+        AdminCommand(
+            id=10,
+            request_id="d" * 32,
+            actor="local-dashboard",
+            action="memory.item.delete",
+            target=str(item_id),
+            payload={
+                "item_id": item_id,
+                "expected_revision": 0,
+                "guild_id": 999,
+                "channel_id": 999,
+                "user_id": 999,
+            },
+        ),
+    )
+    assert result == {"item_id": item_id, "deleted": True}
+    assert acquired == [("guild:1", 10, 100)]
+    assert store.memory_item(item_id) is None
+    store.close()

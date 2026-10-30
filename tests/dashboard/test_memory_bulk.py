@@ -403,3 +403,52 @@ def test_browser_memory_column_layout_with_long_identifiers(memory_browser, widt
     assert wrap.evaluate("el => el.scrollWidth > el.clientWidth")
     wrap.evaluate("el => { el.scrollLeft = el.scrollWidth; }")
     assert table.get_by_role("columnheader", name="Updated", exact=True).is_visible()
+
+
+@pytest.mark.asyncio
+async def test_bulk_delete_includes_non_active_rows_and_preserves_unselected(bulk_app):
+    app, database, ids = bulk_app
+    form = submission(
+        app, ids[:3],
+        status="delete",
+        confirm="delete",
+        items=json.dumps([
+            {"item_id": ids[0], "expected_revision": 0},
+            {"item_id": ids[1], "expected_revision": 0},
+            {"item_id": ids[2], "expected_revision": 1},
+        ]),
+    )
+    with TestClient(app) as client:
+        page = client.get("/memory").text
+        assert 'value="delete"' in page
+        assert 'data-memory-status="retracted"' in page
+        wrong_confirmation = client.post(
+            "/memory/bulk-status", data={**form, "confirm": "yes"}
+        )
+        assert wrong_confirmation.status_code == 422
+        response = client.post("/memory/bulk-status", data=form)
+        assert response.status_code == 200
+        results = response.json()["results"]
+        assert [row["status"] for row in results] == ["pending"] * 3
+
+    store = Store.open_existing(str(database))
+    runtime = SimpleNamespace(
+        store=store,
+        memory_lock=lambda _: asyncio.Lock(),
+        events=SimpleNamespace(emit=Mock()),
+    )
+    try:
+        for _ in ids[:3]:
+            assert await run_admin_command_once(runtime)
+        assert not await run_admin_command_once(runtime)
+        assert all(store.memory_item(item_id) is None for item_id in ids[:3])
+        assert store.memory_item(ids[3]) is not None
+        with TestClient(app) as client:
+            statuses = [
+                client.get(f"/admin/commands/{row['command_id']}").json()
+                for row in results
+            ]
+            assert all(row["status"] == "succeeded" for row in statuses)
+            assert client.post("/memory/bulk-status", data=form).json()["results"] == results
+    finally:
+        store.close()

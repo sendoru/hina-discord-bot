@@ -18,6 +18,11 @@
   </div>
 </section>
 
+{% if queued %}
+<section class="notice" data-admin-command-watch="{{ queued }}">
+  Admin command <strong>#{{ queued }}</strong>를 적용 중입니다…
+</section>
+{% endif %}
 {% if data.filter_errors %}<p class="notice warning" role="alert">입력 오류로 조회하지 않았습니다. 표시된 필드를 수정해 다시 적용하세요.</p>{% endif %}
 <form class="filters search-filter" method="get">
   <div class="search-primary">
@@ -103,10 +108,10 @@
       <label><input type="checkbox" data-memory-select-all disabled> 현재 페이지 전체 선택</label>
       <span data-memory-selection-count aria-live="polite">0개 선택</span>
       <button type="button" data-memory-clear disabled>선택 해제</button>
-      <label>변경할 상태 <select name="status"><option value="retracted">retracted</option></select></label>
+      <label>작업 <select name="status"><option value="retracted">retract</option><option value="delete">영구 삭제</option></select></label>
       <button type="submit" class="danger" data-memory-apply disabled>선택 항목 상태 변경</button>
     </div>
-    <p class="muted">active 항목만 선택할 수 있습니다. Retract하면 내용과 출처는 보존되지만 runtime memory에서 제외됩니다.</p>
+    <p class="muted">Retract는 active 기억만 가능하며 기록이 보존됩니다. 영구 삭제는 모든 상태에서 가능하고 해당 기억과 수정 이력, reconciliation 참조를 DB에서 삭제합니다. 원본 대화와 백업은 유지됩니다.</p>
     <noscript><p class="notice warning">일괄 변경에는 JavaScript가 필요합니다. 개별 항목의 상세 화면에서도 변경할 수 있습니다.</p></noscript>
   </form>
   <div data-memory-bulk-feedback role="status" aria-live="polite"></div>
@@ -130,7 +135,7 @@
       <tbody>
       {% for row in data.rows %}
         <tr>
-          {% if bulk_enabled %}<td><input type="checkbox" class="memory-select" data-memory-select="{{ row.id }}" data-revision="{{ row.revision }}" aria-label="Memory #{{ row.id }} 선택" {% if row.status != 'active' %}disabled title="active 항목만 선택할 수 있습니다"{% endif %}></td>{% endif %}
+          {% if bulk_enabled %}<td><input type="checkbox" class="memory-select" data-memory-select="{{ row.id }}" data-revision="{{ row.revision }}" data-memory-status="{{ row.status }}" aria-label="Memory #{{ row.id }} 선택" {% if row.status != 'active' %}disabled title="active 항목만 선택할 수 있습니다"{% endif %}></td>{% endif %}
           <td><a href="{{ detail_url('/memory/' ~ row.id, request, '/memory') }}">#{{ row.id }}</a></td>
           <td>{% if row.user_name %}{{ row.user_name }}<br>{% endif %}<code>{{ row.user_id }}</code></td>
           <td>{{ row.kind }}</td>

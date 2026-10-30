@@ -9,9 +9,12 @@
   const selected = new Map();
   let busy = false;
   const boxes = () => [...document.querySelectorAll('[data-memory-select]')];
-  const eligible = () => boxes().filter((box) => !box.disabled);
+  const eligible = () => boxes().filter((box) => status.value === 'delete' || box.dataset.memoryStatus === 'active');
   const sync = () => {
-    boxes().forEach((box) => { box.checked = selected.has(box.dataset.memorySelect); });
+    boxes().forEach((box) => {
+      box.disabled = busy || (status.value !== 'delete' && box.dataset.memoryStatus !== 'active');
+      box.checked = selected.has(box.dataset.memorySelect);
+    });
     const total = new Set(eligible().map((box) => box.dataset.memorySelect)).size;
     selectAll.checked = total > 0 && selected.size === total;
     selectAll.indeterminate = selected.size > 0 && selected.size < total;
@@ -19,6 +22,7 @@
     clearButton.disabled = busy || selected.size === 0;
     applyButton.disabled = busy || selected.size === 0;
     status.disabled = busy;
+    applyButton.textContent = status.value === 'delete' ? '선택 항목 영구 삭제' : '선택 항목 상태 변경';
     form.querySelector('[data-memory-selection-count]').textContent = `${selected.size}개 선택`;
     document.querySelector('[data-memory-results]').inert = busy;
   };
@@ -41,6 +45,7 @@
     sync();
   });
   clearButton.addEventListener('click', reset);
+  status.addEventListener('change', reset);
 
   const render = (results) => {
     const success = results.filter((row) => row.status === 'succeeded').length;
@@ -116,15 +121,18 @@
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (busy || selected.size === 0) return;
-    if (!window.confirm(`선택한 memory ${selected.size}개를 retracted로 변경할까요?\n내용과 출처는 보존되지만 runtime memory에서 제외됩니다.`)) return;
+    const deleting = status.value === 'delete';
+    if (deleting) {
+      if (window.prompt(`선택한 memory ${selected.size}개를 DB에서 영구 삭제합니다.\n수정/조정 이력도 삭제되며 되돌릴 수 없습니다. 원본 대화/백업은 남습니다.\n진행하려면 DELETE를 입력하세요.`) !== 'DELETE') return;
+    } else if (!window.confirm(`선택한 memory ${selected.size}개를 retracted로 변경할까요?\n내용과 출처는 보존되지만 runtime memory에서 제외됩니다.`)) return;
     const body = new URLSearchParams(new FormData(form));
-    body.set('confirm', 'yes');
+    body.set('confirm', deleting ? 'delete' : 'yes');
     body.set('items', JSON.stringify([...selected].map(([id, revision]) => ({
       item_id: Number(id), expected_revision: revision,
     }))));
     busy = true;
     sync();
-    feedback.textContent = '상태 변경을 요청 중입니다…';
+    feedback.textContent = deleting ? '영구 삭제를 요청 중입니다…' : '상태 변경을 요청 중입니다…';
     let results;
     try {
       const response = await fetch(form.action, {

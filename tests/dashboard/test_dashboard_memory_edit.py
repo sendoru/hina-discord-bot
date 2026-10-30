@@ -230,3 +230,78 @@ def test_retracted_memory_detail_is_read_only_but_preserved(tmp_path):
     assert "keep provenance" in response.text
     assert f'action="/memory/{item_id}/edit"' not in response.text
     assert f'action="/memory/{item_id}/retract"' not in response.text
+
+
+def test_memory_detail_delete_is_confirmed_queued_and_available_after_retract(tmp_path):
+    database = tmp_path / "hina.sqlite3"
+    item_id = _memory_database(database)
+    store = Store.open_existing(str(database))
+    store.retract_memory_item(item_id, expected_revision=0)
+    store.close()
+
+    app = create_app(_settings(tmp_path, database, write_enabled=True))
+    with TestClient(app) as client:
+        detail = client.get(f"/memory/{item_id}")
+        assert detail.status_code == 200
+        assert f'action="/memory/{item_id}/delete"' in detail.text
+        assert "Permanently delete memory" in detail.text
+
+        payload = {
+            "_csrf": app.state.admin_writer.csrf_token,
+            "_request_id": "f" * 32,
+            "expected_revision": "1",
+        }
+        assert client.post(f"/memory/{item_id}/delete", data=payload).status_code == 422
+        assert client.post(
+            f"/memory/{item_id}/delete", data={**payload, "confirm": "yes"}
+        ).status_code == 422
+        assert client.post(
+            f"/memory/{item_id}/delete",
+            data={**payload, "confirm": "delete", "expected_revision": "0"},
+        ).status_code == 409
+        submitted = client.post(
+            f"/memory/{item_id}/delete",
+            data={**payload, "confirm": "delete"},
+            follow_redirects=False,
+        )
+        assert submitted.status_code == 303
+        assert submitted.headers["location"].startswith("/memory?queued=")
+        assert 'data-admin-command-watch=' in client.get(submitted.headers["location"]).text
+
+    with sqlite3.connect(database) as db:
+        row = db.execute(
+            "SELECT action,target,payload_json,status FROM admin_commands"
+        ).fetchone()
+    assert row[0] == "memory.item.delete"
+    assert row[1] == str(item_id)
+    assert json.loads(row[2]) == {"item_id": item_id, "expected_revision": 1}
+    assert row[3] == "pending"
+
+
+def test_memory_detail_delete_requires_write_mode_and_csrf(tmp_path):
+    database = tmp_path / "hina.sqlite3"
+    item_id = _memory_database(database)
+    read_only = create_app(_settings(tmp_path, database, write_enabled=False))
+    with TestClient(read_only) as client:
+        page = client.get(f"/memory/{item_id}")
+        assert "Permanently delete memory" in page.text
+        assert client.post(
+            f"/memory/{item_id}/delete",
+            data={
+                "_csrf": read_only.state.admin_writer.csrf_token,
+                "_request_id": "a" * 32,
+                "expected_revision": "0",
+                "confirm": "delete",
+            },
+        ).status_code == 403
+
+    enabled = create_app(_settings(tmp_path, database, write_enabled=True))
+    with TestClient(enabled) as client:
+        assert client.post(
+            f"/memory/{item_id}/delete",
+            data={
+                "_request_id": "a" * 32,
+                "expected_revision": "0",
+                "confirm": "delete",
+            },
+        ).status_code == 403
