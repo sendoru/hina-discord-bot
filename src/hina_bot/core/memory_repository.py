@@ -13,6 +13,9 @@ from .memory_annotations import (
     Stability,
     TimeScope,
     UsageMode,
+    admin_annotation,
+    admin_annotation_fields,
+    enforce_consistency,
 )
 from .memory_items import (
     MemoryDisclosure,
@@ -172,15 +175,56 @@ class MemoryRepository:
                 ).fetchone()
                 if current is not None and current["annotator"] == Annotator.ADMIN.value:
                     return
-            columns = ",".join(_ANNOTATION_COLUMNS)
-            updates = ",".join(f"{name}=excluded.{name}" for name in _ANNOTATION_COLUMNS[1:])
-            self.db.execute(
-                f"INSERT INTO memory_item_annotations({columns}) VALUES "
-                f"({','.join('?' for _ in _ANNOTATION_COLUMNS)}) "
-                f"ON CONFLICT(memory_item_id) DO UPDATE SET {updates},"
-                "updated_at=CURRENT_TIMESTAMP",
-                self._encode_annotation(annotation),
+            self._write_annotation_row(annotation)
+
+    def _write_annotation_row(self, annotation: MemoryAnnotation) -> None:
+        columns = ",".join(_ANNOTATION_COLUMNS)
+        updates = ",".join(f"{name}=excluded.{name}" for name in _ANNOTATION_COLUMNS[1:])
+        self.db.execute(
+            f"INSERT INTO memory_item_annotations({columns}) VALUES "
+            f"({','.join('?' for _ in _ANNOTATION_COLUMNS)}) "
+            f"ON CONFLICT(memory_item_id) DO UPDATE SET {updates},"
+            "updated_at=CURRENT_TIMESTAMP",
+            self._encode_annotation(annotation),
+        )
+
+    def set_admin_memory_annotation(
+        self, item_id: int, *, expected_revision: int, fields: dict[str, object]
+    ) -> MemoryAnnotation:
+        """Pin an admin judgment to the item revision the admin was looking at."""
+
+        item_id = int(item_id)
+        fields = admin_annotation_fields(fields)
+        with self._write_context():
+            item = self.db.execute(
+                """SELECT kind,status,revision,created_at,origin_realm,origin_public_at_capture
+                   FROM memory_items WHERE id=?""",
+                (item_id,),
+            ).fetchone()
+            if item is None:
+                raise ValueError("Memory item not found")
+            if str(item["kind"]) == MemoryKind.RELATIONSHIP.value:
+                raise ValueError("Relationship memories are not annotated")
+            if str(item["status"]) != MemoryStatus.ACTIVE.value:
+                raise ValueError("only active memory items can be annotated")
+            if int(item["revision"]) != int(expected_revision):
+                raise ValueError("Memory item has changed; reload before editing")
+            current = self.db.execute(
+                "SELECT * FROM memory_item_annotations WHERE memory_item_id=?", (item_id,)
+            ).fetchone()
+            annotation = enforce_consistency(
+                admin_annotation(
+                    fields,
+                    memory_item_id=item_id,
+                    item_revision=int(item["revision"]),
+                    observed_at=str(item["created_at"]),
+                    existing=self._decode_annotation(current) if current is not None else None,
+                ),
+                public_origin=str(item["origin_realm"]).startswith("guild:")
+                and bool(item["origin_public_at_capture"]),
             )
+            self._write_annotation_row(annotation)
+        return annotation
 
     def reconfirm_memory_annotation(self, item_id: int, observed_at: str) -> bool:
         """Count a same-space re-mention as confirmation that the memory still holds."""

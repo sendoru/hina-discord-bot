@@ -98,6 +98,33 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
             "changed": revised.revision != expected_revision,
         }
 
+    if command.action == "memory.annotation.set":
+        payload = command.payload
+        try:
+            item_id = int(payload["item_id"])
+            expected_revision = int(payload["expected_revision"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("invalid memory annotation target") from exc
+        if item_id <= 0 or expected_revision < 0:
+            raise ValueError("invalid memory annotation target")
+
+        item = client.store.memory_item(item_id)
+        if item is None:
+            raise ValueError("Memory item not found")
+        scope = _memory_item_scope(item)
+        async with client.memory_lock(scope):
+            annotation = client.store.set_admin_memory_annotation(
+                item_id,
+                expected_revision=expected_revision,
+                fields=payload.get("annotation"),
+            )
+        return {
+            "item_id": item_id,
+            "item_revision": annotation.item_revision,
+            "usage_mode": annotation.usage_mode.value,
+            "audience": annotation.audience.value,
+        }
+
     if command.action == "memory.item.retract":
         payload = command.payload
         try:
