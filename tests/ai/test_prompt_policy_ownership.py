@@ -2,6 +2,7 @@
 
 from importlib.resources import files
 
+from hina_bot.ai.llm import POLICY
 from hina_bot.ai.request_assembly import (
     FINAL_OUTPUT_CHECK_POLICY,
     REFERENCE_CONTINUITY_POLICY,
@@ -23,3 +24,10 @@ def test_removed_output_policy_is_not_a_standalone_resource():
     assert not files("hina_bot").joinpath(
         "prompts/integration/general_rp_output.md"
     ).is_file()
+
+
+def test_real_world_knowledge_and_personal_experience_are_separate():
+    assert "일반 지식까지 세계관 내부로 제한하지 마세요" in POLICY
+    assert "현실의 지명·인물·역사·문화·기술" in POLICY
+    assert "직접 방문하거나 만난 경험을 뜻하지는 않습니다" in POLICY
+    assert "다른 세계의 일이라며 거리를 두지 마세요" in POLICY
