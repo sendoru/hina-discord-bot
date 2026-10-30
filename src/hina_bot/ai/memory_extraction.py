@@ -402,6 +402,18 @@ def _json_text(text: str) -> str:
     return match.group(1).strip() if match else stripped
 
 
+def _envelope_rows(root, key: str) -> list | None:
+    """Rows from ``{key: [...]}``, or from a bare array some models return instead.
+
+    Only the envelope is relaxed; callers still validate every row.
+    """
+
+    if isinstance(root, list):
+        return root
+    rows = root.get(key) if isinstance(root, dict) else None
+    return rows if isinstance(rows, list) else None
+
+
 def _parse_relationship_evidence(raw, kind: MemoryKind) -> tuple[RelationshipEvidence, int]:
     value = raw.get("relationship_evidence")
     if value is None:
@@ -534,7 +546,8 @@ def parse_shadow_extraction(
         root = json.loads(_json_text(text))
     except (json.JSONDecodeError, TypeError):
         return ExtractionParseResult((), rejected_items=1, valid=False)
-    if not isinstance(root, dict) or not isinstance(root.get("items"), list):
+    rows = _envelope_rows(root, "items")
+    if rows is None:
         return ExtractionParseResult((), rejected_items=1, valid=False)
 
     allowed_targets = allowed_target_item_ids or set()
@@ -542,7 +555,6 @@ def parse_shadow_extraction(
     rejected = 0
     rejected_relations = 0
     rejected_relationship_evidence = 0
-    rows = root["items"]
     for raw in rows[:_MAX_ITEMS_PER_BATCH]:
         if not isinstance(raw, dict):
             rejected += 1
@@ -661,7 +673,7 @@ def apply_directive_verification(
     if text:
         try:
             root = json.loads(_json_text(text))
-            for row in root.get("results", []) if isinstance(root, dict) else []:
+            for row in _envelope_rows(root, "results") or []:
                 if isinstance(row, dict) and isinstance(row.get("index"), int):
                     verdicts[row["index"]] = str(row.get("verdict", ""))
         except (json.JSONDecodeError, TypeError, AttributeError):

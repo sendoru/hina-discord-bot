@@ -21,6 +21,7 @@ from pathlib import Path
 from hina_bot.ai.memory_extraction import (
     ANNOTATION_FIELD_RULES,
     ExtractedMemoryItem,
+    _envelope_rows,
     _json_text,
     apply_directive_verification,
     parse_annotation,
@@ -170,10 +171,8 @@ def _parse_rows(text: str) -> dict[int, dict] | None:
         root = json.loads(_json_text(text))
     except json.JSONDecodeError:
         return None
-    # Some models answer with the bare items array despite the requested envelope.
-    # Only the envelope is relaxed; every row still goes through parse_annotation.
-    rows = root if isinstance(root, list) else root.get("items") if isinstance(root, dict) else None
-    if not isinstance(rows, list):
+    rows = _envelope_rows(root, "items")
+    if rows is None:
         return None
     return {
         row["index"]: row for row in rows
