@@ -107,6 +107,29 @@ class ConversationRepository:
         return self.db.execute("SELECT 1 FROM turns WHERE message_id=?",
                                (str(message_id),)).fetchone() is not None
 
+    def chat_history_reply_metadata(self, scope: Scope, message_ids):
+        """Recover content-free provenance for delivered history-derived assistant messages."""
+        ids = list(dict.fromkeys(str(value) for value in message_ids))
+        if len(ids) > 100:
+            raise ValueError('Expected at most 100 message IDs')
+        if not ids:
+            return {}
+        placeholders = ','.join('?' for _ in ids)
+        rows = self.db.execute(
+            "SELECT j.value AS reply_id,t.context_provenance FROM turns t, "
+            "json_each(CASE WHEN json_valid(t.context_provenance) "
+            "THEN t.context_provenance ELSE '{}' END,'$.assistant_message_ids') j "
+            "WHERE t.realm=? AND t.scope=(? || t.user_id) "
+            f"AND j.value IN ({placeholders})", (scope.realm, scope.channel + ':user:', *ids),
+        ).fetchall()
+        result = {}
+        for row in rows:
+            provenance = json.loads(row['context_provenance'])
+            history = provenance.get('history_lookup')
+            if isinstance(history, dict) and history:
+                result[str(row['reply_id'])] = history
+        return result
+
     def add(
         self, scope, message_id, content, reply, *, name="", memory_context=None,
         context_provenance=None,

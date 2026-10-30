@@ -33,6 +33,16 @@ _RETRIEVAL_LIMITS = {
 }
 
 
+def direct_history_trigger(
+    message, bot_id, *, dm_always_reply=False, call_prefixes=('히나야',),
+    always_reply_channel_ids=frozenset(),
+):
+    """Use the same routing evidence for preflight and on-demand history retrieval."""
+    return trigger_text(
+        message, bot_id, dm_always_reply, call_prefixes, always_reply_channel_ids,
+    ) is not None
+
+
 def retrieval_mode(text: str) -> str | None:
     """Choose request-scoped lookup depth; a bare mention is never sufficient."""
     if TARGET_PROFILE_QUERY.search(text) or TARGET_HISTORY_QUERY.search(text):
@@ -95,13 +105,12 @@ async def collect(
             uid = getattr(getattr(old, "author", None), "id", None)
             if uid not in chosen or getattr(old, "webhook_id", None) is not None:
                 continue
-            direct_trigger = trigger_text(
+            direct_trigger = direct_history_trigger(
                 old,
                 bot_id,
-                False,
-                call_prefixes,
-                always_reply_channel_ids,
-            ) is not None
+                call_prefixes=call_prefixes,
+                always_reply_channel_ids=always_reply_channel_ids,
+            )
             if visibility_mode == "direct" and not direct_trigger:
                 continue
             text_value = (getattr(old, "content", "") or "").strip()
