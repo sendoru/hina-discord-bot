@@ -21,6 +21,8 @@
   - `revision`이 `annotation.item_revision`보다 크면 낡은 annotation입니다(원칙 6).
   - `cluster`, `superseded_by`는 같은 사례 안의 `ref`를 가리킵니다.
   - `proactive_count`는 상한 2입니다. 선제 안부가 실제로 쓰였으면 2로 올려 소진 처리합니다.
+  - `last_used_at`: 답변에서 실제로 쓰인 마지막 시각입니다. 72시간 동안 약한 연관으로는 다시 넣지
+    않습니다. 현재 발화가 그 기억의 keyword를 그대로 포함하면(직접 언급) cooldown을 무시합니다.
 - **`server_memories`**: 커뮤니티 기억(§4.3). `space`는 `guild` 또는 `channel:<channel>`입니다.
   쓰기 시점 불변식(§8.4: `directive`는 admin, `ambient`는 admin·corroborated·observed)을
   fixture도 지킵니다.

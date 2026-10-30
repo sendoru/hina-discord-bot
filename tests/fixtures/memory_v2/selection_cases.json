@@ -51,7 +51,8 @@
         "cluster": null,
         "last_confirmed_at": null,
         "proactive_status": "",
-        "proactive_count": 0
+        "proactive_count": 0,
+        "last_used_at": null
       }
     },
     "server_memory": {
@@ -69,6 +70,7 @@
       "usage_mode": "contextual",
       "importance": 2,
       "keywords": [],
+      "last_used_at": null,
       "status": "active"
     }
   },
@@ -644,6 +646,39 @@
          "trust": "admin", "usage_mode": "directive", "keywords": ["스포일러", "스토리"]}
       ],
       "expect": {"include": ["spoiler_rule"], "server_note": "included", "tier": {"spoiler_rule": "S0"}}
+    },
+    {
+      "id": "cooldown_skips_recently_used_item_on_weak_relevance",
+      "covers": "결정 19: 72시간 안에 실제로 쓰인 기억은 약한 연관으로는 다시 넣지 않음",
+      "message": "아 배고프다",
+      "memories": [
+        {"ref": "food", "kind": "preference", "content": "매운 음식을 좋아함",
+         "annotation": {"keywords": ["음식", "매운", "배고픔", "밥"],
+                        "last_used_at": "2026-10-29T20:00:00+09:00"}}
+      ],
+      "expect": {"exclude": ["food"]}
+    },
+    {
+      "id": "direct_mention_bypasses_cooldown",
+      "covers": "결정 19: 현재 발화가 기억의 keyword를 그대로 언급하면 cooldown 무시",
+      "message": "오늘은 매운 음식이 땡기네",
+      "memories": [
+        {"ref": "food", "kind": "preference", "content": "매운 음식을 좋아함",
+         "annotation": {"keywords": ["음식", "매운", "배고픔", "밥"],
+                        "last_used_at": "2026-10-29T20:00:00+09:00"}}
+      ],
+      "expect": {"include": ["food"], "tier": {"food": "T2"}}
+    },
+    {
+      "id": "cooldown_expires_after_72_hours",
+      "covers": "결정 19: 72시간이 지나면 약한 연관으로도 다시 선택 가능",
+      "message": "아 배고프다",
+      "memories": [
+        {"ref": "food", "kind": "preference", "content": "매운 음식을 좋아함",
+         "annotation": {"keywords": ["음식", "매운", "배고픔", "밥"],
+                        "last_used_at": "2026-10-26T12:00:00+09:00"}}
+      ],
+      "expect": {"include": ["food"], "tier": {"food": "T2"}}
     }
   ]
 }

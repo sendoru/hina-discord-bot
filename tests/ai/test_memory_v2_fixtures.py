@@ -115,7 +115,7 @@ def _check_memory(memory: dict, defaults: dict, refs: set[str]) -> None:
     assert annotation["cluster"] is None or annotation["cluster"] in refs
     assert 0 <= annotation["proactive_count"] <= 2
     assert annotation["item_revision"] <= merged["revision"]
-    for key in ("observed_at", "last_confirmed_at"):
+    for key in ("observed_at", "last_confirmed_at", "last_used_at"):
         if annotation[key] is not None:
             _datetime(annotation[key])
 
@@ -140,6 +140,8 @@ def _check_server_memory(memory: dict, defaults: dict) -> None:
     assert set(merged["subject_users"]) <= set(merged["contributors"]), memory["ref"]
     if merged["time_scope"] == "recurring":
         assert RECURRENCE.fullmatch(merged["recurrence"] or ""), memory["ref"]
+    if merged["last_used_at"] is not None:
+        _datetime(merged["last_used_at"])
 
 
 def _check_expect(expect: dict, refs: set[str]) -> None:
