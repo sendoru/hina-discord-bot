@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sqlite3
 from types import SimpleNamespace as NS
@@ -1262,3 +1263,38 @@ async def test_atomic_extraction_rejects_changed_source_turns_after_llm():
         "SELECT COUNT(*) FROM memory_extraction_batches"
     ).fetchone()[0] == 0
     store.close()
+
+
+@pytest.mark.asyncio
+async def test_owner_disabling_writes_during_extraction_prevents_memory_commit():
+    store = Store.create(":memory:")
+    scope = Scope(1, 10, 200, public_at_capture=True)
+    _add_turns(store, scope, 101, 4)
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def paused_extraction(*args, **kwargs):
+        entered.set()
+        await release.wait()
+        return _response(json.dumps({
+            "items": [{
+                "content": "must-not-commit",
+                "kind": "fact", "disclosure": "local",
+                "confidence": 0.98, "source_message_ids": ["101"],
+            }]
+        }))
+
+    harness = _harness()
+    harness.usage.request.side_effect = paused_extraction
+    task = asyncio.create_task(harness.extract_structured_memory(store, scope))
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        store.set_user_memory_mode(200, "off")
+        release.set()
+        assert await asyncio.wait_for(task, 2) is False
+        assert store.memory_items(200) == []
+        assert store.memory_extraction_cursor(scope) == 0
+    finally:
+        release.set()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        store.close()
