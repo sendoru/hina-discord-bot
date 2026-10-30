@@ -89,7 +89,9 @@ Annotations commit in the same transaction as their items and the extraction cur
 re-mention of an active item is counted as a confirmation (`confirmations + 1`, latest
 `last_confirmed_at`) instead of a new row, and so is an applied `duplicate` reconciliation. A
 `corrects` proposal whose new item has the same `slot` as its target is auto-applied from confidence
-0.8 instead of 0.95. Relationship observations are skipped when an active relationship item from the
+0.8 instead of 0.95. Automatic reconciliation no longer requires matching `kind` labels: a fact and a
+preference describing the same memory may be merged, and only a relationship/non-relationship pair
+is refused as `kind_mismatch` (#449 decision 15). Relationship observations are skipped when an active relationship item from the
 same channel and visibility, created within 14 days of the batch, already shows every axis at least
 as high (#449 decision 18).
 

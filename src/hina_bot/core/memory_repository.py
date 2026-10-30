@@ -665,7 +665,10 @@ class MemoryRepository:
             return "conflict_deferred"
         if float(row["confidence"]) < threshold:
             return "below_threshold"
-        if str(row["new_kind"]) != str(row["target_kind"]):
+        # Decision 15: fact/preference/boundary labels are compatibility values and
+        # may disagree on the same memory. Only the relationship boundary is a hard split.
+        relationship = MemoryKind.RELATIONSHIP.value
+        if (str(row["new_kind"]) == relationship) != (str(row["target_kind"]) == relationship):
             return "kind_mismatch"
         # Relationship corrections and differing evidence are observations,
         # not interchangeable facts. Only exact-evidence duplicates from

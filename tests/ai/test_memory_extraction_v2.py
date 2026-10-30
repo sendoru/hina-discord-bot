@@ -404,3 +404,25 @@ def test_admin_annotation_is_not_overwritten_and_relationships_are_not_annotated
     with pytest.raises(ValueError, match="Relationship"):
         store.upsert_memory_annotation(replace(base, memory_item_id=relation_id))
     store.close()
+
+
+@pytest.mark.parametrize(("new_kind", "outcome"), [
+    (MemoryKind.PREFERENCE, "applied"),  # fact/preference labels may disagree (decision 15)
+    (MemoryKind.RELATIONSHIP, "kind_mismatch"),
+])
+def test_reconciliation_only_splits_on_the_relationship_boundary(new_kind, outcome):
+    store = Store.create(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    target = store.add_memory_item(scope, "커피를 못 마신다.", kind=MemoryKind.FACT,
+                                   disclosure=MemoryDisclosure.LOCAL, source_message_ids=("1",),
+                                   confidence=0.9)
+    new = store.add_memory_item(scope, "커피를 마시지 못한다.", kind=new_kind,
+                                disclosure=MemoryDisclosure.LOCAL, source_message_ids=("2",),
+                                confidence=0.9)
+    proposal = store.add_memory_reconciliation_proposal(
+        scope, new_memory_item_id=new, target_memory_item_id=target, relation="duplicate",
+        confidence=0.99, source_message_ids=("2",),
+    )
+
+    assert store.apply_memory_reconciliation_proposal(proposal) == outcome
+    store.close()
