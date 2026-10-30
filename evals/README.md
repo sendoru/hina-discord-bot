@@ -174,6 +174,8 @@ uv run hina-memory-extraction-eval --id extract_relative_date_resolved --repeat 
 여부에 따른 audience 축소까지 적용하고 제약을 검사합니다. 사례마다 추출 요청 1회와, 지침 항목이
 있으면 검증 요청 1회가 나가는 유료 호출이며 일반 테스트에는 포함되지 않습니다. 결과는
 `data/evals/memory-extraction-*.json`에 저장되고 사례별 통과율, 실패한 제약, 추출된 항목을 담습니다.
+실패했거나 파서가 거부한 항목이 있는 실행에는 원인 확인용으로 모델 원문(`raw_output`)도 함께 저장합니다
+(사례가 가상 데이터라서 가능합니다).
 `--provider`/`--model`이 없으면 `LLM_PROVIDER`/`LLM_MODEL`을 씁니다. 서버 전용 제약(`trust`,
 `subject_users*`)은 이 러너에서 검사하지 않습니다.
 

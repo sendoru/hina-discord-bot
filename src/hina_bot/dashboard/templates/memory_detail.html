@@ -107,7 +107,7 @@
           <input name="event_at" value="{{ edit.event_at or '' }}" placeholder="YYYY-MM-DD or YYYY-MM" {% if not dashboard_write_enabled %}disabled{% endif %}>
         </label>
         <label class="prompt-field">recurrence
-          <input name="recurrence" value="{{ edit.recurrence or '' }}" placeholder="weekly:TUE 19:00 / monthly:15" {% if not dashboard_write_enabled %}disabled{% endif %}>
+          <input name="recurrence" value="{{ edit.recurrence or '' }}" placeholder="weekly:TUE 19:00 / weekly:TUE / monthly:15" {% if not dashboard_write_enabled %}disabled{% endif %}>
         </label>
         <label class="prompt-field">slot
           <input name="slot" value="{{ edit.slot or '' }}" maxlength="{{ data.annotation_editor.slot_max_chars }}" {% if not dashboard_write_enabled %}disabled{% endif %}>

@@ -64,8 +64,9 @@ PROACTIVE_COUNT_MAX = 2
 UNDATED_EVENT_EXPIRY = timedelta(days=30)
 
 _EVENT_AT = re.compile(r"\d{4}-\d{2}(?:-\d{2})?")
+# The time is optional: "매주 화요일 저녁" has a weekday but no clock time.
 _RECURRENCE = re.compile(
-    r"weekly:(?:MON|TUE|WED|THU|FRI|SAT|SUN) (?:[01]\d|2[0-3]):[0-5]\d"
+    r"weekly:(?:MON|TUE|WED|THU|FRI|SAT|SUN)(?: (?:[01]\d|2[0-3]):[0-5]\d)?"
     r"|monthly:(?:0[1-9]|[12]\d|3[01])"
 )
 # Past or completed markers in the quoted user utterance (#449 §5 tense cues).
