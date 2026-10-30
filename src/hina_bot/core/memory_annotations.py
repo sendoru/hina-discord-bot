@@ -82,6 +82,9 @@ LINT_UNDATED_EVENT = "undated_event"
 LINT_INVALID_EVENT_AT = "invalid_event_at"
 LINT_INVALID_RECURRENCE = "invalid_recurrence"
 LINT_DEFAULTED = "annotation_defaulted"
+# Invalid legacy item fields replaced by the quietest value instead of dropping the item.
+LINT_DISCLOSURE_DEFAULTED = "disclosure_defaulted"
+LINT_KIND_DEFAULTED = "kind_defaulted"
 LINT_DIRECTIVE_INCOMPLETE = "directive_without_type"
 LINT_DIRECTIVE_REJECTED = "directive_rejected"
 LINT_DIRECTIVE_UNVERIFIED = "directive_unverified"
@@ -345,9 +348,11 @@ __all__ = [
     "LINT_DIRECTIVE_INCOMPLETE",
     "LINT_DIRECTIVE_REJECTED",
     "LINT_DIRECTIVE_UNVERIFIED",
+    "LINT_DISCLOSURE_DEFAULTED",
     "LINT_EVIDENCE_MISMATCH",
     "LINT_INVALID_EVENT_AT",
     "LINT_INVALID_RECURRENCE",
+    "LINT_KIND_DEFAULTED",
     "LINT_PAST_MARKER",
     "LINT_SOURCE_UNAVAILABLE",
     "LINT_UNDATED_EVENT",

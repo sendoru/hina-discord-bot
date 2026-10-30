@@ -95,11 +95,11 @@ async def test_forbidden_reading_and_correction_relation_are_scored():
 
 @pytest.mark.asyncio
 async def test_rejected_rows_keep_the_raw_answer_for_diagnosis():
-    rejected = {"content": "회사 얘기를 먼저 꺼내지 않기", "kind": "directive", "disclosure": "local",
-                "confidence": 0.9, "source_message_ids": ["m1"]}
+    rejected = {"content": "회사 얘기를 먼저 꺼내지 않기", "kind": "boundary", "disclosure": "local",
+                "confidence": 0.9, "source_message_ids": ["m9"]}
     worker = Worker(_response([rejected]))
 
     (row,), _ = await run(_args("extract_boundary_single_statement"), worker)
 
     assert row["status"] == "failed" and row["rejected_items"] == 1 and row["items"] == []
-    assert '"kind": "directive"' in row["raw_output"]
+    assert '"m9"' in row["raw_output"]

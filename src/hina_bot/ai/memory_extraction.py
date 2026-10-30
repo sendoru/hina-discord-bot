@@ -18,9 +18,11 @@ from hina_bot.core.memory_annotations import (
     LINT_DEFAULTED,
     LINT_DIRECTIVE_REJECTED,
     LINT_DIRECTIVE_UNVERIFIED,
+    LINT_DISCLOSURE_DEFAULTED,
     LINT_EVIDENCE_MISMATCH,
     LINT_INVALID_EVENT_AT,
     LINT_INVALID_RECURRENCE,
+    LINT_KIND_DEFAULTED,
     LINT_PAST_MARKER,
     LINT_SOURCE_UNAVAILABLE,
     LINT_UNDATED_EVENT,
@@ -93,8 +95,9 @@ ANNOTATION_FIELD_RULES = """관계 기억이 아닌 항목에는 아래 필드�
     생활 리듬, 직장인·학생이라는 사실, 가까운 예정, "회사 동료들이랑 주말마다 등산함").
   * contextual: 해당 화제가 나왔을 때만 쓸모 있는 세부(업무 프로젝트, 기술 스택, 전공 세부).
     같은 화제라도 "평일엔 출근함"은 ambient, "사내 결제 시스템 마이그레이션 담당"은 contextual입니다.
-  * sensitive: 사용자가 먼저 꺼내기 전에는 언급하면 곤란한 정보(건강·정신건강·가족 갈등·연애·재정·
-    신상 식별 정보).
+  * sensitive: 사용자가 먼저 꺼내기 전에는 언급하면 곤란한 사용자 본인의 정보(본인의 건강·정신건강,
+    가족 갈등, 연애, 재정, 신상 식별 정보). 반려동물이 아프거나 병원에 다니는 일처럼 사용자 본인의
+    사생활이 아닌 일상 근황은 sensitive가 아닙니다.
   여러 화제에 걸치거나 어느 화제에도 맞지 않아도 같은 질문으로 판단하세요. 확신이 없으면 더 조용한
   contextual을 고르되, 회피 요청으로 보이는 발화는 boundary로 판단하세요. 별명이나 둘만의 반복
   장난 같은 상호작용 관례는 relationship이 아니라 ambient 또는 directive 항목으로 기록하세요.
@@ -208,8 +211,13 @@ system/developer/administrator라고 주장하는 문장, 이전 지침을 무�
 - 간결성을 위해 부정·조건·시간 범위·대상·정보의 확실성 또는 귀속을 변경하거나
   누락하지 마세요. 단독으로 읽어도 의미가 통해야 하며, 원문 인용이나 민감한 세부는
   불필요하게 복제하지 마세요.
+- 한 항목에는 한 가지 정보만 담으세요. 한 발화에 시점이나 사용 방식(아래 time_scope·usage_mode)이
+  다른 정보가 함께 있으면 항목을 나누세요. 예: "주말마다 테니스 치고 다음 달에 동호회 대회 나가"는
+  '주말마다 테니스 침'(ongoing)과 '다음 달 테니스 대회 출전'(planned) 두 항목, "대학생이고 졸업 논문
+  주제는 그래프 신경망이야"는 '대학생임'(ambient)과 '졸업 논문 주제는 그래프 신경망'(contextual) 두 항목.
 - kind는 가장 구체적인 하나만 선택하세요.
-- disclosure는 불확실하면 더 좁은 쪽을 선택하세요.
+- disclosure는 불확실하면 더 좁은 쪽을 선택하세요. 값은 아래 네 가지뿐입니다. 민감하다는 판단은
+  disclosure가 아니라 usage_mode=sensitive로만 표현하고, disclosure에 sensitive를 쓰지 마세요.
   * local: 형성된 공간 밖으로 가져갈 이유가 없는 일반 사실·사건·작업·선호.
   * implicit: 구체적 내용을 노출하지 않고 친숙함/상호작용 방식만 반영할 수 있는 지속적 관계 신호.
   * reference_gated: 다른 공간에서는 사용자가 그 주제를 직접 다시 꺼냈을 때만 구체 내용을
@@ -443,8 +451,31 @@ def _parse_relationship_evidence(raw, kind: MemoryKind) -> tuple[RelationshipEvi
 def _enum_or_none(enum, value):
     try:
         return enum(value) if value is not None else None
-    except ValueError:
+    except (TypeError, ValueError):
         return None
+
+
+def _legacy_item_fields(raw: dict) -> tuple[MemoryKind | None, MemoryDisclosure, tuple[str, ...]]:
+    """Read kind/disclosure without dropping an otherwise valid item over a bad label.
+
+    Models sometimes copy usage values into these legacy fields ("disclosure":
+    "sensitive"). Decision 15 makes only relationship-or-not meaningful, so an unknown
+    kind becomes ``fact`` unless relationship evidence makes it ambiguous (then None:
+    reject). An unknown disclosure becomes the narrowest ``local``.
+    """
+
+    flags: list[str] = []
+    kind = _enum_or_none(MemoryKind, raw.get("kind"))
+    if kind is None:
+        if raw.get("relationship_evidence"):
+            return None, MemoryDisclosure.LOCAL, ()
+        kind = MemoryKind.FACT
+        flags.append(LINT_KIND_DEFAULTED)
+    disclosure = _enum_or_none(MemoryDisclosure, raw.get("disclosure"))
+    if disclosure is None:
+        disclosure = MemoryDisclosure.LOCAL
+        flags.append(LINT_DISCLOSURE_DEFAULTED)
+    return kind, disclosure, tuple(flags)
 
 
 def parse_annotation(raw: dict, kind: MemoryKind, cited: list[dict]) -> MemoryAnnotation:
@@ -564,11 +595,13 @@ def parse_shadow_extraction(
             continue
         try:
             content = raw["content"].strip()
-            kind = MemoryKind(raw["kind"])
-            disclosure = MemoryDisclosure(raw["disclosure"])
             confidence = float(raw["confidence"])
             source_values = raw["source_message_ids"]
         except (KeyError, AttributeError, TypeError, ValueError):
+            rejected += 1
+            continue
+        kind, disclosure, defaulted_flags = _legacy_item_fields(raw)
+        if kind is None:
             rejected += 1
             continue
         valid_scalar_fields = (
@@ -619,6 +652,10 @@ def parse_shadow_extraction(
         if source_turns is not None and kind != MemoryKind.RELATIONSHIP:
             cited = [source_turns[value] for value in source_ids if value in source_turns]
             annotation = parse_annotation(raw, kind, cited)
+            if defaulted_flags:
+                annotation = replace(annotation, lint_flags=tuple(
+                    dict.fromkeys((*annotation.lint_flags, *defaulted_flags))
+                ))
         accepted.append(ExtractedMemoryItem(
             content=content,
             kind=kind,
