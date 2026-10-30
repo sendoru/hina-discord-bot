@@ -27,7 +27,9 @@ docker compose run --rm -T hina hina-memory-report > memory-report.json
 - DB는 SQLite `mode=ro` + `query_only`로 열고 아무것도 쓰지 않습니다. 봇이 실행 중이어도 읽을 수
   있지만, 장시간 쓰기와 겹치면 잠시 대기할 수 있습니다.
 - usage 로그는 회전 파일(`usage.jsonl.1`~`.3`)까지 읽습니다.
-- `--near-threshold`(기본 0.8)는 유사 중복을 셀 때 쓰는 문자 bigram Jaccard 기준입니다.
+- `--near-threshold`(기본 0.8)는 유사 중복을 셀 때 쓰는 문자 bigram Jaccard 기준입니다. 같은
+  사실을 다른 문장으로 쓴 중복(예: "고양이 보리를 키움"과 "보리라는 이름의 고양이를 키우고 있음",
+  0.22)은 이 방식으로 잡히지 않으므로, 중복 수치가 작다고 실제 중복이 적다고 볼 수는 없습니다.
 
 ## 출력에 포함하지 않는 것
 
