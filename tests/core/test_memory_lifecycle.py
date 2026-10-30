@@ -413,3 +413,94 @@ def test_retraction_rejects_stale_or_non_active_item():
             raise AssertionError("retracting a non-active item should fail")
     finally:
         store.close()
+
+
+def test_delete_memory_item_removes_owned_records_and_keeps_other_lifecycle_state():
+    store = Store.create(":memory:")
+    scope = Scope(None, 10, 100)
+    try:
+        old_id, replacement_id, proposal_id = _pair(
+            store, scope, relation="corrects"
+        )
+        replacement = store.revise_memory_item(
+            replacement_id,
+            expected_revision=0,
+            content="corrected memory",
+            kind="fact",
+            disclosure="local",
+            confidence=1,
+        )
+        assert replacement.revision == 1
+        assert store.apply_memory_reconciliation_proposal(proposal_id) == "applied"
+        assert store.memory_item(old_id).superseded_by == replacement_id
+
+        store.delete_memory_item(replacement_id, expected_revision=1)
+
+        assert store.memory_item(replacement_id) is None
+        assert store.memory_item_edit_history(replacement_id) == []
+        assert store.memory_reconciliation_proposals(100) == []
+        old = store.memory_item(old_id)
+        assert old.status == MemoryStatus.SUPERSEDED
+        assert old.superseded_by is None
+        assert old.revision == 1
+        # A superseded item must never be implicitly reactivated.
+        assert store.memory_items(100) == []
+
+        retracted_id = store.add_memory_item(
+            scope, "retracted memory", kind="fact", disclosure="local"
+        )
+        store.retract_memory_item(retracted_id, expected_revision=0)
+        store.delete_memory_item(retracted_id, expected_revision=1)
+        store.delete_memory_item(old_id, expected_revision=1)
+        assert store.memory_item(retracted_id) is None
+        assert store.memory_item(old_id) is None
+
+        # AUTOINCREMENT does not recycle a deleted memory identifier.
+        new_id = store.add_memory_item(
+            scope, "unrelated memory", kind="fact", disclosure="local"
+        )
+        assert new_id > retracted_id
+    finally:
+        store.close()
+
+
+def test_delete_memory_item_checks_revision_and_rolls_back_on_failure():
+    store = Store.create(":memory:")
+    scope = Scope(None, 10, 100)
+    try:
+        item_id = store.add_memory_item(
+            scope, "original", kind="fact", disclosure="local"
+        )
+        store.revise_memory_item(
+            item_id,
+            expected_revision=0,
+            content="edited",
+            kind="fact",
+            disclosure="local",
+            confidence=1,
+        )
+        try:
+            store.delete_memory_item(item_id, expected_revision=0)
+        except ValueError as exc:
+            assert "changed" in str(exc)
+        else:
+            raise AssertionError("stale deletion must fail")
+
+        store.db.execute(
+            """CREATE TRIGGER block_deletion BEFORE DELETE ON memory_items
+               BEGIN SELECT RAISE(ABORT, 'blocked'); END"""
+        )
+        try:
+            store.delete_memory_item(item_id, expected_revision=1)
+        except sqlite3.IntegrityError:
+            pass
+        else:
+            raise AssertionError("failed deletion must roll back")
+        assert store.memory_item(item_id) is not None
+        assert len(store.memory_item_edit_history(item_id)) == 1
+        store.db.execute("DROP TRIGGER block_deletion")
+        store.delete_memory_item(item_id, expected_revision=1)
+        assert store.memory_item(item_id) is None
+        assert store.memory_item_edit_history(item_id) == []
+    finally:
+        store.close()

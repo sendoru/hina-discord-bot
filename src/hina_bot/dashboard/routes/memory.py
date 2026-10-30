@@ -43,6 +43,7 @@ def build_router(
         updated_after: str = "",
         updated_before: str = "",
         q: str = "",
+        queued: int | None = None,
     ):
         data = service.memory_items(
             page=page,
@@ -66,18 +67,20 @@ def build_router(
         return templates.TemplateResponse(
             request=request,
             name="memory.html",
-            context={"data": data},
+            context={"data": data, "queued": queued},
         )
 
     @router.post("/memory/bulk-status")
     async def bulk_memory_status(request: Request):
         form = await writer.form(request)
-        # Retraction is the only existing operator-controlled lifecycle transition.
-        # Superseding requires reconciliation; reactivation is not supported.
-        if form.get("status") != "retracted":
-            raise HTTPException(status_code=422, detail="only retracted status is supported")
-        if form.get("confirm") != "yes":
-            raise HTTPException(status_code=422, detail="retract confirmation is required")
+        # Retraction preserves history; deletion removes the selected item and
+        # related item-owned records. Superseding/reactivation remain unsupported.
+        operation = form.get("status")
+        if operation not in {"retracted", "delete"}:
+            raise HTTPException(status_code=422, detail="unsupported bulk memory operation")
+        deleting = operation == "delete"
+        if form.get("confirm") != ("delete" if deleting else "yes"):
+            raise HTTPException(status_code=422, detail="memory operation confirmation is required")
         request_id = form.get("_request_id", "")
         if not re.fullmatch(r"[a-f0-9]{32}", request_id):
             raise HTTPException(status_code=422, detail="invalid admin request id")
@@ -109,7 +112,7 @@ def build_router(
             # revision validation, auditing, and failure isolation. Retries of the
             # same submission reuse the same command instead of applying it twice.
             child_id = hashlib.sha256(
-                f"{request_id}:retracted:{item_id}:{revision}".encode()
+                f"{request_id}:{operation}:{item_id}:{revision}".encode()
             ).hexdigest()[:32]
             existing_id = service.repository.admin_command_id_for_request(child_id)
             if existing_id is not None:
@@ -119,16 +122,16 @@ def build_router(
             if item is None:
                 result["error"] = "Memory item not found"
                 continue
-            if item["status"] != "active":
+            if not deleting and item["status"] != "active":
                 result["error"] = "only active memory items can be retracted"
                 continue
             if item["revision"] != revision:
-                result["error"] = "memory item changed; reload before retracting"
+                result["error"] = "memory item changed; reload before proceeding"
                 continue
             try:
                 command_id, _ = writer.enqueue(
                     request_id=child_id,
-                    action="memory.item.retract",
+                    action="memory.item.delete" if deleting else "memory.item.retract",
                     target=str(item_id),
                     payload={"item_id": item_id, "expected_revision": revision},
                 )
@@ -275,5 +278,32 @@ def build_router(
             url=f"/memory/{item_id}?queued={command_id}",
             status_code=303,
         )
+
+    @router.post("/memory/{item_id}/delete")
+    async def delete_memory_item(request: Request, item_id: int):
+        form = await writer.form(request)
+        if form.get("confirm") != "delete":
+            raise HTTPException(status_code=422, detail="delete confirmation is required")
+        data = service.memory_item(item_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Memory item not found")
+        try:
+            expected_revision = int(form.get("expected_revision", ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="invalid memory revision") from exc
+        if expected_revision < 0:
+            raise HTTPException(status_code=422, detail="invalid memory revision")
+        if data["item"]["revision"] != expected_revision:
+            raise HTTPException(
+                status_code=409, detail="memory item changed; reload before deleting"
+            )
+        command_id, _ = writer.enqueue(
+            request_id=form.get("_request_id", ""),
+            action="memory.item.delete",
+            target=str(item_id),
+            payload={"item_id": item_id, "expected_revision": expected_revision},
+        )
+        # The detail URL becomes 404 as soon as the command executes.
+        return RedirectResponse(url=f"/memory?queued={command_id}", status_code=303)
 
     return router

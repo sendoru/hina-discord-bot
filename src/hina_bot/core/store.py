@@ -484,6 +484,9 @@ class Store:
     ) -> MemoryItem:
         return self._memories.retract_memory_item(item_id, expected_revision=expected_revision)
 
+    def delete_memory_item(self, item_id: int, *, expected_revision: int) -> None:
+        self._memories.delete_memory_item(item_id, expected_revision=expected_revision)
+
     def reference_gated_memory_candidates(self, scope: Scope, *, limit: int = 24):
         return self._memories.reference_gated_memory_candidates(scope, limit=limit)
 
