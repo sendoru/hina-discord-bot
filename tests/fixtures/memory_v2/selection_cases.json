@@ -1,0 +1,617 @@
+{
+  "version": 1,
+  "design": "https://github.com/sendoru/hina-discord-bot/issues/449",
+  "activation": "P2 (#449 §11): replace the schema-only test with a harness that runs the tiered selector",
+  "defaults": {
+    "now": "2026-10-30T19:00:00+09:00",
+    "timezone": "Asia/Seoul",
+    "speaker": "u1",
+    "scope": "dm",
+    "context": {
+      "hours_since_last_turn_any_space": 1,
+      "mentions": [],
+      "reply_to_user": null,
+      "thread_participants": [],
+      "classifier_codes": [],
+      "authorized_reference_gated": [],
+      "member_opt_out": [],
+      "departed_members": []
+    },
+    "settings": {
+      "MEMORY_SESSION_FOLLOWUP": "dm",
+      "external_context_policy": "bot_interactions_only"
+    },
+    "memory": {
+      "owner": "u1",
+      "origin": "dm",
+      "kind": "fact",
+      "disclosure": "local",
+      "status": "active",
+      "superseded_by": null,
+      "revision": 0,
+      "confidence": 0.9,
+      "relationship_evidence": {},
+      "annotated": true,
+      "annotation": {
+        "item_revision": 0,
+        "time_scope": "ongoing",
+        "stability": "long",
+        "observed_at": "2026-10-20T12:00:00+09:00",
+        "event_at": null,
+        "recurrence": null,
+        "usage_mode": "ambient",
+        "directive_type": null,
+        "audience": "owner",
+        "importance": 2,
+        "slot": "",
+        "keywords": [],
+        "explicit": false,
+        "verified": false,
+        "cluster": null,
+        "last_confirmed_at": null,
+        "proactive_status": "",
+        "proactive_count": 0
+      }
+    },
+    "server_memory": {
+      "guild": "g1",
+      "space": "guild",
+      "origin_channel": "c1",
+      "subject_users": [],
+      "contributors": ["u1"],
+      "trust": "single",
+      "time_scope": "ongoing",
+      "stability": "long",
+      "observed_at": "2026-10-20T12:00:00+09:00",
+      "event_at": null,
+      "recurrence": null,
+      "usage_mode": "contextual",
+      "importance": 2,
+      "keywords": [],
+      "status": "active"
+    }
+  },
+  "cases": [
+    {
+      "id": "t2_casual_hunger_uses_food_not_work",
+      "covers": "§10 선택: \"배고프다\" → 음식 취향 O, 사내 프로젝트 X",
+      "message": "아 배고프다",
+      "memories": [
+        {"ref": "food", "kind": "preference", "content": "매운 음식을 좋아함",
+         "annotation": {"keywords": ["음식", "매운", "배고픔", "밥"]}},
+        {"ref": "work", "content": "사내 결제 시스템 마이그레이션 담당",
+         "annotation": {"usage_mode": "contextual", "keywords": ["회사", "업무", "결제", "마이그레이션"]}}
+      ],
+      "expect": {"include": ["food"], "exclude": ["work"], "tier": {"food": "T2"}}
+    },
+    {
+      "id": "t2_task_register_uses_tech_context",
+      "covers": "§10 선택: \"파이썬 에러 났어\" → 기술 스택 O",
+      "message": "파이썬에서 KeyError 났는데 이거 왜 그래?",
+      "context": {"classifier_codes": ["debugging"]},
+      "memories": [
+        {"ref": "stack", "content": "업무에서 파이썬과 FastAPI를 주로 씀",
+         "annotation": {"usage_mode": "contextual", "keywords": ["파이썬", "python", "FastAPI", "백엔드"]}},
+        {"ref": "food", "kind": "preference", "content": "매운 음식을 좋아함",
+         "annotation": {"keywords": ["음식", "매운", "배고픔", "밥"]}}
+      ],
+      "expect": {"include": ["stack"], "exclude": ["food"], "tier": {"stack": "T2"}}
+    },
+    {
+      "id": "t2_work_detail_when_user_raises_work",
+      "covers": "C1: 업무 기억도 사용자가 그 화제를 꺼내면 사용",
+      "message": "오늘 회사에서 결제 마이그레이션 때문에 너무 힘들었어",
+      "memories": [
+        {"ref": "work", "content": "사내 결제 시스템 마이그레이션 담당",
+         "annotation": {"usage_mode": "contextual", "keywords": ["회사", "업무", "결제", "마이그레이션"]}}
+      ],
+      "expect": {"include": ["work"], "tier": {"work": "T2"}}
+    },
+    {
+      "id": "t2_near_duplicates_selected_once",
+      "covers": "§10 선택: 관련 후보 중 거의 같은 내용이 여러 개 → 1개만",
+      "message": "보리 오늘 진짜 귀여웠어",
+      "memories": [
+        {"ref": "cat_a", "content": "고양이 보리를 키움",
+         "annotation": {"keywords": ["고양이", "보리", "냥이"]}},
+        {"ref": "cat_b", "content": "고양이 보리를 키우고 있음",
+         "annotation": {"keywords": ["고양이", "보리", "냥이"], "observed_at": "2026-10-25T12:00:00+09:00"}}
+      ],
+      "expect": {"exactly_one_of": [["cat_a", "cat_b"]]}
+    },
+    {
+      "id": "t2_distinct_same_topic_memories_coexist",
+      "covers": "§10 선택: 서로 다른 내용의 같은 화제 기억 → 함께 선택 가능",
+      "message": "보리가 요즘 사료를 잘 안 먹어서 병원 가볼까 해",
+      "memories": [
+        {"ref": "cat_name", "content": "고양이 보리를 키움",
+         "annotation": {"keywords": ["고양이", "보리", "냥이"]}},
+        {"ref": "cat_food", "content": "보리는 연어 사료를 좋아함",
+         "annotation": {"keywords": ["보리", "사료", "연어"]}},
+        {"ref": "cat_vet", "content": "보리는 집 근처 동물병원에 다님",
+         "annotation": {"keywords": ["보리", "병원", "동물병원"]}}
+      ],
+      "expect": {"include": ["cat_name", "cat_food", "cat_vet"]}
+    },
+    {
+      "id": "t1_session_greeting_follows_up_exam",
+      "covers": "§10 선택: 8시간 이상 공백 후 DM \"히나야 안녕\" → 지난 시험 follow-up O",
+      "message": "히나야 안녕",
+      "context": {"hours_since_last_turn_any_space": 10},
+      "memories": [
+        {"ref": "exam", "kind": "event", "content": "자격증 필기시험",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-25",
+                        "importance": 3, "keywords": ["시험", "자격증"]}}
+      ],
+      "expect": {"include": ["exam"], "tier": {"exam": "T1"}, "render_status": {"exam": "just_passed"}}
+    },
+    {
+      "id": "t1_skipped_when_session_starts_with_request",
+      "covers": "§10 선택: 세션 첫 메시지가 구체 요청 → T1 X",
+      "message": "이 코드 좀 봐줘: print(1/0)",
+      "context": {"hours_since_last_turn_any_space": 10},
+      "memories": [
+        {"ref": "exam", "kind": "event", "content": "자격증 필기시험",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-25",
+                        "importance": 3, "keywords": ["시험", "자격증"]}}
+      ],
+      "expect": {"exclude": ["exam"]}
+    },
+    {
+      "id": "t1_not_repeated_after_used_followup",
+      "covers": "§10 선택: 같은 항목·같은 status로 이미 안부를 물음 → T1 X",
+      "note": "사용이 확인되면 proactive_count를 상한(2)으로 올린다",
+      "message": "히나야 안녕",
+      "context": {"hours_since_last_turn_any_space": 10},
+      "memories": [
+        {"ref": "exam", "kind": "event", "content": "자격증 필기시험",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-25",
+                        "importance": 3, "keywords": ["시험", "자격증"],
+                        "proactive_status": "just_passed", "proactive_count": 2}}
+      ],
+      "expect": {"exclude": ["exam"]}
+    },
+    {
+      "id": "t1_retries_once_after_unused_injection",
+      "covers": "§10 선택: 주입됐지만 쓰이지 않은 후보 → 다음 세션 1회 O",
+      "message": "히나야 안녕",
+      "context": {"hours_since_last_turn_any_space": 10},
+      "memories": [
+        {"ref": "exam", "kind": "event", "content": "자격증 필기시험",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-25",
+                        "importance": 3, "keywords": ["시험", "자격증"],
+                        "proactive_status": "just_passed", "proactive_count": 1}}
+      ],
+      "expect": {"include": ["exam"], "tier": {"exam": "T1"}}
+    },
+    {
+      "id": "t1_status_change_resets_attempts",
+      "covers": "§7.1: effective status가 바뀌면 안부 횟수를 다시 센다",
+      "message": "히나야 안녕",
+      "context": {"hours_since_last_turn_any_space": 10},
+      "memories": [
+        {"ref": "exam", "kind": "event", "content": "자격증 필기시험",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-25",
+                        "importance": 3, "keywords": ["시험", "자격증"],
+                        "proactive_status": "upcoming", "proactive_count": 2}}
+      ],
+      "expect": {"include": ["exam"], "tier": {"exam": "T1"}}
+    },
+    {
+      "id": "t1_suppressed_after_recent_turn_in_other_space",
+      "covers": "§10 선택: DM에서 1시간 전 대화 후 서버 첫 호출 → T1 X",
+      "scope": "g1:c1:public",
+      "message": "히나야 안녕",
+      "settings": {"MEMORY_SESSION_FOLLOWUP": "all"},
+      "context": {"hours_since_last_turn_any_space": 1},
+      "memories": [
+        {"ref": "camping", "kind": "event", "origin": "g1:c1:public", "content": "이번 주말 친구들과 캠핑 예정",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-31",
+                        "importance": 3, "audience": "server", "keywords": ["캠핑", "주말"]}}
+      ],
+      "expect": {"exclude": ["camping"]}
+    },
+    {
+      "id": "t1_server_uses_only_same_space_public_safe_items",
+      "covers": "§10 선택: MEMORY_SESSION_FOLLOWUP=all 서버에서 DM 출처 또는 audience=owner 항목 → T1 X",
+      "scope": "g1:c1:public",
+      "message": "히나야 안녕",
+      "settings": {"MEMORY_SESSION_FOLLOWUP": "all"},
+      "context": {"hours_since_last_turn_any_space": 10},
+      "memories": [
+        {"ref": "camping", "kind": "event", "origin": "g1:c1:public", "content": "이번 주말 친구들과 캠핑 예정",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-31",
+                        "importance": 3, "audience": "server", "keywords": ["캠핑", "주말"]}},
+        {"ref": "exam_dm", "kind": "event", "origin": "dm", "disclosure": "global", "content": "자격증 필기시험",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-25",
+                        "importance": 3, "keywords": ["시험", "자격증"]}},
+        {"ref": "interview_owner", "kind": "event", "origin": "g1:c1:public", "content": "다음 주 월요일 면접 예정",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-11-02",
+                        "importance": 3, "audience": "owner", "keywords": ["면접"]}}
+      ],
+      "expect": {"include": ["camping"], "exclude": ["exam_dm", "interview_owner"], "tier": {"camping": "T1"}}
+    },
+    {
+      "id": "t1_server_off_by_default",
+      "covers": "결정 4: MEMORY_SESSION_FOLLOWUP 기본값 dm",
+      "scope": "g1:c1:public",
+      "message": "히나야 안녕",
+      "context": {"hours_since_last_turn_any_space": 10},
+      "memories": [
+        {"ref": "camping", "kind": "event", "origin": "g1:c1:public", "content": "이번 주말 친구들과 캠핑 예정",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-31",
+                        "importance": 3, "audience": "server", "keywords": ["캠핑", "주말"]}}
+      ],
+      "expect": {"exclude": ["camping"]}
+    },
+    {
+      "id": "t1_opt_out_directive_from_other_space",
+      "covers": "§10 선택: proactive_followup_off directive가 다른 공간에 존재 → T1 X",
+      "message": "히나야 안녕",
+      "context": {"hours_since_last_turn_any_space": 10},
+      "memories": [
+        {"ref": "exam", "kind": "event", "content": "자격증 필기시험",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-25",
+                        "importance": 3, "keywords": ["시험", "자격증"]}},
+        {"ref": "opt_out", "kind": "boundary", "origin": "g1:c1:public",
+         "content": "근황이나 일정을 먼저 묻지 말아 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "boundary", "verified": true,
+                        "slot": "proactive_followup_off", "keywords": ["근황", "일정"]}}
+      ],
+      "expect": {"exclude": ["exam"], "include": ["opt_out"], "placement": {"opt_out": "directives"}}
+    },
+    {
+      "id": "boundary_from_dm_applies_quietly_in_server",
+      "covers": "§10 선택: DM의 local 금지형 경계 → 서버 quiet_boundaries O / local style → X",
+      "scope": "g1:c1:public",
+      "message": "히나야 오늘 뭐 했어?",
+      "memories": [
+        {"ref": "boundary", "kind": "boundary", "origin": "dm",
+         "content": "가족 관련 화제를 먼저 꺼내지 말아 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "boundary", "verified": true,
+                        "keywords": ["가족"]}},
+        {"ref": "style", "kind": "preference", "origin": "dm",
+         "content": "앞으로 반말로 편하게 대해 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "style", "verified": true,
+                        "keywords": ["반말", "말투"]}}
+      ],
+      "expect": {"include": ["boundary"], "exclude": ["style"], "placement": {"boundary": "quiet_boundaries"}}
+    },
+    {
+      "id": "directives_apply_in_origin_space",
+      "covers": "§7.2: 같은 공간(DM)에서는 boundary와 style 모두 일반 directives",
+      "message": "히나야 오늘 뭐 했어?",
+      "memories": [
+        {"ref": "boundary", "kind": "boundary", "origin": "dm",
+         "content": "가족 관련 화제를 먼저 꺼내지 말아 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "boundary", "verified": true,
+                        "keywords": ["가족"]}},
+        {"ref": "style", "kind": "preference", "origin": "dm",
+         "content": "앞으로 반말로 편하게 대해 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "style", "verified": true,
+                        "keywords": ["반말", "말투"]}}
+      ],
+      "expect": {"include": ["boundary", "style"],
+                 "placement": {"boundary": "directives", "style": "directives"},
+                 "tier": {"boundary": "T0", "style": "T0"}}
+    },
+    {
+      "id": "unverified_boundary_not_applied_cross_space",
+      "covers": "§7.2: 다른 공간 경계는 verified=1 또는 annotation 없는 레거시 boundary만",
+      "scope": "g1:c1:public",
+      "message": "히나야 오늘 뭐 했어?",
+      "memories": [
+        {"ref": "boundary", "kind": "boundary", "origin": "dm",
+         "content": "가족 관련 화제를 먼저 꺼내지 말아 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "boundary", "verified": false,
+                        "keywords": ["가족"]}}
+      ],
+      "expect": {"exclude": ["boundary"]}
+    },
+    {
+      "id": "legacy_boundary_without_annotation_stays_in_t0",
+      "covers": "§10 선택: annotation 없는 kind=boundary 레거시 항목 → T0 O (원칙 6)",
+      "message": "히나야 오늘 뭐 했어?",
+      "memories": [
+        {"ref": "legacy_boundary", "kind": "boundary", "annotated": false,
+         "content": "업무 얘기는 먼저 꺼내지 말아 달라고 함"},
+        {"ref": "legacy_fact", "annotated": false,
+         "content": "회사에서 결제 시스템을 담당함"}
+      ],
+      "expect": {"include": ["legacy_boundary"], "exclude": ["legacy_fact"],
+                 "tier": {"legacy_boundary": "T0"}, "placement": {"legacy_boundary": "directives"}}
+    },
+    {
+      "id": "legacy_boundary_applies_quietly_cross_space",
+      "covers": "§7.2: annotation 없는 레거시 boundary도 다른 공간에서 quiet_boundaries",
+      "scope": "g1:c1:public",
+      "message": "히나야 오늘 뭐 했어?",
+      "memories": [
+        {"ref": "legacy_boundary", "kind": "boundary", "annotated": false, "origin": "dm",
+         "content": "업무 얘기는 먼저 꺼내지 말아 달라고 함"}
+      ],
+      "expect": {"include": ["legacy_boundary"], "placement": {"legacy_boundary": "quiet_boundaries"}}
+    },
+    {
+      "id": "stale_directive_kept_until_reannotation",
+      "covers": "§10 선택: 관리자 편집 직후 재주석 전의 directive → T0 유지",
+      "message": "히나야 오늘 뭐 했어?",
+      "memories": [
+        {"ref": "boundary", "kind": "boundary", "revision": 2,
+         "content": "업무 얘기는 먼저 꺼내지 말아 달라고 함",
+         "annotation": {"item_revision": 1, "usage_mode": "directive", "directive_type": "boundary",
+                        "verified": true, "keywords": ["업무", "회사"]}},
+        {"ref": "stale_fact", "revision": 1, "content": "고양이 보리를 키움",
+         "annotation": {"item_revision": 0, "usage_mode": "ambient", "keywords": ["고양이", "보리"]}}
+      ],
+      "expect": {"include": ["boundary"], "exclude": ["stale_fact"], "tier": {"boundary": "T0"}}
+    },
+    {
+      "id": "t0_overflow_keeps_priority_order",
+      "covers": "§7 T0: 6개 초과 시 explicit > boundary > 최근 확인 순",
+      "message": "히나야 안녕",
+      "memories": [
+        {"ref": "explicit_style", "kind": "preference", "content": "앞으로 이름 대신 '대장'이라고 불러 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "style", "verified": true, "explicit": true,
+                        "last_confirmed_at": "2026-01-01T12:00:00+09:00"}},
+        {"ref": "boundary_1", "kind": "boundary", "content": "업무 얘기는 먼저 꺼내지 말아 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "boundary", "verified": true,
+                        "last_confirmed_at": "2026-02-01T12:00:00+09:00"}},
+        {"ref": "boundary_2", "kind": "boundary", "content": "가족 얘기는 먼저 꺼내지 말아 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "boundary", "verified": true,
+                        "last_confirmed_at": "2026-03-01T12:00:00+09:00"}},
+        {"ref": "boundary_3", "kind": "boundary", "content": "몸무게 얘기는 하지 말아 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "boundary", "verified": true,
+                        "last_confirmed_at": "2026-04-01T12:00:00+09:00"}},
+        {"ref": "style_old", "kind": "preference", "content": "앞으로 이모지를 적게 써 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "style", "verified": true,
+                        "last_confirmed_at": "2026-05-01T12:00:00+09:00"}},
+        {"ref": "style_mid", "kind": "preference", "content": "앞으로 반말로 대해 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "style", "verified": true,
+                        "last_confirmed_at": "2026-08-01T12:00:00+09:00"}},
+        {"ref": "style_new", "kind": "preference", "content": "앞으로 답변을 짧게 해 달라고 함",
+         "annotation": {"usage_mode": "directive", "directive_type": "style", "verified": true,
+                        "last_confirmed_at": "2026-10-01T12:00:00+09:00"}}
+      ],
+      "expect": {"include": ["explicit_style", "boundary_1", "boundary_2", "boundary_3", "style_mid", "style_new"],
+                 "exclude": ["style_old"]}
+    },
+    {
+      "id": "sensitive_excluded_in_server_without_mention",
+      "covers": "§10 선택: 서버에서 건강 기억 → X",
+      "scope": "g1:c1:public",
+      "message": "히나야 요즘 날씨 좋다",
+      "memories": [
+        {"ref": "health", "origin": "g1:c1:public", "content": "공황 증상으로 병원 치료 중",
+         "annotation": {"usage_mode": "sensitive", "stability": "medium", "keywords": ["공황", "병원", "치료"]}}
+      ],
+      "expect": {"exclude": ["health"]}
+    },
+    {
+      "id": "sensitive_included_when_user_mentions_it",
+      "covers": "§10 선택: 서버에서 건강 기억 → 사용자가 언급하면 O",
+      "scope": "g1:c1:public",
+      "message": "요즘 공황 때문에 병원 다니는데 좀 힘들어",
+      "memories": [
+        {"ref": "health", "origin": "g1:c1:public", "content": "공황 증상으로 병원 치료 중",
+         "annotation": {"usage_mode": "sensitive", "stability": "medium", "keywords": ["공황", "병원", "치료"]}}
+      ],
+      "expect": {"include": ["health"], "tier": {"health": "T2"}}
+    },
+    {
+      "id": "cluster_rendered_once_with_visible_canonical",
+      "covers": "§10 선택: 3개 출처의 같은 기억(cluster 지정됨) → 1개만",
+      "message": "보리 사진 볼래?",
+      "memories": [
+        {"ref": "cat_dm", "origin": "dm", "content": "고양이 보리를 키움",
+         "annotation": {"cluster": "cat_dm", "keywords": ["고양이", "보리"]}},
+        {"ref": "cat_g1", "origin": "g1:c1:public", "content": "보리라는 고양이를 키움",
+         "annotation": {"cluster": "cat_dm", "keywords": ["고양이", "보리"]}},
+        {"ref": "cat_g2", "origin": "g2:c3:public", "content": "고양이 보리를 키우는 중",
+         "annotation": {"cluster": "cat_dm", "keywords": ["고양이", "보리"]}}
+      ],
+      "expect": {"include": ["cat_dm"], "exclude": ["cat_g1", "cat_g2"]}
+    },
+    {
+      "id": "cluster_falls_back_to_visible_member_in_server",
+      "covers": "§7 묶음 정리: canonical이 안 보이면 보이는 멤버로 대표 선택",
+      "scope": "g1:c1:public",
+      "message": "보리 사진 볼래?",
+      "memories": [
+        {"ref": "cat_dm", "origin": "dm", "content": "고양이 보리를 키움",
+         "annotation": {"cluster": "cat_dm", "keywords": ["고양이", "보리"]}},
+        {"ref": "cat_g1", "origin": "g1:c1:public", "content": "보리라는 고양이를 키움",
+         "annotation": {"cluster": "cat_dm", "keywords": ["고양이", "보리"]}},
+        {"ref": "cat_g2", "origin": "g2:c3:public", "content": "고양이 보리를 키우는 중",
+         "annotation": {"cluster": "cat_dm", "keywords": ["고양이", "보리"]}}
+      ],
+      "expect": {"include": ["cat_g1"], "exclude": ["cat_dm", "cat_g2"]}
+    },
+    {
+      "id": "dm_supersede_hides_server_memory",
+      "covers": "§10 선택: DM에서 supersede된 서버 기억 → 서버에서 X",
+      "scope": "g1:c1:public",
+      "message": "요즘 회사 어때?",
+      "memories": [
+        {"ref": "job_old", "origin": "g1:c1:public", "content": "회사 A에 다님",
+         "status": "superseded", "superseded_by": "job_new",
+         "annotation": {"slot": "직장", "keywords": ["회사", "직장"]}},
+        {"ref": "job_new", "origin": "dm", "content": "회사 B로 이직함",
+         "annotation": {"slot": "직장", "keywords": ["회사", "직장", "이직"]}}
+      ],
+      "expect": {"exclude": ["job_old", "job_new"]}
+    },
+    {
+      "id": "recall_does_not_open_reference_gated_without_t4",
+      "covers": "§10 선택: 서버에서 recall_memory가 다른 공간 reference_gated 검색 → X",
+      "scope": "g1:c1:public",
+      "message": "그거 뭐였더라",
+      "memories": [
+        {"ref": "trip", "kind": "event", "origin": "dm", "disclosure": "reference_gated",
+         "content": "다음 달 오사카 여행 예정",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-11",
+                        "keywords": ["여행", "오사카"]}}
+      ],
+      "expect": {"recall": {"query": "여행", "scope": "personal", "exclude": ["trip"]}}
+    },
+    {
+      "id": "recall_includes_reference_gated_authorized_by_t4",
+      "covers": "§10 선택: 이번 턴 T4가 승인한 reference_gated는 recall에 포함",
+      "scope": "g1:c1:public",
+      "message": "내가 전에 말했던 여행 기억나?",
+      "context": {"authorized_reference_gated": ["trip"]},
+      "memories": [
+        {"ref": "trip", "kind": "event", "origin": "dm", "disclosure": "reference_gated",
+         "content": "다음 달 오사카 여행 예정",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-11",
+                        "keywords": ["여행", "오사카"]}}
+      ],
+      "expect": {"recall": {"query": "여행", "scope": "personal", "include": ["trip"]}}
+    },
+    {
+      "id": "recall_renders_temporal_status",
+      "covers": "§7 유효 상태 계산: past/unverified/upcoming/past 예정/recurring",
+      "message": "내가 전에 말한 것들 기억나?",
+      "memories": [
+        {"ref": "piano", "content": "중학교 때 피아노를 쳤음",
+         "annotation": {"time_scope": "past", "stability": null, "keywords": ["피아노"]}},
+        {"ref": "game", "content": "요즘 메이플스토리에 빠져 있음",
+         "annotation": {"stability": "medium", "observed_at": "2026-04-13T12:00:00+09:00",
+                        "keywords": ["게임", "메이플"]}},
+        {"ref": "exam", "kind": "event", "content": "자격증 실기시험",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-11-02",
+                        "keywords": ["시험", "자격증"]}},
+        {"ref": "trip", "kind": "event", "content": "부산 여행",
+         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-01",
+                        "keywords": ["여행", "부산"]}},
+        {"ref": "pt", "content": "매주 화요일 저녁에 PT를 받음",
+         "annotation": {"time_scope": "recurring", "stability": null, "recurrence": "weekly:TUE 19:00",
+                        "keywords": ["PT", "운동"]}}
+      ],
+      "expect": {"recall": {"query": "피아노 게임 시험 여행 PT", "scope": "personal",
+                            "include": ["piano", "game", "exam", "trip", "pt"],
+                            "render_status": {"piano": "past", "game": "unverified", "exam": "upcoming",
+                                              "trip": "past", "pt": "upcoming"}}}
+    },
+    {
+      "id": "relationship_raw_text_not_injected",
+      "covers": "결정 5: 관계 원문은 기본 제외, 수치 프로필만",
+      "message": "히나야 놀자",
+      "memories": [
+        {"ref": "rel", "kind": "relationship", "disclosure": "implicit", "annotated": false,
+         "content": "가벼운 장난을 편하게 주고받음",
+         "relationship_evidence": {"comfort": 2, "teasing_tolerance": 2}}
+      ],
+      "expect": {"exclude": ["rel"], "relationship_profile_axes": ["comfort", "teasing_tolerance"]}
+    },
+    {
+      "id": "member_profile_requires_relevance",
+      "covers": "§10 선택: B와 대화 중 무관한 멤버 A의 공개 프로필 → X",
+      "scope": "g1:c1:public",
+      "settings": {"external_context_policy": "full"},
+      "message": "히나야 고양이 키우는 거 어때?",
+      "memories": [
+        {"ref": "u2_cats", "owner": "u2", "origin": "g1:c1:public", "content": "고양이 두 마리를 키움",
+         "annotation": {"audience": "server", "keywords": ["고양이"]}}
+      ],
+      "expect": {"exclude": ["u2_cats"]}
+    },
+    {
+      "id": "member_profile_included_when_mentioned",
+      "covers": "§10 선택: A 멘션 시 O",
+      "scope": "g1:c1:public",
+      "settings": {"external_context_policy": "full"},
+      "message": "@u2 도 고양이 키우지?",
+      "context": {"mentions": ["u2"]},
+      "memories": [
+        {"ref": "u2_cats", "owner": "u2", "origin": "g1:c1:public", "content": "고양이 두 마리를 키움",
+         "annotation": {"audience": "server", "keywords": ["고양이"]}},
+        {"ref": "u2_private", "owner": "u2", "origin": "g1:c1:public", "content": "이번 달에 이사함",
+         "annotation": {"audience": "owner", "keywords": ["이사"]}}
+      ],
+      "expect": {"include": ["u2_cats"], "exclude": ["u2_private"], "placement": {"u2_cats": "members"}}
+    },
+    {
+      "id": "member_profile_blocked_by_strict_egress",
+      "covers": "§10 선택: strict egress면 X",
+      "scope": "g1:c1:public",
+      "message": "@u2 도 고양이 키우지?",
+      "settings": {"external_context_policy": "bot_interactions_only"},
+      "context": {"mentions": ["u2"]},
+      "memories": [
+        {"ref": "u2_cats", "owner": "u2", "origin": "g1:c1:public", "content": "고양이 두 마리를 키움",
+         "annotation": {"audience": "server", "keywords": ["고양이"]}}
+      ],
+      "expect": {"exclude": ["u2_cats"]}
+    },
+    {
+      "id": "member_profile_blocked_by_opt_out",
+      "covers": "§8.5 조건 3: 공유 옵트아웃",
+      "scope": "g1:c1:public",
+      "settings": {"external_context_policy": "full"},
+      "message": "@u2 도 고양이 키우지?",
+      "context": {"mentions": ["u2"], "member_opt_out": ["u2"]},
+      "memories": [
+        {"ref": "u2_cats", "owner": "u2", "origin": "g1:c1:public", "content": "고양이 두 마리를 키움",
+         "annotation": {"audience": "server", "keywords": ["고양이"]}}
+      ],
+      "expect": {"exclude": ["u2_cats"]}
+    },
+    {
+      "id": "member_profile_hidden_after_member_left",
+      "covers": "§8.5 조건 4·§8.6: 탈퇴 멤버",
+      "scope": "g1:c1:public",
+      "settings": {"external_context_policy": "full"},
+      "message": "@u2 도 고양이 키우지?",
+      "context": {"mentions": ["u2"], "departed_members": ["u2"]},
+      "memories": [
+        {"ref": "u2_cats", "owner": "u2", "origin": "g1:c1:public", "content": "고양이 두 마리를 키움",
+         "annotation": {"audience": "server", "keywords": ["고양이"]}}
+      ],
+      "expect": {"exclude": ["u2_cats"]}
+    },
+    {
+      "id": "server_single_trust_not_proactive",
+      "covers": "§10 선택: trust=single 서버 기억 → 선제 사용 X",
+      "scope": "g1:c1:public",
+      "settings": {"external_context_policy": "full"},
+      "message": "히나야 안녕",
+      "server_memories": [
+        {"ref": "greeting_single", "content": "이 서버에서는 '감자'가 인사말로 쓰임",
+         "trust": "single", "usage_mode": "contextual", "keywords": ["감자", "인사"]},
+        {"ref": "nickname", "content": "이 서버에서는 히나를 '위원장'이라고 부르는 경우가 많음",
+         "trust": "corroborated", "contributors": ["u1", "u2"], "usage_mode": "ambient",
+         "keywords": ["위원장", "호칭"]}
+      ],
+      "expect": {"include": ["nickname"], "exclude": ["greeting_single"],
+                 "placement": {"nickname": "server_notes"}, "tier": {"nickname": "S1"}}
+    },
+    {
+      "id": "server_admin_directive_in_s0",
+      "covers": "§8.5 S0: trust=admin directive",
+      "scope": "g1:c1:public",
+      "settings": {"external_context_policy": "full"},
+      "message": "히나야 이번 업데이트 스토리 봤어?",
+      "server_memories": [
+        {"ref": "spoiler_rule", "content": "이 서버에서는 신규 스토리 스포일러를 먼저 말하지 않기",
+         "trust": "admin", "usage_mode": "directive", "keywords": ["스포일러", "스토리"]}
+      ],
+      "expect": {"include": ["spoiler_rule"], "placement": {"spoiler_rule": "server_directives"},
+                 "tier": {"spoiler_rule": "S0"}}
+    },
+    {
+      "id": "private_channel_server_memory_stays_in_channel",
+      "covers": "§9: 비공개 채널 출처 커뮤니티 기억은 같은 채널만",
+      "scope": "g1:c1:public",
+      "settings": {"external_context_policy": "full"},
+      "message": "히나야 이번 주 모임 언제였지?",
+      "server_memories": [
+        {"ref": "private_meetup", "space": "channel:c2", "origin_channel": "c2",
+         "content": "운영진 모임은 매주 수요일 밤", "trust": "corroborated", "contributors": ["u1", "u2"],
+         "time_scope": "recurring", "stability": null, "recurrence": "weekly:WED 22:00",
+         "usage_mode": "ambient", "keywords": ["모임", "운영진"]}
+      ],
+      "expect": {"exclude": ["private_meetup"]}
+    }
+  ]
+}
