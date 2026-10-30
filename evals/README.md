@@ -157,3 +157,29 @@ override됩니다. JSONL/Markdown 결과에는 실제 eval budget이 기록되�
 이 세트는 운영 로그를 그대로 저장하는 archive가 아닙니다. 새로운 실패를 발견해도 재현에 필요한
 최소 형태로 일반화할 수 있을 때만 case를 추가합니다.
 
+
+## 장기기억 추출 평가 (memory v2)
+
+`memory_extraction_cases.jsonl`은 #449 §5·§8.4의 추출 기준을 live 모델로 확인하기 위한 사례입니다
+(#450). 러너는 아직 없습니다. 개인 기억(`target: personal`)은 P1, 서버 기억(`target: server`)은
+P4에서 추출 v2와 함께 러너를 붙입니다. 그 전까지는 `tests/ai/test_memory_v2_fixtures.py`가 형식만
+검증합니다.
+
+- `space`: `dm`, `public`(공개 서버 채널), `private`(비공개 채널)
+- `now`와 각 턴의 `at`: 상대 날짜("다음 주 화요일", "어제") 해석 기준. 모두 `+09:00`
+- `turns`: 개인 사례는 한 사용자의 `user`/`hina` 쌍입니다. 서버 사례는 `user_id`(기호 `u1`)와
+  `speaker`가 있는 여러 사용자 턴입니다.
+- `existing_memories`: 정정·중복 판정에 쓰는 기존 기억 후보(`ref`로 참조)
+- `expected`: 사람이 읽는 기대 동작. 기존 eval과 같은 역할입니다.
+- `expect_items`: 각 제약을 만족하는 항목이 하나 이상 저장되어야 합니다.
+- `forbid_items`: 어떤 저장 항목도 이 제약을 모두 만족해서는 안 됩니다.
+- `expect_no_items`: 아무것도 저장하지 않아야 합니다.
+
+제약 키는 다음과 같습니다.
+- 내용 매칭: `match_all`/`match_any`/`not_match_any`
+- 판정 필드: `time_scope`(`_in`), `stability_in`, `event_at`, `recurrence_prefix`,
+  `usage_mode`(`_in`), `directive_type`, `audience`, `importance_min`, `explicit`, `slot`
+- 정리 관계: `relation`(`type`, `target`), `relation_absent`
+- 서버 전용: `trust`, `subject_users`, `subject_users_include`
+
+모델 판정은 확률적이므로, 러너는 사례별 통과율과 실패한 제약을 기록하고 사람이 검토합니다.
