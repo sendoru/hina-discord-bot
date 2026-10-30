@@ -60,6 +60,8 @@ async def test_relative_date_case_passes_and_wrong_scope_fails():
     results, summary = await run(_args("extract_relative_date_resolved", repeat=2), worker)
 
     assert [row["status"] for row in results] == ["passed", "failed"]
+    assert "raw_output" not in results[0]
+    assert '"2026-11-10"' in results[1]["raw_output"]
     assert any("event_at" in failure for failure in results[1]["failures"])
     assert results[0]["items"][0]["event_at"] == "2026-11-03"
     assert summary["per_case_pass_rate"] == {"extract_relative_date_resolved": 0.5}
@@ -89,3 +91,15 @@ async def test_forbidden_reading_and_correction_relation_are_scored():
     assert statuses["extract_job_correction"]["status"] == "passed", (
         statuses["extract_job_correction"]["failures"]
     )
+
+
+@pytest.mark.asyncio
+async def test_rejected_rows_keep_the_raw_answer_for_diagnosis():
+    rejected = {"content": "회사 얘기를 먼저 꺼내지 않기", "kind": "directive", "disclosure": "local",
+                "confidence": 0.9, "source_message_ids": ["m1"]}
+    worker = Worker(_response([rejected]))
+
+    (row,), _ = await run(_args("extract_boundary_single_statement"), worker)
+
+    assert row["status"] == "failed" and row["rejected_items"] == 1 and row["items"] == []
+    assert '"kind": "directive"' in row["raw_output"]

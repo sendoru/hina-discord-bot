@@ -79,7 +79,8 @@ ANNOTATION_FIELD_RULES = """관계 기억이 아닌 항목에는 아래 필드�
   short=수주 이내의 일시적 상태(다이어트 중, 감기, 시험 기간). 다른 time_scope면 생략하세요.
 - event_at: planned·episodic의 절대 날짜(YYYY-MM-DD, 일자를 모르면 YYYY-MM). 각 turn의 at_local과
   weekday를 기준으로 "내일", "다음 주 화요일" 같은 상대 날짜를 계산하세요. 계산할 수 없으면 생략하세요.
-- recurrence: recurring일 때 "weekly:MON~SUN HH:MM" 또는 "monthly:DD" 형식. 표현할 수 없으면 생략하세요.
+- recurrence: recurring일 때 "weekly:MON~SUN HH:MM", 시각을 모르면 "weekly:MON~SUN"(예: "매주 화요일
+  저녁" → "weekly:TUE"), 또는 "monthly:DD" 형식. 요일·날짜조차 정할 수 없을 때만 생략하세요.
 - usage_mode: 주제가 아니라 '히나가 이 기억을 어떻게 써도 되는가'로 판단하세요.
   * directive: 히나의 행동에 대한 지속적인 요청·경계. directive_type을 반드시 함께 쓰세요.
     - boundary: 금지·회피 요청("회사 얘기 먼저 꺼내지 마", "그 별명으로 부르지 마"). 한 번의
@@ -97,9 +98,11 @@ ANNOTATION_FIELD_RULES = """관계 기억이 아닌 항목에는 아래 필드�
   여러 화제에 걸치거나 어느 화제에도 맞지 않아도 같은 질문으로 판단하세요. 확신이 없으면 더 조용한
   contextual을 고르되, 회피 요청으로 보이는 발화는 boundary로 판단하세요. 별명이나 둘만의 반복
   장난 같은 상호작용 관례는 relationship이 아니라 ambient 또는 directive 항목으로 기록하세요.
-- audience: 공개 서버 채널에서 본인이 자기 이야기로 했고, 같은 서버의 다른 멤버가 알거나 히나가 그
-  앞에서 꺼내도 곤란하지 않을 때만 server입니다. 거주지·직장·학교·나이·건강·연애·재정처럼 신상이나
-  사생활에 닿는 정보, sensitive 항목, DM·비공개 채널 대화는 owner입니다. 확신이 없으면 owner.
+- audience: 근거 turn의 public_at_capture가 true이면 공개 서버 채널 발화입니다. 그런 발화에서 본인이
+  자기 이야기로 했고, 같은 서버의 다른 멤버가 알거나 히나가 그 앞에서 꺼내도 곤란하지 않으면 server입니다
+  (예: 즐겨 하는 게임, 반려동물을 키운다는 사실, 취미, 좋아하는 음식). 거주지·직장·학교·나이·건강·연애·
+  재정처럼 신상이나 사생활에 닿는 정보, sensitive 항목, public_at_capture가 false인 발화(DM·비공개 채널),
+  public_at_capture가 없는 입력은 owner입니다. 이 기준으로도 판단이 서지 않을 때만 owner를 고르세요.
 - importance: 3=생활에 중심적이거나 사용자가 중요하다고 표현한 것(시험·면접·이사, 반려동물),
   2=일반적인 개인 정보·취향, 1=사소하거나 지나가는 취향.
 - explicit: 사용자가 "기억해줘", "꼭 알아둬"처럼 기억을 명시적으로 요청했으면 true(importance=3).

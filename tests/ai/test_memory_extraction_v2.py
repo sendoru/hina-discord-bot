@@ -467,3 +467,21 @@ def test_verifier_accepts_a_bare_results_array():
     )
 
     assert updated.annotation.verified and (verified, demoted) == (1, 0)
+
+
+@pytest.mark.parametrize(("value", "valid"), [
+    ("weekly:TUE 19:00", True),
+    ("weekly:TUE", True),  # "매주 화요일 저녁": weekday without a clock time
+    ("monthly:15", True),
+    ("weekly:tue", False),
+    ("weekly:TUE 24:00", False),
+    ("weekly:TUE evening", False),
+])
+def test_recurrence_time_is_optional(value, valid):
+    annotation = parse_annotation({
+        "evidence": "매주 화요일 저녁에 PT", "time_scope": "recurring", "recurrence": value,
+        "usage_mode": "ambient",
+    }, MemoryKind.FACT, [{"user": "나 매주 화요일 저녁에 PT 받아", "at": AT}])
+
+    assert (annotation.recurrence == value) is valid
+    assert (LINT_INVALID_RECURRENCE in annotation.lint_flags) is not valid

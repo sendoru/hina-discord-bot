@@ -222,7 +222,8 @@ async def run_case(worker, case: dict) -> dict:
         source_turns=source_turns,
     )
     if not parsed.valid:
-        return {"id": case["id"], "status": "invalid", "failures": ["invalid extractor JSON"]}
+        return {"id": case["id"], "status": "invalid", "failures": ["invalid extractor JSON"],
+                "raw_output": response.output_text}
     items, *_ = await worker._verify_memory_directives(parsed.items, source_turns)
     # Persistence narrows the audience by capture visibility; mirror it here.
     items = tuple(
@@ -231,13 +232,18 @@ async def run_case(worker, case: dict) -> dict:
         for item in items
     )
     failures = score_case(case, items, refs)
-    return {
+    row = {
         "id": case["id"],
         "status": "failed" if failures else "passed",
         "failures": failures,
         "rejected_items": parsed.rejected_items,
         "items": [_item_report(item) for item in items],
     }
+    # Cases are fictional, so the raw answer can be kept to explain a failure or a
+    # row the parser rejected (the report otherwise shows only accepted items).
+    if failures or parsed.rejected_items or parsed.rejected_relations:
+        row["raw_output"] = response.output_text
+    return row
 
 
 def summarize(results: list[dict]) -> dict:

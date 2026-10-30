@@ -19,6 +19,7 @@ from hina_bot.core.memory_annotations import (
     Stability,
     TimeScope,
     UsageMode,
+    valid_recurrence,
 )
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, MemoryStatus
 
@@ -55,7 +56,6 @@ SPACE = re.compile(r"dm|g\d+:c\d+:(?:public|private)")
 USER = re.compile(r"u\d+")
 CHANNEL = re.compile(r"c\d+")
 SERVER_SPACE = re.compile(r"guild|channel:c\d+")
-RECURRENCE = re.compile(r"weekly:(?:MON|TUE|WED|THU|FRI|SAT|SUN) \d{2}:\d{2}")
 EVENT_AT = re.compile(r"\d{4}-\d{2}(?:-\d{2})?")
 # Discord snowflakes are 17+ digits; fixtures must only use symbolic ids.
 SNOWFLAKE = re.compile(r"\d{15,}")
@@ -111,7 +111,7 @@ def _check_memory(memory: dict, defaults: dict, refs: set[str]) -> None:
     else:
         assert annotation["stability"] is None, memory["ref"]
     if annotation["time_scope"] == "recurring":
-        assert RECURRENCE.fullmatch(annotation["recurrence"] or ""), memory["ref"]
+        assert valid_recurrence(annotation["recurrence"] or ""), memory["ref"]
     if annotation["time_scope"] == "planned":
         _event_at(annotation["event_at"])
     assert annotation["usage_mode"] in USAGE_MODES
@@ -149,7 +149,7 @@ def _check_server_memory(memory: dict, defaults: dict) -> None:
         assert len(set(merged["contributors"])) >= 2, memory["ref"]
     assert set(merged["subject_users"]) <= set(merged["contributors"]), memory["ref"]
     if merged["time_scope"] == "recurring":
-        assert RECURRENCE.fullmatch(merged["recurrence"] or ""), memory["ref"]
+        assert valid_recurrence(merged["recurrence"] or ""), memory["ref"]
     if merged["last_used_at"] is not None:
         _datetime(merged["last_used_at"])
 
