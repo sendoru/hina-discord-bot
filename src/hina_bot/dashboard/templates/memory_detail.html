@@ -53,7 +53,7 @@
   <p class="muted">아직 annotation이 없습니다. 응답 경로는 보수적 기본값(contextual/unknown, boundary는 지침)을 사용합니다. <code>hina-backfill-annotations</code>로 채우거나 아래에서 직접 지정할 수 있습니다.</p>
   {% else %}
   {% if data.annotation.state == "stale" %}
-  <p class="notice warning">기억이 revision {{ ann.item_revision }} 이후 수정되었습니다(현재 {{ data.item.revision }}). 재주석 전까지 이 판단은 기본값으로 취급됩니다.</p>
+  <p class="notice warning">기억이 revision {{ ann.item_revision }} 이후 수정되었습니다(현재 {{ data.item.revision }}). 재주석 전까지 이 판단은 기본값으로 취급되며, directive만은 그대로 유지됩니다.</p>
   {% endif %}
   <dl class="metadata">
     <div><dt>Time scope</dt><dd>{{ ann.time_scope }}{% if ann.stability %} · {{ ann.stability }}{% endif %}</dd></div>

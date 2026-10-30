@@ -31,7 +31,9 @@ from hina_bot.core.db_connections import open_readonly
 from hina_bot.core.db_schema import require_current
 from hina_bot.core.memory_annotations import (
     Annotator,
+    DirectiveType,
     MemoryAnnotation,
+    UsageMode,
     enforce_consistency,
     local_turn_time,
 )
@@ -173,6 +175,16 @@ def _parse_rows(text: str | None) -> dict[int, dict]:
     }
 
 
+def _draft_annotation(raw: dict, item, turns: list[dict]) -> MemoryAnnotation:
+    annotation = parse_annotation(raw, item.kind, turns)
+    if item.kind == MemoryKind.BOUNDARY and annotation.usage_mode != UsageMode.DIRECTIVE:
+        # A legacy boundary stays a boundary candidate; only the verifier may demote it.
+        annotation = replace(
+            annotation, usage_mode=UsageMode.DIRECTIVE, directive_type=DirectiveType.BOUNDARY
+        )
+    return annotation
+
+
 def _finalize(
     annotation: MemoryAnnotation, item, existing: MemoryAnnotation | None
 ) -> MemoryAnnotation:
@@ -234,7 +246,7 @@ async def _annotate_batch(store: Store, worker, items: list) -> tuple[int, int, 
             disclosure=item.disclosure,
             confidence=item.confidence,
             source_message_ids=tuple(turn["message_id"] for turn in turns),
-            annotation=parse_annotation(rows.get(index, {}), item.kind, turns),
+            annotation=_draft_annotation(rows.get(index, {}), item, turns),
         )
         for index, (item, turns) in enumerate(zip(items, sources, strict=True))
     )

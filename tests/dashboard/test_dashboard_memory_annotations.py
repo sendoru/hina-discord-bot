@@ -52,6 +52,10 @@ def _database(path):
                                           disclosure="local", confidence=0.9)
     ids["relationship"] = store.add_memory_item(PUBLIC, "relationship memory", kind="relationship",
                                                 disclosure="implicit", confidence=0.9)
+    # Retracted items are outside the backfill work list and its queues.
+    ids["retracted"] = store.add_memory_item(PUBLIC, "retracted memory", kind="preference",
+                                             disclosure="local", confidence=0.9)
+    store.retract_memory_item(ids["retracted"], expected_revision=0)
     _annotate(store, ids["current"], slot="drink")
     _annotate(store, ids["stale"])
     _annotate(store, ids["flagged"], evidence="말한 적 없음")

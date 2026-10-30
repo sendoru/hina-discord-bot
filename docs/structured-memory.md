@@ -43,8 +43,9 @@ and lifecycle markers (`last_confirmed_at`, `confirmations`, `last_used_at`, `pr
 `memory_items` remains the source of truth and is not altered.
 
 - An annotation applies to one `item_revision`. When an admin edit raises the item revision, the
-  annotation is stale until it is re-annotated; stale or missing annotations fall back to the
-  conservative defaults in #449 §4.1.
+  annotation is stale until it is re-annotated (`hina-backfill-annotations` or a dashboard edit).
+  Stale or missing annotations fall back to the conservative defaults in #449 §4.1, except that a
+  stale directive stays a directive until it is re-annotated (principle 6).
 - `annotator` records who wrote it (`extractor`, `consolidator`, `backfill`, `admin`); admin edits win.
 - The database enforces the cross-field rules: `directive_type` exists exactly for `directive`
   items, `stability` only for `ongoing` items, and `sensitive` items always have `audience=owner`.
@@ -109,7 +110,9 @@ model with the shared field rules.
 - The model sees the stored content, its kind, the stored time (local time and weekday), and the
   owner's own source utterances when conversation retention still has them. The same evidence,
   tense and audience checks as extraction apply, so items without surviving sources cannot become
-  `ambient`.
+  `ambient` and are flagged `source_unavailable`.
+- A `boundary`-kind item stays a boundary directive candidate even if the model chooses otherwise;
+  only the verifier can demote it.
 - Directives with sources get the verification request; without sources they stay unverified
   directives.
 - Rows are written as `annotator=backfill` for the item's current revision. A stale row keeps its
