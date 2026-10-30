@@ -146,24 +146,31 @@ def database(tmp_path):
 def usage_log(tmp_path):
     path = tmp_path / "usage.jsonl"
     rotated = tmp_path / "usage.jsonl.1"
+    # Item counts and character sizes arrive as separate rows joined by turn_id.
     rows = [
         {"at": "2026-10-28T00:00:00+00:00", "operation": "context.provenance",
-         "context_structured_items": 3, "context_structured_memory_chars": 300,
-         "context_chars_total": 3000, "context_public_items": 1,
-         "context_public_chars": 200, "factual_recall_status": "no_explicit_reference"},
+         "turn_id": "t1", "context_structured_items": 3, "context_public_items": 1,
+         "factual_recall_status": "no_explicit_reference"},
+        {"at": "2026-10-28T00:00:00+00:00", "operation": "context.size", "turn_id": "t1",
+         "context_structured_memory_chars": 300, "context_chars_total": 3000,
+         "context_public_chars": 200},
         {"at": "2026-10-29T00:00:00+00:00", "operation": "context.provenance",
-         "context_structured_items": 0, "context_structured_memory_chars": 0,
-         "context_chars_total": 1000, "context_public_items": 0,
+         "turn_id": "t2", "context_structured_items": 0, "context_public_items": 0,
          "factual_recall_status": "owner_dm"},
+        {"at": "2026-10-29T00:00:00+00:00", "operation": "context.size", "turn_id": "t2",
+         "context_structured_memory_chars": 100, "context_chars_total": 1000,
+         "context_public_chars": 2},
         {"at": "2026-10-29T00:00:01+00:00", "operation": "memory.shadow_extraction",
          "status": "completed", "batch_turns": 4, "accepted_items": 2, "stored_items": 1,
          "duplicate_items": 1, "rejected_items": 0},
         {"at": "2026-10-29T00:00:02+00:00", "operation": "memory.shadow_extraction",
          "status": "invalid"},
     ]
-    rotated.write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
+    rotated.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows[:2]), encoding="utf-8",
+    )
     path.write_text(
-        "".join(json.dumps(row) + "\n" for row in rows[1:]) + "not json\n",
+        "".join(json.dumps(row) + "\n" for row in rows[2:]) + "not json\n",
         encoding="utf-8",
     )
     return path
@@ -207,6 +214,21 @@ def test_report_aggregates_memory_quality_signals(database, usage_log):
     assert proposals["by_relation"]["corrects"] == {"below_threshold": 1}
     assert proposals["kind_mismatch_between_non_relationship"] == 1
     assert proposals["unresolved_conflicts"] == 1
+    assert proposals["confidence_buckets"]["duplicate:general"][">=0.95"] == 2
+    assert proposals["confidence_buckets"]["corrects:general"]["<0.5"] == 0
+    assert proposals["confidence_buckets"]["corrects:general"]["0.5-0.7"] == 1
+    assert proposals["confidence_buckets"]["conflicts:general"]["0.8-0.85"] == 1
+
+    by_status = memory["by_status"]
+    assert by_status["superseded"]["total"] == 1
+    assert by_status["retracted"]["kind"] == {"fact": 1}
+    assert by_status["active"]["temporal_signals"]["past_marker_items"] == 1
+    # Full history still sees the cross-space duplicate plus the superseded pair.
+    assert memory["duplicates_all_statuses_non_relationship"]["exact"]["groups"] == 1
+    assert memory["supersede_provenance"] == {
+        "superseded": 1, "with_matching_proposal": 1,
+        "without_matching_proposal": 0, "replacement_missing": 0,
+    }
 
     assert report["database"]["turns"]["total"] == 4
     assert report["database"]["extraction_backlog"]["scopes_with_pending"] == 2
@@ -224,9 +246,15 @@ def test_report_aggregates_rotated_usage_telemetry(database, usage_log):
     assert telemetry["usage_files"] == 2
     provenance = telemetry["context_provenance"]
     assert provenance["turns"] == 2
+    assert provenance["turns_with_size_row"] == 2
     assert provenance["public_server_context_turns"] == 1
     assert provenance["public_server_context_rate"] == 0.5
     assert provenance["structured_share_of_context_chars"]["max"] == 0.1
+    assert provenance["structured_memory_chars_when_present"] == {
+        "count": 1, "min": 300, "p50": 300, "p90": 300, "max": 300, "mean": 300,
+    }
+    assert provenance["public_context_chars_when_present"]["max"] == 200
+    assert provenance["context_chars_total"]["max"] == 3000
     assert provenance["factual_recall_status"] == {"no_explicit_reference": 1, "owner_dm": 1}
     extraction = telemetry["shadow_extraction"]
     assert extraction["status"] == {"completed": 1, "invalid": 1}

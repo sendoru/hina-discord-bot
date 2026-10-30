@@ -47,10 +47,13 @@ docker compose run --rm -T hina hina-memory-report > memory-report.json
 | `database.memory_items.current_injection_estimate` | 현재 방식에서 DM 전량 주입 시 항목 수·문자 수, 서버 공개 공간에서 FULL인 항목 수 |
 | `database.memory_items.temporal_signals` | 과거 표지·상대 날짜·절대 날짜를 포함한 항목 수(정규식 휴리스틱) |
 | `database.memory_items.relationship` | 관계 기억의 evidence 축·수준 분포 |
-| `database.reconciliation_proposals` | 제안의 적용 결과 재분류(적용, 기준 미달, kind 불일치, 관계 보류, conflict), 미해결 conflict 수 |
+| `database.memory_items.by_status` | active/superseded/retracted별 kind·출처 유형·길이·confidence·시간 신호. 운영자가 정리한 현재 active만으로는 보이지 않는 추출 품질을 보기 위한 항목 |
+| `database.memory_items.duplicates_all_statuses_non_relationship` | 철회·대체된 항목까지 포함한 전체 이력 기준 중복 |
+| `database.memory_items.supersede_provenance` | superseded 항목 중 대응하는 reconciliation 제안이 있는 것/없는 것(수동 편집 등) |
+| `database.reconciliation_proposals` | 제안의 적용 결과 재분류(적용, 기준 미달, kind 불일치, 관계 보류, conflict), 관계/종류별 confidence 구간 분포, 미해결 conflict 수 |
 | `database.extraction_backlog`, `database.turns` | 추출 대기 턴과 `turns` 보존 현황 |
 | `database.shared`, `database.notes`, `database.memory_modes` | 공유 요약·메모 길이 분포, memory mode 설정 분포 |
-| `telemetry.context_provenance` | 실제 응답에 들어간 구조화 기억 항목 수·문자 수와 비중, `public_server_context` 주입 빈도, factual recall 상태 |
+| `telemetry.context_provenance` | 실제 응답에 들어간 구조화 기억 항목 수, `public_server_context` 주입 빈도, factual recall 상태. 문자 수와 비중은 같은 `turn_id`의 `context.size` 행과 합쳐 계산 |
 | `telemetry.shadow_extraction` | 추출 상태별 횟수와 저장·중복·거절·제안·적용·보류 합계 |
 
 `reconciliation_proposals`의 재분류는 저장된 항목 상태와 현재 자동 적용 규칙(기준 0.95)으로

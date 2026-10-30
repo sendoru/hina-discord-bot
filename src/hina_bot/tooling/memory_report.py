@@ -24,7 +24,7 @@ from hina_bot.dashboard.telemetry import TelemetryReader
 
 from .maintenance_db import connect_existing, table_exists
 
-REPORT_VERSION = 1
+REPORT_VERSION = 2
 # Mirrors the extractor's current automatic-application threshold.
 AUTO_APPLY_THRESHOLD = 0.95
 DEFAULT_NEAR_DUPLICATE_THRESHOLD = 0.8
@@ -32,6 +32,11 @@ DEFAULT_NEAR_DUPLICATE_THRESHOLD = 0.8
 _AGE_BUCKETS = ((7, "<7d"), (30, "7-30d"), (90, "30-90d"), (180, "90-180d"), (365, "180-365d"))
 _CONFIDENCE_BUCKETS = (
     (0.5, "<0.5"), (0.7, "0.5-0.7"), (0.85, "0.7-0.85"), (0.95, "0.85-0.95"),
+)
+# Finer cut points around the candidate auto-apply thresholds (#449 §6.4).
+_PROPOSAL_CONFIDENCE_BUCKETS = (
+    (0.5, "<0.5"), (0.7, "0.5-0.7"), (0.8, "0.7-0.8"), (0.85, "0.8-0.85"),
+    (0.9, "0.85-0.9"), (0.95, "0.9-0.95"),
 )
 _USER_ITEM_BUCKETS = ((10, "1-9"), (25, "10-24"), (50, "25-49"), (100, "50-99"))
 
@@ -239,11 +244,15 @@ def _proposal_outcomes(db: sqlite3.Connection) -> dict:
            LEFT JOIN memory_items t ON t.id=p.target_memory_item_id"""
     ).fetchall()
     by_relation: dict[str, Counter] = defaultdict(Counter)
+    confidences: dict[str, list[float]] = defaultdict(list)
     blocked_kind_high_confidence = 0
     unresolved_conflicts = 0
     for row in rows:
         relation = str(row["relation"])
         outcome = by_relation[relation]
+        involves_relationship = "relationship" in {row["new_kind"], row["target_kind"]}
+        group = f"{relation}:{'relationship' if involves_relationship else 'general'}"
+        confidences[group].append(float(row["confidence"]))
         if row["new_kind"] is None or row["target_kind"] is None:
             outcome["missing_item"] += 1
             continue
@@ -278,10 +287,50 @@ def _proposal_outcomes(db: sqlite3.Connection) -> dict:
         else:
             outcome["other_not_applied"] += 1
     return {
+        "note": "outcomes are inferred from current item status; manual edits can skew them",
         "total": len(rows),
         "by_relation": {key: dict(value) for key, value in sorted(by_relation.items())},
+        "confidence_buckets": {
+            group: _bucket_counts(values, _PROPOSAL_CONFIDENCE_BUCKETS, ">=0.95")
+            for group, values in sorted(confidences.items())
+        },
         "kind_mismatch_between_non_relationship": blocked_kind_high_confidence,
         "unresolved_conflicts": unresolved_conflicts,
+    }
+
+
+def _supersede_provenance(db: sqlite3.Connection, rows) -> dict:
+    """Separate pipeline supersessions from ones without a matching proposal."""
+
+    superseded = [row for row in rows if row["status"] == "superseded"]
+    proposal_pairs: set[tuple[int, int]] = set()
+    if table_exists(db, "memory_reconciliation_proposals"):
+        for proposal in db.execute(
+            """SELECT relation,new_memory_item_id,target_memory_item_id
+               FROM memory_reconciliation_proposals"""
+        ).fetchall():
+            new_id = int(proposal["new_memory_item_id"])
+            target_id = int(proposal["target_memory_item_id"])
+            # (superseded item, replacement) as each relation would apply it.
+            if proposal["relation"] == "duplicate":
+                proposal_pairs.add((new_id, target_id))
+            elif proposal["relation"] == "corrects":
+                proposal_pairs.add((target_id, new_id))
+    ids = {int(row["id"]) for row in rows}
+    with_proposal = without_proposal = missing_replacement = 0
+    for row in superseded:
+        replacement = row["superseded_by"]
+        if replacement is None or int(replacement) not in ids:
+            missing_replacement += 1
+        elif (int(row["id"]), int(replacement)) in proposal_pairs:
+            with_proposal += 1
+        else:
+            without_proposal += 1
+    return {
+        "superseded": len(superseded),
+        "with_matching_proposal": with_proposal,
+        "without_matching_proposal": without_proposal,
+        "replacement_missing": missing_replacement,
     }
 
 
@@ -372,7 +421,33 @@ def _memory_items_section(db: sqlite3.Connection, now: datetime, threshold: floa
         "current_injection_estimate": _injection_estimate(active),
         "temporal_signals": _temporal_signals(factual, now),
         "relationship": _relationship_summary(relationship),
+        # Active rows were cleaned by operators; full history shows extraction quality.
+        "by_status": _status_breakdown(rows, now),
+        "duplicates_all_statuses_non_relationship": _duplicates(
+            [row for row in rows if row["kind"] != "relationship"], threshold
+        ),
+        "supersede_provenance": _supersede_provenance(db, rows),
     }
+
+
+def _status_breakdown(rows, now: datetime) -> dict:
+    by_status: dict[str, list] = defaultdict(list)
+    for row in rows:
+        by_status[str(row["status"])].append(row)
+    result = {}
+    for status, items in sorted(by_status.items()):
+        factual = [row for row in items if row["kind"] != "relationship"]
+        result[status] = {
+            "total": len(items),
+            "kind": dict(Counter(str(row["kind"]) for row in items)),
+            "origin_type": dict(Counter(_origin_type(row) for row in items)),
+            "content_chars": _quantiles(len(str(row["content"])) for row in items),
+            "confidence_buckets": _bucket_counts(
+                (float(row["confidence"]) for row in items), _CONFIDENCE_BUCKETS, ">=0.95"
+            ),
+            "temporal_signals": _temporal_signals(factual, now),
+        }
+    return result
 
 
 def _extraction_backlog(db: sqlite3.Connection, now: datetime) -> dict:
@@ -512,6 +587,17 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
 
     rows = list(usage_rows)
     provenance = [row for row in rows if row.get("operation") == "context.provenance"]
+    # Character sizes are emitted on a separate context.size row for the same turn.
+    sizes = {
+        row["turn_id"]: row
+        for row in rows
+        if row.get("operation") == "context.size" and row.get("turn_id")
+    }
+    joined = [
+        (row, sizes[row["turn_id"]])
+        for row in provenance
+        if row.get("turn_id") in sizes
+    ]
     with_structured = [
         row for row in provenance
         if (row.get("context_structured_items") or 0) > 0
@@ -519,12 +605,19 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
     with_public = [
         row for row in provenance if (row.get("context_public_items") or 0) > 0
     ]
+    size_rows = [size for _row, size in joined]
     shares = [
-        float(row["context_structured_memory_chars"]) / float(row["context_chars_total"])
-        for row in provenance
-        if isinstance(row.get("context_structured_memory_chars"), (int, float))
-        and isinstance(row.get("context_chars_total"), (int, float))
-        and row["context_chars_total"] > 0
+        float(size["context_structured_memory_chars"]) / float(size["context_chars_total"])
+        for size in size_rows
+        if isinstance(size.get("context_structured_memory_chars"), (int, float))
+        and isinstance(size.get("context_chars_total"), (int, float))
+        and size["context_chars_total"] > 0
+    ]
+    structured_chars_when_present = [
+        size for row, size in joined if (row.get("context_structured_items") or 0) > 0
+    ]
+    public_sizes = [
+        size for row, size in joined if (row.get("context_public_items") or 0) > 0
     ]
     extraction = [row for row in rows if row.get("operation") == "memory.shadow_extraction"]
     completed = [row for row in extraction if row.get("status") == "completed"]
@@ -535,16 +628,18 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
             "turns": len(provenance),
             "oldest_at": timestamps[0] if timestamps else None,
             "newest_at": timestamps[-1] if timestamps else None,
+            "turns_with_size_row": len(joined),
             "structured_items": _quantiles(_numbers(provenance, "context_structured_items")),
-            "structured_memory_chars": _quantiles(
-                _numbers(provenance, "context_structured_memory_chars")
+            "structured_memory_chars_when_present": _quantiles(
+                _numbers(structured_chars_when_present, "context_structured_memory_chars")
             ),
             "structured_share_of_context_chars": _quantiles(shares),
+            "context_chars_total": _quantiles(_numbers(size_rows, "context_chars_total")),
             "turns_with_structured_memory": len(with_structured),
             "public_server_context_turns": len(with_public),
             "public_server_context_rate": _ratio(len(with_public), len(provenance)),
             "public_context_chars_when_present": _quantiles(
-                _numbers(with_public, "context_public_chars")
+                _numbers(public_sizes, "context_public_chars")
             ),
             "factual_recall_status": dict(Counter(
                 str(row.get("factual_recall_status") or "missing") for row in provenance
