@@ -64,9 +64,11 @@ PROACTIVE_COUNT_MAX = 2
 UNDATED_EVENT_EXPIRY = timedelta(days=30)
 
 _EVENT_AT = re.compile(r"\d{4}-\d{2}(?:-\d{2})?")
-# The time is optional: "매주 화요일 저녁" has a weekday but no clock time.
+# Several weekdays may share one rule ("주말마다" -> weekly:SAT,SUN), and the time is
+# optional: "매주 화요일 저녁" has a weekday but no clock time.
+_WEEKDAY = r"(?:MON|TUE|WED|THU|FRI|SAT|SUN)"
 _RECURRENCE = re.compile(
-    r"weekly:(?:MON|TUE|WED|THU|FRI|SAT|SUN)(?: (?:[01]\d|2[0-3]):[0-5]\d)?"
+    rf"weekly:{_WEEKDAY}(?:,{_WEEKDAY})*(?: (?:[01]\d|2[0-3]):[0-5]\d)?"
     r"|monthly:(?:0[1-9]|[12]\d|3[01])"
 )
 # Past or completed markers in the quoted user utterance (#449 §5 tense cues).
@@ -81,6 +83,7 @@ LINT_PAST_MARKER = "past_marker_ongoing"
 LINT_UNDATED_EVENT = "undated_event"
 LINT_INVALID_EVENT_AT = "invalid_event_at"
 LINT_INVALID_RECURRENCE = "invalid_recurrence"
+LINT_RECURRENCE_MISSING = "recurrence_missing"
 LINT_DEFAULTED = "annotation_defaulted"
 # Invalid legacy item fields replaced by the quietest value instead of dropping the item.
 LINT_DISCLOSURE_DEFAULTED = "disclosure_defaulted"
@@ -156,7 +159,12 @@ def valid_event_at(value: str) -> bool:
 
 
 def valid_recurrence(value: str) -> bool:
-    return bool(_RECURRENCE.fullmatch(value))
+    if not _RECURRENCE.fullmatch(value):
+        return False
+    if value.startswith("weekly:"):
+        days = value.removeprefix("weekly:").split(" ")[0].split(",")
+        return len(days) == len(set(days))
+    return True
 
 
 def clean_keywords(values) -> tuple[str, ...]:
@@ -354,6 +362,7 @@ __all__ = [
     "LINT_INVALID_RECURRENCE",
     "LINT_KIND_DEFAULTED",
     "LINT_PAST_MARKER",
+    "LINT_RECURRENCE_MISSING",
     "LINT_SOURCE_UNAVAILABLE",
     "LINT_UNDATED_EVENT",
     "PROACTIVE_COUNT_MAX",

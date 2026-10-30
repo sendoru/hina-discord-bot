@@ -24,6 +24,7 @@ from hina_bot.core.memory_annotations import (
     LINT_INVALID_RECURRENCE,
     LINT_KIND_DEFAULTED,
     LINT_PAST_MARKER,
+    LINT_RECURRENCE_MISSING,
     LINT_SOURCE_UNAVAILABLE,
     LINT_UNDATED_EVENT,
     SLOT_MAX_CHARS,
@@ -82,7 +83,8 @@ ANNOTATION_FIELD_RULES = """관계 기억이 아닌 항목에는 아래 필드�
 - event_at: planned·episodic의 절대 날짜(YYYY-MM-DD, 일자를 모르면 YYYY-MM). 각 turn의 at_local과
   weekday를 기준으로 "내일", "다음 주 화요일" 같은 상대 날짜를 계산하세요. 계산할 수 없으면 생략하세요.
 - recurrence: recurring일 때 "weekly:MON~SUN HH:MM", 시각을 모르면 "weekly:MON~SUN"(예: "매주 화요일
-  저녁" → "weekly:TUE"), 또는 "monthly:DD" 형식. 요일·날짜조차 정할 수 없을 때만 생략하세요.
+  저녁" → "weekly:TUE"), 요일이 여럿이면 쉼표로(예: "주말마다" → "weekly:SAT,SUN"), 또는 "monthly:DD"
+  형식. 요일·날짜조차 정할 수 없을 때만 생략하세요.
 - usage_mode: 주제가 아니라 '히나가 이 기억을 어떻게 써도 되는가'로 판단하세요.
   * directive: 히나의 행동에 대한 지속적인 요청·경계. directive_type을 반드시 함께 쓰세요.
     - boundary: 금지·회피 요청("회사 얘기 먼저 꺼내지 마", "그 별명으로 부르지 마"). 한 번의
@@ -497,21 +499,21 @@ def parse_annotation(raw: dict, kind: MemoryKind, cited: list[dict]) -> MemoryAn
         time_scope = TimeScope.UNKNOWN
         flags.append(LINT_DEFAULTED)
     stability = _enum_or_none(Stability, raw.get("stability"))
-    event_at = raw.get("event_at")
-    if event_at is not None:
-        event_at = str(event_at).strip()
-        if not valid_event_at(event_at):
-            event_at = None
-            flags.append(LINT_INVALID_EVENT_AT)
+    # An empty string means the model omitted the field, not that it is malformed.
+    event_at = str(raw.get("event_at") or "").strip() or None
+    if event_at is not None and not valid_event_at(event_at):
+        event_at = None
+        flags.append(LINT_INVALID_EVENT_AT)
     if time_scope in {TimeScope.PLANNED, TimeScope.EPISODIC} and not event_at:
         # P2 applies the default expiry (observation + 30 days) to these.
         flags.append(LINT_UNDATED_EVENT)
-    recurrence = raw.get("recurrence")
-    if recurrence is not None:
-        recurrence = str(recurrence).strip()
-        if not valid_recurrence(recurrence):
-            recurrence = None
-            flags.append(LINT_INVALID_RECURRENCE)
+    recurrence = str(raw.get("recurrence") or "").strip() or None
+    if recurrence is not None and not valid_recurrence(recurrence):
+        recurrence = None
+        flags.append(LINT_INVALID_RECURRENCE)
+    if time_scope == TimeScope.RECURRING and not recurrence:
+        # P2 cannot compute the next occurrence; surface it for review.
+        flags.append(LINT_RECURRENCE_MISSING)
     audience = _enum_or_none(Audience, raw.get("audience")) or Audience.OWNER
     importance = raw.get("importance")
     if isinstance(importance, bool) or not isinstance(importance, int) or not 1 <= importance <= 3:

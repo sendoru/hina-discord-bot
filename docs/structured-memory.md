@@ -82,9 +82,11 @@ The parser never trusts a judgment it cannot check (#449 principle 6):
   drops `ambient` to `contextual`; the time scope itself is left for review.
 - Missing judgments fall back to `contextual`/`unknown`; a `boundary` item falls back to a boundary
   directive so a boundary is never lost. Malformed `event_at`/`recurrence` values are dropped.
-  `recurrence` is `weekly:TUE 19:00`, `weekly:TUE` when no clock time was given, or `monthly:15`.
+  `recurrence` is `weekly:TUE 19:00`, `weekly:TUE` when no clock time was given, several weekdays
+  such as `weekly:SAT,SUN`, or `monthly:15`. Empty strings count as omitted.
 - `planned`/`episodic` items without a date record `undated_event`; P2 expires them 30 days after
-  `observed_at`.
+  `observed_at`. `recurring` items without a usable `recurrence` record `recurrence_missing`, since
+  P2 cannot compute their next occurrence.
 - `audience=server` is narrowed to `owner` for sensitive items and for anything not captured in a
   public guild channel.
 - An invalid legacy label no longer drops an otherwise valid item (#449 decision 15): an unknown
