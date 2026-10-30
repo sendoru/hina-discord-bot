@@ -119,7 +119,9 @@ model with the shared field rules.
   original observation, confirmation, use and proactive markers.
 - Admin annotations are never replaced; stale ones are counted as `stale_admin_review` for the
   dashboard queue. Owners whose memory writes are disabled are skipped and never sent to the model.
-- A failed batch writes nothing and is reported by error type; output never contains memory text.
+- A failed batch writes nothing and is reported by reason: an exception type, `empty_response`,
+  `invalid_json` or `no_items` (no row carried an integer `index`). A bare items array is accepted
+  as well as the requested `{"items": [...]}` object. Output never contains memory text.
 
 The `memory.shadow_extraction` completed event adds `annotated_items`, `reconfirmed_items`,
 `suppressed_relationship_items`, `directive_items`, `verified_directives` and `rejected_directives`.

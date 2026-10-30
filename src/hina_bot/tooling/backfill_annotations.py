@@ -58,10 +58,12 @@ BACKFILL_ANNOTATION_POLICY = """
   쪽(time_scope=unknown, usage_mode=contextual, audience=owner)으로 두세요.
 - kind는 참고용 호환 값입니다. 판단은 아래 필드 규칙을 따르세요.
 
-{"items":[{"index":0,"evidence":"","time_scope":"unknown","usage_mode":"contextual", ...}]}
-형식의 JSON 객체 하나만 출력하고, 입력의 모든 index에 대해 하나씩 답하세요.
-
-""" + ANNOTATION_FIELD_RULES
+""" + ANNOTATION_FIELD_RULES + """
+출력 형식: 최상위가 {"items":[...]}인 JSON 객체 하나만 출력하세요. 배열만 출력하지 말고, 설명·마크다운·
+코드펜스는 쓰지 마세요. 입력의 모든 index에 대해 항목을 하나씩 넣고, 각 항목에 index를 그대로 쓰세요.
+예: {"items":[{"index":0,"evidence":"","time_scope":"unknown","usage_mode":"contextual",
+"audience":"owner","importance":2,"explicit":false,"slot":"","keywords":["고양이"]}]}
+"""
 
 _TARGETS_SQL = """
 SELECT m.id,m.revision,a.annotator
@@ -161,16 +163,20 @@ def _payload_entry(index: int, item, sources: list[dict], zone: str) -> dict:
     return entry
 
 
-def _parse_rows(text: str | None) -> dict[int, dict]:
-    if not text:
-        return {}
+def _parse_rows(text: str) -> dict[int, dict] | None:
+    """Index the answered rows; None when the response is not usable JSON."""
+
     try:
         root = json.loads(_json_text(text))
     except json.JSONDecodeError:
-        return {}
-    rows = root.get("items") if isinstance(root, dict) else None
+        return None
+    # Some models answer with the bare items array despite the requested envelope.
+    # Only the envelope is relaxed; every row still goes through parse_annotation.
+    rows = root if isinstance(root, list) else root.get("items") if isinstance(root, dict) else None
+    if not isinstance(rows, list):
+        return None
     return {
-        row["index"]: row for row in rows or ()
+        row["index"]: row for row in rows
         if isinstance(row, dict) and isinstance(row.get("index"), int)
     }
 
@@ -235,9 +241,13 @@ async def _annotate_batch(store: Store, worker, items: list) -> tuple[int, int, 
         )
     except Exception as exc:  # noqa: BLE001 - one failed batch must not stop other owners
         return 0, 0, type(exc).__name__
-    rows = _parse_rows(response.output_text if response.status == "completed" else None)
+    if response.status != "completed" or not (response.output_text or "").strip():
+        return 0, 0, "empty_response"
+    rows = _parse_rows(response.output_text)
+    if rows is None:
+        return 0, 0, "invalid_json"
     if not rows:
-        return 0, 0, "invalid_response"
+        return 0, 0, "no_items"
 
     drafts = tuple(
         ExtractedMemoryItem(

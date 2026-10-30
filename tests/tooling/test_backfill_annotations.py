@@ -156,3 +156,43 @@ def test_dry_run_and_missing_confirmation_never_write(tmp_path, monkeypatch, cap
     assert "missing=3 stale=1 stale_admin_review=1" in output
     assert "고양이" not in output
     assert called == []
+
+
+@pytest.mark.asyncio
+async def test_fenced_bare_array_answer_is_accepted():
+    """A Gemini answer seen in operation: the items array without the envelope."""
+    store = Store.create(":memory:")
+    item_id = store.add_memory_item(DM, "갑자기 번쩍 들어 올리는 장난을 싫어함", kind="boundary",
+                                    disclosure="local", confidence=0.9)
+    rows = [{"index": 0, "evidence": "", "time_scope": "unknown", "usage_mode": "directive",
+             "directive_type": "boundary", "audience": "owner", "importance": 2,
+             "explicit": False, "slot": "", "keywords": ["장난", "번쩍"]}]
+    text = "```json\n" + json.dumps(rows, ensure_ascii=False, indent=2) + "\n```"
+    worker = Worker(NS(status="completed", output_text=text))
+
+    result = await backfill(store, worker, plan_backfill(store.db))
+
+    assert result == (1, 0, 0, {})
+    annotation = store.memory_annotation(item_id)
+    assert annotation.usage_mode == UsageMode.DIRECTIVE and not annotation.verified
+    assert annotation.keywords == ("장난", "번쩍")
+    store.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("response", "reason"), [
+    (NS(status="incomplete", output_text=""), "empty_response"),
+    (NS(status="completed", output_text="not json"), "invalid_json"),
+    (NS(status="completed", output_text='{"answer": []}'), "invalid_json"),
+    (NS(status="completed", output_text='{"items": [{"time_scope": "past"}]}'), "no_items"),
+])
+async def test_unusable_answers_are_reported_by_reason_and_write_nothing(response, reason):
+    store = Store.create(":memory:")
+    item_id = store.add_memory_item(DM, "고양이를 키움", kind="fact", disclosure="local",
+                                    confidence=0.9)
+
+    result = await backfill(store, Worker(response), plan_backfill(store.db))
+
+    assert result == (0, 0, 0, {reason: 1})
+    assert store.memory_annotation(item_id) is None
+    store.close()
