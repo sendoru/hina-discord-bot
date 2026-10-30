@@ -69,6 +69,11 @@ input turn carries `at_local` and `weekday` in `RUNTIME_TIMEZONE`, so a relative
 "다음 주 화요일" becomes an absolute `event_at`. The prompt walks through tense, stability, usage,
 audience and importance in that order; `kind` remains only for compatibility.
 
+The extractor, the directive verifier and the backfill accept their rows either in the requested
+envelope (`{"items": [...]}`, `{"results": [...]}`) or as a bare array, which some models return
+instead. Only the envelope is relaxed: every row is validated as before, and any other shape is
+still an invalid response.
+
 The parser never trusts a judgment it cannot check (#449 principle 6):
 
 - `evidence` must be a substring of a cited user utterance (NFKC, case and whitespace ignored).
@@ -120,8 +125,8 @@ model with the shared field rules.
 - Admin annotations are never replaced; stale ones are counted as `stale_admin_review` for the
   dashboard queue. Owners whose memory writes are disabled are skipped and never sent to the model.
 - A failed batch writes nothing and is reported by reason: an exception type, `empty_response`,
-  `invalid_json` or `no_items` (no row carried an integer `index`). A bare items array is accepted
-  as well as the requested `{"items": [...]}` object. Output never contains memory text.
+  `invalid_json` or `no_items` (no row carried an integer `index`). Output never contains memory
+  text.
 
 The `memory.shadow_extraction` completed event adds `annotated_items`, `reconfirmed_items`,
 `suppressed_relationship_items`, `directive_items`, `verified_directives` and `rejected_directives`.

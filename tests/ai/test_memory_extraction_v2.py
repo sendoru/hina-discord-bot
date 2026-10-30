@@ -426,3 +426,44 @@ def test_reconciliation_only_splits_on_the_relationship_boundary(new_kind, outco
 
     assert store.apply_memory_reconciliation_proposal(proposal) == outcome
     store.close()
+
+
+def test_parser_accepts_a_fenced_bare_items_array():
+    """Gemini sometimes drops the {"items": ...} envelope; items are still validated."""
+    rows = [
+        _item("사용자는 2026-11-03에 면접이 있다.", "101", evidence="다음 주 화요일에 면접",
+              time_scope="planned", event_at="2026-11-03", usage_mode="contextual"),
+        _item("근거 없는 항목", "999"),
+    ]
+    text = "```json\n" + json.dumps(rows, ensure_ascii=False, indent=2) + "\n```"
+
+    parsed = parse_shadow_extraction(text, allowed_source_ids={"101"},
+                                     source_turns={"101": CITED[0]})
+
+    assert parsed.valid and parsed.rejected_items == 1
+    (item,) = parsed.items
+    assert item.annotation.event_at == "2026-11-03"
+
+
+@pytest.mark.parametrize(("text", "valid"), [
+    ("[]", True),
+    ('{"items": []}', True),
+    ('{"memories": []}', False),
+    ('"items"', False),
+    ("[1, 2]", True),  # rows are still rejected one by one
+])
+def test_parser_relaxes_only_the_envelope(text, valid):
+    parsed = parse_shadow_extraction(text, allowed_source_ids={"101"})
+
+    assert parsed.valid is valid
+    assert parsed.items == ()
+
+
+def test_verifier_accepts_a_bare_results_array():
+    item = _directive("사용자는 전 직장 얘기를 원하지 않는다.", "boundary")
+
+    (updated,), verified, demoted = apply_directive_verification(
+        (item,), '```json\n[{"index": 0, "verdict": "keep"}]\n```'
+    )
+
+    assert updated.annotation.verified and (verified, demoted) == (1, 0)
