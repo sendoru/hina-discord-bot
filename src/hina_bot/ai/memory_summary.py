@@ -5,6 +5,7 @@ import json
 import logging
 import re
 
+from hina_bot.core.config import gemini_store_enabled
 from hina_bot.core.store import SharedSummaryConflict
 
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
@@ -131,7 +132,7 @@ class MemorySummaryMixin:
             "instructions": instructions,
             "input": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             "max_output_tokens": plan.max_output_tokens,
-            "store": False,
+            "store": gemini_store_enabled(self.settings, "memory"),
         }
         route_metadata = plan.telemetry()
         if self.settings.provider == "gemini":
@@ -245,6 +246,11 @@ class MemorySummaryMixin:
                 _record_shadow_extraction(self.usage, "invalid", **metrics)
                 log.warning("Structured memory shadow extraction returned invalid output")
                 return False
+            # A user's memory preference can change while the extraction API runs.
+            # Stop before the atomic commit; no disabled-period data should be stored.
+            if hasattr(store, "memory_mode") and store.memory_mode(scope) in {"off", "read_only"}:
+                _record_shadow_extraction(self.usage, "disabled", **metrics)
+                return False
             # The LLM request happened outside the write lock. Verify the original
             # cursor and exact turns under BEGIN IMMEDIATE; all memory writes and
             # cursor advancement commit together or roll back together.
@@ -312,6 +318,8 @@ class MemorySummaryMixin:
     async def extract_structured_memory(self, store, scope, *, min_turns: int | None = None):
         """Run one bounded structured-memory batch and report whether it committed."""
 
+        if hasattr(store, "memory_mode") and store.memory_mode(scope) in {"off", "read_only"}:
+            return False
         batch_size = self.settings.structured_memory_every
         required_turns = batch_size if min_turns is None else max(
             1, min(int(min_turns), batch_size)
@@ -325,6 +333,8 @@ class MemorySummaryMixin:
         )
 
     async def summarize_shared(self, store, scope):
+        if hasattr(store, "memory_mode") and store.memory_mode(scope) in {"off", "read_only"}:
+            return False
         previous, pending = store.shared_summary_snapshot(scope)
         if len(pending) < self.settings.summary_every:
             return False
@@ -359,6 +369,9 @@ class MemorySummaryMixin:
                 reason = "incomplete" if response.status != "completed" else "empty_output"
                 raise RuntimeError("Shared summary result is not complete")
             text = normalize_memory_output(response.output_text)
+            if hasattr(store, "memory_mode") and store.memory_mode(scope) in {"off", "read_only"}:
+                _record_shared_summary_result(self.usage, "deferred", "memory_writes_disabled", **metrics)
+                return False
             reason = "storage_failed"
             store.commit_shared_summary(scope, pending, expected_summary=previous, text=text)
         except SharedSummaryConflict as exc:

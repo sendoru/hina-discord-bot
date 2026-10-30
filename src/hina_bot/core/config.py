@@ -9,6 +9,21 @@ from dotenv import load_dotenv
 SUPPORTED_MODEL_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
 GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
 GEMINI_SEARCH_API_MODES = frozenset({"auto", "interactions", "generate_content"})
+GEMINI_STORE_DOMAINS = frozenset({
+    "answer", "memory", "classifier", "output_repair", "knowledge",
+})
+
+
+def gemini_store_enabled(settings, domain: str, *, provider: str | None = None) -> bool:
+    """Resolve an optional domain-specific storage override over the global switch."""
+    if domain not in GEMINI_STORE_DOMAINS:
+        raise ValueError(f"Unknown Gemini logging domain: {domain}")
+    if (provider or getattr(settings, "provider", None)) != "gemini":
+        return False
+    override = getattr(settings, f"gemini_store_{domain}_interactions", None)
+    if override is not None:
+        return override
+    return bool(getattr(settings, "gemini_store_interactions", False))
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
@@ -112,7 +127,11 @@ class Settings:
     gemini_fast_thinking_level: str = "minimal"
     gemini_smart_thinking_level: str = "medium"
     gemini_store_interactions: bool = False
-    gemini_store_classifier_interactions: bool = False
+    gemini_store_answer_interactions: bool | None = None
+    gemini_store_memory_interactions: bool | None = None
+    gemini_store_classifier_interactions: bool | None = None
+    gemini_store_output_repair_interactions: bool | None = None
+    gemini_store_knowledge_interactions: bool | None = None
     gemini_search_api_mode: str = "auto"
     db_path: str = "data/hina.sqlite3"
     prompt_path: str = ""
@@ -387,15 +406,19 @@ class Settings:
         gemini_store_interactions = os.getenv(
             "GEMINI_STORE_INTERACTIONS", "false"
         ).strip().lower()
-        gemini_store_classifier_interactions = os.getenv(
-            "GEMINI_STORE_CLASSIFIER_INTERACTIONS", "false"
-        ).strip().lower()
-        for variable, value in (
-            ("GEMINI_STORE_INTERACTIONS", gemini_store_interactions),
-            ("GEMINI_STORE_CLASSIFIER_INTERACTIONS", gemini_store_classifier_interactions),
-        ):
+        if gemini_store_interactions not in {"true", "false"}:
+            raise ValueError("GEMINI_STORE_INTERACTIONS는 true 또는 false여야 합니다.")
+        store_overrides = {}
+        for domain in ("ANSWER", "MEMORY", "CLASSIFIER", "OUTPUT_REPAIR", "KNOWLEDGE"):
+            variable = f"GEMINI_STORE_{domain}_INTERACTIONS"
+            raw = os.getenv(variable)
+            if raw is None:
+                store_overrides[domain] = None
+                continue
+            value = raw.strip().lower()
             if value not in {"true", "false"}:
                 raise ValueError(f"{variable}는 true 또는 false여야 합니다.")
+            store_overrides[domain] = value == "true"
 
         dm = os.getenv("DM_ALWAYS_REPLY", "false").lower()
         if dm not in {"true", "false"}:
@@ -464,9 +487,11 @@ class Settings:
             gemini_smart_thinking_level=gemini_smart_thinking_level,
             gemini_store_interactions=gemini_store_interactions == "true",
             gemini_search_api_mode=gemini_search_api_mode,
-            gemini_store_classifier_interactions=(
-                gemini_store_classifier_interactions == "true"
-            ),
+            gemini_store_answer_interactions=store_overrides["ANSWER"],
+            gemini_store_memory_interactions=store_overrides["MEMORY"],
+            gemini_store_classifier_interactions=store_overrides["CLASSIFIER"],
+            gemini_store_output_repair_interactions=store_overrides["OUTPUT_REPAIR"],
+            gemini_store_knowledge_interactions=store_overrides["KNOWLEDGE"],
             special_dm_user_id=int(os.environ["SPECIAL_DM_USER_ID"])
             if os.getenv("SPECIAL_DM_USER_ID", "").strip() else None,
             bot_admin_ids=frozenset(int(x.strip()) for x in

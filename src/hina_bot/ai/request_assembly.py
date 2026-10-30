@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import httpx
 
 from hina_bot.core.ambient_retrieval import AMBIENT_CONTEXT_POLICY
+from hina_bot.core.config import gemini_store_enabled
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_CONTEXT_PROVENANCE,
@@ -157,9 +158,9 @@ def _reference_instruction_parts(context: dict) -> tuple[str, ...]:
     return tuple(parts)
 
 
-CURRENT_SPEAKER_POLICY = load_prompt("current_speaker.md")
-
-CURRENT_INTERACTION_POLICY = load_prompt("current_interaction.md")
+DIALOGUE_CONTEXT_POLICY = load_prompt("dialogue_context.md")
+DM_SPACE_POLICY = load_prompt("conversation_dm.md")
+GUILD_SPACE_POLICY = load_prompt("conversation_guild.md")
 
 WORLD_CORE_POLICY = load_prompt("world_core.md")
 
@@ -612,6 +613,7 @@ class RequestAssembler(BaseLLM):
         )
 
         relationship_policy = self.relationship_instructions(scope)
+        space_policy = DM_SPACE_POLICY if scope.guild_id is None else GUILD_SPACE_POLICY
         runtime_policy = runtime_instruction(runtime)
         capability_policy = capability_status_instruction(
             web_search_enabled=self.settings.chat_web_search
@@ -632,12 +634,12 @@ class RequestAssembler(BaseLLM):
         instruction_parts = [
             POLICY,
             reference_policies[0],
-            CURRENT_SPEAKER_POLICY,
-            CURRENT_INTERACTION_POLICY,
+            DIALOGUE_CONTEXT_POLICY,
             WORLD_CORE_POLICY,
             self.character,
             *([compact_lore.text] if compact_lore and compact_lore.text else []),
             relationship_policy,
+            space_policy,
             capability_policy,
         ]
         v2_bundle = information_plan.retrieval_v2_bundle
@@ -659,7 +661,7 @@ class RequestAssembler(BaseLLM):
                 + (len(REACTION_CONTEXT_POLICY) if reaction_guides else 0)
             ),
             "instruction_identity_chars": (
-                len(CURRENT_SPEAKER_POLICY) + len(CURRENT_INTERACTION_POLICY)
+                len(DIALOGUE_CONTEXT_POLICY)
             ),
             "instruction_world_core_chars": len(WORLD_CORE_POLICY),
             "instruction_character_chars": len(self.character),
@@ -667,7 +669,7 @@ class RequestAssembler(BaseLLM):
             "instruction_relationship_chars": len(relationship_policy),
             "instruction_runtime_chars": len(runtime_policy) + len(capability_policy),
             "instruction_memory_chars": 0,
-            "instruction_context_policy_chars": 0,
+            "instruction_context_policy_chars": len(space_policy),
             "instruction_search_chars": 0,
             "instruction_world_chars": 0,
             "instruction_tools_chars": 0,
@@ -772,10 +774,7 @@ class RequestAssembler(BaseLLM):
             "instructions": instructions,
             "input": messages,
             "max_output_tokens": model_plan.max_output_tokens,
-            "store": (
-                self.settings.provider == "gemini"
-                and self.settings.gemini_store_interactions
-            ),
+            "store": gemini_store_enabled(self.settings, "answer"),
         }
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level

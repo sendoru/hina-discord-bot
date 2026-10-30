@@ -27,7 +27,7 @@ def slash_bot():
 def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot):
     memory = slash_bot.tree.get_command("memory")
     assert memory is not None
-    for name in ("mode", "purge", "show", "clear"):
+    for name in ("mode", "purge", "show", "remove", "preference", "status", "clear"):
         assert memory.get_command(name) is not None
     for removed in ("note", "note-clear", "server-show", "server-note", "server-clear"):
         assert memory.get_command(removed) is None
@@ -42,7 +42,7 @@ def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot)
     for name in ("mode", "clear"):
         assert chatlog.get_command(name) is not None
 
-    assert memory.get_command("status") is None
+    assert memory.get_command("status") is not None
     assert chatlog.get_command("status") is None
     state = slash_bot.tree.get_command("state")
     assert state is not None
@@ -85,7 +85,7 @@ def test_production_composition_registers_only_expected_commands_and_contexts():
             "memory", "note", "chatlog", "state", "emoji", "knowledge", "help", "config",
         }
         assert {c.name for c in bot.tree.get_command("memory").commands} == {
-            "mode", "purge", "show", "clear",
+            "mode", "purge", "show", "remove", "preference", "status", "clear",
         }
         assert {c.name for c in bot.tree.get_command("chatlog").commands} == {"mode", "clear"}
         assert {c.name for c in bot.tree.get_command("state").commands} == {"show"}
@@ -230,12 +230,13 @@ async def test_memory_clear_preserves_manual_note_and_chatlog(slash_bot):
     slash_bot.store.add(scope, 1, "remember", "reply")
     slash_bot.store.set_note(scope.user_note, "note")
     slash_bot.recent.add(scope, 2, "user", "recent")
-    response = NS(send_message=AsyncMock())
+    response = NS(send_message=AsyncMock(), defer=AsyncMock())
+    followup = NS(send=AsyncMock())
     interaction = NS(
         guild_id=1,
         channel_id=10,
         user=NS(id=200, guild_permissions=NS(manage_guild=False)),
-        response=response,
+        response=response, followup=followup,
     )
 
     await clear.callback(interaction, True)
@@ -243,6 +244,6 @@ async def test_memory_clear_preserves_manual_note_and_chatlog(slash_bot):
     assert slash_bot.store.history(scope) == []
     assert slash_bot.store.note(scope.user_note) == "note"
     assert len(slash_bot.recent.context(scope, 999)) == 1
-    text = response.send_message.call_args.args[0]
+    text = followup.send.call_args.args[0]
     assert "/note" in text
     assert "최근 채널 대화 문맥" in text

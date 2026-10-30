@@ -552,7 +552,7 @@ class HinaClient(discord.Client):
 
         def persist_failed_turn(status: str, failed_stage: str, error_fields: dict, reply: str):
             nonlocal raw_turn_persistence, raw_turn_persistence_reason
-            if not save_memory:
+            if not save_memory or not MemoryMode(self.store.memory_mode(scope)).writes:
                 raw_turn_persistence = "skipped"
                 raw_turn_persistence_reason = "memory_writes_disabled"
                 return
@@ -833,6 +833,10 @@ class HinaClient(discord.Client):
                     # Reacquire the channel lock before committing the completed turn. Later turns
                     # may already be generating from their own arrival-time context snapshots.
                     # Expensive persistent-memory updates run after the channel lock is released.
+                    # Personal preference may change while the model is responding.
+                    # Do not persist a stale write authorization.
+                    if save_memory and not MemoryMode(self.store.memory_mode(scope)).writes:
+                        save_memory = False
                     if save_memory:
                         stage = "memory_persist"
                         self.store.record_completed_turn(
@@ -858,6 +862,9 @@ class HinaClient(discord.Client):
                             ),
                             ("shared", self.llm.summarize_shared, "memory.summary_failed"),
                         ):
+                            # The owner may disable writes while this turn waits on the lock.
+                            if not MemoryMode(self.store.memory_mode(scope)).writes:
+                                break
                             try:
                                 await update(self.store, scope)
                             except Exception as exc:  # noqa: BLE001 - isolate memory failures; redact logs

@@ -116,6 +116,23 @@ async def test_active_uses_fast_model_no_original_context_or_images(original, re
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("provider", "enabled", "expected"), [
+    ("gemini", False, False),
+    ("gemini", True, True),
+    ("openai", True, False),
+])
+async def test_repair_respects_global_gemini_store(provider, enabled, expected):
+    repair, _, usage = make_repair(provider=provider)
+    repair.settings = Settings(
+        discord_token="token", provider=provider, output_repair_mode="active",
+        gemini_store_interactions=enabled, fast_model="fast-llm",
+    )
+    assert await repair.apply("좋아 [1]") == "좋아"
+    assert usage.calls[0][2]["store"] is expected
+    await repair.close()
+
+
+@pytest.mark.asyncio
 async def test_off_or_healthy_output_skips_second_request():
     repair, _, usage = make_repair(mode="off")
     assert await repair.apply("안녕 [1]") == "안녕 [1]"
