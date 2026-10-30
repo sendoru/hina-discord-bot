@@ -98,6 +98,26 @@ is refused as `kind_mismatch` (#449 decision 15). Relationship observations are 
 same channel and visibility, created within 14 days of the batch, already shows every axis at least
 as high (#449 decision 18).
 
+### Annotation backfill
+
+`hina-backfill-annotations` annotates active non-relationship memories that have no annotation
+and refreshes automated annotations made stale by a later item edit. Run it with the bot stopped;
+`--dry-run` prints only counts. With `--yes --offline-confirmed` it backs up the database, then sends
+each owner's items in batches (`--batch-size`, default 10; `--limit` caps the total) to the memory
+model with the shared field rules.
+
+- The model sees the stored content, its kind, the stored time (local time and weekday), and the
+  owner's own source utterances when conversation retention still has them. The same evidence,
+  tense and audience checks as extraction apply, so items without surviving sources cannot become
+  `ambient`.
+- Directives with sources get the verification request; without sources they stay unverified
+  directives.
+- Rows are written as `annotator=backfill` for the item's current revision. A stale row keeps its
+  original observation, confirmation, use and proactive markers.
+- Admin annotations are never replaced; stale ones are counted as `stale_admin_review` for the
+  dashboard queue. Owners whose memory writes are disabled are skipped and never sent to the model.
+- A failed batch writes nothing and is reported by error type; output never contains memory text.
+
 The `memory.shadow_extraction` completed event adds `annotated_items`, `reconfirmed_items`,
 `suppressed_relationship_items`, `directive_items`, `verified_directives` and `rejected_directives`.
 

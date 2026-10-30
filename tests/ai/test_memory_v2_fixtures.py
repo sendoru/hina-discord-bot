@@ -1,9 +1,9 @@
-"""Keep memory v2 fixtures (#449, #450) well-formed until their runners land.
+"""Keep memory v2 fixtures (#449, #450) well-formed.
 
-The selection cases become executable in P2 and the extraction cases get a live
-runner in P1 (personal) and P4 (server). Until then these tests only guard the
-data contract: enum values, cross references and the absence of real identifiers.
-The enum sets below mirror #449 §4 and should move to the real schema in P1.
+The selection cases become executable in P2. Personal extraction cases run live via
+hina-memory-extraction-eval (#451); server cases get a runner in P4. These tests
+guard the data contract: enum values, cross references and the absence of real
+identifiers. Stored-field enums come from the schema; the rest mirror #449 §4.
 """
 
 import json
@@ -13,18 +13,27 @@ from pathlib import Path
 
 import pytest
 
+from hina_bot.core.memory_annotations import (
+    Audience,
+    DirectiveType,
+    Stability,
+    TimeScope,
+    UsageMode,
+)
+from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, MemoryStatus
+
 ROOT = Path(__file__).resolve().parents[2]
 SELECTION_PATH = ROOT / "tests" / "fixtures" / "memory_v2" / "selection_cases.json"
 EXTRACTION_PATH = ROOT / "evals" / "memory_extraction_cases.jsonl"
 
-KINDS = {"fact", "event", "preference", "relationship", "boundary", "task"}
-DISCLOSURES = {"local", "implicit", "reference_gated", "global"}
-STATUSES = {"active", "superseded", "retracted"}
-TIME_SCOPES = {"ongoing", "past", "planned", "episodic", "recurring", "unknown"}
-STABILITIES = {"permanent", "long", "medium", "short"}
-USAGE_MODES = {"directive", "ambient", "contextual", "sensitive"}
-DIRECTIVE_TYPES = {"boundary", "style"}
-AUDIENCES = {"owner", "server"}
+KINDS = {value.value for value in MemoryKind}
+DISCLOSURES = {value.value for value in MemoryDisclosure}
+STATUSES = {value.value for value in MemoryStatus}
+TIME_SCOPES = {value.value for value in TimeScope}
+STABILITIES = {value.value for value in Stability}
+USAGE_MODES = {value.value for value in UsageMode}
+DIRECTIVE_TYPES = {value.value for value in DirectiveType}
+AUDIENCES = {value.value for value in Audience}
 TRUSTS = {"admin", "corroborated", "observed", "single"}
 RELATIONS = {"duplicate", "corrects", "conflicts"}
 AXES = {
