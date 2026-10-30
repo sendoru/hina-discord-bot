@@ -102,6 +102,18 @@ def decode_memory_context(value: str) -> list[dict]:
     return [dict(item) for item in parsed if isinstance(item, dict)]
 
 
+def history_lookup_provenance(row) -> dict:
+    """Read content-free history provenance from an existing turn, including after restart."""
+    try:
+        provenance = json.loads(row['context_provenance'] or '{}')
+    except (KeyError, IndexError, TypeError, ValueError):
+        return {}
+    if not isinstance(provenance, dict):
+        return {}
+    history = provenance.get('history_lookup')
+    return history if isinstance(history, dict) else {}
+
+
 __all__ = [
     "CURRENT_CONTEXT_PROVENANCE",
     "CURRENT_EGRESS_DECISION",

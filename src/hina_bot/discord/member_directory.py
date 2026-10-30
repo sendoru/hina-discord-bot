@@ -75,14 +75,17 @@ def current_channel_members(message, bot_id: int) -> ChannelMemberDirectory:
     )
 
 
-def channel_member_tool_registry(message, bot_id: int) -> LocalToolRegistry | None:
+def channel_member_tool_registry(
+    message, bot_id: int, *, registry: LocalToolRegistry | None = None,
+) -> LocalToolRegistry | None:
     if (
         getattr(message, "guild", None) is None
         or not isinstance(getattr(message, "channel", None), discord.TextChannel)
     ):
         return None
 
-    registry = LocalToolRegistry()
+    if registry is None:
+        registry = LocalToolRegistry()
 
     def get_current_channel_members(_arguments):
         directory = current_channel_members(message, bot_id)

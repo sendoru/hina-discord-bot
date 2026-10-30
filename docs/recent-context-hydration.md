@@ -61,3 +61,11 @@ This is the accepted #133 boundary. If production logs later show that losing as
 causal provenance across a restart causes recurring user-visible failures, that concrete failure
 should be tracked separately before adding persistent ephemeral metadata, multi-chunk mappings, or
 other restart-only infrastructure.
+
+## Explicit history lookup provenance (#430)
+
+The on-demand [history tool](chat-history-tool.md) adds a narrow exception: existing turn
+`context_provenance` JSON retains content-free lookup source IDs and delivered assistant message
+IDs. Hydration uses retained IDs to restore `reference_derived` on answers based on history lookup.
+It does not restore the old source text or infer an assistant addressee. This metadata follows the
+existing turn retention policy; pruning does not create a new persistent history store.

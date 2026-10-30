@@ -12,7 +12,7 @@ import math
 import re
 from dataclasses import dataclass, field, replace
 
-from hina_bot.core.memory_context import decode_memory_context
+from hina_bot.core.memory_context import decode_memory_context, history_lookup_provenance
 from hina_bot.core.memory_items import (
     MEMORY_CONTENT_MAX_CHARS,
     MemoryDisclosure,
@@ -213,7 +213,8 @@ def build_shadow_turns(
             "at": _row_value(turn, "created_at"),
             "user": _row_value(turn, "content"),
             "public_at_capture": public_at_capture,
-            **({"hina": _row_value(turn, "reply")} if include_replies else {}),
+            **({"hina": _row_value(turn, "reply")}
+               if include_replies and not history_lookup_provenance(turn) else {}),
             **({"context": context} if context else {}),
         }
         turns.append(item)
@@ -233,7 +234,7 @@ def build_shadow_evidence_context(rows) -> tuple[list[dict], int]:
         item = {
             "at": _row_value(turn, "created_at"),
             "user": _row_value(turn, "content"),
-            "hina": _row_value(turn, "reply"),
+            "hina": "" if history_lookup_provenance(turn) else _row_value(turn, "reply"),
             **({"context": context} if context else {}),
         }
         evidence.append(item)

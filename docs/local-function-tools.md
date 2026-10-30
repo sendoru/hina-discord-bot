@@ -61,3 +61,7 @@ The loop is bounded to four local-tool rounds by default. Exceeding the limit ra
 function output으로만 provider에 전달됩니다.
 
 도구 자체의 Discord 접근·privacy 범위는 [채널 멤버 도구](channel-member-tool.md)를 참고하세요.
+
+같은 요청 registry에는 현재 채널 또는 1:1 DM의 과거 원문을 필요한 때에만 조회하는
+`get_chat_history`도 등록됩니다. 자동 문맥과 reset 이전 명시 조회의 구분, 조회 예산·권한·출처 처리는
+[과거 대화 조회 도구](chat-history-tool.md)를 참고하세요.

@@ -301,6 +301,33 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.llm.extract_structured_memory.assert_awaited_once()
         self.llm.summarize_shared.assert_awaited_once()
 
+    async def test_delivered_history_answer_persists_split_reply_ids_and_safe_provenance(self):
+        from hina_bot.ai.memory_extraction import build_shadow_turns
+        from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
+
+        async def answer(*args, **kwargs):
+            CURRENT_CONTEXT_PROVENANCE.set({
+                'history_lookup': {'message_ids': ['50'], 'sources': ['discord'],
+                                   'contains_before_reset': True},
+            })
+            return '과거를 설명한 답변' + 'x' * 2000
+
+        token = CURRENT_CONTEXT_PROVENANCE.set(None)
+        self.llm.answer.side_effect = answer
+        self.channel.send.side_effect = [NS(id=1000), NS(id=1001)]
+        try:
+            await self.bot.on_message(self.message('히나야 과거 기록을 확인해 줘'))
+            turns = self.store.history(Scope(1, 10, 100))
+            self.assertEqual(len(turns), 1)
+            snapshot = json.loads(turns[0]['context_provenance'])
+            self.assertEqual(snapshot['assistant_message_ids'], ['1000', '1001'])
+            self.assertEqual(snapshot['history_lookup']['message_ids'], ['50'])
+            payload, _, _, _ = build_shadow_turns(turns, include_replies=True)
+            self.assertNotIn('hina', payload[0])
+            self.assertEqual([row['message_id'] for row in turns], ['1'])
+        finally:
+            CURRENT_CONTEXT_PROVENANCE.reset(token)
+
     async def test_public_projection_failure_rolls_back_success_without_resending_reply(self):
         self.store.db.execute("""CREATE TEMP TRIGGER reject_shared BEFORE INSERT ON shared_calls
             BEGIN SELECT RAISE(ABORT, 'private-storage-error'); END""")

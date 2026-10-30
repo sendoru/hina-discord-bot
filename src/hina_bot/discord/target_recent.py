@@ -109,6 +109,9 @@ class TargetAwareRecentMessages(RecentMessages):
                 if row["message_id"] == message_id:
                     row["reply_sources"] = [dict(source) for source in REPLY_CONTEXT.get()][:1]
                     provenance = CURRENT_TURN_PROVENANCE.get()
+                    if provenance and provenance.get('history_lookup'):
+                        row['provenance_class'] = 'reference_derived'
+                        row['history_lookup'] = dict(provenance['history_lookup'])
                     if provenance:
                         reference_sources = _reference_sources(provenance, scope.user_id)
                         if inherited_turn is not None:

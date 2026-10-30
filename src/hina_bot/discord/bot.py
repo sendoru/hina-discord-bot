@@ -12,6 +12,7 @@ import discord
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
+from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
 from hina_bot.core.observability import (
     CURRENT_TURN_ID,
     EventLogger,
@@ -782,11 +783,16 @@ class HinaClient(discord.Client):
                                     parts[0],
                                     allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
                                 )
+                                delivery_ids = [str(sent.id)]
                                 for part in parts[1:]:
-                                    await message.channel.send(
+                                    extra_sent = await message.channel.send(
                                         part,
                                         allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
                                     )
+                                    delivery_ids.append(str(extra_sent.id))
+                                provenance = dict(CURRENT_CONTEXT_PROVENANCE.get() or {})
+                                provenance['assistant_message_ids'] = delivery_ids
+                                CURRENT_CONTEXT_PROVENANCE.set(provenance)
                                 reply_delivered = True
                                 timings["delivery_ms"] = round(
                                     (time.perf_counter() - delivery_started) * 1000
