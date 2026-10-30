@@ -21,9 +21,11 @@ from hina_bot.core.memory_annotations import (
     LINT_DEFAULTED,
     LINT_DIRECTIVE_REJECTED,
     LINT_DIRECTIVE_UNVERIFIED,
+    LINT_DISCLOSURE_DEFAULTED,
     LINT_EVIDENCE_MISMATCH,
     LINT_INVALID_EVENT_AT,
     LINT_INVALID_RECURRENCE,
+    LINT_KIND_DEFAULTED,
     LINT_PAST_MARKER,
     LINT_UNDATED_EVENT,
     Annotator,
@@ -485,3 +487,49 @@ def test_recurrence_time_is_optional(value, valid):
 
     assert (annotation.recurrence == value) is valid
     assert (LINT_INVALID_RECURRENCE in annotation.lint_flags) is not valid
+
+
+def test_invalid_disclosure_copied_from_usage_is_kept_as_local():
+    """Live eval: "disclosure":"sensitive" used to drop the whole (valid) item."""
+    raw = {"items": [_item(
+        "보리가 피부 알레르기가 있어 요즘 동물병원에 다님", "101", disclosure="sensitive",
+        evidence="우리 보리가 피부 알레르기", time_scope="ongoing", usage_mode="ambient",
+    )]}
+    turns = {"101": {"user": "우리 보리가 피부 알레르기가 있어서 요즘 동물병원 다니는 중이야", "at": AT}}
+
+    parsed = parse_shadow_extraction(json.dumps(raw, ensure_ascii=False),
+                                     allowed_source_ids={"101"}, source_turns=turns)
+
+    (item,) = parsed.items
+    assert parsed.rejected_items == 0
+    assert item.disclosure == MemoryDisclosure.LOCAL
+    assert LINT_DISCLOSURE_DEFAULTED in item.annotation.lint_flags
+
+
+@pytest.mark.parametrize(("row", "accepted"), [
+    ({"kind": "directive"}, True),  # legacy label only: kept as fact
+    ({"kind": None}, True),
+    ({"kind": "mood", "relationship_evidence": {"comfort": 2}}, False),  # maybe relationship
+])
+def test_unknown_kind_falls_back_unless_it_may_be_a_relationship(row, accepted):
+    raw = {"items": [{**_item("회사 얘기를 먼저 꺼내지 않기", "101"), **row}]}
+
+    parsed = parse_shadow_extraction(json.dumps(raw, ensure_ascii=False),
+                                     allowed_source_ids={"101"}, source_turns={"101": CITED[0]})
+
+    assert (len(parsed.items), parsed.rejected_items) == ((1, 0) if accepted else (0, 1))
+    if accepted:
+        assert parsed.items[0].kind == MemoryKind.FACT
+        assert LINT_KIND_DEFAULTED in parsed.items[0].annotation.lint_flags
+
+
+def test_relationship_with_invalid_disclosure_is_kept_without_annotation():
+    raw = {"items": [_item("사용자는 히나와 편하게 대화한다.", "101", kind="relationship",
+                           disclosure="sensitive", relationship_evidence={"comfort": 2})]}
+
+    parsed = parse_shadow_extraction(json.dumps(raw, ensure_ascii=False),
+                                     allowed_source_ids={"101"}, source_turns={"101": CITED[0]})
+
+    (item,) = parsed.items
+    assert item.kind == MemoryKind.RELATIONSHIP and item.disclosure == MemoryDisclosure.LOCAL
+    assert item.annotation is None

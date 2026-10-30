@@ -87,6 +87,10 @@ The parser never trusts a judgment it cannot check (#449 principle 6):
   `observed_at`.
 - `audience=server` is narrowed to `owner` for sensitive items and for anything not captured in a
   public guild channel.
+- An invalid legacy label no longer drops an otherwise valid item (#449 decision 15): an unknown
+  `disclosure` (for example `sensitive` copied from `usage_mode`) becomes the narrowest `local`
+  (`disclosure_defaulted`), and an unknown `kind` becomes `fact` (`kind_defaulted`). An unknown kind
+  on a row with relationship evidence is still rejected, since it may be a relationship.
 
 Directive items get one more small request (`verify_memory_directives`) before the commit. The
 verifier sees only the directive items and the user utterances they cite: `keep` marks the item
