@@ -30,8 +30,10 @@
   - `classifier_codes`: 대화 성격 힌트(예: `debugging`)
   - `authorized_reference_gated`: 이번 턴 T4가 승인한 항목
   - `member_opt_out`, `departed_members`: 공유 옵트아웃, 서버를 떠난 멤버
+  - `reader_denied_channels`: 현재 화자가 지금 볼 수 없는 채널(원 채널 열람 권한 실시간 확인)
 - **`settings`**: `MEMORY_SESSION_FOLLOWUP`(`off|dm|all`), `external_context_policy`
-  (`full|bot_interactions_only`). 기본값은 운영 기본값과 같은 `dm`, `bot_interactions_only`입니다.
+  (`full|bot_interactions_only`). 기본값은 코드 기본값과 같은 `dm`, `bot_interactions_only`입니다.
+- **`server_note`**: 관리자 서버 메모 본문(선택). 서버 기억 S0 계층 판정에 씁니다.
 
 ## 기대값(`expect`)
 
@@ -44,12 +46,16 @@
 | `render_status` | 렌더링되는 유효 상태(`current`, `unverified`, `upcoming`, `just_passed`, `past` 등) |
 | `recall` | `recall_memory(query, scope)` 도구 결과에 대한 include/exclude/render_status |
 | `relationship_profile_axes` | 수치 관계 프로필에 나타나야 하는 축 |
+| `server_note` | 사례의 `server_note`가 응답 컨텍스트에 들어가는지(`included`/`excluded`) |
 
 `include`에 없다고 해서 금지라는 뜻은 아닙니다. 금지는 `exclude`로만 표현합니다.
 
-## 미정 사항
+## 외부 전송 정책 (결정 17)
 
-- **기본 정책(`bot_interactions_only`)에서 커뮤니티 기억을 어디까지 허용할지는 아직 정해지지
-  않았습니다.** 현재 이 정책은 다른 사용자의 장기 기억과 `server_note`를 차단합니다.
-- 그래서 커뮤니티 기억 사례는 `full`을 명시해 두었습니다. 결정이 나면 이 정책에서의 사례를
-  추가합니다.
+- **기본 정책 사례:** 서버 기억과 멤버 공개 프로필 사례는 기본 정책인 `bot_interactions_only`에서
+  실행합니다.
+  - #449 결정 17에 따라 이 정책에서도 히나 호출에서 나온 서버 범위 장기 기억과 `server_note`를
+    허용합니다.
+  - `full`에서도 결과가 같아야 하며, `member_profile_same_under_full_policy`가 이를 확인합니다.
+- **원 채널 열람 권한:** 정책과 무관하게, 현재 화자가 원 채널을 지금 볼 수 없으면 해당 서버 범위
+  기억은 들어가지 않습니다(`reader_denied_channels`).

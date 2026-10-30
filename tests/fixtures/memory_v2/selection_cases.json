@@ -15,7 +15,8 @@
       "classifier_codes": [],
       "authorized_reference_gated": [],
       "member_opt_out": [],
-      "departed_members": []
+      "departed_members": [],
+      "reader_denied_channels": []
     },
     "settings": {
       "MEMORY_SESSION_FOLLOWUP": "dm",
@@ -508,7 +509,6 @@
       "id": "member_profile_requires_relevance",
       "covers": "§10 선택: B와 대화 중 무관한 멤버 A의 공개 프로필 → X",
       "scope": "g1:c1:public",
-      "settings": {"external_context_policy": "full"},
       "message": "히나야 고양이 키우는 거 어때?",
       "memories": [
         {"ref": "u2_cats", "owner": "u2", "origin": "g1:c1:public", "content": "고양이 두 마리를 키움",
@@ -520,7 +520,6 @@
       "id": "member_profile_included_when_mentioned",
       "covers": "§10 선택: A 멘션 시 O",
       "scope": "g1:c1:public",
-      "settings": {"external_context_policy": "full"},
       "message": "@u2 도 고양이 키우지?",
       "context": {"mentions": ["u2"]},
       "memories": [
@@ -532,23 +531,22 @@
       "expect": {"include": ["u2_cats"], "exclude": ["u2_private"], "placement": {"u2_cats": "members"}}
     },
     {
-      "id": "member_profile_blocked_by_strict_egress",
-      "covers": "§10 선택: strict egress면 X",
+      "id": "member_profile_same_under_full_policy",
+      "covers": "결정 17: full 정책에서도 bot_interactions_only와 같은 선택 규칙",
       "scope": "g1:c1:public",
       "message": "@u2 도 고양이 키우지?",
-      "settings": {"external_context_policy": "bot_interactions_only"},
+      "settings": {"external_context_policy": "full"},
       "context": {"mentions": ["u2"]},
       "memories": [
         {"ref": "u2_cats", "owner": "u2", "origin": "g1:c1:public", "content": "고양이 두 마리를 키움",
          "annotation": {"audience": "server", "keywords": ["고양이"]}}
       ],
-      "expect": {"exclude": ["u2_cats"]}
+      "expect": {"include": ["u2_cats"], "placement": {"u2_cats": "members"}}
     },
     {
       "id": "member_profile_blocked_by_opt_out",
       "covers": "§8.5 조건 3: 공유 옵트아웃",
       "scope": "g1:c1:public",
-      "settings": {"external_context_policy": "full"},
       "message": "@u2 도 고양이 키우지?",
       "context": {"mentions": ["u2"], "member_opt_out": ["u2"]},
       "memories": [
@@ -561,7 +559,6 @@
       "id": "member_profile_hidden_after_member_left",
       "covers": "§8.5 조건 4·§8.6: 탈퇴 멤버",
       "scope": "g1:c1:public",
-      "settings": {"external_context_policy": "full"},
       "message": "@u2 도 고양이 키우지?",
       "context": {"mentions": ["u2"], "departed_members": ["u2"]},
       "memories": [
@@ -574,7 +571,6 @@
       "id": "server_single_trust_not_proactive",
       "covers": "§10 선택: trust=single 서버 기억 → 선제 사용 X",
       "scope": "g1:c1:public",
-      "settings": {"external_context_policy": "full"},
       "message": "히나야 안녕",
       "server_memories": [
         {"ref": "greeting_single", "content": "이 서버에서는 '감자'가 인사말로 쓰임",
@@ -590,7 +586,6 @@
       "id": "server_admin_directive_in_s0",
       "covers": "§8.5 S0: trust=admin directive",
       "scope": "g1:c1:public",
-      "settings": {"external_context_policy": "full"},
       "message": "히나야 이번 업데이트 스토리 봤어?",
       "server_memories": [
         {"ref": "spoiler_rule", "content": "이 서버에서는 신규 스토리 스포일러를 먼저 말하지 않기",
@@ -603,7 +598,6 @@
       "id": "private_channel_server_memory_stays_in_channel",
       "covers": "§9: 비공개 채널 출처 커뮤니티 기억은 같은 채널만",
       "scope": "g1:c1:public",
-      "settings": {"external_context_policy": "full"},
       "message": "히나야 이번 주 모임 언제였지?",
       "server_memories": [
         {"ref": "private_meetup", "space": "channel:c2", "origin_channel": "c2",
@@ -612,6 +606,44 @@
          "usage_mode": "ambient", "keywords": ["모임", "운영진"]}
       ],
       "expect": {"exclude": ["private_meetup"]}
+    },
+    {
+      "id": "member_profile_requires_origin_channel_access",
+      "covers": "§8.5 조건 5: 읽는 사람이 원 채널을 지금 볼 수 없으면 X",
+      "scope": "g1:c1:public",
+      "message": "@u2 도 고양이 키우지?",
+      "context": {"mentions": ["u2"], "reader_denied_channels": ["c4"]},
+      "memories": [
+        {"ref": "u2_cats", "owner": "u2", "origin": "g1:c4:public", "content": "고양이 두 마리를 키움",
+         "annotation": {"audience": "server", "keywords": ["고양이"]}}
+      ],
+      "expect": {"exclude": ["u2_cats"]}
+    },
+    {
+      "id": "community_memory_requires_origin_channel_access",
+      "covers": "§8.5 조건 5: 커뮤니티 기억도 원 채널 열람 권한을 실시간 확인",
+      "scope": "g1:c1:public",
+      "message": "히나야 안녕",
+      "context": {"reader_denied_channels": ["c4"]},
+      "server_memories": [
+        {"ref": "nickname", "origin_channel": "c4",
+         "content": "이 서버에서는 히나를 '위원장'이라고 부르는 경우가 많음",
+         "trust": "corroborated", "contributors": ["u2", "u3"], "usage_mode": "ambient",
+         "keywords": ["위원장", "호칭"]}
+      ],
+      "expect": {"exclude": ["nickname"]}
+    },
+    {
+      "id": "server_note_included_under_bot_interactions_only",
+      "covers": "결정 17: bot_interactions_only에서도 server_note는 S0로 사용",
+      "scope": "g1:c1:public",
+      "message": "히나야 이번 업데이트 스토리 봤어?",
+      "server_note": "신규 스토리 스포일러는 공지 후 일주일 동안 먼저 말하지 않기",
+      "server_memories": [
+        {"ref": "spoiler_rule", "content": "이 서버에서는 신규 스토리 스포일러를 먼저 말하지 않기",
+         "trust": "admin", "usage_mode": "directive", "keywords": ["스포일러", "스토리"]}
+      ],
+      "expect": {"include": ["spoiler_rule"], "server_note": "included", "tier": {"spoiler_rule": "S0"}}
     }
   ]
 }

@@ -43,6 +43,7 @@ FOLLOWUP_MODES = {"off", "dm", "all"}
 
 SPACE = re.compile(r"dm|g\d+:c\d+:(?:public|private)")
 USER = re.compile(r"u\d+")
+CHANNEL = re.compile(r"c\d+")
 SERVER_SPACE = re.compile(r"guild|channel:c\d+")
 RECURRENCE = re.compile(r"weekly:(?:MON|TUE|WED|THU|FRI|SAT|SUN) \d{2}:\d{2}")
 EVENT_AT = re.compile(r"\d{4}-\d{2}(?:-\d{2})?")
@@ -144,9 +145,10 @@ def _check_server_memory(memory: dict, defaults: dict) -> None:
 def _check_expect(expect: dict, refs: set[str]) -> None:
     allowed = {
         "include", "exclude", "exactly_one_of", "placement", "tier", "render_status",
-        "recall", "relationship_profile_axes",
+        "recall", "relationship_profile_axes", "server_note",
     }
     assert expect and set(expect) <= allowed
+    assert expect.get("server_note", "included") in {"included", "excluded"}
     include = set(expect.get("include", ()))
     exclude = set(expect.get("exclude", ()))
     assert include <= refs and exclude <= refs
@@ -178,9 +180,11 @@ def test_selection_fixture_contract():
     for case in fixture["cases"]:
         assert set(case) <= {
             "id", "covers", "note", "message", "scope", "speaker", "context", "settings",
-            "memories", "server_memories", "expect",
+            "server_note", "memories", "server_memories", "expect",
         }, case["id"]
         assert case["covers"].strip() and case["message"].strip()
+        if "server_note" in case["expect"]:
+            assert case.get("server_note", "").strip(), case["id"]
         assert SPACE.fullmatch(case.get("scope", defaults["scope"]))
         assert USER.fullmatch(case.get("speaker", defaults["speaker"]))
         context = {**defaults["context"], **case.get("context", {})}
@@ -201,6 +205,7 @@ def test_selection_fixture_contract():
         users = context["mentions"] + context["thread_participants"]
         users += context["member_opt_out"] + context["departed_members"]
         assert all(USER.fullmatch(user) for user in users)
+        assert all(CHANNEL.fullmatch(value) for value in context["reader_denied_channels"])
         assert set(context["authorized_reference_gated"]) <= set(refs)
         _check_expect(case["expect"], set(refs))
 
