@@ -34,7 +34,10 @@
   - `member_opt_out`, `departed_members`: 공유 옵트아웃, 서버를 떠난 멤버
   - `reader_denied_channels`: 현재 화자가 지금 볼 수 없는 채널(원 채널 열람 권한 실시간 확인)
 - **`settings`**: `MEMORY_SESSION_FOLLOWUP`(`off|dm|all`), `external_context_policy`
-  (`full|bot_interactions_only`). 기본값은 코드 기본값과 같은 `dm`, `bot_interactions_only`입니다.
+  (`full|bot_interactions_only`), `SERVER_MEMORY_READ`(`on|off`). 기본값은 `dm`,
+  `bot_interactions_only`, `on`입니다. `external_context_policy`는 현재 코드 기본값과 같고,
+  나머지 둘은 #449에서 정한 기본값입니다(`SERVER_MEMORY_READ`는 결정 20). `off`이면 커뮤니티 기억과 멤버 공개 프로필만 빠지고
+  개인 기억과 `server_note`는 그대로 들어갑니다.
 - **`server_note`**: 관리자 서버 메모 본문(선택). 서버 기억 S0 계층 판정에 씁니다.
 
 ## 기대값(`expect`)

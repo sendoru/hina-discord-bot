@@ -40,6 +40,7 @@ PLACEMENTS = {
 TIERS = {"T0", "T1", "T2", "S0", "S1", "S2"}
 EGRESS_POLICIES = {"full", "bot_interactions_only"}
 FOLLOWUP_MODES = {"off", "dm", "all"}
+SERVER_MEMORY_READ_MODES = {"on", "off"}
 
 SPACE = re.compile(r"dm|g\d+:c\d+:(?:public|private)")
 USER = re.compile(r"u\d+")
@@ -195,6 +196,7 @@ def test_selection_fixture_contract():
         assert set(settings) == set(defaults["settings"]), case["id"]
         assert settings["MEMORY_SESSION_FOLLOWUP"] in FOLLOWUP_MODES
         assert settings["external_context_policy"] in EGRESS_POLICIES
+        assert settings["SERVER_MEMORY_READ"] in SERVER_MEMORY_READ_MODES
 
         memories = case.get("memories", [])
         server_memories = case.get("server_memories", [])

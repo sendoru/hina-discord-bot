@@ -20,7 +20,8 @@
     },
     "settings": {
       "MEMORY_SESSION_FOLLOWUP": "dm",
-      "external_context_policy": "bot_interactions_only"
+      "external_context_policy": "bot_interactions_only",
+      "SERVER_MEMORY_READ": "on"
     },
     "memory": {
       "owner": "u1",
@@ -646,6 +647,31 @@
          "trust": "admin", "usage_mode": "directive", "keywords": ["스포일러", "스토리"]}
       ],
       "expect": {"include": ["spoiler_rule"], "server_note": "included", "tier": {"spoiler_rule": "S0"}}
+    },
+    {
+      "id": "server_memory_read_off_keeps_personal_and_server_note",
+      "covers": "결정 20: SERVER_MEMORY_READ=off면 커뮤니티 기억·멤버 공개 프로필만 빠지고 개인 기억·server_note는 그대로",
+      "scope": "g1:c1:public",
+      "message": "@u2 너도 고양이 키우지? 이번 스토리 업데이트도 봤어?",
+      "settings": {"SERVER_MEMORY_READ": "off"},
+      "context": {"mentions": ["u2"]},
+      "server_note": "신규 스토리 스포일러는 공지 후 일주일 동안 먼저 말하지 않기",
+      "memories": [
+        {"ref": "own_cat", "origin": "g1:c1:public", "content": "고양이 '보리'를 키움",
+         "annotation": {"keywords": ["고양이", "보리"]}},
+        {"ref": "u2_cats", "owner": "u2", "origin": "g1:c1:public", "content": "고양이 두 마리를 키움",
+         "annotation": {"audience": "server", "keywords": ["고양이"]}}
+      ],
+      "server_memories": [
+        {"ref": "spoiler_rule", "content": "이 서버에서는 신규 스토리 스포일러를 먼저 말하지 않기",
+         "trust": "admin", "usage_mode": "directive", "keywords": ["스포일러", "스토리"]}
+      ],
+      "expect": {
+        "include": ["own_cat"],
+        "exclude": ["u2_cats", "spoiler_rule"],
+        "server_note": "included",
+        "placement": {"own_cat": "notes"}
+      }
     },
     {
       "id": "cooldown_skips_recently_used_item_on_weak_relevance",
