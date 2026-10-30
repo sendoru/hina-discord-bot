@@ -45,7 +45,8 @@ not to the runtime's accepted-shape list.
 
 ## Adding the next real version
 
-No v2 migration ships. For a future actual change:
+Store v2 (`memory_item_annotations`, #451) is the first real step and follows
+this procedure; see [db-initialization.md](db-initialization.md). For a future actual change:
 
 1. Keep v1 schema definitions/signatures immutable; add the new current DDL and
    the known resulting metadata signature. The legacy converter must continue to
@@ -53,6 +54,8 @@ No v2 migration ships. For a future actual change:
 2. Append the component's unique name to `HISTORY`; register the resulting
    version signature in `SCHEMA_SIGNATURES`. Keep historical signatures so the
    preparer can validate each supported starting version. Runtime requires latest.
+   A version that adds a table also registers its owned table set in
+   `OWNED_TABLES`; signatures at that version cover those tables.
 3. Write one named function taking the existing connection. Append exactly its
    `(component, next_version, function)` to `UPGRADES` in db_migrations.py. It must
    not open another connection, commit, or use executescript.
@@ -67,7 +70,7 @@ No v2 migration ships. For a future actual change:
 The fixed history lists, a small tuple of Hina-specific functions and metadata
 signatures are sufficient. There is no filesystem discovery, migration plugin,
 ORM, abstract repository, schema DSL or dependency-injection migration framework.
-The ordered-step test uses synthetic v2/v3 indexes only; they are not application
+The ordered-step test uses synthetic next-version indexes only; they are not application
 schema changes and are never installed outside isolated test databases.
 
 ## Verification and limits

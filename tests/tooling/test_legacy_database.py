@@ -221,7 +221,7 @@ def test_unsupported_schema_is_rejected_without_stamp_or_backup(tmp_path, mutati
         elif mutation == "dependency":
             db.execute("CREATE INDEX custom_memory_idx ON memory_items(content)")
         elif mutation == "future":
-            db.execute("UPDATE schema_migrations SET version=99")
+            db.execute("UPDATE schema_migrations SET version=version+98")
         else:
             db.execute("DROP INDEX turns_owner")
     before = signature(path)

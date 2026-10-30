@@ -7,15 +7,27 @@ The offline preparer registers baselines and applies ordered version upgrades.
 import hashlib
 import json
 
-from .db_ddl import DDL, LEDGER_DDL, V1_SIGNATURES, V1_TABLES
+from .db_ddl import DDL, LEDGER_DDL, V1_SIGNATURES, V1_TABLES, V2_SIGNATURES, V2_TABLES
 
 COMPONENTS = tuple(DDL)
 HISTORY = {component: (component + "-baseline-v1",) for component in COMPONENTS}
+HISTORY["store"] += ("store-memory-annotations-v2",)
 SCHEMA_SIGNATURES = {component: {1: V1_SIGNATURES[component]} for component in COMPONENTS}
+SCHEMA_SIGNATURES["store"][2] = V2_SIGNATURES["store"]
+# Tables owned at the version that introduced them; later versions inherit.
+OWNED_TABLES = {component: {1: V1_TABLES[component]} for component in COMPONENTS}
+OWNED_TABLES["store"][2] = V2_TABLES["store"]
 
 
 class SchemaError(RuntimeError):
     pass
+
+
+def owned_tables(component, version=None):
+    """Tables a component owns at a version (latest when omitted)."""
+    if version is None:
+        version = len(HISTORY[component])
+    return OWNED_TABLES[component][max(v for v in OWNED_TABLES[component] if v <= version)]
 
 
 def schema_signature(db, tables):
@@ -60,7 +72,8 @@ def validate_schema(db, components=COMPONENTS, *, versions=None):
         if component not in COMPONENTS:
             raise ValueError("Unknown schema component")
         version = versions[component] if versions is not None else len(HISTORY[component])
-        if schema_signature(db, V1_TABLES[component]) not in SCHEMA_SIGNATURES[component][version]:
+        tables = owned_tables(component, version)
+        if schema_signature(db, tables) not in SCHEMA_SIGNATURES[component][version]:
             raise SchemaError(f"Unsupported {component} schema; use hina-upgrade-legacy-db offline")
 
 
@@ -95,7 +108,7 @@ def initialize_connection(db, components=COMPONENTS):
     if db.in_transaction:
         raise RuntimeError("Schema creation requires its own transaction")
     if any(db.execute("SELECT 1 FROM sqlite_master WHERE name=?", (name,)).fetchone()
-           for component in components for name in V1_TABLES[component]):
+           for component in components for name in owned_tables(component)):
         raise SchemaError("Fresh creation cannot adopt or upgrade existing tables")
     db.execute("BEGIN IMMEDIATE")
     try:

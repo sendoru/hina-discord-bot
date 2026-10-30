@@ -10,7 +10,7 @@ import pytest
 
 from hina_bot.core import admin_db, db_schema
 from hina_bot.core.db_connections import open_existing, open_readonly
-from hina_bot.core.db_ddl import DDL, V1_TABLES
+from hina_bot.core.db_ddl import DDL
 from hina_bot.core.db_schema import SchemaError, require_current
 from hina_bot.core.store import Store
 from hina_bot.tooling import db_migrations, prepare_database
@@ -33,7 +33,7 @@ def operational_fixture(path):
         db.commit()
 
 
-def test_operational_baseline_changes_only_ledger_and_restores_exact_input(tmp_path):
+def test_operational_baseline_adds_only_ledger_and_annotations_and_restores_exact_input(tmp_path):
     path = tmp_path / "operational.sqlite3"
     operational_fixture(path)
     before = signature(path)
@@ -44,11 +44,17 @@ def test_operational_baseline_changes_only_ledger_and_restores_exact_input(tmp_p
     changed, backup = prepare_database.prepare_database(path, apply=True, offline_confirmed=True)
     assert changed == db_schema.COMPONENTS
     assert signature(backup.path) == before
+    added = {"schema_migrations", "memory_item_annotations"}
     with closing(open_readonly(path)) as db, closing(open_readonly(backup.path)) as old:
         old_schema = list(old.execute("SELECT type,name,tbl_name,sql FROM sqlite_master"))
         new_schema = [row for row in db.execute("SELECT type,name,tbl_name,sql FROM sqlite_master")
-                      if row[2] != "schema_migrations"]
+                      if row[2] not in added]
         assert [tuple(row) for row in new_schema] == [tuple(row) for row in old_schema]
+        # Store v2 adds an empty derived table; memory_items itself is not altered.
+        assert db.execute("SELECT COUNT(*) FROM memory_item_annotations").fetchone()[0] == 0
+        assert [tuple(row) for row in db.execute(
+            "SELECT version,name FROM schema_migrations WHERE component='store' ORDER BY version"
+        )] == [(1, "store-baseline-v1"), (2, "store-memory-annotations-v2")]
         for table, in old.execute("SELECT name FROM sqlite_master WHERE type='table'"):
             assert [tuple(row) for row in db.execute(f'SELECT * FROM "{table}"')] == [
                 tuple(row) for row in old.execute(f'SELECT * FROM "{table}"')
@@ -78,7 +84,8 @@ def test_runtime_refuses_recorded_schema_drift(tmp_path, change):
         elif change == "column":
             db.execute("ALTER TABLE turns ADD COLUMN unknown TEXT")
         elif change == "ledger":
-            db.execute("UPDATE schema_migrations SET version=99 WHERE component='store'")
+            db.execute("UPDATE schema_migrations SET version=99 WHERE component='store' AND "
+                       "version=(SELECT MAX(version) FROM schema_migrations WHERE component='store')")
         else:
             db.execute("DROP TABLE memory_modes")
             db.execute("CREATE TABLE memory_modes(scope TEXT PRIMARY KEY,mode TEXT NOT NULL "
@@ -148,57 +155,64 @@ def test_baseline_rejects_change_after_backup(tmp_path, monkeypatch):
         assert db.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone() is None
 
 
-@pytest.mark.parametrize("start_version", [1, 2])
+@pytest.mark.parametrize("already_applied", [0, 1])
 def test_explicit_next_versions_run_in_order_and_roll_back_together(
-    tmp_path, monkeypatch, start_version,
+    tmp_path, monkeypatch, already_applied,
 ):
     path = tmp_path / "ordered.sqlite3"
     prepare_database.prepare_database(path, apply=True, offline_confirmed=True)
-    # Test-only v2/v3 add metadata, not any #399-#401 feature.
+    current = len(db_schema.HISTORY["store"])
+    first, second = current + 1, current + 2
+    # Test-only next versions add metadata, not any application feature.
+    tables = db_schema.owned_tables("store")
     with closing(sqlite3.connect(":memory:")) as target:
         for sql in DDL["store"]:
             target.execute(sql)
-        target.execute("CREATE INDEX test_v2 ON notes(text)")
-        v2_signature = db_schema.schema_signature(target, V1_TABLES["store"])
-        target.execute("CREATE INDEX test_v3 ON notes(text,scope)")
-        final_signature = db_schema.schema_signature(target, V1_TABLES["store"])
+        target.execute("CREATE INDEX test_next ON notes(text)")
+        next_signature = db_schema.schema_signature(target, tables)
+        target.execute("CREATE INDEX test_after ON notes(text,scope)")
+        final_signature = db_schema.schema_signature(target, tables)
     monkeypatch.setitem(db_schema.HISTORY, "store",
-                        (*db_schema.HISTORY["store"], "test-v2", "test-v3"))
-    monkeypatch.setitem(db_schema.SCHEMA_SIGNATURES["store"], 3, {final_signature})
-    monkeypatch.setitem(db_schema.SCHEMA_SIGNATURES["store"], 2, {v2_signature})
-    if start_version == 2:
+                        (*db_schema.HISTORY["store"], "test-next", "test-after"))
+    monkeypatch.setitem(db_schema.SCHEMA_SIGNATURES["store"], second, {final_signature})
+    monkeypatch.setitem(db_schema.SCHEMA_SIGNATURES["store"], first, {next_signature})
+    if already_applied:
         with closing(open_existing(path)) as db, db:
-            db.execute("CREATE INDEX test_v2 ON notes(text)")
-            db.execute("INSERT INTO schema_migrations(component,version,name) VALUES ('store',2,'test-v2')")
+            db.execute("CREATE INDEX test_next ON notes(text)")
+            db.execute("INSERT INTO schema_migrations(component,version,name) VALUES ('store',?,'test-next')",
+                       (first,))
     called = []
+    real = db_migrations.UPGRADES
 
-    def v2(db):
-        called.append(2)
-        db.execute("CREATE INDEX test_v2 ON notes(text)")
+    def step_next(db):
+        called.append(first)
+        db.execute("CREATE INDEX test_next ON notes(text)")
 
-    def v3_fail(db):
-        called.append(3)
+    def step_after_fail(db):
+        called.append(second)
         raise sqlite3.OperationalError("step failed")
 
-    monkeypatch.setattr(db_migrations, "UPGRADES", (("store", 2, v2), ("store", 3, v3_fail)))
+    monkeypatch.setattr(db_migrations, "UPGRADES",
+                        (*real, ("store", first, step_next), ("store", second, step_after_fail)))
     before = signature(path)
     with closing(open_existing(path)) as db:
         with pytest.raises(sqlite3.OperationalError):
             db_migrations.prepare_connection(db)
         assert not db.in_transaction
-    assert called == ([2, 3] if start_version == 1 else [3]) and signature(path) == before
+    assert called == ([first, second] if not already_applied else [second])
+    assert signature(path) == before
 
-    def v3(db):
-        db.execute("CREATE INDEX test_v3 ON notes(text,scope)")
+    def step_after(db):
+        db.execute("CREATE INDEX test_after ON notes(text,scope)")
 
-    monkeypatch.setattr(db_migrations, "UPGRADES", (("store", 2, v2), ("store", 3, v3)))
+    monkeypatch.setattr(db_migrations, "UPGRADES",
+                        (*real, ("store", first, step_next), ("store", second, step_after)))
     with closing(open_existing(path)) as db:
         assert db_migrations.prepare_connection(db) == ("store",)
         assert db_migrations.prepare_connection(db) == ()
         assert [tuple(row) for row in db.execute(
             "SELECT version,name FROM schema_migrations WHERE component='store' ORDER BY version"
-        )] == [
-                              (1, "store-baseline-v1"), (2, "test-v2"), (3, "test-v3")]
+        )][-2:] == [(first, "test-next"), (second, "test-after")]
         db.execute("DELETE FROM schema_migrations WHERE component='store' AND version=1")
         with pytest.raises(SchemaError, match="incomplete"):
             db_schema.schema_versions(db)

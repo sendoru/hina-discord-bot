@@ -1,4 +1,5 @@
-"""Offline-only conversion of supported unversioned Hina databases to v1.
+"""Offline-only conversion of supported unversioned Hina databases to frozen v1,
+followed by the same explicit later-version steps as normal preparation.
 
 This module is never imported by Store, AdminDatabase or normal preparation.
 Legacy structure analysis stays here; runtime accepts only fixed current shapes.
@@ -13,13 +14,14 @@ from pathlib import Path
 
 from hina_bot.core.config import LEGACY_RAG_MODES
 from hina_bot.core.db_connections import open_existing, open_readonly
-from hina_bot.core.db_ddl import DDL, LEDGER_DDL, QUEUE_DDL, STORE_DDL, V1_TABLES
+from hina_bot.core.db_ddl import LEDGER_DDL, QUEUE_DDL, STORE_DDL, V1_DDL, V1_TABLES
 from hina_bot.core.db_schema import SchemaError, require_current, schema_versions
 from hina_bot.core.scope_overrides import CHATLOG_CAPTURE_NOTE_PREFIX
 
+from .db_migrations import apply_upgrades
 from .maintenance_backup import backup_schema_database, database_signature
 
-COMPONENTS = tuple(DDL)
+COMPONENTS = tuple(V1_DDL)
 # Only these known legacy columns may be absent. Inspection and ALTER use the
 # same list; declarations are the existing upgrades, not a general schema DSL.
 LEGACY_COLUMNS = {
@@ -90,7 +92,7 @@ def _expected():
     db = sqlite3.connect(":memory:")
     try:
         result = {}
-        for statements in DDL.values():
+        for statements in V1_DDL.values():
             for statement in statements:
                 db.execute(statement)
         for component, tables in V1_TABLES.items():
@@ -325,11 +327,11 @@ def prepare_connection(db, components=COMPONENTS, *, expected_signature=None) ->
         if "store" in pending:
             _prepare_store(db)
         if "settings" in pending:
-            for statement in DDL["settings"]:
+            for statement in V1_DDL["settings"]:
                 db.execute(statement)
             _migrate_legacy_rag(db)
         if "admin" in pending:
-            for statement in DDL["admin"]:
+            for statement in V1_DDL["admin"]:
                 db.execute(statement)
         _rebuild_legacy(db, pending)
         if not _sql(db, "schema_migrations"):
@@ -339,6 +341,9 @@ def prepare_connection(db, components=COMPONENTS, *, expected_signature=None) ->
                 "INSERT OR IGNORE INTO schema_migrations(component,version,name) VALUES (?,?,?)",
                 (component, 1, component + "-baseline-v1"),
             )
+            # Conversion targets frozen v1; later versions use the same explicit steps
+            # as normal preparation, inside this transaction.
+            apply_upgrades(db, component, 1)
         require_current(db, components)
         db.commit()
         return pending

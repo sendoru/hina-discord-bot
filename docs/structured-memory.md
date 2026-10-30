@@ -33,6 +33,27 @@ Each item stores:
   `support_openness`, and `task_orientation`. Missing/zero means no stored positive evidence,
   never dislike or rejection.
 
+## Annotations (memory v2, #449/#451)
+
+Store schema v2 adds `memory_item_annotations`, one row per memory item. It holds regenerable
+judgments about the item rather than new facts: when the memory applies (`time_scope`, `stability`,
+`event_at`, `recurrence`), how Hina may use it (`usage_mode`, `directive_type`, `audience`,
+`importance`), retrieval hints (`slot`, `keywords`), the quoted source (`evidence`, `observed_at`),
+and lifecycle markers (`last_confirmed_at`, `confirmations`, `last_used_at`, `proactive_*`).
+`memory_items` remains the source of truth and is not altered.
+
+- An annotation applies to one `item_revision`. When an admin edit raises the item revision, the
+  annotation is stale until it is re-annotated; stale or missing annotations fall back to the
+  conservative defaults in #449 §4.1.
+- `annotator` records who wrote it (`extractor`, `consolidator`, `backfill`, `admin`); admin edits win.
+- The database enforces the cross-field rules: `directive_type` exists exactly for `directive`
+  items, `stability` only for `ongoing` items, and `sensitive` items always have `audience=owner`.
+- Relationship items are not annotated; they keep the relationship projection path.
+
+The table is created by `hina-prepare-db` (see [DB initialization](db-initialization.md)). In this
+stage nothing reads it yet: extraction v2 and backfill populate it, and the response path stays legacy
+until P2.
+
 ## Disclosure semantics
 
 The policy primitive returns one of three access levels:
