@@ -84,7 +84,7 @@
 | --- | --- |
 | `turns`, `failed_turns` | 대화 기록·추출·실패 관측, Dashboard conversation/trace, flush/reset CLI |
 | `shared_calls`, `shared_summaries` | 공개 참고 문맥·공개 요약 guard, 이름 복원, Dashboard 요약/커서, purge/reset |
-| `memory_items`, `memory_item_edit_history`, `memory_reconciliation_proposals` | 기억 검색·수정·교정·철회, Discord 관리, Dashboard 기억/관계/조정 이력 |
+| `memory_items`, `memory_item_edit_history`, `memory_item_annotations`, `memory_reconciliation_proposals` | 기억 검색·수정·교정·철회, Discord 관리, Dashboard 기억/관계/조정 이력, v2 주석 |
 | `memory_extraction_cursors`, `memory_extraction_batches` | 추출 진행·원자적 저장·중복 방지, 커서는 Dashboard 상태 조회; 배치의 읽기 한계는 위에 명시 |
 | `notes`, `memory_modes`, `chat_log_modes`, `emoji_registry` | 런타임 설정/정책/이모지, Discord와 Dashboard 관리 경로 |
 | `guild_metadata`, `channel_metadata`, `conversation_identity_names` | 관측한 이름·범위 표시, reset 후 이름 복원 |

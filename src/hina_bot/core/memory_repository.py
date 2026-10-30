@@ -448,10 +448,8 @@ class MemoryRepository:
             if int(row["revision"]) != expected_revision:
                 raise ValueError("Memory item has changed; reload before deleting")
 
-            self.db.execute(
-                "DELETE FROM memory_item_edit_history WHERE memory_item_id=?",
-                (item_id,),
-            )
+            for table in ("memory_item_edit_history", "memory_item_annotations"):
+                self.db.execute(f"DELETE FROM {table} WHERE memory_item_id=?", (item_id,))
             self.db.execute(
                 """DELETE FROM memory_reconciliation_proposals
                    WHERE new_memory_item_id=? OR target_memory_item_id=?""",

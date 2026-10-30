@@ -20,7 +20,7 @@
 
 | 데이터 | 동작 | 이유 |
 | --- | --- | --- |
-| `memory_items`, `memory_item_edit_history`, `memory_reconciliation_proposals` | **보존** | 장기기억·관계·revision·provenance 유지 |
+| `memory_items`, `memory_item_edit_history`, `memory_item_annotations`, `memory_reconciliation_proposals` | **보존** | 장기기억·관계·revision·provenance 유지 |
 | `memory_extraction_cursors`, `sqlite_sequence` | **보존** | 신규 turn ID 단조 증가, 중복 추출 방지 |
 | `memory_modes`, `chat_log_modes`, `notes`, `runtime_config`, `instructions`, `runtime_knowledge`, 메타데이터, admin/migration state | **보존** | 사용자·운영 설정 유지 |
 | `turns`, `shared_calls`, `failed_turns` | **삭제** | 개인/공개 원본 대화와 실패한 이전 턴 제거 |

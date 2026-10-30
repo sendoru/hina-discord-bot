@@ -27,7 +27,7 @@ from .migrate_conversation_reset_epochs import ensure_epoch_schema
 
 RAW_TABLES = ("turns", "shared_calls", "failed_turns", "shared_summaries")
 PRESERVED_TABLES = (
-    "memory_items", "memory_item_edit_history",
+    "memory_items", "memory_item_edit_history", "memory_item_annotations",
     "memory_reconciliation_proposals", "memory_extraction_cursors",
     "memory_extraction_batches", "memory_modes", "chat_log_modes", "notes",
     "runtime_config", "instructions", "runtime_knowledge", "emoji_registry",
