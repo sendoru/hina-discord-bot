@@ -32,7 +32,7 @@
       <button type="submit">Search</button>
     </div>
   </div>
-  <details class="advanced-filters" {% if data.filters.user_id or data.filters.origin_scope_type or data.filters.origin_realm or data.filters.origin_channel_id or data.filters.kind or data.filters.disclosure or data.filters.status or data.filters.relationship or data.filters.confidence_min or data.filters.confidence_max or data.filters.created_after or data.filters.created_before or data.filters.updated_after or data.filters.updated_before %}open{% endif %}>
+  <details class="advanced-filters" {% if data.filters.user_id or data.filters.origin_scope_type or data.filters.origin_realm or data.filters.origin_channel_id or data.filters.kind or data.filters.disclosure or data.filters.status or data.filters.relationship or data.filters.annotation or data.filters.confidence_min or data.filters.confidence_max or data.filters.created_after or data.filters.created_before or data.filters.updated_after or data.filters.updated_before %}open{% endif %}>
     <summary>Advanced filters</summary>
     <div class="filter-row grouped-filter-row">
       <fieldset class="filter-cluster filter-cluster-1">
@@ -64,6 +64,12 @@
           <option value="">relationship: any</option>
           <option value="yes" {% if data.filters.relationship == "yes" %}selected{% endif %}>relationship only</option>
           <option value="no" {% if data.filters.relationship == "no" %}selected{% endif %}>non-relationship</option>
+        </select></div>
+        <div class="filter-field"><label for="filter-memory-annotation">Annotation</label><select id="filter-memory-annotation" name="annotation">
+          <option value="">annotation: any</option>
+          {% for value, label in [("missing", "missing (needs backfill)"), ("stale", "stale (edited after annotation)"), ("flagged", "lint flagged"), ("admin", "admin reviewed")] %}
+          <option value="{{ value }}" {% if data.filters.annotation == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
         </select></div>
       </fieldset>
       <fieldset class="filter-cluster filter-cluster-2">
@@ -111,7 +117,7 @@
       <label>작업 <select name="status"><option value="retracted">retract</option><option value="delete">영구 삭제</option></select></label>
       <button type="submit" class="danger" data-memory-apply disabled>선택 항목 상태 변경</button>
     </div>
-    <p class="muted">Retract는 active 기억만 가능하며 기록이 보존됩니다. 영구 삭제는 모든 상태에서 가능하고 해당 기억과 수정 이력, reconciliation 참조를 DB에서 삭제합니다. 원본 대화와 백업은 유지됩니다.</p>
+    <p class="muted">Retract는 active 기억만 가능하며 기록이 보존됩니다. 영구 삭제는 모든 상태에서 가능하고 해당 기억과 수정 이력, annotation, reconciliation 참조를 DB에서 삭제합니다. 원본 대화와 백업은 유지됩니다.</p>
     <noscript><p class="notice warning">일괄 변경에는 JavaScript가 필요합니다. 개별 항목의 상세 화면에서도 변경할 수 있습니다.</p></noscript>
   </form>
   <div data-memory-bulk-feedback role="status" aria-live="polite"></div>

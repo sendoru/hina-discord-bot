@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from hina_bot.core.memory_annotations import admin_annotation_fields
 from hina_bot.core.memory_items import (
     RELATIONSHIP_EVIDENCE_AXES,
     MemoryKind,
@@ -36,6 +37,7 @@ def build_router(
         disclosure: str = "",
         status: str = "",
         relationship: str = "",
+        annotation: str = "",
         confidence_min: str = "",
         confidence_max: str = "",
         created_after: str = "",
@@ -56,6 +58,7 @@ def build_router(
             disclosure=disclosure,
             status=status,
             relationship=relationship,
+            annotation=annotation,
             confidence_min=confidence_min,
             confidence_max=confidence_max,
             created_after=created_after,
@@ -236,6 +239,53 @@ def build_router(
             action="memory.item.edit",
             target=str(item_id),
             payload=payload,
+        )
+        return RedirectResponse(
+            url=f"/memory/{item_id}?queued={command_id}",
+            status_code=303,
+        )
+
+    @router.post("/memory/{item_id}/annotation")
+    async def edit_memory_annotation(request: Request, item_id: int):
+        form = await writer.form(request)
+        data = service.memory_item(item_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Memory item not found")
+        item = data["item"]
+        if item["status"] != "active":
+            raise HTTPException(status_code=409, detail="only active memory items can be annotated")
+        if item["kind"] == MemoryKind.RELATIONSHIP.value:
+            raise HTTPException(status_code=409, detail="relationship memories are not annotated")
+        try:
+            expected_revision = int(form.get("expected_revision", ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="invalid memory revision") from exc
+        if expected_revision < 0:
+            raise HTTPException(status_code=422, detail="invalid memory revision")
+        if item["revision"] != expected_revision:
+            raise HTTPException(
+                status_code=409, detail="memory item changed; reload before editing"
+            )
+        try:
+            # The runtime validates the queued payload again with the same helper.
+            fields = admin_annotation_fields({
+                name: form.get(name, "")
+                for name in (
+                    "time_scope", "stability", "event_at", "recurrence", "usage_mode",
+                    "directive_type", "audience", "importance", "slot", "keywords", "explicit",
+                )
+            })
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        command_id, _ = writer.enqueue(
+            request_id=form.get("_request_id", ""),
+            action="memory.annotation.set",
+            target=str(item_id),
+            payload={
+                "item_id": item_id,
+                "expected_revision": expected_revision,
+                "annotation": fields,
+            },
         )
         return RedirectResponse(
             url=f"/memory/{item_id}?queued={command_id}",

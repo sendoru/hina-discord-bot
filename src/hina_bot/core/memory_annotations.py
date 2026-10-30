@@ -214,6 +214,118 @@ def enforce_consistency(annotation: MemoryAnnotation, *, public_origin: bool) ->
     )
 
 
+ADMIN_ANNOTATOR_VERSION = "dashboard"
+
+
+def _enum_field(enum, raw, name, *, optional=False):
+    value = str(raw or "").strip()
+    if not value and optional:
+        return None
+    try:
+        return enum(value).value
+    except ValueError as exc:
+        raise ValueError(f"invalid {name}") from exc
+
+
+def admin_annotation_fields(raw) -> dict[str, object]:
+    """Validate an admin edit into JSON-safe fields; raises ValueError naming the field.
+
+    The dashboard pre-validates with this and the runtime re-validates the queued
+    payload, so both sides share one definition of an acceptable admin judgment.
+    """
+
+    if not isinstance(raw, dict):
+        raise TypeError("invalid annotation")
+    time_scope = _enum_field(TimeScope, raw.get("time_scope"), "time_scope")
+    stability = _enum_field(Stability, raw.get("stability"), "stability", optional=True)
+    if stability is not None and time_scope != TimeScope.ONGOING.value:
+        raise ValueError("stability applies only to ongoing memories")
+    usage_mode = _enum_field(UsageMode, raw.get("usage_mode"), "usage_mode")
+    directive_type = _enum_field(
+        DirectiveType, raw.get("directive_type"), "directive_type", optional=True
+    )
+    if (usage_mode == UsageMode.DIRECTIVE.value) != (directive_type is not None):
+        raise ValueError("directive_type is required exactly for directive memories")
+    audience = _enum_field(Audience, raw.get("audience") or Audience.OWNER.value, "audience")
+    if usage_mode == UsageMode.SENSITIVE.value and audience != Audience.OWNER.value:
+        raise ValueError("sensitive memories are visible only to their owner")
+    event_at = str(raw.get("event_at") or "").strip() or None
+    if event_at is not None and not valid_event_at(event_at):
+        raise ValueError("invalid event_at")
+    recurrence = str(raw.get("recurrence") or "").strip() or None
+    if recurrence is not None and not valid_recurrence(recurrence):
+        raise ValueError("invalid recurrence")
+    try:
+        importance = int(raw.get("importance", 2))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("invalid importance") from exc
+    if not 1 <= importance <= 3:
+        raise ValueError("invalid importance")
+    slot = str(raw.get("slot") or "").strip()
+    if len(slot) > SLOT_MAX_CHARS:
+        raise ValueError("slot is too long")
+    keywords = raw.get("keywords") or ()
+    if isinstance(keywords, str):
+        keywords = keywords.split(",")
+    explicit = raw.get("explicit")
+    return {
+        "time_scope": time_scope,
+        "stability": stability,
+        "event_at": event_at,
+        "recurrence": recurrence,
+        "usage_mode": usage_mode,
+        "directive_type": directive_type,
+        "audience": audience,
+        "importance": importance,
+        "slot": slot,
+        "keywords": list(clean_keywords(list(keywords))),
+        "explicit": explicit is True or str(explicit).lower() in {"1", "true", "on", "yes"},
+    }
+
+
+def admin_annotation(
+    fields: dict[str, object],
+    *,
+    memory_item_id: int,
+    item_revision: int,
+    observed_at: str,
+    existing: MemoryAnnotation | None = None,
+) -> MemoryAnnotation:
+    """Build an admin annotation; lifecycle markers and the quote survive the edit."""
+
+    base = existing or MemoryAnnotation(
+        memory_item_id=int(memory_item_id),
+        item_revision=int(item_revision),
+        time_scope=TimeScope.UNKNOWN,
+        observed_at=observed_at,
+        last_confirmed_at=observed_at,
+        usage_mode=UsageMode.CONTEXTUAL,
+        annotator=Annotator.ADMIN,
+        annotator_version=ADMIN_ANNOTATOR_VERSION,
+    )
+    return replace(
+        base,
+        memory_item_id=int(memory_item_id),
+        item_revision=int(item_revision),
+        time_scope=TimeScope(fields["time_scope"]),
+        stability=Stability(fields["stability"]) if fields["stability"] else None,
+        event_at=fields["event_at"],
+        recurrence=fields["recurrence"],
+        usage_mode=UsageMode(fields["usage_mode"]),
+        directive_type=DirectiveType(fields["directive_type"]) if fields["directive_type"] else None,
+        audience=Audience(fields["audience"]),
+        importance=int(fields["importance"]),
+        slot=str(fields["slot"]),
+        keywords=tuple(fields["keywords"]),
+        explicit=bool(fields["explicit"]),
+        # An admin judgment is reviewed by definition; automated lint no longer applies.
+        verified=True,
+        lint_flags=(),
+        annotator=Annotator.ADMIN,
+        annotator_version=ADMIN_ANNOTATOR_VERSION,
+    )
+
+
 def legacy_annotation_defaults(kind: str) -> tuple[UsageMode, DirectiveType | None]:
     """Principle 6: missing judgments use the quieter reading, except boundaries persist."""
 
@@ -223,6 +335,7 @@ def legacy_annotation_defaults(kind: str) -> tuple[UsageMode, DirectiveType | No
 
 
 __all__ = [
+    "ADMIN_ANNOTATOR_VERSION",
     "EVIDENCE_MAX_CHARS",
     "KEYWORDS_MAX",
     "LINT_AUDIENCE_NARROWED",
@@ -245,6 +358,8 @@ __all__ = [
     "Stability",
     "TimeScope",
     "UsageMode",
+    "admin_annotation",
+    "admin_annotation_fields",
     "clean_keywords",
     "enforce_consistency",
     "evidence_matches",

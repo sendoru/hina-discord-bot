@@ -509,6 +509,13 @@ class Store:
     def reconfirm_memory_annotation(self, item_id: int, observed_at: str) -> bool:
         return self._memories.reconfirm_memory_annotation(item_id, observed_at)
 
+    def set_admin_memory_annotation(
+        self, item_id: int, *, expected_revision: int, fields: dict[str, object]
+    ) -> MemoryAnnotation:
+        return self._memories.set_admin_memory_annotation(
+            item_id, expected_revision=expected_revision, fields=fields
+        )
+
     def memory_reconciliation_candidates(self, scope: Scope, *, limit: int = 24):
         return self._memories.memory_reconciliation_candidates(scope, limit=limit)
 

@@ -366,6 +366,27 @@ This action is not a user-wide forget or a privacy erasure of all source records
 Superseded and retracted items remain read-only for editing and retraction.
 Manual add, restore/undo, and pinning remain separate follow-up features.
 
+#### Memory annotations (memory v2)
+
+Non-relationship memory details show the item's annotation (#451): time scope and stability,
+event date or recurrence, usage mode and directive verification, audience, importance, slot,
+keywords, the verified evidence quote, observation/confirmation/use timestamps, proactive state,
+lint flags, annotator and the item revision it was written for. The panel is labelled `current`,
+`stale` (the item was edited after annotation; runtime treats it as defaults until re-annotated)
+or `missing` (no row yet; run `hina-backfill-annotations`). Relationship items have no annotation.
+
+The memory list's **Annotation** filter is the review queue, derived from the tables rather than
+stored separately: `missing`, `stale`, `lint flagged` and `admin reviewed`.
+
+With write mode enabled, an active item's annotation can be edited. The dashboard validates the
+fields with the same helper the runtime uses and queues `memory.annotation.set` with the item ID,
+expected revision and fields. The bot re-validates, takes the item's memory lock, rejects a changed
+revision, and stores an `admin` annotation pinned to the current revision. Observation,
+confirmation, use and proactive markers and the evidence quote are kept; lint flags are cleared and
+directives are marked verified. `audience=server` is still narrowed to `owner` for items not
+captured in a public guild channel. Automated extraction and backfill never overwrite an admin
+annotation.
+
 ### Effective relationship profiles
 
 `/relationships` uses the shared Guild/DM target-scope picker. The selected scope is evaluated with
