@@ -49,6 +49,9 @@ and lifecycle markers (`last_confirmed_at`, `confirmations`, `last_used_at`, `pr
 - The database enforces the cross-field rules: `directive_type` exists exactly for `directive`
   items, `stability` only for `ongoing` items, and `sensitive` items always have `audience=owner`.
 - Relationship items are not annotated; they keep the relationship projection path.
+- Every path that deletes a memory item (`/forget`, channel/realm/all purge, dashboard permanent
+  deletion) deletes its annotation in the same transaction. `hina-reset-conversation` and
+  `hina-reset-analysis-data` preserve annotations together with the memory items.
 
 The table is created by `hina-prepare-db` (see [DB initialization](db-initialization.md)). In this
 stage the response path does not read it yet; extraction v2 and backfill populate it, and the response

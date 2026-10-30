@@ -1,8 +1,11 @@
 import sqlite3
+from dataclasses import replace
 
 import pytest
 
+from hina_bot.ai.memory_extraction import parse_annotation
 from hina_bot.core.db_schema import initialize_connection
+from hina_bot.core.memory_items import MemoryKind
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.dashboard.repository import AdminRepository
@@ -28,6 +31,10 @@ def seed(path, *, pending=False):
         disclosure="local",
         source_message_ids=("101",),
     )
+    cited = [{"user": "오렌지 좋아", "at": "2026-10-30 03:00:00"}]
+    store.upsert_memory_annotation(replace(
+        parse_annotation({}, MemoryKind.PREFERENCE, cited), memory_item_id=memory,
+    ))
     with store.db:
         store._conversations.write_shared_summary(guild, "Guild display name", "old summary", 1)
     if not pending:
@@ -59,6 +66,9 @@ def test_backup_and_reset_preserves_user_memory_and_settings(tmp_path):
         cursor_before = before.execute(
             "SELECT * FROM memory_extraction_cursors ORDER BY scope"
         ).fetchall()
+        annotation_before = before.execute(
+            "SELECT * FROM memory_item_annotations WHERE memory_item_id=?", (memory,)
+        ).fetchone()
         dm_seq = before.execute(
             "SELECT seq FROM sqlite_sequence WHERE name='turns'"
         ).fetchone()[0]
@@ -67,6 +77,7 @@ def test_backup_and_reset_preserves_user_memory_and_settings(tmp_path):
 
     plan, result = reset_conversation(path, offline_confirmed=True)
     assert plan.ready
+    assert plan.preserved["memory_item_annotations"] == 1
     assert result.backup.path.is_file()
     assert result.backup.path.stat().st_mode & 0o077 == 0
     assert result.deleted == {
@@ -95,6 +106,9 @@ def test_backup_and_reset_preserves_user_memory_and_settings(tmp_path):
         assert tuple(store.db.execute(
             "SELECT * FROM memory_items WHERE id=?", (memory,)
         ).fetchone()) == item_before
+        assert tuple(store.db.execute(
+            "SELECT * FROM memory_item_annotations WHERE memory_item_id=?", (memory,)
+        ).fetchone()) == annotation_before
         assert [tuple(row) for row in store.db.execute(
             "SELECT * FROM memory_extraction_cursors ORDER BY scope"
         ).fetchall()] == cursor_before

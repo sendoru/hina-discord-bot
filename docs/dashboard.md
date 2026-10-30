@@ -357,7 +357,8 @@ states expose a separate irreversible `memory.item.delete` action, and the list 
 retraction (active only) or permanent deletion (any state), up to 50 selected rows per request.
 The UI requires typing `DELETE`, while the server requires an explicit confirmation marker, CSRF
 token, and current revision before queueing. The bot acquires the persisted item's memory lock
-and deletes the selected memory row and its edit history/reconciliation proposals atomically.
+and deletes the selected memory row and its edit history, annotation and reconciliation proposals
+atomically.
 Other memories that referenced the deleted row via `superseded_by` retain their state and
 lose only that reference (with a revision bump); they are never reactivated. Source conversations,
 extraction cursors, telemetry, and external backups are not erased by item deletion.
