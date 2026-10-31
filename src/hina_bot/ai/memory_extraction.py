@@ -707,8 +707,8 @@ def apply_directive_verification(
 ) -> tuple[tuple[ExtractedMemoryItem, ...], int, int]:
     """Apply verifier verdicts; returns (items, verified, demoted).
 
-    Without a usable verdict a directive stays a directive but unverified, so P2
-    keeps it out of the always-on tier rather than silently dropping a boundary.
+    Without a usable verdict a directive stays a directive but unverified: it still
+    applies in its own space, but is not carried across spaces (#449 §7.2).
     """
 
     verdicts: dict[int, str] = {}
