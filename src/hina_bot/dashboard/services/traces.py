@@ -614,6 +614,8 @@ class TraceService(ReadService):
                 str(value) for value in raw.get("relationship_axes", ()) or ()
             ),
             "factual_recall": dict(raw.get("factual_recall") or {}),
+            "memory_selection": dict(raw.get("memory_selection") or {}),
+            "memory_lookup": dict(raw.get("memory_lookup") or {}),
             "truncated": dict(raw.get("truncated") or {}),
         }
 

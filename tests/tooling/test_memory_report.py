@@ -165,6 +165,13 @@ def usage_log(tmp_path):
          "duplicate_items": 1, "rejected_items": 0},
         {"at": "2026-10-29T00:00:02+00:00", "operation": "memory.shadow_extraction",
          "status": "invalid"},
+        {"at": "2026-10-29T00:00:03+00:00", "operation": "memory.selection",
+         "status": "completed", "memory_read_mode": "shadow", "memory_t0_items": 1,
+         "memory_t2_items": 2, "memory_excluded_cooldown": 1,
+         "memory_followup_attempted": True},
+        {"at": "2026-10-29T00:00:04+00:00", "operation": "memory.selection",
+         "status": "completed", "memory_read_mode": "tiered", "memory_t2_items": 0,
+         "memory_followup_attempted": False},
     ]
     rotated.write_text(
         "".join(json.dumps(row) + "\n" for row in rows[:2]), encoding="utf-8",
@@ -256,6 +263,11 @@ def test_report_aggregates_rotated_usage_telemetry(database, usage_log):
     assert provenance["public_context_chars_when_present"]["max"] == 200
     assert provenance["context_chars_total"]["max"] == 3000
     assert provenance["factual_recall_status"] == {"no_explicit_reference": 1, "owner_dm": 1}
+    selection = telemetry["memory_selection"]
+    assert selection["turns_by_mode"] == {"shadow": 1, "tiered": 1}
+    assert selection["totals"]["memory_t2_items"] == 2
+    assert selection["totals"]["memory_excluded_cooldown"] == 1
+    assert selection["followup_attempted_turns"] == 1
     extraction = telemetry["shadow_extraction"]
     assert extraction["status"] == {"completed": 1, "invalid": 1}
     assert extraction["completed_totals"]["accepted_items"] == 2

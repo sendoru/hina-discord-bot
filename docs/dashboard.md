@@ -377,6 +377,16 @@ or `missing` (no row yet; run `hina-backfill-annotations`). A stale annotation's
 to defaults, except that a stale directive stays a directive until re-annotation. Relationship items
 have no annotation.
 
+The panel also shows **Effective now**: the status the tiered read path computes at the dashboard
+clock (`current`, `unverified`, `upcoming`, `just_passed`, `past`, `recent_event`, `past_event`,
+with the date and whether an undated plan has expired), next to the last-used and proactive
+follow-up markers it records after replies (#457).
+
+Trace detail shows a **Memory selection** block when the turn ran in `shadow` or `tiered`
+`PERSONAL_MEMORY_READ_MODE`: tier counts, exclusion reasons and whether a session follow-up was
+attempted. In `shadow` it describes what `tiered` would have sent while the answer used the legacy
+projection. A `recall_memory` call is shown with its call and item counts.
+
 The memory list's **Annotation** filter is the review queue, derived from the tables rather than
 stored separately: `missing` and `stale` (active items only, the backfill's work list),
 `lint flagged`, `backfilled (review)` for checking backfill output before P2 reads annotations, and
