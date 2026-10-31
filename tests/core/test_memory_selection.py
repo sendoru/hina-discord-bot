@@ -21,6 +21,8 @@ from hina_bot.core.memory_selection import (
     effective_annotation,
     effective_status,
     is_light_chat,
+    query_idf,
+    recall_personal_memory,
     render_user_memory,
     select_personal_memory,
     selection_provenance,
@@ -143,3 +145,49 @@ def test_zero_injection_is_normal_and_other_owners_never_leak():
     )
 
     assert selection.selected == []
+
+
+def _cat_memories():
+    """Five distinct memories about the cat Bori and one rare food memory, confirmed earliest."""
+
+    contents = ["보리는 창가를 좋아함", "보리는 밤에 자주 운다", "보리는 올해 세 살",
+                "보리를 보호소에서 입양함", "보리는 목욕을 싫어함"]
+    items = [_item(index, text) for index, text in enumerate(contents, 1)]
+    items.append(_item(9, "연어 사료를 좋아함"))
+    annotations = {
+        index: _annotation(memory_item_id=index, keywords=("보리",),
+                           last_confirmed_at=f"2026-10-2{index} 03:00:00")
+        for index in range(1, 6)
+    }
+    annotations[9] = _annotation(memory_item_id=9, keywords=("사료", "연어"),
+                                 last_confirmed_at="2026-10-01 03:00:00")
+    return items, annotations
+
+
+def test_idf_weighs_rare_query_words_above_common_ones():
+    items, annotations = _cat_memories()
+
+    idf = query_idf([(item, annotations[item.id]) for item in items], (("보리 사료", 1.0),))
+
+    assert idf["사료"] > idf["보리"] > 0
+
+
+def test_recall_ranks_the_rare_match_first_despite_older_confirmation():
+    items, annotations = _cat_memories()
+    ctx = SelectionContext(scope=DM, message="", now=NOW)
+
+    found = recall_personal_memory(items, annotations, ctx, "보리 사료")
+
+    # Every match scores the same before IDF; the newest "보리" items would lead.
+    assert found[0].item.id == 9
+
+
+def test_t2_cap_keeps_the_rare_match():
+    items, annotations = _cat_memories()
+    ctx = SelectionContext(scope=DM, message="보리 사료 바꿨어", now=NOW)
+
+    selection = select_personal_memory(items, annotations, ctx)
+
+    chosen = [entry.item.id for entry in selection.selected]
+    assert len(chosen) == 4 and chosen[0] == 9
+    assert selection.excluded["t2_cap"] == 2
