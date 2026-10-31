@@ -1,14 +1,15 @@
 """Offline baseline registration and explicit, ordered Hina schema upgrades.
 
-Only baseline v1 ships today. Add a named function to UPGRADES for each real
-next version, plus its HISTORY entry/current DDL/metadata signature. No schema
-repair or legacy format inference is performed by this path.
+Add a named function to UPGRADES for each real next version, plus its HISTORY
+entry/current DDL/metadata signature. No schema repair or legacy format
+inference is performed by this path.
 """
 
-from hina_bot.core.db_ddl import LEDGER_DDL, V1_TABLES
+from hina_bot.core.db_ddl import LEDGER_DDL, MEMORY_ANNOTATION_DDL, V1_TABLES
 from hina_bot.core.db_schema import (
     COMPONENTS,
     HISTORY,
+    OWNED_TABLES,
     SchemaError,
     create_tables,
     record_versions,
@@ -19,8 +20,29 @@ from hina_bot.core.db_schema import (
 
 from .maintenance_backup import database_signature
 
-# Explicit (component, next_version, function) steps; no v2 feature is implemented.
-UPGRADES = ()
+
+def add_memory_item_annotations(db):
+    """Store v2 (#451): add the derived annotation table; memory_items is untouched."""
+    for statement in MEMORY_ANNOTATION_DDL:
+        db.execute(statement)
+
+
+# Explicit (component, next_version, function) steps.
+UPGRADES = (
+    ("store", 2, add_memory_item_annotations),
+)
+
+
+def apply_upgrades(db, component, version):
+    """Run every missing step after `version` inside the caller's transaction."""
+    for target in range(version + 1, len(HISTORY[component]) + 1):
+        step = next((apply for area, number, apply in UPGRADES
+                     if (area, number) == (component, target)), None)
+        if step is None:
+            raise SchemaError(f"Missing explicit migration: {component} v{target}")
+        step(db)
+        db.execute("INSERT INTO schema_migrations(component,version,name) VALUES (?,?,?)",
+                   (component, target, HISTORY[component][target - 1]))
 
 
 def inspect_connection(db, components=COMPONENTS):
@@ -31,7 +53,10 @@ def inspect_connection(db, components=COMPONENTS):
     tables = {row[0] for row in db.execute(
         "SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT GLOB 'sqlite_*'"
     )}
-    known = set().union(*V1_TABLES.values()) | {"schema_migrations"}
+    known = {
+        table for versions_tables in OWNED_TABLES.values()
+        for tables_at in versions_tables.values() for table in tables_at
+    } | {"schema_migrations"}
     if tables and not tables & known:
         raise SchemaError("Not a recognized Hina database; refuse schema adoption")
     if "store" in components and "summaries" in tables:
@@ -85,14 +110,7 @@ def prepare_connection(db, components=COMPONENTS, *, expected_signature=None):
                 db.execute("INSERT INTO schema_migrations(component,version,name) VALUES (?,?,?)",
                            (component, 1, HISTORY[component][0]))
                 version = 1
-            for target in range(version + 1, len(HISTORY[component]) + 1):
-                step = next((apply for area, number, apply in UPGRADES
-                             if (area, number) == (component, target)), None)
-                if step is None:
-                    raise SchemaError(f"Missing explicit migration: {component} v{target}")
-                step(db)
-                db.execute("INSERT INTO schema_migrations(component,version,name) VALUES (?,?,?)",
-                           (component, target, HISTORY[component][target - 1]))
+            apply_upgrades(db, component, version)
         require_current(db, components)
         db.commit()
         return pending

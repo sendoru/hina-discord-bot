@@ -83,11 +83,13 @@ def test_parser_accepts_only_items_grounded_in_allowed_message_ids():
                 "source_message_ids": ["999"],
             },
             {
+                # An unknown kind is only rejected when the row may be a relationship.
                 "content": "잘못된 종류",
                 "kind": "mood",
                 "disclosure": "local",
                 "confidence": 0.8,
                 "source_message_ids": ["101"],
+                "relationship_evidence": {"comfort": 2},
             },
         ]
     }

@@ -557,6 +557,7 @@ class AdminRepository:
         disclosure: str = "",
         status: str = "",
         relationship: str = "",
+        annotation: str = "",
         query: str = "",
         confidence_min: float | None = None,
         confidence_max: float | None = None,
@@ -594,6 +595,24 @@ class AdminRepository:
             clauses.append("relationship_evidence NOT IN ('{}','')")
         elif relationship == "no":
             clauses.append("relationship_evidence IN ('{}','')")
+        # Derived annotation review queues (#451): no queue table, only these views.
+        annotated = (
+            "EXISTS (SELECT 1 FROM memory_item_annotations a "
+            "WHERE a.memory_item_id=memory_items.id{})"
+        )
+        if annotation == "missing":
+            clauses.append(
+                f"status='active' AND kind!='relationship' AND NOT {annotated.format('')}"
+            )
+        elif annotation == "stale":
+            clauses.append("status='active' AND " + annotated.format(
+                " AND a.item_revision<memory_items.revision"
+            ))
+        elif annotation == "flagged":
+            clauses.append(annotated.format(" AND a.lint_flags NOT IN ('[]','')"))
+        elif annotation in {"admin", "backfill"}:
+            clauses.append(annotated.format(" AND a.annotator=?"))
+            params.append(annotation)
         if confidence_min is not None:
             clauses.append("confidence>=?")
             params.append(float(confidence_min))
@@ -644,6 +663,13 @@ class AdminRepository:
         with self._connection() as db:
             row = db.execute(
                 "SELECT * FROM memory_items WHERE id=?", (int(item_id),)
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def memory_item_annotation(self, item_id: int) -> dict[str, object] | None:
+        with self._connection() as db:
+            row = db.execute(
+                "SELECT * FROM memory_item_annotations WHERE memory_item_id=?", (int(item_id),)
             ).fetchone()
         return dict(row) if row is not None else None
 

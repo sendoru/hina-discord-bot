@@ -33,6 +33,111 @@ Each item stores:
   `support_openness`, and `task_orientation`. Missing/zero means no stored positive evidence,
   never dislike or rejection.
 
+## Annotations (memory v2, #449/#451)
+
+Store schema v2 adds `memory_item_annotations`, one row per memory item. It holds regenerable
+judgments about the item rather than new facts: when the memory applies (`time_scope`, `stability`,
+`event_at`, `recurrence`), how Hina may use it (`usage_mode`, `directive_type`, `audience`,
+`importance`), retrieval hints (`slot`, `keywords`), the quoted source (`evidence`, `observed_at`),
+and lifecycle markers (`last_confirmed_at`, `confirmations`, `last_used_at`, `proactive_*`).
+`memory_items` remains the source of truth and is not altered.
+
+- An annotation applies to one `item_revision`. When an admin edit raises the item revision, the
+  annotation is stale until it is re-annotated (`hina-backfill-annotations` or a dashboard edit).
+  Stale or missing annotations fall back to the conservative defaults in #449 §4.1, except that a
+  stale directive stays a directive until it is re-annotated (principle 6).
+- `annotator` records who wrote it (`extractor`, `consolidator`, `backfill`, `admin`); admin edits win.
+- The database enforces the cross-field rules: `directive_type` exists exactly for `directive`
+  items, `stability` only for `ongoing` items, and `sensitive` items always have `audience=owner`.
+- Relationship items are not annotated; they keep the relationship projection path.
+- Every path that deletes a memory item (`/forget`, channel/realm/all purge, dashboard permanent
+  deletion) deletes its annotation in the same transaction. `hina-reset-conversation` and
+  `hina-reset-analysis-data` preserve annotations together with the memory items.
+
+The table is created by `hina-prepare-db` (see [DB initialization](db-initialization.md)). In this
+stage the response path does not read it yet; extraction v2 and backfill populate it, and the response
+path stays legacy until P2.
+
+`observed_at` and `last_confirmed_at` use the stored turn time (UTC, `YYYY-MM-DD HH:MM:SS`), so
+they compare as strings. `event_at` is a local calendar date (`YYYY-MM-DD` or `YYYY-MM`) in
+`RUNTIME_TIMEZONE`.
+
+### Extraction v2
+
+The shadow extractor now returns the annotation fields next to each non-relationship item. Each
+input turn carries `at_local` and `weekday` in `RUNTIME_TIMEZONE`, so a relative date such as
+"다음 주 화요일" becomes an absolute `event_at`. The prompt walks through tense, stability, usage,
+audience and importance in that order; `kind` remains only for compatibility.
+
+The extractor, the directive verifier and the backfill accept their rows either in the requested
+envelope (`{"items": [...]}`, `{"results": [...]}`) or as a bare array, which some models return
+instead. Only the envelope is relaxed: every row is validated as before, and any other shape is
+still an invalid response.
+
+The parser never trusts a judgment it cannot check (#449 principle 6):
+
+- `evidence` must be a substring of a cited user utterance (NFKC, case and whitespace ignored).
+  Otherwise it is cleared, `evidence_mismatch` is recorded and `ambient` drops to `contextual`.
+- A past or completed marker in the evidence of an `ongoing` item records `past_marker_ongoing` and
+  drops `ambient` to `contextual`; the time scope itself is left for review.
+- Missing judgments fall back to `contextual`/`unknown`; a `boundary` item falls back to a boundary
+  directive so a boundary is never lost. Malformed `event_at`/`recurrence` values are dropped.
+  `recurrence` is `weekly:TUE 19:00`, `weekly:TUE` when no clock time was given, several weekdays
+  such as `weekly:SAT,SUN`, or `monthly:15`. Empty strings count as omitted.
+- `planned`/`episodic` items without a date record `undated_event`; P2 expires them 30 days after
+  `observed_at`. `recurring` items without a usable `recurrence` record `recurrence_missing`, since
+  P2 cannot compute their next occurrence.
+- `audience=server` is narrowed to `owner` for sensitive items and for anything not captured in a
+  public guild channel.
+- An invalid legacy label no longer drops an otherwise valid item (#449 decision 15): an unknown
+  `disclosure` (for example `sensitive` copied from `usage_mode`) becomes the narrowest `local`
+  (`disclosure_defaulted`), and an unknown `kind` becomes `fact` (`kind_defaulted`). An unknown kind
+  on a row with relationship evidence is still rejected, since it may be a relationship.
+
+Directive items get one more small request (`verify_memory_directives`) before the commit. The
+verifier sees only the directive items and the user utterances they cite: `keep` marks the item
+verified, `temporary` (boundaries only) keeps it verified as a short ongoing boundary, and `reject`
+demotes it to `contextual` with `directive_rejected`. A failed or malformed verification keeps the
+directive but unverified (`directive_unverified`), so a boundary is not silently dropped. Directives
+are not demoted by the evidence or tense checks above; the verifier decides.
+
+Annotations commit in the same transaction as their items and the extraction cursor. A same-space
+re-mention of an active item is counted as a confirmation (`confirmations + 1`, latest
+`last_confirmed_at`) instead of a new row, and so is an applied `duplicate` reconciliation. A
+`corrects` proposal whose new item has the same `slot` as its target is auto-applied from confidence
+0.8 instead of 0.95. Automatic reconciliation no longer requires matching `kind` labels: a fact and a
+preference describing the same memory may be merged, and only a relationship/non-relationship pair
+is refused as `kind_mismatch` (#449 decision 15). Relationship observations are skipped when an active relationship item from the
+same channel and visibility, created within 14 days of the batch, already shows every axis at least
+as high (#449 decision 18).
+
+### Annotation backfill
+
+`hina-backfill-annotations` annotates active non-relationship memories that have no annotation
+and refreshes automated annotations made stale by a later item edit. Run it with the bot stopped;
+`--dry-run` prints only counts. With `--yes --offline-confirmed` it backs up the database, then sends
+each owner's items in batches (`--batch-size`, default 10; `--limit` caps the total) to the memory
+model with the shared field rules.
+
+- The model sees the stored content, its kind, the stored time (local time and weekday), and the
+  owner's own source utterances when conversation retention still has them. The same evidence,
+  tense and audience checks as extraction apply, so items without surviving sources cannot become
+  `ambient` and are flagged `source_unavailable`.
+- A `boundary`-kind item stays a boundary directive candidate even if the model chooses otherwise;
+  only the verifier can demote it.
+- Directives with sources get the verification request; without sources they stay unverified
+  directives.
+- Rows are written as `annotator=backfill` for the item's current revision. A stale row keeps its
+  original observation, confirmation, use and proactive markers.
+- Admin annotations are never replaced; stale ones are counted as `stale_admin_review` for the
+  dashboard queue. Owners whose memory writes are disabled are skipped and never sent to the model.
+- A failed batch writes nothing and is reported by reason: an exception type, `empty_response`,
+  `invalid_json` or `no_items` (no row carried an integer `index`). Output never contains memory
+  text.
+
+The `memory.shadow_extraction` completed event adds `annotated_items`, `reconfirmed_items`,
+`suppressed_relationship_items`, `directive_items`, `verified_directives` and `rejected_directives`.
+
 ## Disclosure semantics
 
 The policy primitive returns one of three access levels:

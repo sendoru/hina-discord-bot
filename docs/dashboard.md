@@ -357,13 +357,39 @@ states expose a separate irreversible `memory.item.delete` action, and the list 
 retraction (active only) or permanent deletion (any state), up to 50 selected rows per request.
 The UI requires typing `DELETE`, while the server requires an explicit confirmation marker, CSRF
 token, and current revision before queueing. The bot acquires the persisted item's memory lock
-and deletes the selected memory row and its edit history/reconciliation proposals atomically.
+and deletes the selected memory row and its edit history, annotation and reconciliation proposals
+atomically.
 Other memories that referenced the deleted row via `superseded_by` retain their state and
 lose only that reference (with a revision bump); they are never reactivated. Source conversations,
 extraction cursors, telemetry, and external backups are not erased by item deletion.
 This action is not a user-wide forget or a privacy erasure of all source records.
 Superseded and retracted items remain read-only for editing and retraction.
 Manual add, restore/undo, and pinning remain separate follow-up features.
+
+#### Memory annotations (memory v2)
+
+Non-relationship memory details show the item's annotation (#451): time scope and stability,
+event date or recurrence, usage mode and directive verification, audience, importance, slot,
+keywords, the verified evidence quote, observation/confirmation/use timestamps, proactive state,
+lint flags, annotator and the item revision it was written for. The panel is labelled `current`,
+`stale` (the item was edited after annotation; runtime treats it as defaults until re-annotated)
+or `missing` (no row yet; run `hina-backfill-annotations`). A stale annotation's judgments fall back
+to defaults, except that a stale directive stays a directive until re-annotation. Relationship items
+have no annotation.
+
+The memory list's **Annotation** filter is the review queue, derived from the tables rather than
+stored separately: `missing` and `stale` (active items only, the backfill's work list),
+`lint flagged`, `backfilled (review)` for checking backfill output before P2 reads annotations, and
+`admin reviewed`.
+
+With write mode enabled, an active item's annotation can be edited. The dashboard validates the
+fields with the same helper the runtime uses and queues `memory.annotation.set` with the item ID,
+expected revision and fields. The bot re-validates, takes the item's memory lock, rejects a changed
+revision, and stores an `admin` annotation pinned to the current revision. Observation,
+confirmation, use and proactive markers and the evidence quote are kept; lint flags are cleared and
+directives are marked verified. `audience=server` is still narrowed to `owner` for items not
+captured in a public guild channel. Automated extraction and backfill never overwrite an admin
+annotation.
 
 ### Effective relationship profiles
 

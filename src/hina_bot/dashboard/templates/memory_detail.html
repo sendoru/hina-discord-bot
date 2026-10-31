@@ -40,6 +40,94 @@
   <div class="message">{{ data.item.content }}</div>
 </section>
 
+{% set ann = data.annotation.row %}
+{% if data.annotation.state != "not_applicable" %}
+<section class="panel" data-memory-annotation="{{ data.annotation.state }}">
+  <div class="panel-heading">
+    <h2>Annotation</h2>
+    {% if data.annotation.state == "current" %}{{ status_badge("current") }}
+    {% elif data.annotation.state == "stale" %}{{ status_badge("stale") }}
+    {% else %}{{ status_badge("missing") }}{% endif %}
+  </div>
+  {% if data.annotation.state == "missing" %}
+  <p class="muted">아직 annotation이 없습니다. 응답 경로는 보수적 기본값(contextual/unknown, boundary는 지침)을 사용합니다. <code>hina-backfill-annotations</code>로 채우거나 아래에서 직접 지정할 수 있습니다.</p>
+  {% else %}
+  {% if data.annotation.state == "stale" %}
+  <p class="notice warning">기억이 revision {{ ann.item_revision }} 이후 수정되었습니다(현재 {{ data.item.revision }}). 재주석 전까지 이 판단은 기본값으로 취급되며, directive만은 그대로 유지됩니다.</p>
+  {% endif %}
+  <dl class="metadata">
+    <div><dt>Time scope</dt><dd>{{ ann.time_scope }}{% if ann.stability %} · {{ ann.stability }}{% endif %}</dd></div>
+    <div><dt>Event at</dt><dd>{{ ann.event_at or "—" }}{% if ann.recurrence %} · <code>{{ ann.recurrence }}</code>{% endif %}</dd></div>
+    <div><dt>Usage</dt><dd>{{ ann.usage_mode }}{% if ann.directive_type %} · {{ ann.directive_type }}{% endif %}{% if ann.usage_mode == "directive" %} · {{ "verified" if ann.verified else "unverified" }}{% endif %}</dd></div>
+    <div><dt>Audience</dt><dd>{{ ann.audience }}</dd></div>
+    <div><dt>Importance</dt><dd>{{ ann.importance }}{% if ann.explicit %} · explicit{% endif %}</dd></div>
+    <div><dt>Slot</dt><dd>{% if ann.slot %}<code>{{ ann.slot }}</code>{% else %}—{% endif %}</dd></div>
+    <div><dt>Keywords</dt><dd>{{ ann.keywords_decoded | join(", ") if ann.keywords_decoded else "—" }}</dd></div>
+    <div><dt>Observed</dt><dd>{{ ann.observed_at | localtime }}</dd></div>
+    <div><dt>Last confirmed</dt><dd>{{ ann.last_confirmed_at | localtime }} · {{ ann.confirmations }}×</dd></div>
+    <div><dt>Last used</dt><dd>{% if ann.last_used_at %}{{ ann.last_used_at | localtime }}{% else %}—{% endif %}</dd></div>
+    <div><dt>Proactive</dt><dd>{{ ann.proactive_status or "—" }} · {{ ann.proactive_count }}</dd></div>
+    <div><dt>Annotator</dt><dd>{{ ann.annotator }} · <code>{{ ann.annotator_version }}</code> · rev {{ ann.item_revision }}</dd></div>
+    <div><dt>Cluster</dt><dd>{{ ann.cluster_id if ann.cluster_id is not none else "—" }}</dd></div>
+    <div><dt>Updated</dt><dd>{{ ann.updated_at | localtime }}</dd></div>
+  </dl>
+  {% if ann.lint_flags_decoded %}<p>Lint: {% for flag in ann.lint_flags_decoded %}<code>{{ flag }}</code>{% if not loop.last %} {% endif %}{% endfor %}</p>{% endif %}
+  <h3>Evidence</h3>
+  {% if ann.evidence %}<div class="message">{{ ann.evidence }}</div>{% else %}<p class="muted">검증된 인용이 없습니다.</p>{% endif %}
+  {% endif %}
+
+  {% if data.item.status == "active" %}
+  {% set edit = ann or {} %}
+  <details data-annotation-editor>
+    <summary><strong>Edit annotation</strong></summary>
+    <p class="muted">관리자 판단은 자동 추출·재주석으로 덮어쓰지 않으며 현재 revision({{ data.item.revision }})에 고정됩니다. 관측·확인·사용 이력과 인용은 유지됩니다.</p>
+    <form method="post" action="/memory/{{ data.item.id }}/annotation" class="prompt-editor-card">
+      <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
+      <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
+      <input type="hidden" name="expected_revision" value="{{ data.item.revision }}">
+      <div class="prompt-form-grid">
+        {% for name, values, current, optional in [
+          ("time_scope", data.annotation_editor.time_scopes, edit.time_scope or "unknown", false),
+          ("stability", data.annotation_editor.stabilities, edit.stability or "", true),
+          ("usage_mode", data.annotation_editor.usage_modes, edit.usage_mode or "contextual", false),
+          ("directive_type", data.annotation_editor.directive_types, edit.directive_type or "", true),
+          ("audience", data.annotation_editor.audiences, edit.audience or "owner", false),
+        ] %}
+        <label class="prompt-field">{{ name }}
+          <select name="{{ name }}" {% if not dashboard_write_enabled %}disabled{% endif %}>
+            {% if optional %}<option value="">—</option>{% endif %}
+            {% for value in values %}<option value="{{ value }}" {% if value == current %}selected{% endif %}>{{ value }}</option>{% endfor %}
+          </select>
+        </label>
+        {% endfor %}
+        <label class="prompt-field">importance
+          <input name="importance" type="number" min="1" max="3" step="1" value="{{ edit.importance or 2 }}" {% if not dashboard_write_enabled %}disabled{% endif %}>
+        </label>
+        <label class="prompt-field">event_at
+          <input name="event_at" value="{{ edit.event_at or '' }}" placeholder="YYYY-MM-DD or YYYY-MM" {% if not dashboard_write_enabled %}disabled{% endif %}>
+        </label>
+        <label class="prompt-field">recurrence
+          <input name="recurrence" value="{{ edit.recurrence or '' }}" placeholder="weekly:TUE 19:00 / weekly:SAT,SUN / monthly:15" {% if not dashboard_write_enabled %}disabled{% endif %}>
+        </label>
+        <label class="prompt-field">slot
+          <input name="slot" value="{{ edit.slot or '' }}" maxlength="{{ data.annotation_editor.slot_max_chars }}" {% if not dashboard_write_enabled %}disabled{% endif %}>
+        </label>
+        <label class="prompt-field">keywords
+          <input name="keywords" value="{{ edit.keywords_decoded | join(', ') if edit.keywords_decoded else '' }}" placeholder="comma separated, up to {{ data.annotation_editor.keywords_max }}" {% if not dashboard_write_enabled %}disabled{% endif %}>
+        </label>
+        <label class="prompt-field">explicit
+          <input name="explicit" type="checkbox" value="true" {% if edit.explicit %}checked{% endif %} {% if not dashboard_write_enabled %}disabled{% endif %}>
+        </label>
+      </div>
+      <div class="prompt-actions">
+        <button type="submit" {% if not dashboard_write_enabled %}disabled{% endif %}>Save annotation</button>
+      </div>
+    </form>
+  </details>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if data.item.status == "active" %}
 <details class="panel" data-memory-editor>
   <summary><strong>Edit memory</strong></summary>
@@ -105,7 +193,7 @@
   </form>
   {% endif %}
   <hr>
-  <p class="muted">영구 삭제는 이 기억의 DB row, 수정 이력, reconciliation 제안을 제거합니다. 다른 기억의 연결 참조는 정리되며 복구할 수 없습니다. 원본 대화나 백업은 삭제하지 않습니다.</p>
+  <p class="muted">영구 삭제는 이 기억의 DB row, 수정 이력, annotation, reconciliation 제안을 제거합니다. 다른 기억의 연결 참조는 정리되며 복구할 수 없습니다. 원본 대화나 백업은 삭제하지 않습니다.</p>
   <form method="post" action="/memory/{{ data.item.id }}/delete">
     <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
     <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">

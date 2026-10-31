@@ -13,6 +13,7 @@ from .admin_commands import (
 from .conversation_repository import ConversationRepository
 from .db_connections import open_existing
 from .db_schema import initialize_connection, require_current
+from .memory_annotations import MemoryAnnotation
 from .memory_items import (
     MemoryDisclosure,
     MemoryItem,
@@ -496,6 +497,25 @@ class Store:
     def reference_gated_memory_candidates(self, scope: Scope, *, limit: int = 24):
         return self._memories.reference_gated_memory_candidates(scope, limit=limit)
 
+    def memory_annotation(self, item_id: int) -> MemoryAnnotation | None:
+        return self._memories.memory_annotation(item_id)
+
+    def memory_annotations(self, item_ids) -> dict[int, MemoryAnnotation]:
+        return self._memories.memory_annotations(item_ids)
+
+    def upsert_memory_annotation(self, annotation: MemoryAnnotation) -> None:
+        self._memories.upsert_memory_annotation(annotation)
+
+    def reconfirm_memory_annotation(self, item_id: int, observed_at: str) -> bool:
+        return self._memories.reconfirm_memory_annotation(item_id, observed_at)
+
+    def set_admin_memory_annotation(
+        self, item_id: int, *, expected_revision: int, fields: dict[str, object]
+    ) -> MemoryAnnotation:
+        return self._memories.set_admin_memory_annotation(
+            item_id, expected_revision=expected_revision, fields=fields
+        )
+
     def memory_reconciliation_candidates(self, scope: Scope, *, limit: int = 24):
         return self._memories.memory_reconciliation_candidates(scope, limit=limit)
 
@@ -555,13 +575,14 @@ class Store:
             ):
                 self.db.execute(f"DELETE FROM {table} WHERE realm=? AND user_id=?",
                                 (scope.realm, str(scope.user_id)))
-            self.db.execute(
-                """DELETE FROM memory_item_edit_history
-                   WHERE memory_item_id IN (
-                       SELECT id FROM memory_items WHERE origin_realm=? AND user_id=?
-                   )""",
-                (scope.realm, str(scope.user_id)),
-            )
+            for table in ("memory_item_edit_history", "memory_item_annotations"):
+                self.db.execute(
+                    f"""DELETE FROM {table}
+                       WHERE memory_item_id IN (
+                           SELECT id FROM memory_items WHERE origin_realm=? AND user_id=?
+                       )""",
+                    (scope.realm, str(scope.user_id)),
+                )
             self.db.execute(
                 "DELETE FROM memory_items WHERE origin_realm=? AND user_id=?",
                 (scope.realm, str(scope.user_id)),
@@ -588,14 +609,15 @@ class Store:
             ):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE scope LIKE ?", (prefix,))
                 deleted += self._rowcount(cursor)
-            self.db.execute(
-                """DELETE FROM memory_item_edit_history
-                   WHERE memory_item_id IN (
-                       SELECT id FROM memory_items
-                       WHERE origin_realm=? AND origin_channel_id=?
-                   )""",
-                (scope.realm, str(scope.channel_id)),
-            )
+            for table in ("memory_item_edit_history", "memory_item_annotations"):
+                self.db.execute(
+                    f"""DELETE FROM {table}
+                       WHERE memory_item_id IN (
+                           SELECT id FROM memory_items
+                           WHERE origin_realm=? AND origin_channel_id=?
+                       )""",
+                    (scope.realm, str(scope.channel_id)),
+                )
             cursor = self.db.execute(
                 "DELETE FROM memory_items WHERE origin_realm=? AND origin_channel_id=?",
                 (scope.realm, str(scope.channel_id)),
@@ -621,13 +643,14 @@ class Store:
             ):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE realm=?", (scope.realm,))
                 deleted += self._rowcount(cursor)
-            self.db.execute(
-                """DELETE FROM memory_item_edit_history
-                   WHERE memory_item_id IN (
-                       SELECT id FROM memory_items WHERE origin_realm=?
-                   )""",
-                (scope.realm,),
-            )
+            for table in ("memory_item_edit_history", "memory_item_annotations"):
+                self.db.execute(
+                    f"""DELETE FROM {table}
+                       WHERE memory_item_id IN (
+                           SELECT id FROM memory_items WHERE origin_realm=?
+                       )""",
+                    (scope.realm,),
+                )
             cursor = self.db.execute(
                 "DELETE FROM memory_items WHERE origin_realm=?",
                 (scope.realm,),
@@ -645,6 +668,7 @@ class Store:
         deleted = 0
         with self.db:
             self.db.execute("DELETE FROM memory_item_edit_history")
+            self.db.execute("DELETE FROM memory_item_annotations")
             for table in (
                 "turns",
                 "shared_calls",
