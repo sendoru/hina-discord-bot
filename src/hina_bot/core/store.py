@@ -512,6 +512,9 @@ class Store:
     def reconfirm_memory_annotation(self, item_id: int, observed_at: str) -> bool:
         return self._memories.reconfirm_memory_annotation(item_id, observed_at)
 
+    def record_memory_usage(self, usages) -> int:
+        return self._memories.record_memory_usage(usages)
+
     def set_admin_memory_annotation(
         self, item_id: int, *, expected_revision: int, fields: dict[str, object]
     ) -> MemoryAnnotation:
