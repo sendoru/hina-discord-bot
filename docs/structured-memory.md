@@ -200,6 +200,28 @@ whenever memory was read, including `read_only`; a failure is logged as `memory.
 never affects the reply. `memory.usage` counts used items and follow-ups without content. Session
 gaps use the user's latest stored turn in any space.
 
+### recall_memory tool
+
+With `tiered`, memory that was not selected is no longer in the prompt, so the model can look it
+up with `recall_memory(query)` (#449 §7 T3, decisions 7 and 22). It is registered only on the
+tiered path while the owner's memory reads are allowed, and the read mode is checked again when it
+runs.
+
+- It returns at most 6 active non-relationship memories of the current owner that match the query
+  lexically, with the same `status`, `date`/`noted` and `use` as `user_memory`. `past` and
+  `unverified` items are returned with their dates; superseded and retracted items never are.
+- It never widens access: only items FULL in the current scope, plus reference-gated items this
+  turn's T4 recall already authorized. Being called by the model is not an owner reference.
+- At most 2 calls per answer. The description separates it from `get_chat_history`, which reads the
+  current channel's original messages.
+- Its results stay in this request's function output. The answer is marked in context provenance
+  as `memory_lookup` (call count and `{store, item_id}` only), and extraction drops such replies
+  just like `history_lookup` ones (principle 10). `memory.recall` telemetry records status, count and
+  time, never the query or content.
+
+Search is lexical over the owner's items in Python rather than SQLite FTS5, so it needs no schema
+change; P5 replaces it with embeddings.
+
 The rendered `user_memory` holds `directives`, `quiet_boundaries` and `notes` (`text`, `status`,
 `date` or `noted`, `use`, and `scope_relation` when the item came from elsewhere); it carries no
 ids, kinds or confidence values. The tiered policy (`prompts/integration/structured_memory_tiered.md`)
