@@ -190,6 +190,16 @@ boundaries below. Selecting nothing is normal.
 - Raw relationship memories are never sent (decision 5); `relationship_profile` is the numeric
   owner profile in DM and the FULL plus implicit profile in a server.
 
+**Usage after the reply** (tiered only): once the reply is delivered, each injected note whose
+keyword appears in the reply gets `last_used_at` (the 72-hour cooldown). Unannotated legacy items
+need two content words instead. A T1 follow-up candidate records `proactive_status` (its effective
+status) and `proactive_count`: 2 when the reply used it, otherwise one more attempt, so an unused
+follow-up is retried once in the next session. Only these usage columns are written, never the
+annotation's judgments, and items without an annotation row are skipped. This metadata is kept
+whenever memory was read, including `read_only`; a failure is logged as `memory.usage_failed` and
+never affects the reply. `memory.usage` counts used items and follow-ups without content. Session
+gaps use the user's latest stored turn in any space.
+
 The rendered `user_memory` holds `directives`, `quiet_boundaries` and `notes` (`text`, `status`,
 `date` or `noted`, `use`, and `scope_relation` when the item came from elsewhere); it carries no
 ids, kinds or confidence values. The tiered policy (`prompts/integration/structured_memory_tiered.md`)

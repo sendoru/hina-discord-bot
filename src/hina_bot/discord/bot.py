@@ -5,14 +5,15 @@ import time
 import weakref
 from contextlib import ExitStack, asynccontextmanager, nullcontext
 from contextvars import ContextVar
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import discord
 
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
-from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
+from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_SELECTION
+from hina_bot.core.memory_selection import memory_usage
 from hina_bot.core.observability import (
     CURRENT_TURN_ID,
     EventLogger,
@@ -343,6 +344,35 @@ class HinaClient(discord.Client):
                     type(exc).__name__,
                     error["error_fingerprint"],
                 )
+
+    def _record_memory_usage(self, answer: str, scope_kind: str) -> None:
+        """Store cooldown and follow-up state for memories injected into this reply.
+
+        Usage metadata is not memory content, so it is kept whenever memory was read.
+        A failure here must never affect the delivered reply.
+        """
+
+        selection = CURRENT_MEMORY_SELECTION.get()
+        CURRENT_MEMORY_SELECTION.set(None)
+        recorder = getattr(self.store, "record_memory_usage", None)
+        if selection is None or not callable(recorder):
+            return
+        try:
+            usages = memory_usage(selection, answer, datetime.now(UTC))
+            recorder(usages)
+        except Exception as exc:  # noqa: BLE001 - bookkeeping never fails a delivered reply
+            error = safe_exception_fields(exc, "memory_usage")
+            self.events.emit("memory.usage_failed", level="warning", scope=scope_kind, **error)
+            return
+        self.events.emit(
+            "memory.usage",
+            scope=scope_kind,
+            memory_used_items=sum(usage.used for usage in usages),
+            memory_followups=sum(usage.proactive_status is not None for usage in usages),
+            memory_followups_used=sum(
+                usage.used and usage.proactive_status is not None for usage in usages
+            ),
+        )
 
     async def send_text(self, channel, text):
         for part in chunks(neutralize_mentions(text)):
@@ -806,6 +836,7 @@ class HinaClient(discord.Client):
                                     delivery_ms=timings["delivery_ms"],
                                     delivery_chunks=len(parts),
                                 )
+                                self._record_memory_usage(answer, scope_kind)
                                 if guild_id is not None and use_chat_log:
                                     assistant_name = getattr(
                                         self.user,

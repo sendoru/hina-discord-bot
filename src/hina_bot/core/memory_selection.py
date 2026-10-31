@@ -623,6 +623,59 @@ def selection_provenance(selection: MemorySelection) -> dict:
     }
 
 
+@dataclass(frozen=True)
+class MemoryUsage:
+    """Usage metadata to store for one selected note after the reply (§7 5, §7.1)."""
+
+    item_id: int
+    used: bool
+    last_used_at: str | None = None
+    proactive_status: str | None = None
+    proactive_count: int | None = None
+    last_proactive_at: str | None = None
+
+
+def _used_in(entry: SelectedMemory, answer: str) -> bool:
+    """Decision 19: a memory counts as used when the reply contains one of its keywords."""
+
+    text = normalize_text(answer)
+    keywords = [normalize_text(word) for word in entry.annotation.keywords]
+    keywords = [word for word in keywords if len(word) >= 2]
+    if keywords:
+        return any(word in text for word in keywords)
+    # Unannotated legacy items have no keywords: require two content words instead.
+    return sum(term in text for term in _tokens(entry.item.content)) >= 2
+
+
+def memory_usage(selection: MemorySelection, answer: str, now: datetime) -> list[MemoryUsage]:
+    """Cooldown and follow-up bookkeeping for the notes injected into this reply."""
+
+    stamp = now.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    updates = []
+    for entry in selection.selected:
+        if entry.placement != "notes":
+            continue
+        used = _used_in(entry, answer)
+        if entry.tier != "T1":
+            if used:
+                updates.append(MemoryUsage(entry.item.id, True, last_used_at=stamp))
+            continue
+        status = entry.status.status.value
+        previous = (
+            entry.annotation.proactive_count
+            if entry.annotation.proactive_status == status
+            else 0
+        )
+        # Used: this status is exhausted. Unused: one retry is left for the next session.
+        count = PROACTIVE_COUNT_MAX if used else min(PROACTIVE_COUNT_MAX, previous + 1)
+        updates.append(MemoryUsage(
+            entry.item.id, used,
+            last_used_at=stamp if used else None,
+            proactive_status=status, proactive_count=count, last_proactive_at=stamp,
+        ))
+    return updates
+
+
 def recall_personal_memory(
     items, annotations: dict[int, MemoryAnnotation], ctx: SelectionContext, query: str,
     *, limit: int = 6,
@@ -666,12 +719,14 @@ __all__ = [
     "STABILITY_WINDOWS",
     "EffectiveStatus",
     "MemorySelection",
+    "MemoryUsage",
     "SelectedMemory",
     "SelectionContext",
     "StatusView",
     "effective_annotation",
     "effective_status",
     "is_light_chat",
+    "memory_usage",
     "recall_personal_memory",
     "render_user_memory",
     "select_personal_memory",
