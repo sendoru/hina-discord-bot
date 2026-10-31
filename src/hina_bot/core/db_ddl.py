@@ -235,10 +235,64 @@ LEDGER_DDL = """CREATE TABLE schema_migrations (
     applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY(component,version))"""
 
-DDL = {
+# Frozen v1 business DDL. The offline legacy converter targets exactly this;
+# later versions are reached only through the explicit upgrade steps.
+V1_DDL = {
     "store": STORE_DDL + STORE_INDEXES + QUEUE_DDL,
     "settings": SETTINGS_DDL,
     "admin": ADMIN_DDL,
+}
+
+# Store v2 (#449, #451): regenerable judgments about one memory item. Rows are
+# derived data; memory_items stays the source of truth and is not altered.
+MEMORY_ANNOTATION_DDL = (
+    """CREATE TABLE IF NOT EXISTS memory_item_annotations (
+            memory_item_id INTEGER PRIMARY KEY,
+            item_revision INTEGER NOT NULL CHECK(item_revision >= 0),
+            time_scope TEXT NOT NULL CHECK(time_scope IN (
+                'ongoing','past','planned','episodic','recurring','unknown'
+            )),
+            stability TEXT CHECK(stability IN ('permanent','long','medium','short')),
+            observed_at TEXT NOT NULL,
+            event_at TEXT,
+            recurrence TEXT,
+            usage_mode TEXT NOT NULL CHECK(usage_mode IN (
+                'directive','ambient','contextual','sensitive'
+            )),
+            directive_type TEXT CHECK(directive_type IN ('boundary','style')),
+            audience TEXT NOT NULL DEFAULT 'owner' CHECK(audience IN ('owner','server')),
+            importance INTEGER NOT NULL DEFAULT 2 CHECK(importance BETWEEN 1 AND 3),
+            slot TEXT NOT NULL DEFAULT '',
+            keywords TEXT NOT NULL DEFAULT '[]',
+            evidence TEXT NOT NULL DEFAULT '',
+            explicit INTEGER NOT NULL DEFAULT 0 CHECK(explicit IN (0,1)),
+            verified INTEGER NOT NULL DEFAULT 0 CHECK(verified IN (0,1)),
+            lint_flags TEXT NOT NULL DEFAULT '[]',
+            cluster_id INTEGER,
+            last_confirmed_at TEXT NOT NULL,
+            confirmations INTEGER NOT NULL DEFAULT 1 CHECK(confirmations >= 1),
+            last_used_at TEXT,
+            proactive_status TEXT NOT NULL DEFAULT '',
+            proactive_count INTEGER NOT NULL DEFAULT 0 CHECK(proactive_count BETWEEN 0 AND 2),
+            last_proactive_at TEXT,
+            annotator TEXT NOT NULL CHECK(annotator IN (
+                'extractor','consolidator','backfill','admin'
+            )),
+            annotator_version TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CHECK(stability IS NULL OR time_scope = 'ongoing'),
+            CHECK((usage_mode = 'directive') = (directive_type IS NOT NULL)),
+            CHECK(audience = 'owner' OR usage_mode != 'sensitive')
+        )""",
+    """CREATE INDEX IF NOT EXISTS memory_item_annotations_cluster
+       ON memory_item_annotations(cluster_id)""",
+)
+
+# Current DDL for fresh creation: v1 plus every later version's additions.
+DDL = {
+    "store": V1_DDL["store"] + MEMORY_ANNOTATION_DDL,
+    "settings": V1_DDL["settings"],
+    "admin": V1_DDL["admin"],
 }
 
 
@@ -288,4 +342,17 @@ V1_SIGNATURES = {
         'bfbc0142bacd3806691e2a1927a375e37737907010f1c1adc700aca96a5e8407',
     },
     "ledger": {'0b11af7999ed698fe5a9e14a977d9a434603a9880d63e00a69a3b46fa36da0e8'},
+}
+
+# Store v2 owns the v1 tables plus memory_item_annotations. Signatures cover
+# fresh v2 DDL and a v2 upgrade applied on top of the historical ALTER spelling.
+V2_TABLES = {
+    'store': V1_TABLES['store'] + ('memory_item_annotations',),
+}
+
+V2_SIGNATURES = {
+    'store': {
+        'a40e1b4e82c58dcb43f88fec6139ddffa1bd9764a6085b0c5ff109883aa1e033',
+        'a4733d2dc9e96bb1069e4310cf116cfe76e40033165bc4fdb32539138ca9d542',
+    },
 }

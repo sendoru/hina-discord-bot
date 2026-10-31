@@ -96,12 +96,12 @@ def database(tmp_path):
         proposal = _proposal(store, PUBLIC, duplicate, target, "duplicate", 0.99)
         assert store.apply_memory_reconciliation_proposal(proposal) == "applied"
 
-        # High-confidence duplicate blocked only by fact/preference disagreement.
+        # A pre-v2 high-confidence duplicate left unapplied by the old fact/preference
+        # check; the report still classifies such historical rows.
         fact = _add(store, PUBLIC, "커피를 못 마심", source="4")
         preference = _add(store, PUBLIC, "커피를 마시지 못함", kind=MemoryKind.PREFERENCE,
                           source="5")
-        proposal = _proposal(store, PUBLIC, preference, fact, "duplicate", 0.99)
-        assert store.apply_memory_reconciliation_proposal(proposal) == "kind_mismatch"
+        _proposal(store, PUBLIC, preference, fact, "duplicate", 0.99)
 
         low_old = _add(store, PUBLIC, "낮은 신뢰 이전 기억", source="6")
         low_new = _add(store, PUBLIC, "낮은 신뢰 새 기억", source="7")

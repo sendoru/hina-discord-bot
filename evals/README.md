@@ -161,9 +161,23 @@ override됩니다. JSONL/Markdown 결과에는 실제 eval budget이 기록되�
 ## 장기기억 추출 평가 (memory v2)
 
 `memory_extraction_cases.jsonl`은 #449 §5·§8.4의 추출 기준을 live 모델로 확인하기 위한 사례입니다
-(#450). 러너는 아직 없습니다. 개인 기억(`target: personal`)은 P1, 서버 기억(`target: server`)은
-P4에서 추출 v2와 함께 러너를 붙입니다. 그 전까지는 `tests/ai/test_memory_v2_fixtures.py`가 형식만
-검증합니다.
+(#450). 개인 기억(`target: personal`)은 `hina-memory-extraction-eval`로 실행합니다(#451). 서버
+기억(`target: server`)은 P4에서 러너를 붙이며, 그 전까지 `tests/ai/test_memory_v2_fixtures.py`가
+형식만 검증합니다.
+
+```bash
+uv run hina-memory-extraction-eval --provider gemini --model <memory-model>
+uv run hina-memory-extraction-eval --id extract_relative_date_resolved --repeat 3
+```
+
+러너는 런타임과 같은 추출 입력(`at_local`/`weekday` 포함), 파서, 지침 검증 요청을 거친 뒤 공개
+여부에 따른 audience 축소까지 적용하고 제약을 검사합니다. 사례마다 추출 요청 1회와, 지침 항목이
+있으면 검증 요청 1회가 나가는 유료 호출이며 일반 테스트에는 포함되지 않습니다. 결과는
+`data/evals/memory-extraction-*.json`에 저장되고 사례별 통과율, 실패한 제약, 추출된 항목을 담습니다.
+실패했거나 파서가 거부한 항목이 있는 실행에는 원인 확인용으로 모델 원문(`raw_output`)도 함께 저장합니다
+(사례가 가상 데이터라서 가능합니다).
+`--provider`/`--model`이 없으면 `LLM_PROVIDER`/`LLM_MODEL`을 씁니다. 서버 전용 제약(`trust`,
+`subject_users*`)은 이 러너에서 검사하지 않습니다.
 
 - `space`: `dm`, `public`(공개 서버 채널), `private`(비공개 채널)
 - `now`와 각 턴의 `at`: 상대 날짜("다음 주 화요일", "어제") 해석 기준. 모두 `+09:00`

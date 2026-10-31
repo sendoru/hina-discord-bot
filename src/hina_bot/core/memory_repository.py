@@ -5,6 +5,18 @@ import sqlite3
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 
+from .memory_annotations import (
+    Annotator,
+    Audience,
+    DirectiveType,
+    MemoryAnnotation,
+    Stability,
+    TimeScope,
+    UsageMode,
+    admin_annotation,
+    admin_annotation_fields,
+    enforce_consistency,
+)
 from .memory_items import (
     MemoryDisclosure,
     MemoryItem,
@@ -14,6 +26,14 @@ from .memory_items import (
     validate_memory_item_fields,
 )
 from .routing import Scope
+
+_ANNOTATION_COLUMNS = (
+    "memory_item_id", "item_revision", "time_scope", "stability", "observed_at", "event_at",
+    "recurrence", "usage_mode", "directive_type", "audience", "importance", "slot", "keywords",
+    "evidence", "explicit", "verified", "lint_flags", "cluster_id", "last_confirmed_at",
+    "confirmations", "last_used_at", "proactive_status", "proactive_count", "last_proactive_at",
+    "annotator", "annotator_version",
+)
 
 
 class MemoryRepository:
@@ -63,6 +83,162 @@ class MemoryRepository:
                 else None
             ),
         )
+
+    @staticmethod
+    def _decode_annotation(row) -> MemoryAnnotation:
+        return MemoryAnnotation(
+            memory_item_id=int(row["memory_item_id"]),
+            item_revision=int(row["item_revision"]),
+            time_scope=TimeScope(row["time_scope"]),
+            stability=Stability(row["stability"]) if row["stability"] else None,
+            observed_at=str(row["observed_at"]),
+            event_at=row["event_at"],
+            recurrence=row["recurrence"],
+            usage_mode=UsageMode(row["usage_mode"]),
+            directive_type=DirectiveType(row["directive_type"]) if row["directive_type"] else None,
+            audience=Audience(row["audience"]),
+            importance=int(row["importance"]),
+            slot=str(row["slot"]),
+            keywords=tuple(json.loads(row["keywords"] or "[]")),
+            evidence=str(row["evidence"]),
+            explicit=bool(row["explicit"]),
+            verified=bool(row["verified"]),
+            lint_flags=tuple(json.loads(row["lint_flags"] or "[]")),
+            cluster_id=int(row["cluster_id"]) if row["cluster_id"] is not None else None,
+            last_confirmed_at=str(row["last_confirmed_at"]),
+            confirmations=int(row["confirmations"]),
+            last_used_at=row["last_used_at"],
+            proactive_status=str(row["proactive_status"]),
+            proactive_count=int(row["proactive_count"]),
+            last_proactive_at=row["last_proactive_at"],
+            annotator=Annotator(row["annotator"]),
+            annotator_version=str(row["annotator_version"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    @staticmethod
+    def _encode_annotation(annotation: MemoryAnnotation) -> tuple:
+        def enum(value):
+            return value.value if value is not None else None
+
+        return (
+            int(annotation.memory_item_id), int(annotation.item_revision),
+            annotation.time_scope.value, enum(annotation.stability), annotation.observed_at,
+            annotation.event_at, annotation.recurrence, annotation.usage_mode.value,
+            enum(annotation.directive_type), annotation.audience.value, int(annotation.importance),
+            annotation.slot,
+            json.dumps(list(annotation.keywords), ensure_ascii=False, separators=(",", ":")),
+            annotation.evidence, int(annotation.explicit), int(annotation.verified),
+            json.dumps(list(annotation.lint_flags), ensure_ascii=False, separators=(",", ":")),
+            annotation.cluster_id, annotation.last_confirmed_at, int(annotation.confirmations),
+            annotation.last_used_at, annotation.proactive_status, int(annotation.proactive_count),
+            annotation.last_proactive_at, annotation.annotator.value, annotation.annotator_version,
+        )
+
+    def memory_annotation(self, item_id: int) -> MemoryAnnotation | None:
+        row = self.db.execute(
+            "SELECT * FROM memory_item_annotations WHERE memory_item_id=?", (int(item_id),)
+        ).fetchone()
+        return self._decode_annotation(row) if row is not None else None
+
+    def memory_annotations(self, item_ids) -> dict[int, MemoryAnnotation]:
+        ids = sorted({int(value) for value in item_ids})
+        found: dict[int, MemoryAnnotation] = {}
+        # Bounded chunks keep the statement under SQLite's variable limit.
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            rows = self.db.execute(
+                "SELECT * FROM memory_item_annotations WHERE memory_item_id IN "
+                f"({','.join('?' for _ in chunk)})",
+                chunk,
+            ).fetchall()
+            found.update({int(row["memory_item_id"]): self._decode_annotation(row) for row in rows})
+        return found
+
+    def upsert_memory_annotation(self, annotation: MemoryAnnotation) -> None:
+        """Write one annotation; admin judgments are never overwritten by automation."""
+
+        if int(annotation.memory_item_id) <= 0:
+            raise ValueError("Annotation needs a stored memory item id")
+        with self._write_context():
+            item = self.db.execute(
+                "SELECT kind FROM memory_items WHERE id=?", (int(annotation.memory_item_id),)
+            ).fetchone()
+            if item is None:
+                raise ValueError("Memory item not found")
+            if str(item["kind"]) == MemoryKind.RELATIONSHIP.value:
+                raise ValueError("Relationship memories are not annotated")
+            if annotation.annotator != Annotator.ADMIN:
+                current = self.db.execute(
+                    "SELECT annotator FROM memory_item_annotations WHERE memory_item_id=?",
+                    (int(annotation.memory_item_id),),
+                ).fetchone()
+                if current is not None and current["annotator"] == Annotator.ADMIN.value:
+                    return
+            self._write_annotation_row(annotation)
+
+    def _write_annotation_row(self, annotation: MemoryAnnotation) -> None:
+        columns = ",".join(_ANNOTATION_COLUMNS)
+        updates = ",".join(f"{name}=excluded.{name}" for name in _ANNOTATION_COLUMNS[1:])
+        self.db.execute(
+            f"INSERT INTO memory_item_annotations({columns}) VALUES "
+            f"({','.join('?' for _ in _ANNOTATION_COLUMNS)}) "
+            f"ON CONFLICT(memory_item_id) DO UPDATE SET {updates},"
+            "updated_at=CURRENT_TIMESTAMP",
+            self._encode_annotation(annotation),
+        )
+
+    def set_admin_memory_annotation(
+        self, item_id: int, *, expected_revision: int, fields: dict[str, object]
+    ) -> MemoryAnnotation:
+        """Pin an admin judgment to the item revision the admin was looking at."""
+
+        item_id = int(item_id)
+        fields = admin_annotation_fields(fields)
+        with self._write_context():
+            item = self.db.execute(
+                """SELECT kind,status,revision,created_at,origin_realm,origin_public_at_capture
+                   FROM memory_items WHERE id=?""",
+                (item_id,),
+            ).fetchone()
+            if item is None:
+                raise ValueError("Memory item not found")
+            if str(item["kind"]) == MemoryKind.RELATIONSHIP.value:
+                raise ValueError("Relationship memories are not annotated")
+            if str(item["status"]) != MemoryStatus.ACTIVE.value:
+                raise ValueError("only active memory items can be annotated")
+            if int(item["revision"]) != int(expected_revision):
+                raise ValueError("Memory item has changed; reload before editing")
+            current = self.db.execute(
+                "SELECT * FROM memory_item_annotations WHERE memory_item_id=?", (item_id,)
+            ).fetchone()
+            annotation = enforce_consistency(
+                admin_annotation(
+                    fields,
+                    memory_item_id=item_id,
+                    item_revision=int(item["revision"]),
+                    observed_at=str(item["created_at"]),
+                    existing=self._decode_annotation(current) if current is not None else None,
+                ),
+                public_origin=str(item["origin_realm"]).startswith("guild:")
+                and bool(item["origin_public_at_capture"]),
+            )
+            self._write_annotation_row(annotation)
+        return annotation
+
+    def reconfirm_memory_annotation(self, item_id: int, observed_at: str) -> bool:
+        """Count a same-space re-mention as confirmation that the memory still holds."""
+
+        with self._write_context():
+            cursor = self.db.execute(
+                """UPDATE memory_item_annotations
+                   SET confirmations=confirmations+1,
+                       last_confirmed_at=MAX(last_confirmed_at, ?),
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE memory_item_id=?""",
+                (str(observed_at), int(item_id)),
+            )
+        return bool(cursor.rowcount)
 
     def add_memory_item(
         self,
@@ -316,10 +492,8 @@ class MemoryRepository:
             if int(row["revision"]) != expected_revision:
                 raise ValueError("Memory item has changed; reload before deleting")
 
-            self.db.execute(
-                "DELETE FROM memory_item_edit_history WHERE memory_item_id=?",
-                (item_id,),
-            )
+            for table in ("memory_item_edit_history", "memory_item_annotations"):
+                self.db.execute(f"DELETE FROM {table} WHERE memory_item_id=?", (item_id,))
             self.db.execute(
                 """DELETE FROM memory_reconciliation_proposals
                    WHERE new_memory_item_id=? OR target_memory_item_id=?""",
@@ -533,7 +707,10 @@ class MemoryRepository:
             return "conflict_deferred"
         if float(row["confidence"]) < threshold:
             return "below_threshold"
-        if str(row["new_kind"]) != str(row["target_kind"]):
+        # Decision 15: fact/preference/boundary labels are compatibility values and
+        # may disagree on the same memory. Only the relationship boundary is a hard split.
+        relationship = MemoryKind.RELATIONSHIP.value
+        if (str(row["new_kind"]) == relationship) != (str(row["target_kind"]) == relationship):
             return "kind_mismatch"
         # Relationship corrections and differing evidence are observations,
         # not interchangeable facts. Only exact-evidence duplicates from

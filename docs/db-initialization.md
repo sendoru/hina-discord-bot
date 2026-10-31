@@ -116,8 +116,45 @@ Do not mix restored files with stale WAL/SHM. Rehearsals perform a real restore,
 not only a checksum comparison. A missing WAL in a supplied snapshot cannot prove
 that the original server had no uncheckpointed commit when it was copied.
 
-Future changes must append named v1→v2 steps and immutable version signatures;
-see the concrete extension procedure in [db-baseline-v1.md](db-baseline-v1.md).
-No v2 feature, retention/reset/search change, schema downgrade or production apply
-is included here. Old code may run constructor migrations/pruning and is not a
-safe schema rollback; use the verified recovery procedure with writers stopped.
+Future changes must append named next-version steps and immutable version
+signatures; see the concrete extension procedure in [db-baseline-v1.md](db-baseline-v1.md).
+Old code may run constructor migrations/pruning and is not a safe schema rollback;
+use the verified recovery procedure with writers stopped.
+
+## Store v2: memory annotations (#451)
+
+Store v2 adds the derived `memory_item_annotations` table and its `cluster_id`
+index (see [structured memory](structured-memory.md#annotations-memory-v2-449451)).
+No existing table, column, index or row changes; settings and admin stay at v1.
+
+After deploying code that includes store v2, the bot and Dashboard refuse to start
+on a v1 file until it is prepared. Use the same offline procedure as above:
+
+```sh
+docker compose stop
+docker compose build
+docker compose run --rm hina hina-prepare-db --dry-run   # lists: store
+docker compose run --rm hina hina-prepare-db --yes --offline-confirmed
+docker compose up -d
+```
+
+The step runs inside the preparer's transaction with the verified backup taken
+first; a failure leaves the file at v1. `hina-upgrade-legacy-db` still converts old
+files to frozen v1 and then applies the same explicit steps, so its output is
+current. Code from before store v2 refuses a v2 file as a future version, so going
+back means restoring the pre-upgrade backup, which drops anything written since.
+
+The upgrade creates an empty table. New extractions annotate their own items; existing
+memories stay unannotated (the response path uses conservative defaults) until the
+offline backfill runs. It sends memory content to the configured LLM provider and
+takes its own backup first:
+
+```sh
+docker compose stop
+docker compose run --rm hina hina-backfill-annotations --dry-run
+docker compose run --rm hina hina-backfill-annotations --yes --offline-confirmed --limit 200
+docker compose up -d
+```
+
+Repeat with `--limit` until `Remaining` shows `missing=0 stale=0`. See
+[structured memory](structured-memory.md#annotation-backfill) for what it writes.

@@ -29,6 +29,7 @@ OPTIONAL_RAW_TABLES = ("conversation_debug_archive",)
 PRESERVED_TABLES = (
     "memory_items",
     "memory_item_edit_history",
+    "memory_item_annotations",
     "shared_summaries",
     "memory_reconciliation_proposals",
     "memory_extraction_cursors",

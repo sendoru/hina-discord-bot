@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+from hina_bot.core.memory_annotations import (
+    KEYWORDS_MAX,
+    SLOT_MAX_CHARS,
+    Audience,
+    DirectiveType,
+    Stability,
+    TimeScope,
+    UsageMode,
+)
 from hina_bot.core.memory_items import (
     MEMORY_CONTENT_MAX_CHARS,
     MemoryDisclosure,
@@ -29,6 +38,22 @@ from ..scopepresenter import parse_scope_key, present_turn_scope
 from ..searchutils import search_matches
 from ..timeutils import db_utc_timestamp
 from .base import Page, ReadService, _decode_json
+
+
+def _annotation_view(item: dict[str, object], raw: dict[str, object] | None) -> dict[str, object]:
+    """Decode one annotation row and classify it against the item's current revision."""
+
+    if str(item.get("kind")) == MemoryKind.RELATIONSHIP.value:
+        return {"state": "not_applicable", "row": None}
+    if raw is None:
+        return {"state": "missing", "row": None}
+    row = dict(raw)
+    keywords = _decode_json(row.get("keywords"), [])
+    flags = _decode_json(row.get("lint_flags"), [])
+    row["keywords_decoded"] = tuple(str(value) for value in keywords) if isinstance(keywords, list) else ()
+    row["lint_flags_decoded"] = tuple(str(value) for value in flags) if isinstance(flags, list) else ()
+    stale = int(row.get("item_revision") or 0) < int(item.get("revision") or 0)
+    return {"state": "stale" if stale else "current", "row": row}
 
 
 class MemoryService(ReadService):
@@ -273,6 +298,7 @@ class MemoryService(ReadService):
         disclosure: str = "",
         status: str = "",
         relationship: str = "",
+        annotation: str = "",
         query: str = "",
         confidence_min: str = "",
         confidence_max: str = "",
@@ -305,6 +331,7 @@ class MemoryService(ReadService):
             "disclosure": disclosure.strip(),
             "status": status.strip(),
             "relationship": relationship.strip(),
+            "annotation": annotation.strip(),
             "query": query.strip(),
             "confidence_min": confidence_value(confidence_min),
             "confidence_max": confidence_value(confidence_max),
@@ -354,6 +381,7 @@ class MemoryService(ReadService):
                 "disclosure": disclosure.strip(),
                 "status": status.strip(),
                 "relationship": relationship.strip(),
+                "annotation": annotation.strip(),
                 "q": query.strip(),
                 "confidence_min": confidence_min.strip(),
                 "confidence_max": confidence_max.strip(),
@@ -445,6 +473,7 @@ class MemoryService(ReadService):
 
         return {
             "item": item,
+            "annotation": _annotation_view(item, self.repository.memory_item_annotation(item_id)),
             "sources": sources,
             "neighbors": neighbors,
             "history": history,
@@ -453,6 +482,15 @@ class MemoryService(ReadService):
                 "disclosures": tuple(value.value for value in MemoryDisclosure),
                 "relationship_axes": RELATIONSHIP_EVIDENCE_AXES,
                 "content_max_chars": MEMORY_CONTENT_MAX_CHARS,
+            },
+            "annotation_editor": {
+                "time_scopes": tuple(value.value for value in TimeScope),
+                "stabilities": tuple(value.value for value in Stability),
+                "usage_modes": tuple(value.value for value in UsageMode),
+                "directive_types": tuple(value.value for value in DirectiveType),
+                "audiences": tuple(value.value for value in Audience),
+                "slot_max_chars": SLOT_MAX_CHARS,
+                "keywords_max": KEYWORDS_MAX,
             },
         }
 
