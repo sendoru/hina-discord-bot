@@ -22,6 +22,7 @@ from .chat_history_tool import register_chat_history_tool
 from .chatlog_capture import capture_mode
 from .interaction_context import build_interaction_context
 from .member_directory import channel_member_tool_registry
+from .memory_recall_tool import register_memory_recall_tool
 from .reply_context import REPLY_CONTEXT, collect_reply_context
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect, retrieval_mode
@@ -584,6 +585,12 @@ class HinaClient(BaseHinaClient):
         channel_member_tool_registry(message, self.user.id, registry=registry)
         register_chat_history_tool(
             registry, message, self.user.id, self.store, self.settings, events=self.events,
+        )
+        register_memory_recall_tool(
+            registry, self.store,
+            Scope(message.guild.id if message.guild else None, message.channel.id,
+                  message.author.id),
+            self.settings, events=self.events,
         )
         local_tools_token = CURRENT_LOCAL_TOOLS.set(registry if registry else None)
         try:

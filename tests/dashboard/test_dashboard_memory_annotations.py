@@ -77,6 +77,9 @@ def test_detail_shows_annotation_state(tmp_path, name, state):
 
     assert response.status_code == 200
     assert f'data-memory-annotation="{state}"' in response.text
+    if state == "current":
+        # The live status the tiered read path would compute right now.
+        assert "Effective now" in response.text and "current" in response.text
     assert f'action="/memory/{ids[name]}/annotation"' in response.text
 
 

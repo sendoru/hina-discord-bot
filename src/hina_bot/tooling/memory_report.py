@@ -622,6 +622,7 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
     extraction = [row for row in rows if row.get("operation") == "memory.shadow_extraction"]
     completed = [row for row in extraction if row.get("status") == "completed"]
     shared = [row for row in rows if row.get("operation") == "memory.shared_summary_result"]
+    selection = [row for row in rows if row.get("operation") == "memory.selection"]
     timestamps = sorted(str(row.get("at")) for row in provenance if row.get("at"))
     return {
         "context_provenance": {
@@ -661,6 +662,27 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
         "shared_summary_result": dict(
             Counter(str(row.get("status") or "missing") for row in shared)
         ),
+        # Tiered read path (#457): per-turn tier counts and exclusion reasons, no content.
+        "memory_selection": {
+            "turns_by_mode": dict(Counter(str(row.get("memory_read_mode") or "missing")
+                                          for row in selection)),
+            "totals": {
+                key: _sum(selection, key)
+                for key in (
+                    "memory_t0_items", "memory_t1_items", "memory_t2_items", "memory_t4_items",
+                    "memory_quiet_boundaries", "memory_excluded_permission",
+                    "memory_excluded_threshold", "memory_excluded_similarity",
+                    "memory_excluded_cooldown", "memory_excluded_cluster",
+                    "memory_excluded_expired", "memory_excluded_t0_cap",
+                    "memory_excluded_t1_cap", "memory_excluded_t2_cap",
+                    "memory_excluded_t1_attempts",
+                )
+            },
+            "followup_attempted_turns": sum(
+                1 for row in selection if row.get("memory_followup_attempted") is True
+            ),
+            "t2_items_per_turn": _quantiles(_numbers(selection, "memory_t2_items")),
+        },
     }
 
 

@@ -48,6 +48,10 @@ def dashboard_client(tmp_path):
                 "scope": "dm",
                 "current_user_id": "100",
                 "egress_policy": "full",
+                "memory_selection": {
+                    "mode": "shadow", "tiers": {"T2": 1},
+                    "excluded": {"cooldown": 2}, "followup_attempted": True,
+                },
                 "decisions": {
                     "use_memory": True,
                     "current_channel_only": False,
@@ -375,6 +379,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'id="web-search-routing"' in analytics.text
     assert 'id="usage-breakdown"' in analytics.text
     assert "hello dashboard" in detail.text
+    assert "Memory selection (shadow)" in detail.text
+    assert "cooldown 2" in detail.text and "session follow-up attempted" in detail.text
     assert 'data-copy-text="trace-ui"' in detail.text
     assert 'data-copy-text="55"' in detail.text
     assert 'data-copy-block' in detail.text

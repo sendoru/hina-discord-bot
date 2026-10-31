@@ -37,7 +37,7 @@ from .semantic_model_routing import (
     apply_web_classification,
     semantic_result,
 )
-from .structured_memory_context import structured_memory_context
+from .structured_memory_context import personal_memory_fields
 from .vision import CURRENT_VISUAL_INPUTS
 
 _IN_WORLD_PRESENT_STATE_QUERY = re.compile(
@@ -508,9 +508,10 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             else []
         )
         cross_channel_memory = use_memory and not current_channel_only
-        structured_memory = structured_memory_context(
+        structured_memory = personal_memory_fields(
             store,
             scope,
+            settings=self.settings,
             use_memory=use_memory,
             allow_cross_space=use_memory,
             authorized_factual_items=(
@@ -518,7 +519,9 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 if factual_recall_plan is not None
                 else ()
             ),
-        )
+            message=routing_content,
+            channel_context=channel_rows,
+        )["fields"]
         context = {
             "server_note": (
                 store.note(scope.realm)
