@@ -79,7 +79,8 @@ def test_bot_interactions_only_filters_complete_serialized_context():
 
     filtered = apply_context_policy(context, 100, BOT_INTERACTIONS_ONLY)
 
-    assert filtered["server_note"] == ""
+    # Decision 17 (#449): the admin-written server note is not member conversation.
+    assert filtered["server_note"] == "서버 공통 메모"
     assert filtered["user_note"] == "현재 사용자가 직접 저장한 메모"
     assert filtered["personal_recent_conversation"] == context["personal_recent_conversation"]
     assert [row["user_id"] for row in filtered["public_server_context"]] == ["100"]
