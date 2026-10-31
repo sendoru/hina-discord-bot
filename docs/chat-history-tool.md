@@ -88,7 +88,9 @@ shared summary나 장기기억에 검색 결과를 자동으로 복사하지 않
 이를 설명한 새 답변은 정상 대화로 남깁니다. 출처 ID·출처 종류·reset 이전 포함 여부만 기존
 context_provenance JSON에 저장하고 원문을 복제하지 않습니다. 새 답변은 reference_derived로
 표시하며, structured extraction과 직전 evidence context에는 검색 기반 assistant 답변을 전달하지
-않습니다. 현재 사용자의 새 발화는 기존 추출 대상이므로 사용자의 후속 확인·채택은 별도로 판단합니다.
+않습니다. `recall_memory`(정리된 장기 기억 조회)로 만든 답변도 `memory_lookup`으로 표시되어 같은
+방식으로 추출에서 빠집니다(#449 결정 22). 현재 사용자의 새 발화는 기존 추출 대상이므로 사용자의
+후속 확인·채택은 별도로 판단합니다.
 공개 요약에는 기존대로 현재 사용자의 직접 호출만 전달합니다.
 
 전달된 답변의 실제 메시지 ID도 같은 JSON에 저장합니다. 재시작 후 DM/개인 최근 이력 및 Discord
