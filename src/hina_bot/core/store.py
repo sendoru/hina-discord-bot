@@ -177,6 +177,9 @@ class Store:
     def history(self, scope: Scope):
         return self._conversations.history(scope)
 
+    def latest_turn_at(self, user_id: int | str) -> str | None:
+        return self._conversations.latest_turn_at(user_id)
+
     def chat_history_records(self, scope: Scope, message_ids):
         return self._conversations.chat_history_records(scope, message_ids)
 
