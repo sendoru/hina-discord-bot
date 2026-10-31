@@ -227,7 +227,7 @@
   {% if data.context_provenance.sources %}
   <h3>Admitted sources</h3>
   <div class="table-wrap" tabindex="0" role="region" aria-label="가로 스크롤 데이터 표">
-    <table>
+    <table class="wide-table">
       <thead><tr><th>Source</th><th>Kind / role</th><th>Ownership</th><th>Provenance</th><th>Identifiers</th></tr></thead>
       <tbody>
       {% for source in data.context_provenance.sources %}
@@ -261,8 +261,7 @@
         </tr>
         {% if source.causal_context %}
         <tr class="content-row">
-          <td></td>
-          <td colspan="4">
+          <td colspan="5">
             <div class="memory-preview">
               <strong>Stored causal excerpt:</strong> {{ source.causal_context.content }}
             </div>
