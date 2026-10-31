@@ -45,7 +45,7 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
     ), client=client)
     store = Store.create(":memory:")
     scope = Scope(1, 10, 100)
-    store.set_note(scope.realm, "SERVER-NOTE-SECRET")
+    store.set_note(scope.realm, "SERVER-NOTE")
     store.set_note(scope.user_note, "MY-NOTE")
     store.add(scope, 1, "my-old-direct", "hina-old-reply")
 
@@ -139,9 +139,10 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
         assert "MY-PUBLIC-MEMORY" in serialized
         assert "TARGET-HISTORY" in serialized
         assert "[대상 사용자의 채널 발언]" in payload["instructions"]
+        # The admin-written server note is not member conversation (#449 decision 17).
+        assert "SERVER-NOTE" in serialized
 
         for blocked in (
-            "SERVER-NOTE-SECRET",
             "MY-AMBIENT",
             "TARGET-AMBIENT-HISTORY",
             "OTHER-PUBLIC-MEMORY",
