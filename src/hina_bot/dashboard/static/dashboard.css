@@ -203,6 +203,7 @@ pre {
 }
 .chip, .tag {
   display: inline-block;
+  white-space: nowrap;
   padding: 2px 6px;
   border: 1px solid var(--border);
   border-radius: 5px;
@@ -2560,6 +2561,15 @@ pre {
 .table-wrap .summary-table { min-width: 1280px; }
 .table-wrap .cursor-table { min-width: 1500px; }
 .table-wrap .memory-table { min-width: 1480px; }
+
+/* Identifier-heavy tables: keep tokens (snake_case names, Discord IDs) whole
+   so columns grow to fit them and the table scrolls instead of wrapping a
+   trailing character or two onto the next line. */
+.token-table th,
+.token-table td,
+.token-table code {
+  overflow-wrap: normal;
+}
 
 .memory-table th {
   white-space: nowrap;
