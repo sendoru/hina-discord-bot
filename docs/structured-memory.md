@@ -182,8 +182,11 @@ boundaries below. Selecting nothing is normal.
   message (and, at half weight, the explicit reply chain). Ambient items need one keyword hit or
   two content-word hits; contextual items need a keyword hit; sensitive items need a keyword in
   the current message itself. Items used in the last 72 hours are skipped unless the message
-  names one of their keywords (decision 19). Near-duplicate contents are skipped (character
-  bigram similarity), and at most 4 items / 900 characters are kept.
+  names one of their keywords (decision 19). Admitted items are ranked by their hits weighted by
+  the inverse document frequency of the matching query word over the owner's candidates, so a
+  word that matches most memories ("보리" for a cat owner) counts less than a rare one ("사료");
+  the thresholds above stay unweighted. Near-duplicate contents are skipped (character bigram
+  similarity), and at most 4 items / 900 characters are kept.
 - **T4**: reference-gated items the owner explicitly brought up this turn.
 - **Clusters**: one member per cluster among the members visible here (the canonical one when
   visible, otherwise the most recently confirmed).
@@ -208,7 +211,7 @@ tiered path while the owner's memory reads are allowed, and the read mode is che
 runs.
 
 - It returns at most 6 active non-relationship memories of the current owner that match the query
-  lexically, with the same `status`, `date`/`noted` and `use` as `user_memory`. `past` and
+  lexically, ranked with the same inverse document frequency weighting as T2, with the same `status`, `date`/`noted` and `use` as `user_memory`. `past` and
   `unverified` items are returned with their dates; superseded and retracted items never are.
 - It never widens access: only items FULL in the current scope, plus reference-gated items this
   turn's T4 recall already authorized. Being called by the model is not an owner reference.

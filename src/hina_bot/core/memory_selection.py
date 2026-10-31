@@ -7,6 +7,7 @@ any scoring, and nothing here widens access. Selecting nothing is normal (princi
 
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter
 from dataclasses import dataclass, field, replace
@@ -256,25 +257,69 @@ def _term_match(query: str, term: str) -> bool:
     return min(len(query), len(term)) >= 2 and query[:2] == term[:2] and len(term) >= 3
 
 
-def _relevance(item: MemoryItem, annotation: MemoryAnnotation, texts) -> tuple[float, int]:
-    """Score item terms against weighted texts; returns (score, keyword hits)."""
+def _keywords(annotation: MemoryAnnotation) -> list[str]:
+    return [normalize_text(word) for word in annotation.keywords if len(normalize_text(word)) >= 2]
 
-    keywords = [normalize_text(word) for word in annotation.keywords if len(normalize_text(word)) >= 2]
+
+def query_idf(pool, texts) -> dict[str, float]:
+    """Inverse document frequency of each query word over the owner's candidates.
+
+    A word that matches most of the owner's memories ("보리" for a cat owner) says
+    little about which one is meant; a rare one ("사료") says a lot. Used for ranking
+    only: admission thresholds stay on the unweighted score.
+    """
+
+    documents = [
+        {*_keywords(annotation), *_tokens(item.content)} for item, annotation in pool
+    ]
+    idf: dict[str, float] = {}
+    for text, _weight in texts:
+        for query in _tokens(text):
+            if query in idf:
+                continue
+            frequency = sum(
+                1 for terms in documents if any(_term_match(query, term) for term in terms)
+            )
+            idf[query] = math.log(1 + len(documents) / frequency) if frequency else 0.0
+    return idf
+
+
+def _relevance(
+    item: MemoryItem, annotation: MemoryAnnotation, texts, idf: dict[str, float] | None = None
+) -> tuple[float, int, float]:
+    """Score item terms against weighted texts; returns (score, keyword hits, ranking score).
+
+    ``score`` and the hit count decide admission. The ranking score weighs each hit by
+    the IDF of the query word that matched it, when ``idf`` is given.
+    """
+
+    keywords = _keywords(annotation)
     content_terms = _tokens(item.content)
     score = 0.0
+    ranked = 0.0
     keyword_hits = 0
+
+    def rarity(matched: list[str]) -> float:
+        return max(idf.get(query, 0.0) for query in matched) if idf is not None else 1.0
+
     for text, weight in texts:
         query_terms = _tokens(text)
         if not query_terms:
             continue
         for keyword in keywords:
-            if any(_term_match(query, keyword) for query in query_terms):
+            matched = [query for query in query_terms if _term_match(query, keyword)]
+            if matched:
                 score += 1.0 * weight
+                ranked += 1.0 * weight * rarity(matched)
                 keyword_hits += 1
         for term in content_terms:
-            if term not in keywords and any(_term_match(query, term) for query in query_terms):
+            if term in keywords:
+                continue
+            matched = [query for query in query_terms if _term_match(query, term)]
+            if matched:
                 score += 0.5 * weight
-    return score, keyword_hits
+                ranked += 0.5 * weight * rarity(matched)
+    return score, keyword_hits, ranked
 
 
 def _direct_mention(annotation: MemoryAnnotation, message: str) -> bool:
@@ -539,6 +584,7 @@ _IMPORTANCE = {1: 0.8, 2: 1.0, 3: 1.2}
 def _select_relevant(notes, ctx, selection, chosen) -> None:
     current = ((ctx.message, 1.0),)
     with_chain = current + tuple((text, 0.5) for text in ctx.reply_texts)
+    idf = query_idf([(item, annotation) for item, annotation, _status in notes], with_chain)
     scored = []
     for item, annotation, status in notes:
         if item.id in chosen:
@@ -548,13 +594,13 @@ def _select_relevant(notes, ctx, selection, chosen) -> None:
             continue
         usage = annotation.usage_mode
         if usage == UsageMode.SENSITIVE:
-            score, hits = _relevance(item, annotation, current)
+            score, hits, ranked = _relevance(item, annotation, current, idf)
             admitted = hits > 0
         elif usage == UsageMode.CONTEXTUAL:
-            score, hits = _relevance(item, annotation, with_chain)
+            score, hits, ranked = _relevance(item, annotation, with_chain, idf)
             admitted = hits > 0 or (ctx.task_register and score >= AMBIENT_THRESHOLD)
         else:
-            score, hits = _relevance(item, annotation, with_chain)
+            score, hits, ranked = _relevance(item, annotation, with_chain, idf)
             threshold = AMBIENT_THRESHOLD - (EXPLICIT_RELIEF if annotation.explicit else 0.0)
             admitted = score >= threshold
         if not admitted:
@@ -564,7 +610,7 @@ def _select_relevant(notes, ctx, selection, chosen) -> None:
         if _cooling_down(annotation, ctx):
             selection.excluded["cooldown"] += 1
             continue
-        weight = score * _FRESHNESS[status.status] * _IMPORTANCE.get(annotation.importance, 1.0)
+        weight = ranked * _FRESHNESS[status.status] * _IMPORTANCE.get(annotation.importance, 1.0)
         scored.append((weight, _confirmed_key(annotation), item, annotation, status))
     scored.sort(key=lambda entry: entry[:2], reverse=True)
     picked: list[MemoryItem] = []
@@ -683,7 +729,7 @@ def recall_personal_memory(
     """Model-initiated lookup (§7 T3): FULL items plus this turn's T4 approvals only."""
 
     owner = str(ctx.scope.user_id)
-    found = []
+    pool = []
     for item in items:
         if (
             item.user_id != owner
@@ -696,14 +742,18 @@ def recall_personal_memory(
         )
         if access != MemoryAccess.FULL:
             continue
-        annotation, _state = effective_annotation(item, annotations.get(item.id))
-        score, _hits = _relevance(item, annotation, ((query, 1.0),))
+        pool.append((item, effective_annotation(item, annotations.get(item.id))[0]))
+    texts = ((query, 1.0),)
+    idf = query_idf(pool, texts)
+    found = []
+    for item, annotation in pool:
+        score, _hits, ranked = _relevance(item, annotation, texts, idf)
         if score <= 0:
             continue
         status = effective_status(annotation, ctx.now)
         if status.expired:
             status = replace(status, status=EffectiveStatus.PAST, expired=False)
-        found.append((score, _confirmed_key(annotation), item, annotation, status))
+        found.append((ranked, _confirmed_key(annotation), item, annotation, status))
     found.sort(key=lambda entry: entry[:2], reverse=True)
     return [
         SelectedMemory(item, annotation, "T3", "notes", status,
