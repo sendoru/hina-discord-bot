@@ -127,6 +127,13 @@ def build_service(tmp_path):
                     "selected_item_ids": [],
                     "authorization_reason": "",
                 },
+                "memory_selection": {
+                    "mode": "shadow",
+                    "tiers": {"T0": 1, "T2": 2},
+                    "excluded": {"cooldown": 1},
+                    "followup_attempted": False,
+                },
+                "memory_lookup": {"calls": 1, "items": [{"store": "personal", "item_id": 1}]},
                 "truncated": {"sources": 0, "structured_memory": 0},
             },
         )
@@ -397,6 +404,8 @@ def test_trace_detail_correlates_raw_turn_and_timeline(tmp_path):
     source = data["context_provenance"]["sources"][0]
     assert source["provenance_class"] == "reference_material"
     assert source["causal_context"]["content"] == "quoted source"
+    assert data["context_provenance"]["memory_selection"]["tiers"] == {"T0": 1, "T2": 2}
+    assert data["context_provenance"]["memory_lookup"]["calls"] == 1
     memory = data["context_provenance"]["structured_memory"][0]
     assert memory["current_status"] == "active"
     assert memory["guild_name"] == "Test Guild"

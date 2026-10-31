@@ -57,6 +57,8 @@
   {% endif %}
   <dl class="metadata">
     <div><dt>Time scope</dt><dd>{{ ann.time_scope }}{% if ann.stability %} · {{ ann.stability }}{% endif %}</dd></div>
+    {% set effective = data.annotation.effective %}
+    <div><dt>Effective now</dt><dd>{% if effective %}{{ effective.status }}{% if effective.date %} · {{ effective.date }}{% endif %}{% if effective.expired %} · expired{% endif %}{% else %}—{% endif %}</dd></div>
     <div><dt>Event at</dt><dd>{{ ann.event_at or "—" }}{% if ann.recurrence %} · <code>{{ ann.recurrence }}</code>{% endif %}</dd></div>
     <div><dt>Usage</dt><dd>{{ ann.usage_mode }}{% if ann.directive_type %} · {{ ann.directive_type }}{% endif %}{% if ann.usage_mode == "directive" %} · {{ "verified" if ann.verified else "unverified" }}{% endif %}</dd></div>
     <div><dt>Audience</dt><dd>{{ ann.audience }}</dd></div>

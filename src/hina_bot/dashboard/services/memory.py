@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
+
 from hina_bot.core.memory_annotations import (
     KEYWORDS_MAX,
     SLOT_MAX_CHARS,
@@ -17,6 +20,8 @@ from hina_bot.core.memory_items import (
     MemoryStatus,
     RelationshipEvidence,
 )
+from hina_bot.core.memory_repository import MemoryRepository
+from hina_bot.core.memory_selection import effective_status
 from hina_bot.core.relationship_profile import (
     RELATIONSHIP_EVIDENCE_AXES,
     RELATIONSHIP_MAX_OBSERVATIONS,
@@ -40,8 +45,10 @@ from ..timeutils import db_utc_timestamp
 from .base import Page, ReadService, _decode_json
 
 
-def _annotation_view(item: dict[str, object], raw: dict[str, object] | None) -> dict[str, object]:
-    """Decode one annotation row and classify it against the item's current revision."""
+def _annotation_view(
+    item: dict[str, object], raw: dict[str, object] | None, now: datetime | None = None
+) -> dict[str, object]:
+    """Decode one annotation row, classify it against the item revision, add its live status."""
 
     if str(item.get("kind")) == MemoryKind.RELATIONSHIP.value:
         return {"state": "not_applicable", "row": None}
@@ -53,7 +60,15 @@ def _annotation_view(item: dict[str, object], raw: dict[str, object] | None) -> 
     row["keywords_decoded"] = tuple(str(value) for value in keywords) if isinstance(keywords, list) else ()
     row["lint_flags_decoded"] = tuple(str(value) for value in flags) if isinstance(flags, list) else ()
     stale = int(row.get("item_revision") or 0) < int(item.get("revision") or 0)
-    return {"state": "stale" if stale else "current", "row": row}
+    view = {"state": "stale" if stale else "current", "row": row}
+    if now is not None:
+        try:
+            # The same computation the tiered read path uses (#457), at the dashboard clock.
+            status = effective_status(MemoryRepository._decode_annotation(row), now)
+        except (KeyError, TypeError, ValueError):
+            status = None
+        view["effective"] = status
+    return view
 
 
 class MemoryService(ReadService):
@@ -473,7 +488,11 @@ class MemoryService(ReadService):
 
         return {
             "item": item,
-            "annotation": _annotation_view(item, self.repository.memory_item_annotation(item_id)),
+            "annotation": _annotation_view(
+                item,
+                self.repository.memory_item_annotation(item_id),
+                datetime.now(ZoneInfo(self.timezone)) if self.timezone else datetime.now(UTC),
+            ),
             "sources": sources,
             "neighbors": neighbors,
             "history": history,
