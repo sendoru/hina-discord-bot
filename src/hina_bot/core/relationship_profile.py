@@ -198,6 +198,27 @@ def aggregate_relationship_evidence(
     return _aggregate_relationship_evidence(eligible)
 
 
+def aggregate_shared_relationship_evidence(
+    items: Iterable[MemoryItem],
+    scope: Scope,
+    *,
+    include_implicit: bool = True,
+) -> dict[str, int]:
+    """One shared-space profile from FULL observations plus cross-space IMPLICIT ones.
+
+    The tiered read path never injects raw relationship text (#449 decision 5); both
+    kinds of observation only contribute numeric evidence here.
+    """
+
+    if scope.guild_id is None:
+        return {}
+    eligible = full_relationship_observations(items, scope)
+    if include_implicit:
+        eligible = [*eligible, *_eligible_implicit_relationship_observations(items, scope)]
+    eligible.sort(key=lambda item: item.id)
+    return _aggregate_relationship_evidence(eligible)
+
+
 def owner_relationship_axis_observations(
     items: Iterable[MemoryItem],
     scope: Scope,
@@ -253,6 +274,7 @@ __all__ = [
     "RELATIONSHIP_RECENCY_DECAY",
     "aggregate_owner_relationship_evidence",
     "aggregate_relationship_evidence",
+    "aggregate_shared_relationship_evidence",
     "full_relationship_observations",
     "implicit_relationship_axis_observations",
     "implicit_relationship_observations",

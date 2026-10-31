@@ -13,6 +13,12 @@ CURRENT_CONTEXT_PROVENANCE: ContextVar[dict | None] = ContextVar(
     "current_context_provenance",
     default=None,
 )
+# The tiered memory selection injected into the current answer (#457), read after
+# delivery to record which memories the reply actually used.
+CURRENT_MEMORY_SELECTION: ContextVar[object | None] = ContextVar(
+    "current_memory_selection",
+    default=None,
+)
 CURRENT_EGRESS_DECISION: ContextVar[dict | None] = ContextVar(
     "current_egress_decision",
     default=None,
@@ -118,6 +124,7 @@ __all__ = [
     "CURRENT_CONTEXT_PROVENANCE",
     "CURRENT_EGRESS_DECISION",
     "CURRENT_MEMORY_CONTEXT",
+    "CURRENT_MEMORY_SELECTION",
     "build_memory_context",
     "decode_memory_context",
 ]

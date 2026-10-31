@@ -138,6 +138,65 @@ model with the shared field rules.
 The `memory.shadow_extraction` completed event adds `annotated_items`, `reconfirmed_items`,
 `suppressed_relationship_items`, `directive_items`, `verified_directives` and `rejected_directives`.
 
+## Tiered read path (memory v2 P2, #457)
+
+`PERSONAL_MEMORY_READ_MODE` (runtime setting, startup default `legacy`) chooses how owner memory
+reaches a response:
+
+| Mode | Provider context | Recorded |
+|---|---|---|
+| `legacy` | the existing projection below (all FULL items in DM) | nothing new |
+| `shadow` | the existing projection | the tiered selection in context provenance and `memory.selection` telemetry |
+| `tiered` | `user_memory` and `relationship_profile` only | the same, plus usage after the reply |
+
+Run `hina-backfill-annotations` first, compare with `shadow`, then switch to `tiered`. `legacy` stays
+available as the rollback.
+
+The selector (`core/memory_selection.py`) makes no model calls. Permission comes first: an item is
+a candidate only when `memory_access` is FULL for the current scope, except for the cross-space
+boundaries below. Selecting nothing is normal.
+
+- **Effective status** is computed from the annotation and the current time: ongoing items are
+  `current` until their stability window passes since the last confirmation (short 30 days,
+  medium 120, long 365, permanent never), then `unverified`; plans are `upcoming`, `just_passed`
+  for 14 days after the date, then `past`; dated events are `recent_event` for 14 days, then
+  `past_event`; recurring items are `upcoming` with their next date. Undated plans and events
+  expire 30 days after observation.
+- **Missing or stale annotations** use the quiet reading (#449 principle 6): facts become
+  `contextual`, a `boundary` kind stays a boundary directive, and a stale directive stays a
+  directive until it is re-annotated.
+- **T0 directives**: FULL directives plus cross-space boundaries, at most 6 items / 600 characters,
+  ordered explicit > boundary > most recently confirmed.
+- **Cross-space boundaries** (decision 16): a verified boundary, or an unannotated legacy
+  `boundary` item, applies in every space where its owner speaks. Outside its FULL spaces it is
+  rendered under `quiet_boundaries`, which may only stop Hina from raising the topic. `style`
+  directives are not carried across spaces.
+- **T1 session follow-up** (§7.1): only on the first turn after an 8-hour gap across all spaces,
+  when that turn is a greeting, small talk or a bare call. Candidates are plans that just passed,
+  plans within 3 days, and recent importance-3 ambient items; at most 2 in DM. Each item may be
+  attempted twice per effective status (`proactive_count`), and any `proactive_followup_off`
+  boundary disables it. `MEMORY_SESSION_FOLLOWUP=off|dm|all` (default `dm`); with `all`, a server
+  follow-up needs a direct call and an ambient, `audience=server` item from the same space, and
+  uses at most one.
+- **T2 relevant notes**: lexical matching of keywords and content words against the current
+  message (and, at half weight, the explicit reply chain). Ambient items need one keyword hit or
+  two content-word hits; contextual items need a keyword hit; sensitive items need a keyword in
+  the current message itself. Items used in the last 72 hours are skipped unless the message
+  names one of their keywords (decision 19). Near-duplicate contents are skipped (character
+  bigram similarity), and at most 4 items / 900 characters are kept.
+- **T4**: reference-gated items the owner explicitly brought up this turn.
+- **Clusters**: one member per cluster among the members visible here (the canonical one when
+  visible, otherwise the most recently confirmed).
+- Raw relationship memories are never sent (decision 5); `relationship_profile` is the numeric
+  owner profile in DM and the FULL plus implicit profile in a server.
+
+The rendered `user_memory` holds `directives`, `quiet_boundaries` and `notes` (`text`, `status`,
+`date` or `noted`, `use`, and `scope_relation` when the item came from elsewhere); it carries no
+ids, kinds or confidence values. The tiered policy (`prompts/integration/structured_memory_tiered.md`)
+is attached whenever the owner has any memory, even when nothing was selected, so the instruction
+prefix stays stable. Context provenance lists each admitted item as `{store: personal, item_id,
+tier, status}` and `memory_selection` counts tiers and exclusion reasons without content.
+
 ## Disclosure semantics
 
 The policy primitive returns one of three access levels:
