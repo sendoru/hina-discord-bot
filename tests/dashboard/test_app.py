@@ -51,6 +51,12 @@ def dashboard_client(tmp_path):
                 "memory_selection": {
                     "mode": "shadow", "tiers": {"T2": 1},
                     "excluded": {"cooldown": 2}, "followup_attempted": True,
+                    "coverage": {
+                        "notes": 4, "used": 2, "covered": 1, "missed": 1,
+                        "missed_unprompted": 1, "missed_current": 1,
+                        "missed_item_ids": [77], "visual_turn": True,
+                        "recent_own_turn": False,
+                    },
                 },
                 "decisions": {
                     "use_memory": True,
@@ -381,6 +387,8 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert "hello dashboard" in detail.text
     assert "Memory selection (shadow)" in detail.text
     assert "cooldown 2" in detail.text and "session follow-up attempted" in detail.text
+    assert "used 2 of 4 legacy note(s); tiered had 1" in detail.text
+    assert '<a href="/memory/77">#77</a>' in detail.text and "photo turn" in detail.text
     assert 'data-copy-text="trace-ui"' in detail.text
     assert 'data-copy-text="55"' in detail.text
     assert 'data-copy-block' in detail.text

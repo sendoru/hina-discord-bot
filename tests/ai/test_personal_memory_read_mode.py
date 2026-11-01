@@ -87,7 +87,7 @@ async def test_tiered_dm_sends_only_selected_memory_with_its_policy():
     assert "[구조화 사용자 기억]" not in payload["instructions"]
     assert provenance["memory_selection"]["tiers"] == {"T0": 1, "T2": 1}
     assert {row["store"] for row in provenance["structured_memory"]} == {"personal"}
-    assert selection is not None
+    assert selection.mode == "tiered" and selection.legacy_notes == ()
 
 
 @pytest.mark.asyncio
@@ -114,8 +114,12 @@ async def test_shadow_answers_with_legacy_memory_and_records_the_selection():
     assert "[구조화 사용자 기억]" in payload["instructions"]
     assert provenance["memory_selection"]["mode"] == "shadow"
     assert provenance["memory_selection"]["tiers"] == {"T0": 1, "T2": 1}
-    # Nothing was injected from the selection, so no usage may be recorded for it.
-    assert selection is None
+    # Nothing was injected from the selection: the run only carries the coverage reference
+    # (every FULL non-directive note legacy sent), never usage to record.
+    assert selection.mode == "shadow"
+    assert {item.content for item, _annotation in selection.legacy_notes} == {
+        "사내 결제 시스템 마이그레이션 담당", "매운 음식을 좋아함",
+    }
 
 
 @pytest.mark.asyncio

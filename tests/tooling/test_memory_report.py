@@ -2,10 +2,12 @@
 
 import hashlib
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
 
+from hina_bot.ai.memory_extraction import parse_annotation
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -55,6 +57,13 @@ def _add(store, scope, content, *, kind=MemoryKind.FACT, disclosure=MemoryDisclo
     )
 
 
+def _annotate(store, item_id, kind=MemoryKind.FACT, **fields):
+    cited = [{"user": fields.get("evidence", ""), "at": "2026-10-20 03:00:00"}]
+    store.upsert_memory_annotation(
+        replace(parse_annotation(fields, kind, cited), memory_item_id=item_id)
+    )
+
+
 def _proposal(store, scope, new_id, target_id, relation, confidence):
     proposal_id = store.add_memory_reconciliation_proposal(
         scope,
@@ -73,17 +82,22 @@ def database(tmp_path):
     path = tmp_path / "hina.sqlite3"
     store = Store.create(str(path))
     try:
-        _add(store, DM, CONTENTS["cat_dm"])
+        cat = _add(store, DM, CONTENTS["cat_dm"])
         _add(store, PUBLIC, CONTENTS["cat_public"])
         _add(store, DM, CONTENTS["hike_dm"])
         _add(store, PUBLIC, CONTENTS["hike_public"])
         _add(store, PUBLIC, CONTENTS["piano"])
         interview = _add(store, PUBLIC, CONTENTS["interview"])
-        _add(store, PRIVATE, CONTENTS["spicy"], kind=MemoryKind.PREFERENCE)
+        spicy = _add(store, PRIVATE, CONTENTS["spicy"], kind=MemoryKind.PREFERENCE)
         _add(store, PUBLIC_B, CONTENTS["global_b"], kind=MemoryKind.PREFERENCE,
              disclosure=MemoryDisclosure.GLOBAL)
         _add(store, DM, CONTENTS["relationship"], kind=MemoryKind.RELATIONSHIP,
              disclosure=MemoryDisclosure.IMPLICIT, evidence={"comfort": 2, "familiarity": 3})
+        _annotate(store, cat, evidence="고양이 보리 키워", time_scope="ongoing",
+                  stability="long", usage_mode="ambient", importance=3,
+                  keywords=["고양이", "보리"])
+        _annotate(store, spicy, MemoryKind.PREFERENCE, time_scope="ongoing",
+                  stability="long", usage_mode="contextual", keywords=["매운"])
         store.db.execute(
             "UPDATE memory_items SET created_at='2026-09-01 00:00:00' WHERE id=?",
             (interview,),
@@ -172,6 +186,21 @@ def usage_log(tmp_path):
         {"at": "2026-10-29T00:00:04+00:00", "operation": "memory.selection",
          "status": "completed", "memory_read_mode": "tiered", "memory_t2_items": 0,
          "memory_followup_attempted": False},
+        {"at": "2026-10-29T00:00:05+00:00", "operation": "memory.shadow_coverage",
+         "status": "completed", "memory_space": "dm", "memory_visual_turn": True,
+         "memory_recent_own_turn": False, "memory_coverage_notes": 5,
+         "memory_coverage_used": 2, "memory_coverage_covered": 1,
+         "memory_coverage_missed": 1, "memory_coverage_missed_unprompted": 1,
+         "memory_coverage_missed_ambient": 1, "memory_coverage_missed_importance_3": 1},
+        {"at": "2026-10-29T00:00:06+00:00", "operation": "memory.shadow_coverage",
+         "status": "completed", "memory_space": "guild", "memory_visual_turn": False,
+         "memory_recent_own_turn": True, "memory_coverage_notes": 3,
+         "memory_coverage_used": 2, "memory_coverage_covered": 2,
+         "memory_coverage_missed": 0},
+        {"at": "2026-10-29T00:00:07+00:00", "operation": "memory.shadow_coverage",
+         "status": "completed", "memory_space": "dm", "memory_coverage_notes": 4,
+         "memory_coverage_used": 0, "memory_coverage_covered": 0,
+         "memory_coverage_missed": 0},
     ]
     rotated.write_text(
         "".join(json.dumps(row) + "\n" for row in rows[:2]), encoding="utf-8",
@@ -244,6 +273,16 @@ def test_report_aggregates_memory_quality_signals(database, usage_log):
     assert report["database"]["notes"]["user"]["count"] == 1
     assert report["database"]["memory_modes"] == {"realm": {"read_only": 1}}
 
+    annotations = report["database"]["memory_annotations"]
+    assert (annotations["items"], annotations["annotated"], annotations["stale"]) == (16, 2, 0)
+    assert annotations["missing"] == 14
+    assert annotations["usage_mode"] == {"ambient": 1, "contextual": 1}
+    assert annotations["usage_by_importance"] == {"ambient": {"3": 1}, "contextual": {"2": 1}}
+    profile = annotations["profile_candidates"]
+    assert (profile["items"], profile["users_with_any"]) == (1, 1)
+    assert profile["items_per_user"]["max"] == 1 and profile["items_per_user"]["min"] == 0
+    assert profile["chars_per_user"]["max"] == len(CONTENTS["cat_dm"])
+
 
 def test_report_aggregates_rotated_usage_telemetry(database, usage_log):
     telemetry = memory_report.build_report(
@@ -268,6 +307,18 @@ def test_report_aggregates_rotated_usage_telemetry(database, usage_log):
     assert selection["totals"]["memory_t2_items"] == 2
     assert selection["totals"]["memory_excluded_cooldown"] == 1
     assert selection["followup_attempted_turns"] == 1
+    coverage = telemetry["memory_shadow_coverage"]
+    assert (coverage["turns"], coverage["turns_with_used_notes"]) == (3, 2)
+    assert (coverage["used"], coverage["missed"], coverage["miss_rate"]) == (4, 1, 0.25)
+    assert coverage["unprompted_miss_rate"] == 0.25
+    assert coverage["totals"]["missed_importance_3"] == 1
+    assert coverage["by_space"]["dm"]["miss_rate"] == 0.5
+    assert coverage["by_space"]["guild"]["miss_rate"] == 0.0
+    assert coverage["visual_turns"] == {
+        "turns": 1, "turns_with_used_notes": 1, "used": 2, "missed": 1,
+        "miss_rate": 0.5, "unprompted_miss_rate": 0.5,
+    }
+    assert coverage["recent_own_turns"]["missed"] == 0
     extraction = telemetry["shadow_extraction"]
     assert extraction["status"] == {"completed": 1, "invalid": 1}
     assert extraction["completed_totals"]["accepted_items"] == 2
