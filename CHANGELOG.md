@@ -6,6 +6,12 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Added
 
+- tiered 개인 기억 선택(shadow 포함)에 핵심 프로필(Tp)과 화제 이월을 추가했습니다. 중요도 3인
+  ambient 생활 기억(ongoing·recurring, 지금 유효)은 어휘 일치 없이도 `user_memory.profile`로 항상
+  들어가며, 이해에만 쓰고 먼저 꺼내지 않도록 정책 문구로 제한합니다. 서버에서는 같은 공간 출처이고
+  `audience=server`인 것만 넣습니다. 현재 화자가 이 채널·DM에서 30분 안에 보낸 직전 발화(최대 2개)의
+  화제는 T2로 이어지며(contextual은 바로 앞 발화만, sensitive는 제외), cooldown의 직접 언급 예외도
+  이 발화에 적용됩니다. `recall_memory` 도구 설명과 정책 문구에 사진·짧은 반응 사례를 추가했습니다.
 - `PERSONAL_MEMORY_READ_MODE=shadow`가 답변 뒤 shadow 커버리지를 기록합니다. legacy 답변이 실제로
   쓴 기억(keywords 등장) 중 tiered 선택에 없던 것을 세어 `memory.shadow_coverage` 이벤트(개수와
   사진 턴·직전 본인 발화 표시만)와 trace의 Memory selection(놓친 항목 ID 링크)에 남기고,

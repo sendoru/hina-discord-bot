@@ -16,7 +16,8 @@
       "authorized_reference_gated": [],
       "member_opt_out": [],
       "departed_members": [],
-      "reader_denied_channels": []
+      "reader_denied_channels": [],
+      "recent_own_turns": []
     },
     "settings": {
       "MEMORY_SESSION_FOLLOWUP": "dm",
@@ -705,6 +706,268 @@
                         "last_used_at": "2026-10-26T12:00:00+09:00"}}
       ],
       "expect": {"include": ["food"], "tier": {"food": "T2"}}
+    },
+    {
+      "id": "profile_photo_short_reaction_knows_pet",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 사진+짧은 반응에서도 중요도 3 생활 기억은 배경으로 안다",
+      "note": "사진 자체는 선택기 입력이 아니다. 어휘가 없어도 Tp는 항상 들어가고, 중요도 2 기억은 들어가지 않는다(recall_memory 영역).",
+      "message": "ㅋㅋㅋ 이거 봐",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"]}},
+        {"ref": "food", "kind": "preference", "content": "매운 음식을 좋아함",
+         "annotation": {"keywords": ["음식", "매운", "밥"]}}
+      ],
+      "expect": {"include": ["cat"], "exclude": ["food"], "tier": {"cat": "Tp"}, "placement": {"cat": "profile"}}
+    },
+    {
+      "id": "profile_pronoun_our_kid",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): \"우리 애\" 같은 지칭",
+      "message": "우리 애 오늘 표정 ㅋㅋ",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"]}}
+      ],
+      "expect": {"include": ["cat"], "tier": {"cat": "Tp"}, "placement": {"cat": "profile"}}
+    },
+    {
+      "id": "profile_direct_word_renders_as_t2",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 직접 언급되면 Tp가 아니라 T2 note(use free)로 한 번만",
+      "message": "보리 오늘 표정 ㅋㅋ",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"]}}
+      ],
+      "expect": {"include": ["cat"], "tier": {"cat": "T2"}, "placement": {"cat": "notes"}, "via": {"cat": "current"}}
+    },
+    {
+      "id": "profile_paraphrase_covered_for_importance_3",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): keywords에 없는 바꿔 말하기(\"집사\")",
+      "message": "집사 생활 힘들다",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"]}}
+      ],
+      "expect": {"include": ["cat"], "tier": {"cat": "Tp"}}
+    },
+    {
+      "id": "paraphrase_importance_2_synonym_needs_embeddings",
+      "covers": "#449 §7 T2: 중요도 2 기억의 동의어(\"마라\" ↔ 매운 음식)",
+      "note": "어휘 매칭으로는 잡히지 않는다. Tp 대상도 아니다. P5 임베딩에서 활성화한다.",
+      "activation": "P5",
+      "message": "요즘 마라 땡긴다",
+      "memories": [
+        {"ref": "food", "kind": "preference", "content": "매운 음식을 좋아함",
+         "annotation": {"keywords": ["음식", "매운", "밥"]}}
+      ],
+      "expect": {"include": ["food"], "tier": {"food": "T2"}}
+    },
+    {
+      "id": "profile_background_in_task_turn",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 업무 요청 턴에도 Tp는 배경으로만, 업무 세부는 들어가지 않음",
+      "message": "이 코드 봐줘",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"]}},
+        {"ref": "work", "content": "사내 결제 시스템 마이그레이션 담당",
+         "annotation": {"usage_mode": "contextual", "keywords": ["회사", "업무", "결제", "마이그레이션"]}}
+      ],
+      "expect": {"include": ["cat"], "exclude": ["work"], "placement": {"cat": "profile"}}
+    },
+    {
+      "id": "profile_excludes_low_importance_unverified_planned_sensitive",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 판정 필드가 맞지 않는 항목은 Tp 아님",
+      "message": "오늘 날씨 좋다",
+      "memories": [
+        {"ref": "food", "kind": "preference", "content": "매운 음식을 좋아함",
+         "annotation": {"keywords": ["음식", "매운", "밥"]}},
+        {"ref": "old_hobby", "content": "요즘 클라이밍을 배움",
+         "annotation": {"importance": 3, "stability": "short", "observed_at": "2026-05-01T12:00:00+09:00", "keywords": ["클라이밍"]}},
+        {"ref": "trip", "kind": "event", "content": "2026-11-20 제주도 여행 예정",
+         "annotation": {"importance": 3, "time_scope": "planned", "stability": null, "event_at": "2026-11-20", "keywords": ["제주도", "여행"]}},
+        {"ref": "health", "content": "허리 디스크로 병원에 다님",
+         "annotation": {"usage_mode": "sensitive", "importance": 3, "keywords": ["허리", "디스크", "병원"]}}
+      ],
+      "expect": {"exclude": ["food", "old_hobby", "trip", "health"]}
+    },
+    {
+      "id": "profile_cap_and_order",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 5개 / 400자, explicit 먼저 그다음 최근 확인 순",
+      "message": "오늘 날씨 좋다",
+      "memories": [
+        {"ref": "p1", "content": "고양이 보리를 키움",
+         "annotation": {"importance": 3, "explicit": true, "last_confirmed_at": "2026-10-01T12:00:00+09:00", "keywords": ["고양이"]}},
+        {"ref": "p2", "content": "강아지 콩이를 키움",
+         "annotation": {"importance": 3, "explicit": false, "last_confirmed_at": "2026-10-02T12:00:00+09:00", "keywords": ["강아지"]}},
+        {"ref": "p3", "content": "주말마다 등산을 함",
+         "annotation": {"importance": 3, "explicit": false, "last_confirmed_at": "2026-10-03T12:00:00+09:00", "keywords": ["등산"]}},
+        {"ref": "p4", "content": "매일 아침 러닝을 함",
+         "annotation": {"importance": 3, "explicit": false, "last_confirmed_at": "2026-10-04T12:00:00+09:00", "keywords": ["러닝"]}},
+        {"ref": "p5", "content": "밤에 주로 게임을 함",
+         "annotation": {"importance": 3, "explicit": false, "last_confirmed_at": "2026-10-05T12:00:00+09:00", "keywords": ["게임"]}},
+        {"ref": "p6", "content": "평일엔 회사에 출근함",
+         "annotation": {"importance": 3, "explicit": false, "last_confirmed_at": "2026-10-06T12:00:00+09:00", "keywords": ["출근"]}},
+        {"ref": "p7", "content": "기타를 연습하는 중",
+         "annotation": {"importance": 3, "explicit": false, "last_confirmed_at": "2026-10-07T12:00:00+09:00", "keywords": ["기타"]}}
+      ],
+      "expect": {"include": ["p1", "p7", "p6", "p5", "p4"], "exclude": ["p2", "p3"], "tier": {"p1": "Tp", "p7": "Tp"}}
+    },
+    {
+      "id": "profile_keeps_item_on_t2_cooldown",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): T2가 cooldown으로 막은 항목은 Tp에 남는다(먼저 꺼내기만 막음)",
+      "note": "\"반려동물\"은 keyword \"반려묘\"와 앞 두 글자가 같아 T2 매칭은 되지만 직접 언급은 아니다.",
+      "message": "반려동물 사진 봐 ㅋㅋ",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "반려묘"], "last_used_at": "2026-10-30T18:00:00+09:00"}}
+      ],
+      "expect": {"include": ["cat"], "tier": {"cat": "Tp"}, "placement": {"cat": "profile"}}
+    },
+    {
+      "id": "zero_injection_without_profile_items",
+      "covers": "#449 원칙 5: 프로필 대상이 없으면 무관한 발화에서 0개",
+      "message": "오늘 날씨 좋다",
+      "memories": [
+        {"ref": "food", "kind": "preference", "content": "매운 음식을 좋아함",
+         "annotation": {"keywords": ["음식", "매운", "밥"]}},
+        {"ref": "work", "content": "사내 결제 시스템 마이그레이션 담당",
+         "annotation": {"usage_mode": "contextual", "keywords": ["회사", "업무", "결제", "마이그레이션"]}}
+      ],
+      "expect": {"exclude": ["food", "work"]}
+    },
+    {
+      "id": "carry_previous_own_turn_topic",
+      "covers": "#449 §7 T2 화제 이월(P2 읽기 경로 보강): 직전 본인 발화의 화제가 현재 턴으로 이어짐",
+      "message": "걔 요즘 밥을 잘 안 먹어",
+      "context": {"recent_own_turns": ["어제 고양이 병원 다녀왔어"]},
+      "memories": [
+        {"ref": "feed", "content": "고양이 사료를 연어맛으로 바꿈",
+         "annotation": {"keywords": ["고양이", "사료"]}}
+      ],
+      "expect": {"include": ["feed"], "tier": {"feed": "T2"}, "via": {"feed": "carry"}}
+    },
+    {
+      "id": "carry_absent_without_recent_turn",
+      "covers": "#449 §7 T2 화제 이월(P2 읽기 경로 보강): 직전 발화가 없으면(30분 경과·히나 답변·다른 사람 발화는 입력 단계에서 빠짐) 이월 없음",
+      "message": "걔 요즘 밥을 잘 안 먹어",
+      "memories": [
+        {"ref": "feed", "content": "고양이 사료를 연어맛으로 바꿈",
+         "annotation": {"keywords": ["고양이", "사료"]}}
+      ],
+      "expect": {"exclude": ["feed"]}
+    },
+    {
+      "id": "carry_contextual_from_immediate_turn",
+      "covers": "#449 §7 T2 화제 이월(P2 읽기 경로 보강): contextual은 바로 앞 본인 발화의 직접 근거로 이월",
+      "message": "아 이거 왜 안 되지",
+      "context": {"recent_own_turns": ["파이썬 에러 났어"]},
+      "memories": [
+        {"ref": "tech", "content": "파이썬으로 디스코드 봇을 개발함",
+         "annotation": {"usage_mode": "contextual", "keywords": ["파이썬", "개발", "코드"]}}
+      ],
+      "expect": {"include": ["tech"], "via": {"tech": "carry"}}
+    },
+    {
+      "id": "carry_contextual_not_from_older_turn",
+      "covers": "#449 §7 T2 화제 이월(P2 읽기 경로 보강): contextual은 두 턴 전 발화로는 이월하지 않음",
+      "message": "아 이거 왜 안 되지",
+      "context": {"recent_own_turns": ["파이썬 에러 났어", "아 배고프다"]},
+      "memories": [
+        {"ref": "tech", "content": "파이썬으로 디스코드 봇을 개발함",
+         "annotation": {"usage_mode": "contextual", "keywords": ["파이썬", "개발", "코드"]}}
+      ],
+      "expect": {"exclude": ["tech"]}
+    },
+    {
+      "id": "carry_never_admits_sensitive",
+      "covers": "#449 §7 T2 화제 이월(P2 읽기 경로 보강): sensitive는 현재 발화의 직접 언급만",
+      "message": "오늘 좀 피곤하다",
+      "context": {"recent_own_turns": ["요즘 허리 때문에 병원 다녀"]},
+      "memories": [
+        {"ref": "health", "content": "허리 디스크로 병원에 다님",
+         "annotation": {"usage_mode": "sensitive", "importance": 3, "keywords": ["허리", "디스크", "병원"]}}
+      ],
+      "expect": {"exclude": ["health"]}
+    },
+    {
+      "id": "carry_bypasses_cooldown_in_thread",
+      "covers": "#449 §7 T2 화제 이월(P2 읽기 경로 보강): 이어지는 화제에서는 cooldown 직접 언급 예외가 이월 텍스트에도 적용",
+      "message": "근데 요즘 털이 많이 빠져",
+      "context": {"recent_own_turns": ["사료 바꿨더니 잘 먹네"]},
+      "memories": [
+        {"ref": "feed", "content": "고양이 사료를 연어맛으로 바꿈",
+         "annotation": {"keywords": ["고양이", "사료"], "last_used_at": "2026-10-30T18:50:00+09:00"}}
+      ],
+      "expect": {"include": ["feed"], "via": {"feed": "carry"}}
+    },
+    {
+      "id": "profile_server_requires_audience_server",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 서버 Tp는 audience=server만(§7.1 서버 안부와 같은 규칙)",
+      "scope": "g1:c1:public",
+      "message": "ㅋㅋㅋ 이거 봐",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움", "origin": "g1:c1:public",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"]}}
+      ],
+      "expect": {"exclude": ["cat"]}
+    },
+    {
+      "id": "profile_server_same_space_audience_server",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 같은 공간 출처 + audience=server면 서버에서도 Tp",
+      "scope": "g1:c1:public",
+      "message": "ㅋㅋㅋ 이거 봐",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움", "origin": "g1:c1:public",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"], "audience": "server"}}
+      ],
+      "expect": {"include": ["cat"], "tier": {"cat": "Tp"}}
+    },
+    {
+      "id": "profile_server_excludes_other_space_even_global",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 다른 서버 출처는 global(FULL)이고 audience=server여도 이 서버 Tp 아님. DM 출처 local은 권한에서 제외",
+      "scope": "g1:c1:public",
+      "message": "ㅋㅋㅋ 이거 봐",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움", "origin": "g2:c5:public", "disclosure": "global",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"], "audience": "server"}},
+        {"ref": "local_food", "kind": "preference", "content": "매운 음식을 좋아함",
+         "annotation": {"keywords": ["음식", "매운", "밥"]}}
+      ],
+      "expect": {"exclude": ["cat", "local_food"]}
+    },
+    {
+      "id": "profile_dm_includes_server_origin",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): DM에서는 서버 출처 기억도 Tp(DM은 모든 출처 FULL)",
+      "message": "우리 애 오늘 표정 ㅋㅋ",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움", "origin": "g1:c1:public",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"]}}
+      ],
+      "expect": {"include": ["cat"], "tier": {"cat": "Tp"}}
+    },
+    {
+      "id": "profile_never_widens_reference_gated",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 다른 공간 reference_gated 기억은 T4 승인 없이 Tp로 열리지 않음",
+      "scope": "g1:c1:public",
+      "message": "ㅋㅋㅋ 이거 봐",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움", "origin": "g2:c5:public", "disclosure": "reference_gated",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"], "audience": "server"}}
+      ],
+      "expect": {"exclude": ["cat"]}
+    },
+    {
+      "id": "profile_with_quiet_boundary",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 다른 공간 경계는 그대로 quiet_boundaries, Tp와 무관",
+      "scope": "g1:c1:public",
+      "message": "ㅋㅋㅋ 이거 봐",
+      "memories": [
+        {"ref": "cat", "content": "고양이 보리를 키움", "origin": "g1:c1:public",
+         "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"], "audience": "server"}},
+        {"ref": "boundary", "kind": "boundary", "content": "가족 얘기는 먼저 꺼내지 않기",
+         "annotation": {"usage_mode": "directive", "directive_type": "boundary", "verified": true, "keywords": ["가족"]}}
+      ],
+      "expect": {"include": ["cat", "boundary"], "placement": {"cat": "profile", "boundary": "quiet_boundaries"}}
     }
   ]
 }

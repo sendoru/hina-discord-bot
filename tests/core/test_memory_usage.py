@@ -143,3 +143,23 @@ def test_bot_records_usage_once_and_isolates_failures():
     HinaClient._record_memory_usage(broken, "매운 거", "dm")
     assert events[-1][0] == "memory.usage_failed"
     store.close()
+
+
+def test_used_profile_item_records_last_used_at():
+    store = Store.create(":memory:")
+    cat = store.add_memory_item(DM, "고양이 보리를 키움", kind=MemoryKind.FACT,
+                                disclosure=MemoryDisclosure.LOCAL)
+    cited = [{"user": "고양이 보리 키워", "at": "2026-10-20 03:00:00"}]
+    store.upsert_memory_annotation(replace(parse_annotation(
+        {"evidence": "고양이 보리 키워", "time_scope": "ongoing", "stability": "long",
+         "usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리"]},
+        MemoryKind.FACT, cited), memory_item_id=cat))
+    selection = _select(store, "ㅋㅋ 이거 봐")
+    assert [(e.item.id, e.tier, e.placement) for e in selection.selected] == [
+        (cat, "Tp", "profile")
+    ]
+
+    assert memory_usage(selection, "귀엽다", NOW) == []
+    [usage] = memory_usage(selection, "보리 표정 봐 ㅋㅋ", NOW)
+    assert (usage.item_id, usage.used, usage.proactive_status) == (cat, True, None)
+    store.close()
