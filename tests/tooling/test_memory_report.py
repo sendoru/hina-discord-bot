@@ -196,7 +196,7 @@ def usage_log(tmp_path):
          "status": "completed", "memory_space": "guild", "memory_visual_turn": False,
          "memory_recent_own_turn": True, "memory_coverage_notes": 3,
          "memory_coverage_used": 2, "memory_coverage_covered": 2,
-         "memory_coverage_missed": 0},
+         "memory_coverage_missed": 0, "memory_coverage_covered_carry": 1},
         {"at": "2026-10-29T00:00:07+00:00", "operation": "memory.shadow_coverage",
          "status": "completed", "memory_space": "dm", "memory_coverage_notes": 4,
          "memory_coverage_used": 0, "memory_coverage_covered": 0,
@@ -314,9 +314,11 @@ def test_report_aggregates_rotated_usage_telemetry(database, usage_log):
     assert coverage["totals"]["missed_importance_3"] == 1
     assert coverage["by_space"]["dm"]["miss_rate"] == 0.5
     assert coverage["by_space"]["guild"]["miss_rate"] == 0.0
+    assert coverage["miss_rate_without_profile_and_carry"] == 0.5
     assert coverage["visual_turns"] == {
         "turns": 1, "turns_with_used_notes": 1, "used": 2, "missed": 1,
         "miss_rate": 0.5, "unprompted_miss_rate": 0.5,
+        "miss_rate_without_profile_and_carry": 0.5,
     }
     assert coverage["recent_own_turns"]["missed"] == 0
     extraction = telemetry["shadow_extraction"]

@@ -49,6 +49,11 @@ T0_MAX_CHARS = 600
 T1_MAX_CANDIDATES = 2
 T2_MAX_ITEMS = 4
 T2_MAX_CHARS = 900
+# Core profile (Tp): importance-3 ambient facts of daily life, always known in the background.
+TP_MAX_ITEMS = 5
+TP_MAX_CHARS = 400
+# A topic carried from the user's own recent turns ranks below the current message.
+CARRY_WEIGHT = 0.5
 # Relevance thresholds; one keyword hit scores 1.0, one content-word hit 0.5.
 AMBIENT_THRESHOLD = 1.0
 EXPLICIT_RELIEF = 0.5
@@ -86,6 +91,8 @@ class SelectionContext:
     explicit_call: bool = True
     task_register: bool = False
     authorized_item_ids: frozenset[int] = frozenset()
+    # The user's own recent messages to Hina in this conversation, oldest first (carry).
+    recent_own_texts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -96,6 +103,8 @@ class SelectedMemory:
     placement: str
     status: StatusView
     use: str
+    # What admitted a T2 note: "current" message, reply "chain" or a "carry"-over topic.
+    via: str = ""
 
 
 @dataclass
@@ -470,6 +479,7 @@ def select_personal_memory(
 
     _select_followups(notes, ctx, selection, chosen, followup_opt_out)
     _select_relevant(notes, ctx, selection, chosen)
+    _select_profile(notes, ctx, selection, chosen)
     return selection
 
 
@@ -496,11 +506,19 @@ def _cluster_representatives(candidates, selection):
 
 
 def _cooling_down(annotation: MemoryAnnotation, ctx: SelectionContext) -> bool:
+    """Decision 19, with the user's own recent turns counting as a direct mention.
+
+    Cooldown stops repetition across sessions; it must not cut off a topic the user is
+    still talking about ("고양이 병원 다녀왔어" → "걔 요즘 밥을 안 먹어").
+    """
+
     used = _parse_time(annotation.last_used_at)
     return (
         used is not None
         and ctx.now - used < COOLDOWN
-        and not _direct_mention(annotation, ctx.message)
+        and not any(
+            _direct_mention(annotation, text) for text in (ctx.message, *ctx.recent_own_texts)
+        )
     )
 
 
@@ -581,10 +599,36 @@ _FRESHNESS = {
 _IMPORTANCE = {1: 0.8, 2: 1.0, 3: 1.2}
 
 
+def _admitted(item, annotation, texts, idf, ctx) -> tuple[bool, float, float]:
+    """Usage-specific admission against weighted texts: (admitted, score, ranking score)."""
+
+    score, hits, ranked = _relevance(item, annotation, texts, idf)
+    if annotation.usage_mode == UsageMode.CONTEXTUAL:
+        return hits > 0 or (ctx.task_register and score >= AMBIENT_THRESHOLD), score, ranked
+    threshold = AMBIENT_THRESHOLD - (EXPLICIT_RELIEF if annotation.explicit else 0.0)
+    return score >= threshold, score, ranked
+
+
+def _carry_texts(annotation: MemoryAnnotation, ctx: SelectionContext) -> tuple[str, ...]:
+    """The user's own recent turns that may carry a topic into this one, newest first.
+
+    Ambient notes may follow any of them; a contextual note needs direct evidence, so
+    only the immediately previous turn counts; sensitive notes never carry over.
+    """
+
+    if annotation.usage_mode == UsageMode.SENSITIVE:
+        return ()
+    texts = tuple(reversed(ctx.recent_own_texts))
+    return texts[:1] if annotation.usage_mode == UsageMode.CONTEXTUAL else texts
+
+
 def _select_relevant(notes, ctx, selection, chosen) -> None:
     current = ((ctx.message, 1.0),)
     with_chain = current + tuple((text, 0.5) for text in ctx.reply_texts)
-    idf = query_idf([(item, annotation) for item, annotation, _status in notes], with_chain)
+    idf = query_idf(
+        [(item, annotation) for item, annotation, _status in notes],
+        with_chain + tuple((text, CARRY_WEIGHT) for text in ctx.recent_own_texts),
+    )
     scored = []
     for item, annotation, status in notes:
         if item.id in chosen:
@@ -592,17 +636,27 @@ def _select_relevant(notes, ctx, selection, chosen) -> None:
         if status.expired:
             selection.excluded["expired"] += 1
             continue
-        usage = annotation.usage_mode
-        if usage == UsageMode.SENSITIVE:
+        if annotation.usage_mode == UsageMode.SENSITIVE:
             score, hits, ranked = _relevance(item, annotation, current, idf)
-            admitted = hits > 0
-        elif usage == UsageMode.CONTEXTUAL:
-            score, hits, ranked = _relevance(item, annotation, with_chain, idf)
-            admitted = hits > 0 or (ctx.task_register and score >= AMBIENT_THRESHOLD)
+            admitted, via = hits > 0, "current"
         else:
-            score, hits, ranked = _relevance(item, annotation, with_chain, idf)
-            threshold = AMBIENT_THRESHOLD - (EXPLICIT_RELIEF if annotation.explicit else 0.0)
-            admitted = score >= threshold
+            admitted, score, ranked = _admitted(item, annotation, with_chain, idf, ctx)
+            via = "current"
+            if admitted and ctx.reply_texts and not _admitted(
+                item, annotation, current, idf, ctx
+            )[0]:
+                via = "chain"
+        if not admitted:
+            # A carried topic is judged on one earlier turn alone, never summed with the
+            # current message: half-weight hits would never reach the threshold.
+            for text in _carry_texts(annotation, ctx):
+                carried, carry_score, carry_ranked = _admitted(
+                    item, annotation, ((text, 1.0),), idf, ctx
+                )
+                score = max(score, carry_score)
+                if carried:
+                    admitted, via, ranked = True, "carry", carry_ranked * CARRY_WEIGHT
+                    break
         if not admitted:
             if score > 0:
                 selection.excluded["threshold"] += 1
@@ -611,11 +665,11 @@ def _select_relevant(notes, ctx, selection, chosen) -> None:
             selection.excluded["cooldown"] += 1
             continue
         weight = ranked * _FRESHNESS[status.status] * _IMPORTANCE.get(annotation.importance, 1.0)
-        scored.append((weight, _confirmed_key(annotation), item, annotation, status))
+        scored.append((weight, _confirmed_key(annotation), item, annotation, status, via))
     scored.sort(key=lambda entry: entry[:2], reverse=True)
     picked: list[MemoryItem] = []
     used_chars = 0
-    for _weight, _key, item, annotation, status in scored:
+    for _weight, _key, item, annotation, status, via in scored:
         if any(_similar(item, other) for other in picked):
             selection.excluded["similarity"] += 1
             continue
@@ -626,7 +680,56 @@ def _select_relevant(notes, ctx, selection, chosen) -> None:
         used_chars += len(item.content)
         chosen.add(item.id)
         selection.selected.append(SelectedMemory(
-            item, annotation, "T2", "notes", status, _use_hint("T2", annotation, status),
+            item, annotation, "T2", "notes", status, _use_hint("T2", annotation, status), via,
+        ))
+
+
+_PROFILE_TIME_SCOPES = frozenset({TimeScope.ONGOING, TimeScope.RECURRING})
+_PROFILE_STATUSES = frozenset({EffectiveStatus.CURRENT, EffectiveStatus.UPCOMING})
+
+
+def _profile_candidate(annotation: MemoryAnnotation, status: StatusView) -> bool:
+    return (
+        annotation.usage_mode == UsageMode.AMBIENT
+        and annotation.importance >= 3
+        and annotation.time_scope in _PROFILE_TIME_SCOPES
+        and status.status in _PROFILE_STATUSES
+        and not status.expired
+    )
+
+
+def _select_profile(notes, ctx, selection, chosen) -> None:
+    """Tp: a few daily-life facts Hina always knows, to understand the user, not to raise.
+
+    Judged by fields only (principle 9): ambient, importance 3, ongoing or recurring and
+    valid now. A server adds the session follow-up's audience rule (§7.1): same space and
+    ``audience=server``. Notes already chosen as T1 or T2 render there instead; a note T2
+    skipped for cooldown stays here, since cooldown limits raising, not understanding.
+    """
+
+    in_server = ctx.scope.guild_id is not None
+    eligible = []
+    for item, annotation, status in notes:
+        if item.id in chosen or not _profile_candidate(annotation, status):
+            continue
+        if in_server and not (
+            _same_space(item, ctx.scope) and annotation.audience == Audience.SERVER
+        ):
+            selection.excluded["tp_space"] += 1
+            continue
+        eligible.append((item, annotation, status))
+    eligible.sort(key=lambda entry: (not entry[1].explicit, -_confirmed_key(entry[1])))
+    used_chars = 0
+    picked = 0
+    for item, annotation, status in eligible:
+        if picked >= TP_MAX_ITEMS or used_chars + len(item.content) > TP_MAX_CHARS:
+            selection.excluded["tp_cap"] += 1
+            continue
+        picked += 1
+        used_chars += len(item.content)
+        chosen.add(item.id)
+        selection.selected.append(SelectedMemory(
+            item, annotation, "Tp", "profile", status, "background",
         ))
 
 
@@ -650,6 +753,7 @@ def render_user_memory(selection: MemorySelection, scope: Scope) -> dict:
         "quiet_boundaries": [
             entry.item.content for entry in selection.by_placement("quiet_boundaries")
         ],
+        "profile": [entry.item.content for entry in selection.by_placement("profile")],
         "notes": notes,
     }
 
@@ -660,7 +764,8 @@ def selection_provenance(selection: MemorySelection) -> dict:
     return {
         "items": [
             {"store": "personal", "item_id": entry.item.id, "tier": entry.tier,
-             "placement": entry.placement, "status": entry.status.status.value}
+             "placement": entry.placement, "status": entry.status.status.value,
+             **({"via": entry.via} if entry.via else {})}
             for entry in selection.selected
         ],
         "tiers": selection.tier_counts(),
@@ -698,12 +803,12 @@ def _used_in(entry: SelectedMemory, answer: str) -> bool:
 
 
 def memory_usage(selection: MemorySelection, answer: str, now: datetime) -> list[MemoryUsage]:
-    """Cooldown and follow-up bookkeeping for the notes injected into this reply."""
+    """Cooldown and follow-up bookkeeping for the notes and profile injected into this reply."""
 
     stamp = now.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
     updates = []
     for entry in selection.selected:
-        if entry.placement != "notes":
+        if entry.placement not in {"notes", "profile"}:
             continue
         used = _used_in(entry, answer)
         if entry.tier != "T1":
@@ -796,6 +901,10 @@ class ShadowCoverage:
     missed_current: int = 0
     missed_usage: dict[str, int] = field(default_factory=dict)
     missed_importance: dict[str, int] = field(default_factory=dict)
+    # Used notes covered only through the core profile or a carried-over topic: without
+    # them these would have been misses too (ignoring their effect on the T2 cap).
+    covered_profile: int = 0
+    covered_carry: int = 0
 
     @property
     def missed(self) -> int:
@@ -808,15 +917,17 @@ class ShadowCoverage:
             "missed_current": self.missed_current, "missed_usage": dict(self.missed_usage),
             "missed_importance": dict(self.missed_importance),
             "missed_item_ids": list(self.missed_item_ids),
+            "covered_profile": self.covered_profile, "covered_carry": self.covered_carry,
         }
 
 
 def shadow_coverage(run: MemoryReadRun, answer: str) -> ShadowCoverage:
     """Compare the notes a legacy answer used with the shadow selection (content-free)."""
 
-    selected = {entry.item.id for entry in run.selection.selected}
+    selected = {entry.item.id: entry for entry in run.selection.selected}
     used = [(item, annotation) for item, annotation in run.legacy_notes
             if _mentions(item, annotation, answer)]
+    covering = [selected[item.id] for item, _annotation in used if item.id in selected]
     missed = [(item, annotation) for item, annotation in used if item.id not in selected]
     now = run.now or datetime.now(UTC)
     return ShadowCoverage(
@@ -836,6 +947,8 @@ def shadow_coverage(run: MemoryReadRun, answer: str) -> ShadowCoverage:
         missed_importance=dict(Counter(
             str(annotation.importance) for _item, annotation in missed
         )),
+        covered_profile=sum(1 for entry in covering if entry.tier == "Tp"),
+        covered_carry=sum(1 for entry in covering if entry.via == "carry"),
     )
 
 
@@ -884,6 +997,8 @@ __all__ = [
     "FOLLOWUP_MODES",
     "SESSION_GAP",
     "STABILITY_WINDOWS",
+    "TP_MAX_CHARS",
+    "TP_MAX_ITEMS",
     "EffectiveStatus",
     "MemoryReadRun",
     "MemorySelection",

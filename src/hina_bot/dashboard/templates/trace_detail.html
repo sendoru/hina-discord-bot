@@ -341,7 +341,7 @@
   {% set coverage = selection.get("coverage") %}
   {% if coverage %}
   <p>
-    Shadow coverage: the answer used {{ coverage.get("used", 0) }} of {{ coverage.get("notes", 0) }} legacy note(s); tiered had {{ coverage.get("covered", 0) }}.
+    Shadow coverage: the answer used {{ coverage.get("used", 0) }} of {{ coverage.get("notes", 0) }} legacy note(s); tiered had {{ coverage.get("covered", 0) }}{% if coverage.get("covered_profile") or coverage.get("covered_carry") %} (via profile {{ coverage.get("covered_profile", 0) }}, carry {{ coverage.get("covered_carry", 0) }}){% endif %}.
     {% if coverage.get("missed") %}
       Missed {{ coverage.get("missed") }} (unprompted {{ coverage.get("missed_unprompted", 0) }}, still valid {{ coverage.get("missed_current", 0) }}):
       {% for item_id in coverage.get("missed_item_ids") or [] %}<a href="/memory/{{ item_id }}">#{{ item_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
