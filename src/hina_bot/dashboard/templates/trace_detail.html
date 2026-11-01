@@ -338,6 +338,18 @@
   <p class="muted">Excluded: {% for reason, count in selection.get("excluded").items() %}{{ reason }} {{ count }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
   {% endif %}
   {% if selection.get("mode") == "shadow" %}<p class="muted">Shadow: the answer used the legacy projection above; this is what tiered would have sent.</p>{% endif %}
+  {% set coverage = selection.get("coverage") %}
+  {% if coverage %}
+  <p>
+    Shadow coverage: the answer used {{ coverage.get("used", 0) }} of {{ coverage.get("notes", 0) }} legacy note(s); tiered had {{ coverage.get("covered", 0) }}.
+    {% if coverage.get("missed") %}
+      Missed {{ coverage.get("missed") }} (unprompted {{ coverage.get("missed_unprompted", 0) }}, still valid {{ coverage.get("missed_current", 0) }}):
+      {% for item_id in coverage.get("missed_item_ids") or [] %}<a href="/memory/{{ item_id }}">#{{ item_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+    {% endif %}
+    {% if coverage.get("visual_turn") %} · photo turn{% endif %}
+    {% if coverage.get("recent_own_turn") %} · recent own turn{% endif %}
+  </p>
+  {% endif %}
   {% endif %}
   {% if data.context_provenance.memory_lookup %}
   <p>recall_memory: {{ data.context_provenance.memory_lookup.get("calls", 0) }} call(s), {{ (data.context_provenance.memory_lookup.get("items") or []) | length }} item(s) returned</p>

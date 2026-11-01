@@ -212,6 +212,19 @@ _SELECTION_EXCLUSIONS = (
 )
 
 
+_VISUAL_TURN_KINDS = frozenset({"current_message", "replied_message"})
+
+
+def _visual_turn(visuals) -> bool:
+    """A photo the user sent or replied to now; custom emoji and stickers do not count."""
+
+    return any(
+        getattr(visual, "source", "") == "attachment"
+        and getattr(visual, "context_kind", "") in _VISUAL_TURN_KINDS
+        for visual in visuals or ()
+    )
+
+
 class RequestAssembler(BaseLLM):
     """Build the final model request from a precomputed information plan."""
 
@@ -441,6 +454,7 @@ class RequestAssembler(BaseLLM):
             channel_context=channel_context,
             # In a server only a direct call may open a session follow-up (§7.1).
             explicit_call=interaction.get("trigger_kind") != "implicit",
+            visual_turn=_visual_turn(CURRENT_VISUAL_INPUTS.get()),
         )
         structured_memory = personal_memory["fields"]
         # recall_memory may return this turn's T4 approvals, and nothing more (§7 T3).
@@ -549,10 +563,8 @@ class RequestAssembler(BaseLLM):
                 **selection_provenance(memory_selection),
             }
             self._emit_memory_selection(personal_memory["mode"], memory_selection)
-        # Only an injected selection can be used by the reply; shadow never records usage.
-        CURRENT_MEMORY_SELECTION.set(
-            memory_selection if personal_memory["mode"] == "tiered" else None
-        )
+        # Tiered records usage for what it injected; shadow only measures coverage.
+        CURRENT_MEMORY_SELECTION.set(personal_memory["run"])
         CURRENT_CONTEXT_PROVENANCE.set(context_provenance)
         section_counts = {
             str(row.get("name")): int(row.get("count") or 0)

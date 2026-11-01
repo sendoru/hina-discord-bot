@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from hina_bot.core.memory_annotations import MemoryAnnotation
 from hina_bot.core.memory_items import (
     MemoryAccess,
     MemoryItem,
@@ -13,8 +15,10 @@ from hina_bot.core.memory_items import (
     memory_access,
 )
 from hina_bot.core.memory_selection import (
+    MemoryReadRun,
     MemorySelection,
     SelectionContext,
+    legacy_notes,
     render_user_memory,
     select_personal_memory,
     selection_provenance,
@@ -280,6 +284,43 @@ def _hours_since(value: str | None, now: datetime) -> float | None:
     return max(0.0, (now - moment).total_seconds() / 3600)
 
 
+# The user's own turns with Hina in this conversation that still count as the same topic.
+RECENT_OWN_WINDOW = timedelta(minutes=30)
+RECENT_OWN_TURNS = 2
+
+
+def recent_own_texts(store, scope: Scope, now: datetime) -> tuple[str, ...]:
+    """The current speaker's last few messages to Hina here, oldest first.
+
+    ``store.history(scope)`` holds only this user's turns in this channel or DM, so
+    other members' messages and Hina's replies never count as the user's topic.
+    """
+
+    reader = getattr(store, "history", None)
+    if not callable(reader):
+        return ()
+    texts: list[str] = []
+    for turn in reversed(reader(scope)):
+        hours = _hours_since(turn["created_at"], now)
+        if hours is None or hours * 3600 > RECENT_OWN_WINDOW.total_seconds():
+            break
+        content = str(turn["content"] or "").strip()
+        if content:
+            texts.append(content)
+        if len(texts) >= RECENT_OWN_TURNS:
+            break
+    return tuple(reversed(texts))
+
+
+@dataclass(frozen=True)
+class PersonalMemorySelection:
+    selection: MemorySelection
+    items: list[MemoryItem]
+    annotations: dict[int, MemoryAnnotation]
+    ctx: SelectionContext
+    recent_own_texts: tuple[str, ...] = ()
+
+
 def personal_memory_selection(
     store,
     scope: Scope,
@@ -290,7 +331,7 @@ def personal_memory_selection(
     authorized_factual_items: Iterable[MemoryItem] = (),
     explicit_call: bool = True,
     now: datetime | None = None,
-) -> tuple[MemorySelection, list[MemoryItem]] | None:
+) -> PersonalMemorySelection | None:
     """Run the tiered selector for the current owner; None when memory is unreadable."""
 
     reader = getattr(store, "memory_items", None)
@@ -319,7 +360,10 @@ def personal_memory_selection(
             item.id for item in authorized_factual_items if item.user_id == str(scope.user_id)
         ),
     )
-    return select_personal_memory(items, annotations, ctx), items
+    return PersonalMemorySelection(
+        select_personal_memory(items, annotations, ctx), items, annotations, ctx,
+        recent_own_texts(store, scope, now),
+    )
 
 
 def tiered_memory_context(
@@ -402,18 +446,20 @@ def personal_memory_fields(
     message: str = "",
     channel_context=(),
     explicit_call: bool = True,
+    visual_turn: bool = False,
     now: datetime | None = None,
 ) -> dict:
     """Provider fields, policy choice, selection and trace for PERSONAL_MEMORY_READ_MODE.
 
     ``legacy`` keeps the existing projection, ``shadow`` answers with it but also
     records the tiered selection, and ``tiered`` sends only the selected memory.
+    ``run`` carries the selection to the post-reply bookkeeping (usage or coverage).
     """
 
     mode = getattr(settings, "personal_memory_read_mode", "legacy")
     mode = mode if mode in _READ_MODES else "legacy"
     authorized = tuple(authorized_factual_items)
-    result = {"mode": mode, "selection": None, "policy": None}
+    result = {"mode": mode, "selection": None, "policy": None, "run": None}
     run = (
         personal_memory_selection(
             store, scope, message=message, settings=settings,
@@ -423,10 +469,22 @@ def personal_memory_fields(
         if use_memory and mode != "legacy"
         else None
     )
+    if run is not None:
+        result["run"] = MemoryReadRun(
+            mode=mode,
+            selection=run.selection,
+            message=message,
+            now=run.ctx.now,
+            legacy_notes=(
+                legacy_notes(run.items, run.annotations, run.ctx) if mode == "shadow" else ()
+            ),
+            visual_turn=visual_turn,
+            recent_own_turn=bool(run.recent_own_texts),
+        )
     if mode == "tiered" and run is not None:
-        selection, items = run
+        selection = run.selection
         fields, has_memory = tiered_memory_context(
-            scope, selection, items, allow_cross_space=allow_cross_space
+            scope, selection, run.items, allow_cross_space=allow_cross_space
         )
         result.update(
             fields=fields,
@@ -442,7 +500,7 @@ def personal_memory_fields(
     result.update(
         fields=fields,
         policy="legacy" if any(fields.values()) else None,
-        selection=run[0] if run is not None else None,
+        selection=run.selection if run is not None else None,
         trace=structured_memory_provenance(
             store, scope, use_memory=use_memory, allow_cross_space=allow_cross_space,
             authorized_factual_items=authorized,
@@ -455,6 +513,7 @@ __all__ = [
     "RELATIONSHIP_MAX_OBSERVATIONS",
     "RELATIONSHIP_MIN_ITEM_CONFIDENCE",
     "RELATIONSHIP_RECENCY_DECAY",
+    "PersonalMemorySelection",
     "aggregate_owner_relationship_evidence",
     "aggregate_relationship_evidence",
     "full_relationship_memory",
@@ -462,6 +521,7 @@ __all__ = [
     "owner_dm_memory",
     "personal_memory_fields",
     "personal_memory_selection",
+    "recent_own_texts",
     "reply_chain_texts",
     "selection_provenance",
     "structured_memory_context",

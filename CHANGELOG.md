@@ -6,6 +6,13 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Added
 
+- `PERSONAL_MEMORY_READ_MODE=shadow`가 답변 뒤 shadow 커버리지를 기록합니다. legacy 답변이 실제로
+  쓴 기억(keywords 등장) 중 tiered 선택에 없던 것을 세어 `memory.shadow_coverage` 이벤트(개수와
+  사진 턴·직전 본인 발화 표시만)와 trace의 Memory selection(놓친 항목 ID 링크)에 남기고,
+  `hina-memory-report`가 `telemetry.memory_shadow_coverage`로 집계합니다. 기억이나 annotation에는
+  아무것도 쓰지 않습니다.
+- `hina-memory-report`에 `database.memory_annotations`(annotation 현황, usage_mode·importance·
+  time_scope 분포, 핵심 프로필 후보 수)를 추가하고 리포트 버전을 3으로 올렸습니다.
 - 대화 모델이 필요할 때만 현재 Discord 채널의 사용자 명단을 로컬 function tool로 조회할 수
   있습니다. 도구는 현재 채널을 볼 수 있는 사람의 server nickname, global name, username, user ID만
   반환하며, 봇은 이를 위해 Server Members Intent를 항상 요청합니다.

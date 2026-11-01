@@ -146,7 +146,7 @@ reaches a response:
 | Mode | Provider context | Recorded |
 |---|---|---|
 | `legacy` | the existing projection below (all FULL items in DM) | nothing new |
-| `shadow` | the existing projection | the tiered selection in context provenance and `memory.selection` telemetry |
+| `shadow` | the existing projection | the tiered selection in context provenance and `memory.selection` telemetry, plus shadow coverage after the reply |
 | `tiered` | `user_memory` and `relationship_profile` only | the same, plus usage after the reply |
 
 Run `hina-backfill-annotations` first, compare with `shadow`, then switch to `tiered`. `legacy` stays
@@ -202,6 +202,31 @@ annotation's judgments, and items without an annotation row are skipped. This me
 whenever memory was read, including `read_only`; a failure is logged as `memory.usage_failed` and
 never affects the reply. `memory.usage` counts used items and follow-ups without content. Session
 gaps use the user's latest stored turn in any space.
+
+**Shadow coverage after the reply** (shadow only): shadow answers with the legacy projection, so
+it measures what tiered would have missed instead of recording usage. The reference is every note
+legacy sent in this scope: owner, active, non-relationship, FULL here (plus this turn's authorized
+items), and not a directive, since tiered always places FULL directives in T0. A note counts as
+used when its keyword appears in the delivered reply (the same rule as usage above), and as missed
+when it was used but the shadow selection did not contain it.
+
+- `missed_unprompted`: missed notes whose keywords were not in the user's message, so the reply
+  brought them up from memory alone. This is the regression tiered would introduce.
+- `missed_current`: missed notes still valid now (current, upcoming, just passed or a recent event).
+- Turn flags: `visual_turn` (the user sent or replied to an attached image now; custom emoji and
+  stickers do not count) and `recent_own_turn` (the user's own messages to Hina in this channel or
+  DM within the last 30 minutes, at most 2; other members' messages and Hina's replies never
+  count).
+
+The counts and the missed item ids are added to the turn's provenance under
+`memory_selection.coverage`, shown in the dashboard trace. The `memory.shadow_coverage` usage event
+carries the counts and flags only, and `hina-memory-report` aggregates it under
+`telemetry.memory_shadow_coverage`. Nothing is written to memory or annotations. A failure is
+logged as `memory.shadow_coverage_failed` and never affects the reply.
+
+Known limits: keyword matching is approximate (a coincidental keyword counts as used, and a
+paraphrased mention does not), and because shadow never records `last_used_at`, the 72-hour
+cooldown never applies in shadow. Shadow therefore selects slightly more than tiered would.
 
 ### recall_memory tool
 

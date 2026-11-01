@@ -13,7 +13,7 @@ from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_SELECTION
-from hina_bot.core.memory_selection import memory_usage
+from hina_bot.core.memory_selection import memory_usage, shadow_coverage
 from hina_bot.core.observability import (
     CURRENT_TURN_ID,
     EventLogger,
@@ -127,6 +127,49 @@ def _has_strong_visual_context(visuals) -> bool:
     return any(
         visual.reference_strength in {"current_message", "explicit_reply"}
         for visual in visuals
+    )
+
+
+def _record_shadow_coverage(run, answer: str, scope_kind: str, *, events, usage) -> None:
+    """Content-free record of which used legacy notes the shadow selection had."""
+
+    try:
+        coverage = shadow_coverage(run, answer)
+    except Exception as exc:  # noqa: BLE001 - bookkeeping never fails a delivered reply
+        error = safe_exception_fields(exc, "memory_shadow_coverage")
+        events.emit("memory.shadow_coverage_failed", level="warning", scope=scope_kind, **error)
+        return
+    flags = {"visual_turn": run.visual_turn, "recent_own_turn": run.recent_own_turn}
+    provenance = CURRENT_CONTEXT_PROVENANCE.get()
+    if isinstance(provenance, dict) and isinstance(provenance.get("memory_selection"), dict):
+        # Item ids only, for the trace view; the turn row stores this snapshot.
+        CURRENT_CONTEXT_PROVENANCE.set({
+            **provenance,
+            "memory_selection": {
+                **provenance["memory_selection"],
+                "coverage": {**coverage.as_dict(), **flags},
+            },
+        })
+    routing_event = getattr(usage, "routing_event", None)
+    if not callable(routing_event):
+        return
+    routing_event(
+        "memory.shadow_coverage",
+        status="completed",
+        memory_read_mode="shadow",
+        memory_space=scope_kind,
+        memory_visual_turn=run.visual_turn,
+        memory_recent_own_turn=run.recent_own_turn,
+        memory_coverage_notes=coverage.notes,
+        memory_coverage_used=coverage.used,
+        memory_coverage_covered=coverage.covered,
+        memory_coverage_missed=coverage.missed,
+        memory_coverage_missed_unprompted=coverage.missed_unprompted,
+        memory_coverage_missed_current=coverage.missed_current,
+        memory_coverage_missed_ambient=coverage.missed_usage.get("ambient", 0),
+        memory_coverage_missed_contextual=coverage.missed_usage.get("contextual", 0),
+        memory_coverage_missed_sensitive=coverage.missed_usage.get("sensitive", 0),
+        memory_coverage_missed_importance_3=coverage.missed_importance.get("3", 0),
     )
 
 
@@ -346,19 +389,28 @@ class HinaClient(discord.Client):
                 )
 
     def _record_memory_usage(self, answer: str, scope_kind: str) -> None:
-        """Store cooldown and follow-up state for memories injected into this reply.
+        """After delivery, store tiered usage state or measure shadow coverage.
 
-        Usage metadata is not memory content, so it is kept whenever memory was read.
+        Usage metadata is not memory content, so tiered keeps it whenever memory was read.
+        Shadow answered with the legacy projection and writes nothing to memory.
         A failure here must never affect the delivered reply.
         """
 
-        selection = CURRENT_MEMORY_SELECTION.get()
+        run = CURRENT_MEMORY_SELECTION.get()
         CURRENT_MEMORY_SELECTION.set(None)
+        if run is None:
+            return
+        if run.mode == "shadow":
+            _record_shadow_coverage(
+                run, answer, scope_kind,
+                events=self.events, usage=getattr(getattr(self, "llm", None), "usage", None),
+            )
+            return
         recorder = getattr(self.store, "record_memory_usage", None)
-        if selection is None or not callable(recorder):
+        if run.mode != "tiered" or not callable(recorder):
             return
         try:
-            usages = memory_usage(selection, answer, datetime.now(UTC))
+            usages = memory_usage(run.selection, answer, datetime.now(UTC))
             recorder(usages)
         except Exception as exc:  # noqa: BLE001 - bookkeeping never fails a delivered reply
             error = safe_exception_fields(exc, "memory_usage")
