@@ -130,3 +130,33 @@ async def test_legacy_mode_is_unchanged_and_records_no_selection():
     assert "structured_owner_memory" in reference and "user_memory" not in reference
     assert "memory_selection" not in provenance
     assert selection is None
+
+
+@pytest.mark.asyncio
+async def test_tiered_profile_and_carried_topic_reach_the_request():
+    calls = []
+    llm = LLM(Settings(discord_token="test", openai_api_key="test",
+                       external_context_policy="full", personal_memory_read_mode="tiered"),
+              client=_client(calls))
+    store = Store.create(":memory:")
+    try:
+        _seed(store)
+        cat = store.add_memory_item(DM, "고양이 보리를 키움", kind=MemoryKind.FACT,
+                                    disclosure=MemoryDisclosure.LOCAL)
+        _annotate(store, cat, quote="고양이 보리 키워", evidence="고양이 보리 키워",
+                  time_scope="ongoing", stability="long", usage_mode="ambient", importance=3,
+                  keywords=["고양이", "보리"])
+        # The user's previous message here carries the work topic into "이거 언제 끝나냐".
+        store.record_completed_turn(DM, 1, "회사 결제 건 때문에 야근 중", "고생 많네", name="사용자")
+        await llm.answer(store, DM, "사용자", "이거 언제 끝나냐", channel_context=[])
+        payload, provenance = calls[-1], CURRENT_CONTEXT_PROVENANCE.get()
+    finally:
+        await llm.close()
+        store.close()
+
+    memory = read_reference_context(payload["input"][0]["content"])["user_memory"]
+    assert memory["profile"] == ["고양이 보리를 키움"]
+    assert [note["text"] for note in memory["notes"]] == ["사내 결제 시스템 마이그레이션 담당"]
+    assert "- profile:" in payload["instructions"]
+    items = provenance["memory_selection"]["items"]
+    assert {(row["tier"], row.get("via")) for row in items} >= {("Tp", None), ("T2", "carry")}

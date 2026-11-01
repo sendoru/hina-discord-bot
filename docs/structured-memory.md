@@ -182,19 +182,36 @@ boundaries below. Selecting nothing is normal.
   message (and, at half weight, the explicit reply chain). Ambient items need one keyword hit or
   two content-word hits; contextual items need a keyword hit; sensitive items need a keyword in
   the current message itself. Items used in the last 72 hours are skipped unless the message
-  names one of their keywords (decision 19). Admitted items are ranked by their hits weighted by
+  (or a carried-over turn, below) names one of their keywords (decision 19). Admitted items are ranked by their hits weighted by
   the inverse document frequency of the matching query word over the owner's candidates, so a
   word that matches most memories ("보리" for a cat owner) counts less than a rare one ("사료");
   the thresholds above stay unweighted. Near-duplicate contents are skipped (character bigram
   similarity), and at most 4 items / 900 characters are kept.
+- **Topic carry-over (T2)**: the user's own recent messages to Hina in this channel or DM (at most
+  2, within 30 minutes; `store.history(scope)` holds only this user's turns here, so other members
+  and Hina's replies never count) can admit a note the current message does not name, such as "걔
+  요즘 밥을 잘 안 먹어" right after "어제 고양이 병원 다녀왔어". Each earlier turn is judged on its
+  own against the same thresholds, never summed with the current message: half-weight hits would
+  never reach the threshold. Ambient notes may follow either turn, contextual notes only the
+  immediately previous one, and sensitive notes never carry over. A carried note ranks at half
+  weight, and the selection records `via` (`current`, `chain` or `carry`) for each T2 note.
+- **Tp core profile**: the few daily-life facts Hina always knows, so a photo with "ㅋㅋㅋ 이거 봐",
+  "우리 애" or a paraphrase still makes sense without a keyword. Eligibility uses judgment fields
+  only: ambient, importance 3, ongoing or recurring, and valid now (`current`, or `upcoming` for a
+  recurring item). In a server it also needs the session follow-up's audience rule: same space and
+  `audience=server`. At most 5 items / 400 characters, explicit first, then most recently
+  confirmed. Profile items render under `user_memory.profile` as plain text, and the policy limits
+  them to understanding: they never justify raising the topic. A note that T1 or T2 already chose
+  renders there instead; a note T2 skipped for cooldown stays in the profile, since cooldown limits
+  raising a memory, not understanding the user.
 - **T4**: reference-gated items the owner explicitly brought up this turn.
 - **Clusters**: one member per cluster among the members visible here (the canonical one when
   visible, otherwise the most recently confirmed).
 - Raw relationship memories are never sent (decision 5); `relationship_profile` is the numeric
   owner profile in DM and the FULL plus implicit profile in a server.
 
-**Usage after the reply** (tiered only): once the reply is delivered, each injected note whose
-keyword appears in the reply gets `last_used_at` (the 72-hour cooldown). Unannotated legacy items
+**Usage after the reply** (tiered only): once the reply is delivered, each injected note or
+profile item whose keyword appears in the reply gets `last_used_at` (the 72-hour cooldown). Unannotated legacy items
 need two content words instead. A T1 follow-up candidate records `proactive_status` (its effective
 status) and `proactive_count`: 2 when the reply used it, otherwise one more attempt, so an unused
 follow-up is retried once in the next session. Only these usage columns are written, never the
@@ -213,6 +230,9 @@ when it was used but the shadow selection did not contain it.
 - `missed_unprompted`: missed notes whose keywords were not in the user's message, so the reply
   brought them up from memory alone. This is the regression tiered would introduce.
 - `missed_current`: missed notes still valid now (current, upcoming, just passed or a recent event).
+- `covered_profile`, `covered_carry`: used notes the selection had only through the core profile
+  or a carried-over topic. Adding them to the misses approximates the miss rate without those two
+  rules, so one shadow run compares both (it ignores their small effect on the T2 cap).
 - Turn flags: `visual_turn` (the user sent or replied to an attached image now; custom emoji and
   stickers do not count) and `recent_own_turn` (the user's own messages to Hina in this channel or
   DM within the last 30 minutes, at most 2; other members' messages and Hina's replies never
@@ -235,6 +255,10 @@ up with `recall_memory(query)` (#449 §7 T3, decisions 7 and 22). It is register
 tiered path while the owner's memory reads are allowed, and the read mode is checked again when it
 runs.
 
+- The tool description and the tiered policy mention photos: when the user sends a photo or a
+  short reaction and the subject (a pet, food, a place) seems tied to their life but no memory was
+  selected, the model may look it up by the subject's name. The model sees the image itself, so
+  no description call is needed.
 - It returns at most 6 active non-relationship memories of the current owner that match the query
   lexically, ranked with the same inverse document frequency weighting as T2, with the same `status`, `date`/`noted` and `use` as `user_memory`. `past` and
   `unverified` items are returned with their dates; superseded and retracted items never are.

@@ -208,7 +208,7 @@ _SERVER_RECENT_CHARS = 4000
 
 _SELECTION_EXCLUSIONS = (
     "permission", "threshold", "similarity", "cooldown", "cluster", "expired",
-    "t0_cap", "t1_cap", "t2_cap", "t1_attempts",
+    "t0_cap", "t1_cap", "t2_cap", "t1_attempts", "tp_cap", "tp_space",
 )
 
 
@@ -240,6 +240,8 @@ class RequestAssembler(BaseLLM):
             memory_t1_items=tiers.get("T1", 0),
             memory_t2_items=tiers.get("T2", 0),
             memory_t4_items=tiers.get("T4", 0),
+            memory_tp_items=tiers.get("Tp", 0),
+            memory_t2_carry_items=sum(entry.via == "carry" for entry in selection.selected),
             memory_quiet_boundaries=len(selection.by_placement("quiet_boundaries")),
             memory_followup_attempted=selection.followup_attempted,
             **{

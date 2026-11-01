@@ -45,9 +45,12 @@ RENDER_STATUSES = {
     "current", "unverified", "upcoming", "just_passed", "past", "past_event", "recent_event",
 }
 PLACEMENTS = {
-    "directives", "quiet_boundaries", "notes", "members", "server_directives", "server_notes",
+    "directives", "quiet_boundaries", "profile", "notes", "members", "server_directives",
+    "server_notes",
 }
-TIERS = {"T0", "T1", "T2", "S0", "S1", "S2"}
+TIERS = {"T0", "T1", "T2", "Tp", "S0", "S1", "S2"}
+VIA = {"current", "chain", "carry"}
+ACTIVATIONS = {"P5"}
 EGRESS_POLICIES = {"full", "bot_interactions_only"}
 FOLLOWUP_MODES = {"off", "dm", "all"}
 SERVER_MEMORY_READ_MODES = {"on", "off"}
@@ -157,7 +160,7 @@ def _check_server_memory(memory: dict, defaults: dict) -> None:
 def _check_expect(expect: dict, refs: set[str]) -> None:
     allowed = {
         "include", "exclude", "exactly_one_of", "placement", "tier", "render_status",
-        "recall", "relationship_profile_axes", "server_note",
+        "recall", "relationship_profile_axes", "server_note", "via",
     }
     assert expect and set(expect) <= allowed
     assert expect.get("server_note", "included") in {"included", "excluded"}
@@ -171,6 +174,8 @@ def _check_expect(expect: dict, refs: set[str]) -> None:
     assert set(expect.get("placement", {}).values()) <= PLACEMENTS
     assert set(expect.get("tier", {})) <= include
     assert set(expect.get("tier", {}).values()) <= TIERS
+    assert set(expect.get("via", {})) <= include
+    assert set(expect.get("via", {}).values()) <= VIA
     assert set(expect.get("render_status", {}).values()) <= RENDER_STATUSES
     assert set(expect.get("relationship_profile_axes", ())) <= AXES
     recall = expect.get("recall")
@@ -192,8 +197,9 @@ def test_selection_fixture_contract():
     for case in fixture["cases"]:
         assert set(case) <= {
             "id", "covers", "note", "message", "scope", "speaker", "context", "settings",
-            "server_note", "memories", "server_memories", "expect",
+            "server_note", "memories", "server_memories", "expect", "activation",
         }, case["id"]
+        assert case.get("activation", "P5") in ACTIVATIONS, case["id"]
         assert case["covers"].strip() and case["message"].strip()
         if "server_note" in case["expect"]:
             assert case.get("server_note", "").strip(), case["id"]
@@ -220,6 +226,8 @@ def test_selection_fixture_contract():
         assert all(USER.fullmatch(user) for user in users)
         assert all(CHANNEL.fullmatch(value) for value in context["reader_denied_channels"])
         assert set(context["authorized_reference_gated"]) <= set(refs)
+        assert all(isinstance(text, str) and text.strip()
+                   for text in context["recent_own_turns"]), case["id"]
         _check_expect(case["expect"], set(refs))
 
 

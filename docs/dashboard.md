@@ -386,8 +386,9 @@ Trace detail shows a **Memory selection** block when the turn ran in `shadow` or
 `PERSONAL_MEMORY_READ_MODE`: tier counts, exclusion reasons and whether a session follow-up was
 attempted. In `shadow` it describes what `tiered` would have sent while the answer used the legacy
 projection, followed by **Shadow coverage**: how many legacy notes the answer used, how many of
-them the selection had, and links to the missed items, with photo-turn and recent-own-turn
-markers (see `docs/structured-memory.md`). A `recall_memory` call is shown with its call and item
+them the selection had (and how many only through the core profile or a carried-over topic), and
+links to the missed items, with photo-turn and recent-own-turn markers (see
+`docs/structured-memory.md`). Tier counts include `Tp` for the core profile. A `recall_memory` call is shown with its call and item
 counts.
 
 The memory list's **Annotation** filter is the review queue, derived from the tables rather than

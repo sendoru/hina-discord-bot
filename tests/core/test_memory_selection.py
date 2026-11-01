@@ -125,6 +125,7 @@ def test_rendered_block_and_provenance_hold_no_ids_kinds_or_scores():
     assert rendered == {
         "directives": ["업무 얘기는 먼저 꺼내지 말아 달라고 함"],
         "quiet_boundaries": [],
+        "profile": [],
         "notes": [{"text": "고양이 보리를 키움", "status": "current", "noted": "2026-10-20",
                    "use": "free"}],
     }

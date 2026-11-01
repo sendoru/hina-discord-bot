@@ -58,7 +58,7 @@ docker compose run --rm -T hina hina-memory-report > memory-report.json
 | `telemetry.context_provenance` | 실제 응답에 들어간 구조화 기억 항목 수, `public_server_context` 주입 빈도, factual recall 상태. 문자 수와 비중은 같은 `turn_id`의 `context.size` 행과 합쳐 계산 |
 | `telemetry.shadow_extraction` | 추출 상태별 횟수와 저장·중복·거절·제안·적용·보류 합계, v2 주석·재확인·관계 억제·지침 검증 합계 |
 | `telemetry.memory_selection` | tiered/shadow 선택 턴 수(모드별), 계층별 선택 합계, 제외 사유별 합계, 세션 안부 시도 턴 수, 턴당 T2 항목 분위수 |
-| `telemetry.memory_shadow_coverage` | shadow 턴에서 legacy 답변이 쓴 기억(keywords 등장) 중 tiered 선택에 없던 비율. 전체·`unprompted`(사용자 발화에 keyword가 없던 놓침) 놓침률, 사용 방식·중요도별 놓침 합계, DM/서버별, 사진 턴과 직전 본인 발화가 있는 턴의 놓침률 |
+| `telemetry.memory_shadow_coverage` | shadow 턴에서 legacy 답변이 쓴 기억(keywords 등장) 중 tiered 선택에 없던 비율. 전체·`unprompted`(사용자 발화에 keyword가 없던 놓침) 놓침률, 사용 방식·중요도별 놓침 합계, DM/서버별, 사진 턴과 직전 본인 발화가 있는 턴의 놓침률. `miss_rate_without_profile_and_carry`는 핵심 프로필(Tp)과 화제 이월 덕분에 잡힌 기억까지 놓침으로 센 근사값 |
 | `database.memory_annotations` | active 일반 기억의 annotation 현황(없음·낡음 수)과 usage_mode·importance·time_scope·audience 분포, usage_mode×importance 교차 집계, 핵심 프로필 후보(ambient·중요도 3·ongoing/recurring) 사용자당 개수·문자 수 분위수. 후보 수는 stability 만료와 서버 audience 조건을 빼지 않은 상한 |
 
 `reconciliation_proposals`의 재분류는 저장된 항목 상태와 현재 자동 적용 규칙(기준 0.95)으로
