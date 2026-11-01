@@ -327,6 +327,22 @@
   </div>
   {% endif %}
 
+  {% set selection = data.context_provenance.memory_selection %}
+  {% if selection %}
+  <h3>Memory selection ({{ selection.get("mode") }})</h3>
+  <p>
+    Tiers: {% for tier, count in (selection.get("tiers") or {}).items() %}{{ tier }} {{ count }}{% if not loop.last %} · {% endif %}{% else %}none{% endfor %}
+    {% if selection.get("followup_attempted") %} · session follow-up attempted{% endif %}
+  </p>
+  {% if selection.get("excluded") %}
+  <p class="muted">Excluded: {% for reason, count in selection.get("excluded").items() %}{{ reason }} {{ count }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% endif %}
+  {% if selection.get("mode") == "shadow" %}<p class="muted">Shadow: the answer used the legacy projection above; this is what tiered would have sent.</p>{% endif %}
+  {% endif %}
+  {% if data.context_provenance.memory_lookup %}
+  <p>recall_memory: {{ data.context_provenance.memory_lookup.get("calls", 0) }} call(s), {{ (data.context_provenance.memory_lookup.get("items") or []) | length }} item(s) returned</p>
+  {% endif %}
+
   {% if data.context_provenance.relationship_axes %}
   <p><strong>Effective relationship profile axes:</strong> {{ data.context_provenance.relationship_axes | join(", ") }}</p>
   {% endif %}

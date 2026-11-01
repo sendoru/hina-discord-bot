@@ -65,3 +65,7 @@ function output으로만 provider에 전달됩니다.
 같은 요청 registry에는 현재 채널 또는 1:1 DM의 과거 원문을 필요한 때에만 조회하는
 `get_chat_history`도 등록됩니다. 자동 문맥과 reset 이전 명시 조회의 구분, 조회 예산·권한·출처 처리는
 [과거 대화 조회 도구](chat-history-tool.md)를 참고하세요.
+
+`PERSONAL_MEMORY_READ_MODE=tiered`이고 현재 사용자의 기억 읽기가 허용되면 `recall_memory`도 등록됩니다.
+정리된 장기 기억(사실·취향·일정)을 찾는 도구이며, 대화 원문을 찾는 `get_chat_history`와 역할이
+다릅니다. 범위와 표시 규칙은 [구조화 기억](structured-memory.md#recall_memory-tool)을 참고하세요.
