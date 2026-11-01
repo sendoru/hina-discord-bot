@@ -93,13 +93,35 @@ def test_coverage_counts_used_covered_and_missed_notes():
 
     coverage = shadow_coverage(run, "매운 거 먹자! 보리는 밥 먹었어? 회사 결제 건은 끝났고?")
 
-    assert (coverage.notes, coverage.used, coverage.covered) == (3, 3, 1)
-    assert set(coverage.missed_item_ids) == {ids["work"], ids["cat"]}
-    # Neither missed note was in the user's message: the answer recalled them unprompted.
-    assert coverage.missed_unprompted == 2
-    assert coverage.missed_current == 2
-    assert coverage.missed_usage == {"contextual": 1, "ambient": 1}
-    assert coverage.missed_importance == {"2": 1, "3": 1}
+    # The cat is importance-3 daily life, so the core profile covers it without a match.
+    assert (coverage.notes, coverage.used, coverage.covered) == (3, 3, 2)
+    assert (coverage.covered_profile, coverage.covered_carry) == (1, 0)
+    assert coverage.missed_item_ids == (ids["work"],)
+    # The missed note was not in the user's message: the answer recalled it unprompted.
+    assert coverage.missed_unprompted == 1
+    assert coverage.missed_current == 1
+    assert coverage.missed_usage == {"contextual": 1}
+    assert coverage.missed_importance == {"2": 1}
+    store.close()
+
+
+def test_coverage_counts_notes_covered_by_a_carried_topic():
+    store, ids = _store()
+    items = store.memory_items(100)
+    annotations = store.memory_annotations([item.id for item in items])
+    ctx = SelectionContext(scope=DM, message="이거 언제 끝나냐", now=NOW, hours_since_last_turn=1,
+                           recent_own_texts=("회사 결제 건 때문에 야근 중",))
+    run = MemoryReadRun("shadow", select_personal_memory(items, annotations, ctx),
+                        message=ctx.message, now=NOW,
+                        legacy_notes=legacy_notes(items, annotations, ctx))
+
+    coverage = shadow_coverage(run, "결제 건 오늘 안에 끝나면 좋겠다")
+
+    assert coverage.missed == 0
+    assert (coverage.covered_profile, coverage.covered_carry) == (0, 1)
+    assert [entry.via for entry in run.selection.selected if entry.item.id == ids["work"]] == [
+        "carry"
+    ]
     store.close()
 
 
@@ -131,23 +153,26 @@ def test_bot_records_shadow_coverage_without_touching_memory():
     CURRENT_MEMORY_SELECTION.set(run)
     CURRENT_CONTEXT_PROVENANCE.set({"memory_selection": {"mode": "shadow", "tiers": {"T2": 1}}})
 
-    HinaClient._record_memory_usage(_client(store, rows), "매운 거 먹자. 보리는 잘 있어?", "dm")
+    HinaClient._record_memory_usage(
+        _client(store, rows), "매운 거 먹자. 보리는 잘 있어? 회사 결제 건은?", "dm",
+    )
 
     # Shadow never writes usage metadata: cooldown and follow-ups stay untouched.
     assert all(store.memory_annotation(item_id).last_used_at is None
                for item_id in (ids["food"], ids["cat"]))
     assert CURRENT_MEMORY_SELECTION.get() is None
     coverage = CURRENT_CONTEXT_PROVENANCE.get()["memory_selection"]["coverage"]
-    assert coverage["missed_item_ids"] == [ids["cat"]]
+    assert coverage["missed_item_ids"] == [ids["work"]]
     assert coverage["visual_turn"] is True and coverage["recent_own_turn"] is False
     [(operation, fields)] = rows
     assert operation == "memory.shadow_coverage"
-    assert fields["memory_coverage_used"] == 2
+    assert fields["memory_coverage_used"] == 3
     assert fields["memory_coverage_missed"] == 1
-    assert fields["memory_coverage_missed_importance_3"] == 1
+    assert fields["memory_coverage_missed_contextual"] == 1
+    assert fields["memory_coverage_covered_profile"] == 1
     assert fields["memory_space"] == "dm" and fields["memory_visual_turn"] is True
     serialized = repr(fields) + repr(coverage)
-    assert "고양이" not in serialized and "매운" not in serialized
+    assert "고양이" not in serialized and "결제" not in serialized
     store.close()
 
 
@@ -173,6 +198,18 @@ def test_recent_own_texts_are_this_users_recent_turns_here():
     assert recent_own_texts(store, DM, now) == ("어제 고양이 병원 다녀왔어", "사료를 바꿨어")
     assert recent_own_texts(store, DM, now + timedelta(hours=1)) == ()
     assert recent_own_texts(store, Scope(1, 10, 100), now) == ()
+    store.close()
+
+
+def test_recent_own_texts_skip_hina_replies_and_other_members_in_a_server():
+    store = Store.create(":memory:")
+    speaker, other = Scope(1, 20, 100, True), Scope(1, 20, 200, True)
+    store.record_completed_turn(speaker, 1, "오늘 피곤하다", "고양이 보리는 잘 있어?", name="A")
+    store.record_completed_turn(other, 2, "우리 고양이 귀엽지", "응", name="B")
+    store.record_completed_turn(Scope(1, 21, 100, True), 3, "다른 채널 이야기", "응", name="A")
+
+    # Only the speaker's own words in this channel: never Hina's reply or another member.
+    assert recent_own_texts(store, speaker, datetime.now(UTC)) == ("오늘 피곤하다",)
     store.close()
 
 

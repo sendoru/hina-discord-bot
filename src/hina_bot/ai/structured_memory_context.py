@@ -347,6 +347,7 @@ def personal_memory_selection(
     zone = ZoneInfo(getattr(settings, "runtime_timezone", "") or "Asia/Seoul")
     now = (now or datetime.now(zone)).astimezone(zone)
     last_turn = getattr(store, "latest_turn_at", None)
+    own_texts = recent_own_texts(store, scope, now)
     ctx = SelectionContext(
         scope=scope,
         message=message,
@@ -359,10 +360,10 @@ def personal_memory_selection(
         authorized_item_ids=frozenset(
             item.id for item in authorized_factual_items if item.user_id == str(scope.user_id)
         ),
+        recent_own_texts=own_texts,
     )
     return PersonalMemorySelection(
-        select_personal_memory(items, annotations, ctx), items, annotations, ctx,
-        recent_own_texts(store, scope, now),
+        select_personal_memory(items, annotations, ctx), items, annotations, ctx, own_texts,
     )
 
 

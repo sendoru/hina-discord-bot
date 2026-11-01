@@ -1,7 +1,8 @@
 """Run the memory v2 selection fixtures against the tiered selector (#449 §10, #457).
 
 Personal-memory cases are executable from P2. Server memory, member profiles and
-server_note cases belong to P4 and are skipped here with that reason.
+server_note cases belong to P4, and cases marked ``activation: P5`` need semantic
+matching; both are skipped here with that reason.
 """
 
 import json
@@ -132,6 +133,8 @@ def _context(case: dict, refs: dict[str, int]) -> SelectionContext:
         session_followup=settings["MEMORY_SESSION_FOLLOWUP"],
         task_register=bool(context["classifier_codes"]),
         authorized_item_ids=frozenset(refs[ref] for ref in context["authorized_reference_gated"]),
+        # Window and author filtering happen before the selector (recent_own_texts).
+        recent_own_texts=tuple(context["recent_own_turns"]),
     )
 
 
@@ -139,6 +142,8 @@ def _context(case: dict, refs: dict[str, int]) -> SelectionContext:
 def test_selection_case(case):
     if _p4_only(case):
         pytest.skip("server memory, member profile and server_note cases run in P4")
+    if case.get("activation") == "P5":
+        pytest.skip("needs semantic matching (P5 embeddings)")
     refs, items, annotations = _build(case)
     names = {item_id: ref for ref, item_id in refs.items()}
     ctx = _context(case, refs)
@@ -167,6 +172,8 @@ def test_selection_case(case):
         assert chosen[ref].tier == tier, ref
     for ref, placement in expect.get("placement", {}).items():
         assert chosen[ref].placement == placement, ref
+    for ref, via in expect.get("via", {}).items():
+        assert chosen[ref].via == via, ref
     for group in expect.get("exactly_one_of", ()):
         assert sum(ref in chosen for ref in group) == 1, group
     for ref, status in expect.get("render_status", {}).items():

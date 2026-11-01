@@ -645,13 +645,18 @@ _COVERAGE_TOTALS = (
     "memory_coverage_missed", "memory_coverage_missed_unprompted",
     "memory_coverage_missed_current", "memory_coverage_missed_ambient",
     "memory_coverage_missed_contextual", "memory_coverage_missed_sensitive",
-    "memory_coverage_missed_importance_3",
+    "memory_coverage_missed_importance_3", "memory_coverage_covered_profile",
+    "memory_coverage_covered_carry",
 )
 
 
 def _coverage_slice(rows) -> dict:
     used = _sum(rows, "memory_coverage_used")
     missed = _sum(rows, "memory_coverage_missed")
+    # What the miss rate would be without the core profile and topic carry-over.
+    baseline_missed = missed + _sum(rows, "memory_coverage_covered_profile") + _sum(
+        rows, "memory_coverage_covered_carry"
+    )
     return {
         "turns": len(rows),
         "turns_with_used_notes": sum(
@@ -661,6 +666,7 @@ def _coverage_slice(rows) -> dict:
         "missed": missed,
         "miss_rate": _ratio(missed, used),
         "unprompted_miss_rate": _ratio(_sum(rows, "memory_coverage_missed_unprompted"), used),
+        "miss_rate_without_profile_and_carry": _ratio(baseline_missed, used),
     }
 
 
@@ -772,7 +778,8 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
                 key: _sum(selection, key)
                 for key in (
                     "memory_t0_items", "memory_t1_items", "memory_t2_items", "memory_t4_items",
-                    "memory_quiet_boundaries", "memory_excluded_permission",
+                    "memory_tp_items", "memory_t2_carry_items", "memory_excluded_tp_cap",
+                    "memory_excluded_tp_space", "memory_quiet_boundaries", "memory_excluded_permission",
                     "memory_excluded_threshold", "memory_excluded_similarity",
                     "memory_excluded_cooldown", "memory_excluded_cluster",
                     "memory_excluded_expired", "memory_excluded_t0_cap",

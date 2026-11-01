@@ -170,6 +170,8 @@ def _record_shadow_coverage(run, answer: str, scope_kind: str, *, events, usage)
         memory_coverage_missed_contextual=coverage.missed_usage.get("contextual", 0),
         memory_coverage_missed_sensitive=coverage.missed_usage.get("sensitive", 0),
         memory_coverage_missed_importance_3=coverage.missed_importance.get("3", 0),
+        memory_coverage_covered_profile=coverage.covered_profile,
+        memory_coverage_covered_carry=coverage.covered_carry,
     )
 
 
