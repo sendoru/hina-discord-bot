@@ -108,7 +108,8 @@ def apply_context_policy(context: dict, current_user_id: int | str, policy: str)
         return context
 
     filtered = deepcopy(context)
-    filtered["server_note"] = ""
+    # server_note is an admin-written server-wide note, not a member's conversation, so it
+    # stays under bot_interactions_only (#449 decision 17).
     filtered["channel_recent_messages"] = filter_channel_context(
         filtered.get("channel_recent_messages"), current_user_id, normalized
     )

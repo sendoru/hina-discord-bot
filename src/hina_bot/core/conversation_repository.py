@@ -41,6 +41,13 @@ class ConversationRepository:
         ).fetchone()
         return int(row[0]) if row is not None else 0
 
+    def latest_turn_at(self, user_id: int | str) -> str | None:
+        """When this user last completed a turn with Hina in any space (session gaps)."""
+        row = self.db.execute(
+            "SELECT MAX(created_at) FROM turns WHERE user_id=?", (str(user_id),)
+        ).fetchone()
+        return str(row[0]) if row is not None and row[0] else None
+
     def history(self, scope: Scope):
         return list(reversed(self.db.execute(
             "SELECT * FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?",

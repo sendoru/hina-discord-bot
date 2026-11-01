@@ -226,6 +226,34 @@ class MemoryRepository:
             self._write_annotation_row(annotation)
         return annotation
 
+    def record_memory_usage(self, usages) -> int:
+        """Store reply usage metadata; never touches the annotation's judgments.
+
+        Items without an annotation row are skipped: inventing a row would mark the
+        item as annotated. Returns the number of rows updated.
+        """
+
+        updated = 0
+        with self._write_context():
+            for usage in usages:
+                assignments, params = [], []
+                if usage.last_used_at is not None:
+                    assignments.append("last_used_at=MAX(COALESCE(last_used_at,''),?)")
+                    params.append(usage.last_used_at)
+                if usage.proactive_status is not None:
+                    assignments += ["proactive_status=?", "proactive_count=?", "last_proactive_at=?"]
+                    params += [usage.proactive_status, int(usage.proactive_count or 0),
+                               usage.last_proactive_at]
+                if not assignments:
+                    continue
+                cursor = self.db.execute(
+                    f"UPDATE memory_item_annotations SET {','.join(assignments)} "
+                    "WHERE memory_item_id=?",
+                    (*params, int(usage.item_id)),
+                )
+                updated += max(0, int(cursor.rowcount or 0))
+        return updated
+
     def reconfirm_memory_annotation(self, item_id: int, observed_at: str) -> bool:
         """Count a same-space re-mention as confirmation that the memory still holds."""
 

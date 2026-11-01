@@ -13,6 +13,17 @@ CURRENT_CONTEXT_PROVENANCE: ContextVar[dict | None] = ContextVar(
     "current_context_provenance",
     default=None,
 )
+# The tiered memory selection injected into the current answer (#457), read after
+# delivery to record which memories the reply actually used.
+CURRENT_MEMORY_SELECTION: ContextVar[object | None] = ContextVar(
+    "current_memory_selection",
+    default=None,
+)
+# Reference-gated items this turn's T4 recall authorized; recall_memory may return them.
+CURRENT_AUTHORIZED_MEMORY_IDS: ContextVar[frozenset] = ContextVar(
+    "current_authorized_memory_ids",
+    default=frozenset(),
+)
 CURRENT_EGRESS_DECISION: ContextVar[dict | None] = ContextVar(
     "current_egress_decision",
     default=None,
@@ -102,6 +113,21 @@ def decode_memory_context(value: str) -> list[dict]:
     return [dict(item) for item in parsed if isinstance(item, dict)]
 
 
+def memory_lookup_provenance(row) -> dict:
+    """Content-free recall_memory marker on a stored turn (#449 decision 22)."""
+    try:
+        provenance = json.loads(row['context_provenance'] or '{}')
+    except (KeyError, IndexError, TypeError, ValueError):
+        return {}
+    lookup = provenance.get('memory_lookup') if isinstance(provenance, dict) else None
+    return lookup if isinstance(lookup, dict) else {}
+
+
+def lookup_derived(row) -> bool:
+    """A reply built from a history or memory lookup is never extraction evidence."""
+    return bool(history_lookup_provenance(row) or memory_lookup_provenance(row))
+
+
 def history_lookup_provenance(row) -> dict:
     """Read content-free history provenance from an existing turn, including after restart."""
     try:
@@ -115,9 +141,11 @@ def history_lookup_provenance(row) -> dict:
 
 
 __all__ = [
+    "CURRENT_AUTHORIZED_MEMORY_IDS",
     "CURRENT_CONTEXT_PROVENANCE",
     "CURRENT_EGRESS_DECISION",
     "CURRENT_MEMORY_CONTEXT",
+    "CURRENT_MEMORY_SELECTION",
     "build_memory_context",
     "decode_memory_context",
 ]

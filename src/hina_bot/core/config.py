@@ -29,6 +29,9 @@ MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 RETRIEVAL_V2_MODES = frozenset({"off", "shadow", "active"})  # Legacy env alias.
 RAG_MODES = frozenset({"off", "v1", "shadow", "v2", "full"})
+# Memory v2 read path (#449 §11 P2): legacy prompt, shadow comparison, or tiered selection.
+PERSONAL_MEMORY_READ_MODES = frozenset({"legacy", "shadow", "tiered"})
+MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})
 LEGACY_RAG_MODES = {"off": "v1", "shadow": "shadow", "active": "v2"}
 
 
@@ -173,6 +176,8 @@ class Settings:
     retrieval_v2_embedding_dimensions: int = 768
     retrieval_v2_calibration_backend_key: str = ""
     runtime_timezone: str = "Asia/Seoul"
+    personal_memory_read_mode: str = "legacy"
+    memory_session_followup: str = "dm"
     runtime_locale: str = "ko-KR"
     runtime_default_location: str = ""
     vision_max_attachments: int = 4
@@ -461,6 +466,17 @@ class Settings:
                 or any(c in runtime_default_location for c in "\r\n\0")):
             raise ValueError("RUNTIME_LOCALE은 32자, RUNTIME_DEFAULT_LOCATION은 100자 이하여야 합니다.")
 
+        personal_memory_read_mode = (
+            os.getenv("PERSONAL_MEMORY_READ_MODE", "legacy").strip().lower() or "legacy"
+        )
+        if personal_memory_read_mode not in PERSONAL_MEMORY_READ_MODES:
+            raise ValueError("PERSONAL_MEMORY_READ_MODE는 legacy, shadow, tiered 중 하나여야 합니다.")
+        memory_session_followup = (
+            os.getenv("MEMORY_SESSION_FOLLOWUP", "dm").strip().lower() or "dm"
+        )
+        if memory_session_followup not in MEMORY_SESSION_FOLLOWUP_MODES:
+            raise ValueError("MEMORY_SESSION_FOLLOWUP은 off, dm, all 중 하나여야 합니다.")
+
         vision_max_attachments = int(os.getenv("VISION_MAX_ATTACHMENTS", "4"))
         vision_max_emojis = int(os.getenv("VISION_MAX_EMOJIS", "12"))
         vision_max_stickers = int(os.getenv("VISION_MAX_STICKERS", "8"))
@@ -511,6 +527,8 @@ class Settings:
             ),
             public_memory_in_dm=public_memory == "true",
             external_context_policy=external_context_policy,
+            personal_memory_read_mode=personal_memory_read_mode,
+            memory_session_followup=memory_session_followup,
             allowed_guild_ids=frozenset(int(x.strip()) for x in
                                        os.getenv("ALLOWED_GUILD_IDS", "").split(",") if x.strip()),
             cooldown=float(os.getenv("COOLDOWN_SECONDS", "5")),
