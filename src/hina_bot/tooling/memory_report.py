@@ -24,7 +24,7 @@ from hina_bot.dashboard.telemetry import TelemetryReader
 
 from .maintenance_db import connect_existing, table_exists
 
-REPORT_VERSION = 2
+REPORT_VERSION = 3
 # Mirrors the extractor's current automatic-application threshold.
 AUTO_APPLY_THRESHOLD = 0.95
 DEFAULT_NEAR_DUPLICATE_THRESHOLD = 0.8
@@ -548,6 +548,62 @@ def _memory_mode_section(db: sqlite3.Connection) -> dict:
     return {key: dict(value) for key, value in sorted(counts.items())}
 
 
+_PROFILE_TIME_SCOPES = ("ongoing", "recurring")
+
+
+def _annotations_section(db: sqlite3.Connection) -> dict:
+    """Judgment fields of active non-relationship memories (#451 backfill, #457 read path).
+
+    ``profile_candidates`` is an upper bound for the core-profile tier: it ignores
+    stability expiry and the server-only audience rule.
+    """
+
+    rows = db.execute(
+        "SELECT m.user_id, m.revision, LENGTH(m.content) AS chars, a.item_revision, "
+        "a.usage_mode, a.importance, a.time_scope, a.audience, a.directive_type "
+        "FROM memory_items m LEFT JOIN memory_item_annotations a ON a.memory_item_id = m.id "
+        "WHERE m.status = 'active' AND m.kind <> 'relationship'"
+    ).fetchall()
+    annotated = [row for row in rows if row["usage_mode"] is not None]
+    current = [row for row in annotated if int(row["item_revision"]) == int(row["revision"])]
+    profile = [
+        row for row in current
+        if row["usage_mode"] == "ambient"
+        and int(row["importance"]) == 3
+        and row["time_scope"] in _PROFILE_TIME_SCOPES
+    ]
+    users = {str(row["user_id"]) for row in rows}
+    profile_items: Counter = Counter(str(row["user_id"]) for row in profile)
+    profile_chars: Counter = Counter()
+    for row in profile:
+        profile_chars[str(row["user_id"])] += int(row["chars"] or 0)
+    usage_by_importance: dict[str, Counter] = defaultdict(Counter)
+    for row in current:
+        usage_by_importance[str(row["usage_mode"])][str(row["importance"])] += 1
+    return {
+        "items": len(rows),
+        "annotated": len(annotated),
+        "missing": len(rows) - len(annotated),
+        "stale": len(annotated) - len(current),
+        "usage_mode": dict(Counter(str(row["usage_mode"]) for row in current)),
+        "importance": dict(Counter(str(row["importance"]) for row in current)),
+        "time_scope": dict(Counter(str(row["time_scope"]) for row in current)),
+        "audience": dict(Counter(str(row["audience"]) for row in current)),
+        "directive_type": dict(Counter(
+            str(row["directive_type"]) for row in current if row["usage_mode"] == "directive"
+        )),
+        "usage_by_importance": {
+            usage: dict(counts) for usage, counts in sorted(usage_by_importance.items())
+        },
+        "profile_candidates": {
+            "items": len(profile),
+            "users_with_any": len(profile_items),
+            "items_per_user": _quantiles(profile_items.get(user, 0) for user in users),
+            "chars_per_user": _quantiles(profile_chars.get(user, 0) for user in users),
+        },
+    }
+
+
 def database_report(
     db: sqlite3.Connection,
     *,
@@ -566,6 +622,8 @@ def database_report(
     }
     if table_exists(db, "memory_items"):
         report["memory_items"] = _memory_items_section(db, now, near_threshold)
+        if table_exists(db, "memory_item_annotations"):
+            report["memory_annotations"] = _annotations_section(db)
     return report
 
 
@@ -580,6 +638,50 @@ def _numbers(rows, key: str) -> list[float]:
 
 def _sum(rows, key: str) -> int:
     return int(sum(_numbers(rows, key)))
+
+
+_COVERAGE_TOTALS = (
+    "memory_coverage_notes", "memory_coverage_used", "memory_coverage_covered",
+    "memory_coverage_missed", "memory_coverage_missed_unprompted",
+    "memory_coverage_missed_current", "memory_coverage_missed_ambient",
+    "memory_coverage_missed_contextual", "memory_coverage_missed_sensitive",
+    "memory_coverage_missed_importance_3",
+)
+
+
+def _coverage_slice(rows) -> dict:
+    used = _sum(rows, "memory_coverage_used")
+    missed = _sum(rows, "memory_coverage_missed")
+    return {
+        "turns": len(rows),
+        "turns_with_used_notes": sum(
+            1 for row in rows if (row.get("memory_coverage_used") or 0) > 0
+        ),
+        "used": used,
+        "missed": missed,
+        "miss_rate": _ratio(missed, used),
+        "unprompted_miss_rate": _ratio(_sum(rows, "memory_coverage_missed_unprompted"), used),
+    }
+
+
+def _shadow_coverage(rows) -> dict:
+    """Shadow turns: notes the legacy answer used that tiered would not have sent."""
+
+    return {
+        **_coverage_slice(rows),
+        "totals": {key.removeprefix("memory_coverage_"): _sum(rows, key)
+                   for key in _COVERAGE_TOTALS},
+        "by_space": {
+            space: _coverage_slice([row for row in rows if row.get("memory_space") == space])
+            for space in sorted({str(row.get("memory_space") or "missing") for row in rows})
+        },
+        "visual_turns": _coverage_slice(
+            [row for row in rows if row.get("memory_visual_turn") is True]
+        ),
+        "recent_own_turns": _coverage_slice(
+            [row for row in rows if row.get("memory_recent_own_turn") is True]
+        ),
+    }
 
 
 def telemetry_report(usage_rows: Iterable[dict]) -> dict:
@@ -683,6 +785,9 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
             ),
             "t2_items_per_turn": _quantiles(_numbers(selection, "memory_t2_items")),
         },
+        "memory_shadow_coverage": _shadow_coverage(
+            [row for row in rows if row.get("operation") == "memory.shadow_coverage"]
+        ),
     }
 
 
