@@ -13,8 +13,8 @@ CURRENT_CONTEXT_PROVENANCE: ContextVar[dict | None] = ContextVar(
     "current_context_provenance",
     default=None,
 )
-# The tiered memory selection injected into the current answer (#457), read after
-# delivery to record which memories the reply actually used.
+# This turn's MemoryReadRun (#457), read after delivery: tiered records which injected
+# memories the reply used; shadow measures how well the selection covered the legacy answer.
 CURRENT_MEMORY_SELECTION: ContextVar[object | None] = ContextVar(
     "current_memory_selection",
     default=None,

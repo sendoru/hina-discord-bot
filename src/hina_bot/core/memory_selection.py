@@ -681,16 +681,20 @@ class MemoryUsage:
     last_proactive_at: str | None = None
 
 
-def _used_in(entry: SelectedMemory, answer: str) -> bool:
-    """Decision 19: a memory counts as used when the reply contains one of its keywords."""
+def _mentions(item: MemoryItem, annotation: MemoryAnnotation, text: str) -> bool:
+    """Decision 19: a memory counts as used when the text contains one of its keywords."""
 
-    text = normalize_text(answer)
-    keywords = [normalize_text(word) for word in entry.annotation.keywords]
+    text = normalize_text(text)
+    keywords = [normalize_text(word) for word in annotation.keywords]
     keywords = [word for word in keywords if len(word) >= 2]
     if keywords:
         return any(word in text for word in keywords)
     # Unannotated legacy items have no keywords: require two content words instead.
-    return sum(term in text for term in _tokens(entry.item.content)) >= 2
+    return sum(term in text for term in _tokens(item.content)) >= 2
+
+
+def _used_in(entry: SelectedMemory, answer: str) -> bool:
+    return _mentions(entry.item, entry.annotation, answer)
 
 
 def memory_usage(selection: MemorySelection, answer: str, now: datetime) -> list[MemoryUsage]:
@@ -720,6 +724,119 @@ def memory_usage(selection: MemorySelection, answer: str, now: datetime) -> list
             proactive_status=status, proactive_count=count, last_proactive_at=stamp,
         ))
     return updates
+
+
+@dataclass(frozen=True)
+class MemoryReadRun:
+    """One turn's tiered selection, handed to the post-reply bookkeeping.
+
+    ``tiered`` records usage for the injected notes. ``shadow`` answered with the legacy
+    projection, so it only measures coverage against ``legacy_notes`` and writes nothing.
+    """
+
+    mode: str
+    selection: MemorySelection
+    message: str = ""
+    now: datetime | None = None
+    legacy_notes: tuple[tuple[MemoryItem, MemoryAnnotation], ...] = ()
+    visual_turn: bool = False
+    recent_own_turn: bool = False
+
+
+def legacy_notes(
+    items, annotations: dict[int, MemoryAnnotation], ctx: SelectionContext
+) -> tuple[tuple[MemoryItem, MemoryAnnotation], ...]:
+    """Owner notes the legacy projection sends in this scope: the shadow coverage reference.
+
+    Legacy sends every FULL non-relationship item (plus this turn's authorized ones).
+    Directives are left out: tiered always places FULL directives in T0.
+    """
+
+    owner = str(ctx.scope.user_id)
+    notes = []
+    for item in items:
+        if (
+            item.user_id != owner
+            or item.kind == MemoryKind.RELATIONSHIP
+            or item.status != MemoryStatus.ACTIVE
+        ):
+            continue
+        access = memory_access(
+            item, ctx.scope, explicitly_referenced=item.id in ctx.authorized_item_ids
+        )
+        if access != MemoryAccess.FULL:
+            continue
+        annotation, _state = effective_annotation(item, annotations.get(item.id))
+        if annotation.usage_mode == UsageMode.DIRECTIVE:
+            continue
+        notes.append((item, annotation))
+    return tuple(notes)
+
+
+_ACTIVE_STATUSES = frozenset({
+    EffectiveStatus.CURRENT, EffectiveStatus.UPCOMING,
+    EffectiveStatus.JUST_PASSED, EffectiveStatus.RECENT_EVENT,
+})
+
+
+@dataclass(frozen=True)
+class ShadowCoverage:
+    """How many notes a legacy answer used, and how many of them tiered would have sent.
+
+    ``missed_unprompted`` counts misses whose keywords were not in the user's message:
+    the answer brought them up from memory alone. ``missed_current`` counts misses
+    that are still valid (current, upcoming, just passed or a recent event).
+    """
+
+    notes: int
+    used: int
+    covered: int
+    missed_item_ids: tuple[int, ...] = ()
+    missed_unprompted: int = 0
+    missed_current: int = 0
+    missed_usage: dict[str, int] = field(default_factory=dict)
+    missed_importance: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def missed(self) -> int:
+        return len(self.missed_item_ids)
+
+    def as_dict(self) -> dict:
+        return {
+            "notes": self.notes, "used": self.used, "covered": self.covered,
+            "missed": self.missed, "missed_unprompted": self.missed_unprompted,
+            "missed_current": self.missed_current, "missed_usage": dict(self.missed_usage),
+            "missed_importance": dict(self.missed_importance),
+            "missed_item_ids": list(self.missed_item_ids),
+        }
+
+
+def shadow_coverage(run: MemoryReadRun, answer: str) -> ShadowCoverage:
+    """Compare the notes a legacy answer used with the shadow selection (content-free)."""
+
+    selected = {entry.item.id for entry in run.selection.selected}
+    used = [(item, annotation) for item, annotation in run.legacy_notes
+            if _mentions(item, annotation, answer)]
+    missed = [(item, annotation) for item, annotation in used if item.id not in selected]
+    now = run.now or datetime.now(UTC)
+    return ShadowCoverage(
+        notes=len(run.legacy_notes),
+        used=len(used),
+        covered=len(used) - len(missed),
+        missed_item_ids=tuple(item.id for item, _annotation in missed),
+        missed_unprompted=sum(
+            1 for item, annotation in missed if not _mentions(item, annotation, run.message)
+        ),
+        missed_current=sum(
+            1 for _item, annotation in missed
+            if (status := effective_status(annotation, now)).status in _ACTIVE_STATUSES
+            and not status.expired
+        ),
+        missed_usage=dict(Counter(annotation.usage_mode.value for _item, annotation in missed)),
+        missed_importance=dict(Counter(
+            str(annotation.importance) for _item, annotation in missed
+        )),
+    )
 
 
 def recall_personal_memory(
@@ -768,17 +885,21 @@ __all__ = [
     "SESSION_GAP",
     "STABILITY_WINDOWS",
     "EffectiveStatus",
+    "MemoryReadRun",
     "MemorySelection",
     "MemoryUsage",
     "SelectedMemory",
     "SelectionContext",
+    "ShadowCoverage",
     "StatusView",
     "effective_annotation",
     "effective_status",
     "is_light_chat",
+    "legacy_notes",
     "memory_usage",
     "recall_personal_memory",
     "render_user_memory",
     "select_personal_memory",
     "selection_provenance",
+    "shadow_coverage",
 ]

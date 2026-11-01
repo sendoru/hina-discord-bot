@@ -12,6 +12,7 @@ from hina_bot.core.memory_annotations import Annotator, UsageMode
 from hina_bot.core.memory_context import CURRENT_MEMORY_SELECTION
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
 from hina_bot.core.memory_selection import (
+    MemoryReadRun,
     MemoryUsage,
     SelectionContext,
     memory_usage,
@@ -125,7 +126,7 @@ def test_bot_records_usage_once_and_isolates_failures():
     store, food, _exam = _store()
     events = []
     client = NS(store=store, events=NS(emit=lambda event, **fields: events.append((event, fields))))
-    CURRENT_MEMORY_SELECTION.set(_select(store, "아 배고프다"))
+    CURRENT_MEMORY_SELECTION.set(MemoryReadRun("tiered", _select(store, "아 배고프다")))
 
     HinaClient._record_memory_usage(client, "매운 떡볶이 어때?", "dm")
     HinaClient._record_memory_usage(client, "매운 떡볶이 어때?", "dm")
@@ -136,7 +137,9 @@ def test_bot_records_usage_once_and_isolates_failures():
 
     broken = NS(store=NS(record_memory_usage=lambda usages: 1 / 0),
                 events=client.events)
-    CURRENT_MEMORY_SELECTION.set(_select(store, "아 배고프다", now=NOW + timedelta(days=4)))
+    CURRENT_MEMORY_SELECTION.set(MemoryReadRun(
+        "tiered", _select(store, "아 배고프다", now=NOW + timedelta(days=4)),
+    ))
     HinaClient._record_memory_usage(broken, "매운 거", "dm")
     assert events[-1][0] == "memory.usage_failed"
     store.close()
