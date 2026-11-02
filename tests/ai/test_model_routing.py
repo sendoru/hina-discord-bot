@@ -559,3 +559,53 @@ async def test_runtime_forwards_visuals_to_model_router(monkeypatch):
         CURRENT_VISUAL_INPUTS.reset(token)
         await llm.close()
         store.close()
+
+
+def _record_route_metadata(llm):
+    recorded = []
+    original = llm.usage.request
+
+    async def spy(client, operation, *, route_metadata=None, **kwargs):
+        if operation == "answer":
+            recorded.append(dict(route_metadata or {}))
+        return await original(client, operation, route_metadata=route_metadata, **kwargs)
+
+    llm.usage.request = spy
+    return recorded
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("overrides", "text", "expected_tier"),
+    [
+        (
+            {"model_routing_mode": "fixed", "model": "same", "fast_model": "same"},
+            "안녕",
+            "fixed",
+        ),
+        (
+            {"model_routing_mode": "adaptive", "fast_model": "same", "smart_model": "same"},
+            "이 알고리즘을 단계별로 분석해 줘",
+            "smart",
+        ),
+    ],
+)
+async def test_answer_tier_is_not_relabeled_fast_when_model_names_coincide(
+    overrides, text, expected_tier
+):
+    response = NS(status="completed", output_text="응.", output=[], usage=None)
+    raw = NS(
+        provider_name="gemini",
+        responses=NS(create=AsyncMock(return_value=response)),
+        close=AsyncMock(),
+    )
+    llm = LLM(settings(usage_log_path="", chat_web_search=False, **overrides), client=raw)
+    llm.lore = LoreIndex([])
+    recorded = _record_route_metadata(llm)
+    store = Store.create(":memory:")
+    try:
+        await llm.answer(store, Scope(None, 10, 100), "사용자", text)
+        assert [meta["model_tier"] for meta in recorded] == [expected_tier]
+    finally:
+        await llm.close()
+        store.close()

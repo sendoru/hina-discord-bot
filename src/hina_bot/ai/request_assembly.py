@@ -825,7 +825,10 @@ class RequestAssembler(BaseLLM):
         async def send_answer(current_request):
             nonlocal transient_retry_used
             metadata = dict(route_metadata)
-            if current_request.get("model") == self.settings.fast_model:
+            # Only a request that already fell back (e.g. a tool-loop round after a
+            # transient fast fallback) runs a model other than the plan's; matching
+            # fast_model by name would mislabel fixed/smart when the names coincide.
+            if current_request.get("model") != model_plan.model:
                 metadata["model_tier"] = "fast"
             if self.settings.provider == "gemini":
                 metadata["requested_thinking_level"] = current_request.get("thinking_level")

@@ -50,6 +50,9 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 - `OUTPUT_REPAIR_MODE=active`에서 교정 요청이 시간 초과·실패해 원문이 그대로 나갈 때도, 일반
   대화에 붙은 Discord snowflake형 숫자 마커(`[1565771137684869141]` 등, 17~32자리)를 결정적 규칙으로 지웁니다
   (#454). 짧은 숫자, 코드, URL, ID를 설명하는 문장은 보존하며 `off`/`shadow`의 동작은 그대로입니다.
+- `LLM_MODEL`과 `LLM_FAST_MODEL`(또는 adaptive의 fast·smart 모델)이 같은 이름이면 답변 trace의
+  `model_tier`가 실제 tier(`fixed`/`smart`) 대신 `fast`로 기록되던 문제를 고쳤습니다. 이제 transient
+  fallback으로 계획과 다른 모델이 쓰일 때만 `fast`로 바꿔 기록합니다. 이미 저장된 행은 바뀌지 않습니다.
 
 ### Removed
 
