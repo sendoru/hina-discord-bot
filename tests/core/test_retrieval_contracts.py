@@ -12,7 +12,7 @@ from hina_bot.core.knowledge_retrieval import (
     KnowledgeUsage as Usage,
 )
 from hina_bot.core.lore import LoreIndex, LoreValidationError, validate_record
-from hina_bot.core.retrieval_v2 import KnowledgeBundle
+from hina_bot.core.retrieval_contracts import KnowledgeBundle
 from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
 

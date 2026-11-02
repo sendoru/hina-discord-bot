@@ -64,7 +64,7 @@ class KnowledgeCandidate:
     time: str | None = None
     metadata: tuple[tuple[str, str], ...] = ()
     subject_boundary: bool = False
-    # Additive v2 metadata. None/empty means unavailable, never verified or resolved.
+    # Additive review metadata. None/empty means unavailable, never verified or resolved.
     lane: str | None = None
     usages: tuple[KnowledgeUsage, ...] = ()
     entities: tuple[str, ...] = ()

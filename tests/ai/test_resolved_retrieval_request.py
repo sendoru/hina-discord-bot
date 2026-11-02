@@ -6,7 +6,7 @@ from hina_bot.ai.retrieval_request import (
 )
 from hina_bot.ai.routing_plan import RoutingPlan
 from hina_bot.core.entity_resolution import DEFAULT_ENTITIES, CanonicalEntity, EntityResolver
-from hina_bot.core.retrieval_v2 import RetrievalIntent
+from hina_bot.core.retrieval_contracts import RetrievalIntent
 
 PAIR = {"character.hina", "character.hoshino"}
 
