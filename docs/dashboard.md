@@ -360,7 +360,9 @@ token, and current revision before queueing. The bot acquires the persisted item
 and deletes the selected memory row and its edit history, annotation and reconciliation proposals
 atomically.
 Other memories that referenced the deleted row via `superseded_by` retain their state and
-lose only that reference (with a revision bump); they are never reactivated. Source conversations,
+lose only that reference (with a revision bump); they are never reactivated. A memory that inherited
+its annotation quote from the deleted row loses the quote unless another superseded duplicate still
+carries it (see Memory annotations below). Source conversations,
 extraction cursors, telemetry, and external backups are not erased by item deletion.
 This action is not a user-wide forget or a privacy erasure of all source records.
 Superseded and retracted items remain read-only for editing and retraction.
@@ -376,6 +378,12 @@ lint flags, annotator and the item revision it was written for. The panel is lab
 or `missing` (no row yet; run `hina-backfill-annotations`). A stale annotation's judgments fall back
 to defaults, except that a stale directive stays a directive until re-annotation. Relationship items
 have no annotation.
+
+When the annotation has a quote, **Evidence items** links the superseded duplicates whose annotation
+carries the same quote. For a memory that was reinforced by a same-space duplicate (#471) this is
+where the quote came from. Permanently deleting all of them, or purging their channel, also clears the
+quote from this item and drops an automated `ambient` judgment to `contextual` (an admin judgment is
+kept); see `docs/structured-memory.md`. The list is derived by quote equality and is read-only.
 
 The panel also shows **Effective now**: the status the tiered read path computes at the dashboard
 clock (`current`, `unverified`, `upcoming`, `just_passed`, `past`, `recent_event`, `past_event`,
