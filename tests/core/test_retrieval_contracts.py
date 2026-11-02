@@ -55,7 +55,7 @@ def test_static_metadata_preserved_without_changing_legacy_reference():
     original = record()
     enriched = record(
         usage=["factual", "ambient"], entities=["character.hina"],
-        semantic_text="책임과 휴식의 긴장", evidence_ids=["canon.hina.rest"],
+        evidence_ids=["canon.hina.rest"],
         # Existing tooling's evidence is a text excerpt, not a list of ids.
         evidence="장면 원문",
     )
@@ -65,7 +65,6 @@ def test_static_metadata_preserved_without_changing_legacy_reference():
     assert row.retrieval_usages == (Usage.FACTUAL, Usage.AMBIENT)
     assert row.entities == ("character.hina",)
     assert row.evidence_ids == ("canon.hina.rest",)
-    assert row.semantic_representation == enriched["semantic_text"]
     assert dict(row.source_metadata) == enriched["source"]
     assert (row.fact_type, row.confidence, row.lane, row.kr_release, row.awareness, row.time) == (
         "inference", "crosschecked", "canon", "confirmed", "inference", "시점",
@@ -78,7 +77,6 @@ def test_static_metadata_preserved_without_changing_legacy_reference():
     {"usage": "ambient", "fact_type": "fact_direct"},
     {"entities": "character.hina"}, {"entities": ["히나"]},
     {"evidence_ids": ["canon.test", "canon.test"]},
-    {"semantic_text": ""}, {"semantic_text": None},
 ])
 def test_invalid_additive_metadata_rejected(extra):
     with pytest.raises(LoreValidationError):
@@ -88,7 +86,6 @@ def test_invalid_additive_metadata_rejected(extra):
 def test_existing_inference_is_not_automatically_ambient():
     row = LoreIndex([record()]).candidates()[0]
     assert row.retrieval_usages == (Usage.FACTUAL,)
-    assert row.semantic_representation == row.search_text
     with pytest.raises(ValueError):
         KnowledgeBundle(character_insights=(RankedKnowledgeCandidate(1, 0, row),))
 
@@ -142,10 +139,3 @@ def test_runtime_registry_compatibility_without_synthesized_certainty(kind, awar
         assert row.awareness == awareness and row.time == "장면"
     finally:
         database.close()
-
-
-def test_semantic_representation_never_repeats_keywords_or_subjects():
-    row = candidate(subjects=("name",), keywords=("name",) * 10)
-    assert row.semantic_representation == row.search_text
-    assert "name" not in row.semantic_representation
-    assert replace(row, semantic_text="reviewed meaning").semantic_representation == "reviewed meaning"
