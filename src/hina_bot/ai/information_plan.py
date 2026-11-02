@@ -2,8 +2,6 @@
 
 from dataclasses import dataclass
 
-from hina_bot.core.retrieval_v2 import KnowledgeBundle
-
 from .freshness import FreshnessMode
 from .information_routing import InformationRoute
 from .routing_plan import RoutingPlan
@@ -28,8 +26,6 @@ class InformationPlan:
     semantic_web_need: str = ""
     semantic_web_codes: tuple[str, ...] = ()
     semantic_web_uncertain: bool = False
-    retrieval_v2_applied: bool = False
-    retrieval_v2_bundle: KnowledgeBundle | None = None
     full_lore: bool = False
 
 

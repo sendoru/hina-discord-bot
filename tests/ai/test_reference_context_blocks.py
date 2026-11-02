@@ -22,8 +22,6 @@ def test_reference_parts_round_trip_all_sections_without_duplication():
         "conversation_history": [{"role": "user", "content": "old text"}],
         "public_server_context": [{"source": "public", "summary": "recent"}],
         "lore_reference": [{"reference": "canon"}],
-        "character_insights": [{"insight": "context"}],
-        "reaction_guides": [{"guide": "soft"}],
         "available_custom_emojis": [{"alias": ":smile:"}],
     }
     original = json.dumps(context, ensure_ascii=False)

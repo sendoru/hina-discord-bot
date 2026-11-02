@@ -1,9 +1,10 @@
-# Compact full-lore experiment (`RAG_MODE=full`)
+# Compact full lore (`RAG_MODE=full`)
 
-`RAG_MODE=full` is an **opt-in experiment**. The default remains `v1`, and
-`off`, `v1`, `shadow`, `v2` are still available for immediate rollback.
-Change this through the Dashboard **`/admin/runtime`**, or use the
-`RAG_MODE=full` environment value with no DB override. Config changes are
+`RAG_MODE=full` is the **default** and the mode production runs. `v1` (lexical lore
+lookup) stays as the fallback when static lore grows too large for the full prompt, and
+`off` disables knowledge RAG. Retrieval v2 (`shadow`, `v2`) was removed in #463. Change
+the mode through the Dashboard **`/admin/runtime`** or the `RAG_MODE` environment value
+(a DB override wins). Config changes are
 read for every turn; the **compiled document itself is loaded at bot startup**.
 Restart after changing `LORE_PATH` or packaged static lore.
 
@@ -30,9 +31,7 @@ Restart after changing `LORE_PATH` or packaged static lore.
 - `LORE_MAX_ITEMS`/`LORE_MAX_CHARS` apply to dynamic knowledge lookup,
   **not** the statically compiled document. They are not hard truncation
   settings for full mode.
-- The v2 embedding controller may be initialized at startup, but **no v2
-  retrieval/embedding calls run in a full-mode turn**. No extra LLM call or
-  tool round is added by full mode.
+- No embedding call, extra LLM call or tool round is added by full mode.
 
 ## Size and token measurement
 
@@ -69,6 +68,5 @@ because the full document is static.
 
 ## Rollback
 
-Use Dashboard `/admin/runtime` to set `RAG_MODE=v1` (legacy retrieval),
+Use Dashboard `/admin/runtime` to set `RAG_MODE=v1` (lexical lore lookup),
 or `off` (no lore/runtime-knowledge retrieval) without a deploy.
-The `full` rollout does **not** delete or migrate v2.

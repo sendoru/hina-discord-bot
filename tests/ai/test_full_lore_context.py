@@ -43,7 +43,6 @@ async def test_full_mode_includes_static_prefix_and_dynamic_refs_without_embeddi
         raise AssertionError("Static retrieval was called in full mode")
 
     llm.lore_references = never_run_legacy
-    llm.retrieval_v2.retrieve = never_run_legacy
     llm.runtime_lore.add("test.dynamic", "테스트 전용 동적 지식",
                          "히나,동적", "히나", "self")
     store = Store.create(":memory:")
