@@ -12,17 +12,14 @@ from .config import (
     EXTERNAL_CONTEXT_POLICIES,
     GEMINI_SEARCH_API_MODES,
     GEMINI_THINKING_LEVELS,
-    LEGACY_RAG_MODES,
     MEMORY_SESSION_FOLLOWUP_MODES,
     MODEL_ROUTING_MODES,
     PERSONAL_MEMORY_READ_MODES,
     RAG_MODES,
-    RETRIEVAL_V2_MODES,
     Settings,
     parse_call_prefixes,
     parse_discord_id_set,
     parse_external_context_policy,
-    retrieval_v2_expected_backend_key,
 )
 
 
@@ -45,10 +42,9 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
-    "rag_mode": "RAG 모드입니다. off는 지식 검색 없음, v1은 기존 검색, shadow는 v1 답변과 비동기 v2 비교, v2는 v2만 사용합니다. full은 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 기존 방식으로 검색합니다.",
+    "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. v1은 정적 lore도 어휘 검색으로 일부만 넣는 비상 경로이고, off는 지식 검색을 하지 않습니다.",
     "personal_memory_read_mode": "개인 장기기억을 응답에 넣는 방식입니다. legacy는 기존 전량 주입, shadow는 legacy로 답하면서 계층형 선택 결과만 trace에 기록, tiered는 관련 있는 기억만 계층별로 넣습니다.",
     "memory_session_followup": "8시간 이상 공백 뒤 첫 인사에서 지난 일정 등을 먼저 물어볼 범위입니다. off는 끔, dm은 DM에서만, all은 서버에서도 같은 공간의 공개해도 되는 항목 1개까지 허용합니다.",
-    "retrieval_v2_timeout_seconds": "Retrieval v2 shadow/active 한 턴의 전체 실행 시간 상한(초)입니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
     "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
@@ -144,13 +140,6 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "MEMORY_SESSION_FOLLOWUP",
         "string",
         choices=tuple(sorted(MEMORY_SESSION_FOLLOWUP_MODES)),
-    ),
-    "retrieval_v2_timeout_seconds": _runtime_spec(
-        "retrieval_v2_timeout_seconds",
-        "RETRIEVAL_V2_TIMEOUT_SECONDS",
-        "float",
-        minimum=0.25,
-        maximum=30.0,
     ),
     "community_lore": _runtime_spec("community_lore", "COMMUNITY_LORE", "bool"),
     "model_routing_mode": _runtime_spec(
@@ -317,8 +306,6 @@ def runtime_setting_attr(key: str) -> str:
     upper = normalized.upper()
     if upper in ENV_TO_RUNTIME_ATTR:
         return ENV_TO_RUNTIME_ATTR[upper]
-    if normalized.lower() == "retrieval_v2_mode":
-        return "rag_mode"
     raise ValueError(f"알 수 없는 런타임 설정이에요: {key}")
 
 
@@ -471,29 +458,6 @@ def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
     if effective["structured_memory_every"] > history_turns:
         raise ValueError("STRUCTURED_MEMORY_EVERY는 HISTORY_TURNS 이하여야 해요.")
 
-    retrieval_mode = value if attr == "rag_mode" else settings.rag_mode
-    if retrieval_mode == "v2":
-        if not settings.gemini_api_key:
-            raise ValueError("RAG_MODE=v2에는 GEMINI_API_KEY가 필요해요.")
-        expected_backend = retrieval_v2_expected_backend_key(
-            settings.retrieval_v2_embedding_dimensions
-        )
-        if settings.retrieval_v2_calibration_backend_key != expected_backend:
-            raise ValueError(
-                "RAG_MODE=v2의 calibration backend key가 현재 embedding 설정과 "
-                "일치해야 해요."
-            )
-        if any(item is None for item in (
-            settings.retrieval_v2_factual_reject,
-            settings.retrieval_v2_factual_strong,
-            settings.retrieval_v2_ambient_reject,
-            settings.retrieval_v2_ambient_strong,
-        )):
-            raise ValueError(
-                "RAG_MODE=v2에는 factual/ambient calibration threshold가 모두 필요해요."
-            )
-
-
 
 
 class RuntimeSettings:
@@ -538,9 +502,6 @@ class RuntimeSettings:
         object.__setattr__(self, "_overrides", loaded)
 
     def __getattr__(self, name: str):
-        if name == "retrieval_v2_mode":
-            return {"off": "off", "v1": "off", "shadow": "shadow",
-                    "v2": "active", "full": "off"}[self.rag_mode]
         overrides = object.__getattribute__(self, "_overrides")
         if name in overrides:
             return overrides[name]
@@ -563,18 +524,12 @@ class RuntimeSettings:
 
     def set_text(self, key: str, raw: str):
         attr = runtime_setting_attr(key)
-        legacy = key.strip().lower() == "retrieval_v2_mode"
-        if legacy:
-            old_value = raw.strip().lower()
-            if old_value not in RETRIEVAL_V2_MODES:
-                raise ValueError("RETRIEVAL_V2_MODE은 off, shadow, active 중 하나여야 해요.")
-            raw = LEGACY_RAG_MODES[old_value]
         spec = RUNTIME_SETTING_SPECS[attr]
         value = parse_runtime_value(spec, raw, settings=self)
         _validate_combined_runtime_value(self, attr, value)
         self._write(attr, encode_runtime_value(value))
         self._overrides[attr] = value
-        return old_value if legacy else value
+        return value
 
     def update_discord_id(self, key: str, discord_id: int, *, enabled: bool) -> bool:
         """Add/remove one ID from the effective set, preserving all other entries.
@@ -607,8 +562,6 @@ class RuntimeSettings:
         _validate_combined_runtime_value(self, attr, value)
         self._write(attr, None)
         self._overrides.pop(attr, None)
-        if key.strip().lower() == "retrieval_v2_mode":
-            return self.retrieval_v2_mode
         return value
 
     def rows(self) -> list[tuple[RuntimeSettingSpec, Any, str]]:

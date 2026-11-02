@@ -21,7 +21,7 @@ _GROUP_FIELDS = (
         "public_server_context",
     })),
     ("세계관·참고 지식", frozenset({
-        "lore_reference", "character_insights", "reaction_guides",
+        "lore_reference",
     })),
     ("커스텀 이모지", frozenset({"available_custom_emojis"})),
 )

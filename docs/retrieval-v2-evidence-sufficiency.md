@@ -1,5 +1,11 @@
 # Structured local evidence sufficiency (#315)
 
+> **Status (2026-11-02, #463):** this check stays in production. It decides whether the
+> selected local references (static lore in `RAG_MODE=v1`, runtime knowledge in `full`)
+> answer a relation/fact question or whether web search is needed. The retrieval v2
+> runtime mentioned below (#316 shadow/v2 bundles) was removed; no v2 bundle reaches the
+> assessor any more.
+
 Part of #310. This layer answers a different question from retrieval:
 
 > Do the selected local rows actually support the proposition the user asked?

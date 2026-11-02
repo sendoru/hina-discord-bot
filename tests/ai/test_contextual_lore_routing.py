@@ -41,6 +41,7 @@ async def test_lore_followup_uses_previous_entity_but_keeps_visible_message():
         model="test-model",
         usage_log_path="",
         chat_web_search=True,
+        rag_mode="v1",
     ), client=client)
     llm.lore = LoreIndex([{
         "id": "canon.test.kayoko.hina",
@@ -70,7 +71,7 @@ async def test_lore_followup_uses_previous_entity_but_keeps_visible_message():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("mode", "expect_lore"),
-    [("off", False), ("v1", True), ("shadow", True), ("v2", False), ("full", False)],
+    [("off", False), ("v1", True), ("full", False)],
 )
 async def test_rag_mode_controls_actual_lore_execution_and_context(mode, expect_lore):
     seen = []

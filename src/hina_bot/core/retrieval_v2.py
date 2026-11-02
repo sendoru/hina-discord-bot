@@ -1,19 +1,13 @@
-"""Provider-neutral v2 contracts, packing and bundle composition.
+"""Retrieval request and evidence bundle types for the local-evidence web-search check.
 
-This remains opt-in. Legacy production packing/web fallback stay intact until #316.
+The retrieval v2 runtime that once filled these bundles was removed (#463); the
+web-search decision still builds a request and judges a selected evidence bundle.
 """
 
-import json
-from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-from .knowledge_retrieval import (
-    KnowledgeCandidate,
-    KnowledgeUsage,
-    RankedKnowledgeCandidate,
-    rank_lexical_candidates,
-)
+from .knowledge_retrieval import KnowledgeUsage, RankedKnowledgeCandidate
 
 
 class RetrievalIntent(StrEnum):
@@ -54,18 +48,6 @@ class RetrievalRequest:
 
 
 @dataclass(frozen=True)
-class UsageBudget:
-    """Pure packing limits for one retrieval KnowledgeUsage."""
-
-    max_items: int
-    max_chars: int
-
-    def __post_init__(self) -> None:
-        if self.max_items < 0 or self.max_chars < 0:
-            raise ValueError("usage budgets must be non-negative")
-
-
-@dataclass(frozen=True)
 class KnowledgeBundle:
     """Selected evidence, separated by retrieval purpose.
 
@@ -90,155 +72,3 @@ class KnowledgeBundle:
         ):
             if any(usage not in row.candidate.retrieval_usages for row in rows):
                 raise ValueError(f"candidate is not eligible for {usage}")
-
-    def context_sections(self) -> dict[str, list[dict]]:
-        """Explicit serialization boundary; never serialize the request or query here."""
-        return {
-            name: [row.candidate.reference_item() for row in getattr(self, name)]
-            for name in ("facts", "relations", "character_insights", "reactions")
-        }
-
-
-CandidateIdentity = tuple[str, str]
-
-
-def candidate_identity(row: RankedKnowledgeCandidate) -> CandidateIdentity:
-    return row.candidate.source, row.candidate.candidate_id
-
-
-def reference_size(row: RankedKnowledgeCandidate) -> int:
-    return len(json.dumps(row.candidate.reference_item(), ensure_ascii=False))
-
-
-def pack_ranked(
-    ranked: Iterable[RankedKnowledgeCandidate],
-    budget: UsageBudget,
-    *,
-    excluded: frozenset[CandidateIdentity] = frozenset(),
-) -> tuple[RankedKnowledgeCandidate, ...]:
-    """Pack already-admitted rows; score thresholds belong to retrievers, not budgets."""
-    if budget.max_items == 0 or budget.max_chars == 0:
-        return ()
-    rows = []
-    used_chars = 0
-    seen = set(excluded)
-    for row in ranked:
-        identity = candidate_identity(row)
-        if identity in seen:
-            continue
-        size = reference_size(row)
-        if used_chars + size > budget.max_chars:
-            continue
-        rows.append(row)
-        seen.add(identity)
-        used_chars += size
-        if len(rows) >= budget.max_items:
-            break
-    return tuple(rows)
-
-
-_SECTION_ORDER = (
-    KnowledgeUsage.RELATION,
-    KnowledgeUsage.FACTUAL,
-    KnowledgeUsage.AMBIENT,
-    KnowledgeUsage.REACTION,
-)
-_SECTION_FIELD = {
-    KnowledgeUsage.FACTUAL: "facts",
-    KnowledgeUsage.RELATION: "relations",
-    KnowledgeUsage.AMBIENT: "character_insights",
-    KnowledgeUsage.REACTION: "reactions",
-}
-
-
-class BundleComposer:
-    """Single packing/deduplication boundary for all retrieval purposes.
-
-    More specific relationship grounding owns a duplicate before generic factual rows;
-    factual evidence owns a duplicate before ambient/reaction guidance. A skipped duplicate
-    does not consume a section slot, so that section can refill from its next ranked row.
-    """
-
-    def __init__(
-        self,
-        budgets: Mapping[KnowledgeUsage, UsageBudget],
-        *,
-        max_total_chars: int | None = None,
-        max_total_items: int | None = None,
-    ):
-        if max_total_chars is not None and max_total_chars < 0:
-            raise ValueError("max_total_chars must be non-negative")
-        if max_total_items is not None and max_total_items < 0:
-            raise ValueError("max_total_items must be non-negative")
-        self.budgets = dict(budgets)
-        self.max_total_chars = max_total_chars
-        self.max_total_items = max_total_items
-
-    def compose(
-        self,
-        rows: Mapping[KnowledgeUsage, Sequence[RankedKnowledgeCandidate]],
-        *,
-        section_order: Sequence[KnowledgeUsage] | None = None,
-    ) -> KnowledgeBundle:
-        order = tuple(section_order) if section_order is not None else _SECTION_ORDER
-        if len(order) != len(_SECTION_ORDER) or set(order) != set(_SECTION_ORDER):
-            raise ValueError("section order must include each retrieval usage once")
-        selected: dict[KnowledgeUsage, tuple[RankedKnowledgeCandidate, ...]] = {
-            usage: () for usage in KnowledgeUsage
-        }
-        claimed: set[CandidateIdentity] = set()
-        total_used = 0
-        total_items = 0
-
-        for usage in order:
-            budget = self.budgets.get(usage)
-            if budget is None:
-                continue
-            remaining_items = (
-                budget.max_items
-                if self.max_total_items is None
-                else max(0, self.max_total_items - total_items)
-            )
-            remaining_chars = (
-                budget.max_chars
-                if self.max_total_chars is None
-                else max(0, self.max_total_chars - total_used)
-            )
-            effective = UsageBudget(
-                min(budget.max_items, remaining_items),
-                min(budget.max_chars, remaining_chars),
-            )
-            packed = pack_ranked(
-                rows.get(usage, ()),
-                effective,
-                excluded=frozenset(claimed),
-            )
-            selected[usage] = packed
-            for row in packed:
-                claimed.add(candidate_identity(row))
-                total_used += reference_size(row)
-                total_items += 1
-
-        kwargs = {
-            _SECTION_FIELD[usage]: selected[usage]
-            for usage in KnowledgeUsage
-        }
-        return KnowledgeBundle(**kwargs)
-
-
-def lexical_bundle(
-    request: RetrievalRequest,
-    candidates: Iterable[KnowledgeCandidate],
-    *,
-    budgets: Mapping[KnowledgeUsage, UsageBudget],
-) -> KnowledgeBundle:
-    """Compatibility adapter: lexical admission, shared v2 composition/packing."""
-    ranked = rank_lexical_candidates(request.retrieval_text, candidates)
-    rows = {
-        usage: tuple(
-            row for row in ranked
-            if usage in row.candidate.retrieval_usages
-        )
-        for usage in KnowledgeUsage
-    }
-    return BundleComposer(budgets).compose(rows)

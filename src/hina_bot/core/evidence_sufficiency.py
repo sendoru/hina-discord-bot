@@ -1,4 +1,4 @@
-"""Structured local-evidence sufficiency for Retrieval v2 and web fallback."""
+"""Structured local-evidence sufficiency for the pre-search web-fallback decision."""
 
 from __future__ import annotations
 
