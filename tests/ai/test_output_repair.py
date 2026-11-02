@@ -328,6 +328,10 @@ MARKER_CLEANED = (
      "코드는 `[1562812225691983904]`야", 1),
     ("<@1562812225691983904> 안녕 [1562812225691983904]",
      "<@1562812225691983904> 안녕", 1),
+    # Generated markers can be longer than a real snowflake, up to the preflight's 32.
+    ("21자리도 마커야 [123456789012345678901].", "21자리도 마커야.", 1),
+    ("32자리 [11111111111111111111111111111111]", "32자리", 1),
+    ("좋아 [1495269226938630315:1495269226938630316] 끝", "좋아 끝", 1),
 ])
 def test_marker_fallback_removes_only_appended_snowflake_markers(raw, cleaned, removed):
     assert strip_stray_id_markers(raw) == (cleaned, removed)
@@ -347,7 +351,8 @@ def test_marker_fallback_removes_only_appended_snowflake_markers(raw, cleaned, r
     "링크 https://discord.com/channels/1/2/[1562812225691983904] 봐",
     "[1562812225691983904](https://example.com)",  # Markdown link text
     "[1562812225691983904]",  # nothing would remain
-    "21자리 숫자 [123456789012345678901].",
+    "33자리는 교정 대상도 아님 [111111111111111111111111111111111].",
+    "33자리 앞 번호 [111111111111111111111111111111111:1495269226938630315].",
 ])
 def test_marker_fallback_preserves_meaningful_numbers(text):
     assert strip_stray_id_markers(text) == (text, 0)

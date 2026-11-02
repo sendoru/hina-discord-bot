@@ -36,7 +36,7 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 ### Fixed
 
 - `OUTPUT_REPAIR_MODE=active`에서 교정 요청이 시간 초과·실패해 원문이 그대로 나갈 때도, 일반
-  대화에 붙은 Discord snowflake형 숫자 마커(`[1565771137684869141]` 등)를 결정적 규칙으로 지웁니다
+  대화에 붙은 Discord snowflake형 숫자 마커(`[1565771137684869141]` 등, 17~32자리)를 결정적 규칙으로 지웁니다
   (#454). 짧은 숫자, 코드, URL, ID를 설명하는 문장은 보존하며 `off`/`shadow`의 동작은 그대로입니다.
 
 ### Removed
