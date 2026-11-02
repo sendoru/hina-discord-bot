@@ -5,6 +5,7 @@ from hina_bot.ai.providers import create_provider_client
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.config import Settings
+from hina_bot.core.db_schema import SchemaError
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
 
@@ -19,14 +20,21 @@ def main():
         base = Settings.load()
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
-    store = Store.open_existing(base.db_path, base.history_turns)
+    # A missing or unprepared database is an operator action, not a crash: say what to run.
+    try:
+        store = Store.open_existing(base.db_path, base.history_turns)
+    except (FileNotFoundError, SchemaError) as exc:
+        raise SystemExit(str(exc)) from None
     admin = None
     llm = None
     bot = None
     provider = None
     try:
         settings = RuntimeSettings(base, store)
-        admin = AdminDatabase.open_existing(base.db_path)
+        try:
+            admin = AdminDatabase.open_existing(base.db_path)
+        except SchemaError as exc:
+            raise SystemExit(str(exc)) from None
         provider = create_provider_client(settings, settings.provider)
         llm = LLM(settings, client=provider, admin_db=admin)
         bot = web_bot.HinaClient(settings, store=store, llm=llm)
