@@ -1,55 +1,9 @@
-import sqlite3
 
 import pytest
 
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, RelationshipEvidence
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.tooling.legacy_database import convert_database as prepare_database
-
-
-def test_store_migrates_existing_memory_items_with_empty_relationship_evidence(tmp_path):
-    path = tmp_path / "legacy.sqlite3"
-    db = sqlite3.connect(path)
-    db.executescript(
-        """
-        CREATE TABLE memory_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            content TEXT NOT NULL,
-            kind TEXT NOT NULL,
-            origin_realm TEXT NOT NULL,
-            origin_channel_id TEXT NOT NULL,
-            origin_public_at_capture INTEGER NOT NULL,
-            disclosure TEXT NOT NULL,
-            source_message_ids TEXT NOT NULL DEFAULT '[]',
-            confidence REAL NOT NULL DEFAULT 1.0,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        INSERT INTO memory_items(
-            user_id,content,kind,origin_realm,origin_channel_id,
-            origin_public_at_capture,disclosure,source_message_ids,confidence
-        ) VALUES (
-            '100','기존 관계 기억','relationship','dm:100','10',
-            0,'implicit','["101"]',0.9
-        );
-        """
-    )
-    db.commit()
-    db.close()
-
-    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
-    store = Store.create(str(path))
-
-    columns = {
-        row["name"] for row in store.db.execute("PRAGMA table_info(memory_items)")
-    }
-    assert "relationship_evidence" in columns
-    item = store.memory_items(100)[0]
-    assert item.content == "기존 관계 기억"
-    assert not item.relationship_evidence
-    store.close()
 
 
 def test_store_round_trips_relationship_evidence():

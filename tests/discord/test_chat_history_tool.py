@@ -22,7 +22,7 @@ from hina_bot.discord.chat_history_tool import ChatHistoryLookup, register_chat_
 from hina_bot.discord.chatlog_capture import set_capture_mode_override
 from hina_bot.discord.member_directory import channel_member_tool_registry
 from hina_bot.discord.turn_provenance import CURRENT_TURN_PROVENANCE
-from hina_bot.tooling.migrate_conversation_reset_epochs import ensure_epoch_schema
+from hina_bot.tooling.conversation_reset_epochs import ensure_epoch_schema
 from hina_bot.tooling.reset_conversation import _archive_debug_rows
 
 

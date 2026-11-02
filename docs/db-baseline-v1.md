@@ -13,7 +13,7 @@ policy and implements none of #399–#401. Production application is not perform
    BEGIN IMMEDIATE → fingerprint/plan recheck → baseline/explicit version steps →
    current validation → commit. WAL configuration remains a separate post-commit
    step whose failure must not be reported as a rolled-back schema transaction.
-3. **Convert older input:** independently invoked `hina-upgrade-legacy-db` retains
+3. **Convert older input** (removed in #463; use a version before #463): independently invoked `hina-upgrade-legacy-db` retains
    only the legacy column/constraint/data contracts exercised by old fixtures.
    It rejects unsafe rebuild dependencies and converts to fixed v1 SQL inside one
    transaction, including ledger writes. Runtime/normal prepare do not import it.

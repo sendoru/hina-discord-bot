@@ -102,23 +102,13 @@ uv run hina-reset-conversation --yes --offline-confirmed --discard-pending
 - `--offline-confirmed`는 필수이며, 백업 후 DB 데이터가 변경되면
   `--discard-pending` 사용 여부와 관계없이 초기화를 거부한다.
 
-## 3. 별도 epoch 스키마 정리 (선택)
+## 3. epoch 스키마 정리
 
-초기화와 관계없이 구형 epoch 기록 테이블의 컬럼만 정리하려면
-운영 봇·대시보드·모든 DB writer를 종료한 뒤 다음을 실행한다.
-
-```sh
-uv run hina-migrate-reset-epochs --dry-run
-uv run hina-migrate-reset-epochs --yes --offline-confirmed
-```
-
-이 명령은 `conversation_reset_epochs`만 정리한다. 오래된 두
-`discarded_*` 컬럼은 삭제되므로 과거 기록의 해당 값이 필요하면
-자동으로 생성되는 전체 SQLite 백업(`data/backups`)을 참조한다.
-마이그레이션은 기존 행·ID·cutoff와 시퀀스를 보존하며,
-대화·메모리·설정 테이블은 변경하지 않는다. 이미 최신 스키마면 아무것도
-수정하지 않는다. 이 명령을 따로 실행하지 않아도
-`hina-reset-conversation`이 백업 이후 같은 정리를 트랜잭션 안에서 수행한다.
+구형 epoch 기록 테이블(`discarded_*` 컬럼, `backup_sha256` 없음)은 `hina-reset-conversation`이
+백업 이후 초기화와 같은 트랜잭션 안에서 정리한다. 기존 행·ID·cutoff와 시퀀스를 보존하며,
+삭제되는 두 `discarded_*` 컬럼의 값은 자동 생성되는 전체 SQLite 백업(`data/backups`)에 남는다.
+이미 최신 스키마면 아무것도 수정하지 않는다. 이 정리만 따로 실행하던
+`hina-migrate-reset-epochs`는 #463에서 제거했다.
 
 SQLite 3.35 이상이 필요하다 (`ALTER TABLE DROP COLUMN` 지원).
 

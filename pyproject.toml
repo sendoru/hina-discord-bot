@@ -17,7 +17,6 @@ dashboard-test = ["playwright>=1.51,<2"]
 
 [project.scripts]
 hina-prepare-db = "hina_bot.tooling.prepare_database:main"
-hina-upgrade-legacy-db = "hina_bot.tooling.legacy_database:main"
 hina-bot = "hina_bot.discord.runtime_entry:main"
 hina-dashboard = "hina_bot.dashboard.app:main"
 hina-lore = "hina_bot.tooling.lore_cli:main"
@@ -29,8 +28,6 @@ hina-memory-report = "hina_bot.tooling.memory_report:main"
 hina-backfill-annotations = "hina_bot.tooling.backfill_annotations:main"
 hina-memory-extraction-eval = "hina_bot.tooling.memory_extraction_eval:main"
 hina-reset-conversation = "hina_bot.tooling.reset_conversation:main"
-hina-migrate-reset-epochs = "hina_bot.tooling.migrate_conversation_reset_epochs:main"
-hina-migrate-runtime = "hina_bot.tooling.runtime_migration:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
