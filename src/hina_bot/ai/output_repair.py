@@ -33,12 +33,14 @@ _HTML_TAG = re.compile(
 
 _CODE = re.compile(r"```[\s\S]*?```|`[^`\n]*`")
 
-# Deterministic fallback (#454): a bracketed Discord-snowflake-like number (17-20
-# digits, optionally behind a short citation index) that ends a clause is never
-# dialogue. Short numbers such as "[1]" stay with the repair model, and a marker
-# followed by a word, a link target or another bracket is treated as referenced text.
+# Deterministic fallback (#454): a bracketed snowflake-like number that ends a clause
+# is never dialogue. Generated markers are not real IDs and can exceed a snowflake's
+# 20 digits, so the upper bound follows the repair preflight (_SUSPECT_FORMAT, 32).
+# The last part needs 17+ digits, optionally behind an index ("[18:...]", "[a:b]"),
+# so short numbers such as "[1]" stay with the repair model. A marker followed by a
+# word, a link target or another bracket is treated as referenced text.
 _ID_MARKER = re.compile(
-    r"(?P<pre>[ \t]*)\[(?:\d{1,4}:)?\d{17,20}\](?![\w(\[])(?P<post>[ \t]*)"
+    r"(?P<pre>[ \t]*)\[(?:\d{1,32}:)?\d{17,32}\](?![\w(\[])(?P<post>[ \t]*)"
 )
 # Code and URLs are never edited; a nearby ID word means the number is being discussed.
 _PROTECTED = re.compile(r"```[\s\S]*?```|`[^`\n]*`|https?://\S+")
