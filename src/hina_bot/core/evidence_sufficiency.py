@@ -13,7 +13,7 @@ from .knowledge_retrieval import (
     KnowledgeUsage,
     RankedKnowledgeCandidate,
 )
-from .retrieval_v2 import KnowledgeBundle, RetrievalIntent, RetrievalRequest
+from .retrieval_contracts import KnowledgeBundle, RetrievalIntent, RetrievalRequest
 
 _TRUSTED_CONFIDENCE = {"verified", "official_secondary", "crosschecked"}
 _DIRECT_FACT_TYPES = {"fact_direct", "fact_visual", "fact_reported"}
@@ -227,7 +227,7 @@ def _conflicting_claims(claims: Iterable[EvidenceClaim], predicate: str) -> bool
 def selected_evidence_bundle(
     candidates: Iterable[KnowledgeCandidate],
 ) -> KnowledgeBundle:
-    """Adapt already-selected legacy/local candidates to the v2 evidence contract."""
+    """Adapt already-selected local candidates to the evidence contract."""
     rows = tuple(
         RankedKnowledgeCandidate(1.0, order, candidate)
         for order, candidate in enumerate(candidates)

@@ -13,7 +13,7 @@ from hina_bot.core.knowledge_retrieval import (
     RankedKnowledgeCandidate,
 )
 from hina_bot.core.lore import LoreIndex
-from hina_bot.core.retrieval_v2 import (
+from hina_bot.core.retrieval_contracts import (
     KnowledgeBundle,
     RetrievalIntent,
     RetrievalRequest,
