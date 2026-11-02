@@ -1,4 +1,3 @@
-import sqlite3
 
 from hina_bot.core.memory_context import (
     CURRENT_MEMORY_CONTEXT,
@@ -7,7 +6,6 @@ from hina_bot.core.memory_context import (
 )
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.tooling.legacy_database import convert_database as prepare_database
 
 
 def test_memory_context_keeps_only_strong_causal_rows_with_bounded_ownership():
@@ -88,30 +86,6 @@ def test_store_consumes_request_scoped_memory_context_once():
 
     assert decode_memory_context(rows[0]["memory_context"]) == list(context)
     assert rows[1]["memory_context"] == ""
-
-
-def test_store_migrates_existing_turns_table_with_memory_context(tmp_path):
-    path = tmp_path / "old.sqlite3"
-    db = sqlite3.connect(path)
-    try:
-        db.execute(
-            "CREATE TABLE turns ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, realm TEXT NOT NULL, "
-            "user_id TEXT NOT NULL, message_id TEXT NOT NULL UNIQUE, content TEXT NOT NULL, "
-            "reply TEXT NOT NULL, exportable INTEGER NOT NULL, "
-            "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
-        )
-        db.commit()
-    finally:
-        db.close()
-
-    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
-    store = Store.create(str(path))
-    try:
-        columns = {row["name"] for row in store.db.execute("PRAGMA table_info(turns)")}
-        assert "memory_context" in columns
-    finally:
-        store.close()
 
 
 def test_memory_context_prioritizes_inherited_reference_source_over_intermediate_assistant_source():

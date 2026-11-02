@@ -66,9 +66,9 @@ are refused instead of returning partial results or hiding memory controls.
 Dashboard never creates a missing database, registers a baseline, or runs migrations.
 
 For an unversioned current schema, inspect with `hina-prepare-db --dry-run` and
-follow the [offline preparation procedure](db-initialization.md). Older schemas
-require the separate `hina-upgrade-legacy-db` offline command. These commands keep
-their existing responsibilities; stop all writers and use their backup procedure.
+follow the [offline preparation procedure](db-initialization.md). Older unversioned
+schemas are refused; convert them with `hina-upgrade-legacy-db` from a version before
+#463, as that page describes. Stop all writers and use the backup procedure.
 The validator checks metadata and migration history, not application row contents.
 
 Current business tables/columns are queried directly. Optional maintenance/audit
@@ -499,9 +499,9 @@ history.
 shared call, and pending shared calls. Personal persistent memory is inspected through `/memory`.
 
 `/memory/cursors` reports the standalone structured extraction cursor, latest retained turn, and pending
-turn count. A scope without a persisted cursor has an effective baseline of 0. Any necessary
-legacy personal-summary cursor conversion belongs to the separate offline
-`hina-upgrade-legacy-db` command; neither the runtime Store nor Dashboard migrates older schemas.
+turn count. A scope without a persisted cursor has an effective baseline of 0. Legacy
+personal-summary cursors were converted by the offline `hina-upgrade-legacy-db` command
+(removed in #463); neither the runtime Store nor Dashboard migrates older schemas.
 
 ## Reconciliation review
 

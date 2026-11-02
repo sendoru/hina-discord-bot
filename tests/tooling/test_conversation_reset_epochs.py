@@ -1,4 +1,4 @@
-"""Regression coverage for cleaning the original exploratory epoch schema."""
+"""The reset command canonicalizes the original exploratory epoch schema in place."""
 
 import sqlite3
 
@@ -6,12 +6,28 @@ import pytest
 
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.tooling.migrate_conversation_reset_epochs import (
+from hina_bot.tooling.conversation_reset_epochs import (
     CURRENT_COLUMNS,
+    ensure_epoch_schema,
     epoch_columns,
-    main,
-    migrate_epoch_schema,
 )
+from hina_bot.tooling.maintenance_db import connect_existing
+
+
+def _canonicalize(path) -> bool:
+    """What hina-reset-conversation does inside its own backed-up write transaction."""
+    db = connect_existing(path)
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            changed = ensure_epoch_schema(db)
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        return changed
+    finally:
+        db.close()
 
 
 def _legacy_database(path, *, has_hash=False):
@@ -54,19 +70,13 @@ def _legacy_database(path, *, has_hash=False):
 
 
 @pytest.mark.parametrize("has_hash", [False, True])
-def test_migrate_original_epoch_table_preserves_backup_history_and_all_other_data(
+def test_canonicalize_original_epoch_table_preserves_history_and_all_other_data(
     tmp_path, has_hash
 ):
     path = tmp_path / "hina.sqlite3"
     _legacy_database(path, has_hash=has_hash)
 
-    assert main(["--database", str(path), "--dry-run"]) == 0
-    with sqlite3.connect(path) as db:
-        assert "discarded_shared_turns" in epoch_columns(db)
-
-    changed, backup_info = migrate_epoch_schema(path, offline_confirmed=True)
-    assert changed and backup_info is not None
-    assert backup_info.path.is_file()
+    assert _canonicalize(path) is True
     with sqlite3.connect(path) as db:
         assert epoch_columns(db) == CURRENT_COLUMNS
         assert db.execute(
@@ -81,16 +91,8 @@ def test_migrate_original_epoch_table_preserves_backup_history_and_all_other_dat
         ).fetchone()[0] == 2
         assert db.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 1
         assert db.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0] == 1
-    with sqlite3.connect(backup_info.path) as backup:
-        assert backup.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-        assert "discarded_shared_turns" in epoch_columns(backup)
-        assert backup.execute(
-            "SELECT discarded_structured_turns,discarded_shared_turns "
-            "FROM conversation_reset_epochs"
-        ).fetchone() == (7, 8)
 
-    again, another_backup = migrate_epoch_schema(path, offline_confirmed=True)
-    assert again is False and another_backup is None
+    assert _canonicalize(path) is False
     with sqlite3.connect(path) as db:
         db.execute(
             "INSERT INTO conversation_reset_epochs("
@@ -102,7 +104,15 @@ def test_migrate_original_epoch_table_preserves_backup_history_and_all_other_dat
         ).fetchone()[0] == 3
 
 
-def test_migration_rejects_unexpected_columns_without_data_loss(tmp_path):
+def test_missing_table_is_created_in_current_shape(tmp_path):
+    path = tmp_path / "fresh.sqlite3"
+    Store.create(str(path)).close()
+    assert _canonicalize(path) is True
+    with sqlite3.connect(path) as db:
+        assert epoch_columns(db) == CURRENT_COLUMNS
+
+
+def test_unexpected_columns_are_rejected_without_data_loss(tmp_path):
     path = tmp_path / "hina.sqlite3"
     _legacy_database(path)
     with sqlite3.connect(path) as db:
@@ -111,32 +121,10 @@ def test_migration_rejects_unexpected_columns_without_data_loss(tmp_path):
             "ADD COLUMN unexpected_required INTEGER NOT NULL DEFAULT 0"
         )
     with pytest.raises(RuntimeError, match="unexpected_required"):
-        migrate_epoch_schema(path, offline_confirmed=True)
+        _canonicalize(path)
     with sqlite3.connect(path) as db:
         assert "discarded_shared_turns" in epoch_columns(db)
         assert "unexpected_required" in epoch_columns(db)
-        assert db.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 1
-
-
-def test_schema_change_after_backup_refuses_migration(tmp_path, monkeypatch):
-    from hina_bot.tooling import migrate_conversation_reset_epochs as mod
-
-    path = tmp_path / "changed.sqlite3"
-    _legacy_database(path)
-    backup = mod.backup_sqlite
-
-    def backup_then_change(*args, **kwargs):
-        result = backup(*args, **kwargs)
-        with sqlite3.connect(path) as db:
-            db.execute("ALTER TABLE conversation_reset_epochs ADD COLUMN unexpected TEXT")
-        return result
-
-    monkeypatch.setattr(mod, "backup_sqlite", backup_then_change)
-    with pytest.raises(RuntimeError, match="Epoch schema changed since backup"):
-        mod.migrate_epoch_schema(path, offline_confirmed=True)
-    with sqlite3.connect(path) as db:
-        assert "discarded_shared_turns" in epoch_columns(db)
-        assert "backup_sha256" not in epoch_columns(db)
         assert db.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 1
 
 
@@ -149,22 +137,9 @@ def test_failed_drop_column_rolls_back_added_backup_column(tmp_path):
             "ON conversation_reset_epochs(discarded_shared_turns)"
         )
     with pytest.raises(sqlite3.OperationalError):
-        migrate_epoch_schema(path, offline_confirmed=True)
+        _canonicalize(path)
     with sqlite3.connect(path) as db:
         assert "backup_sha256" not in epoch_columns(db)
         assert "discarded_structured_turns" in epoch_columns(db)
         assert "discarded_shared_turns" in epoch_columns(db)
         assert db.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 1
-
-
-def test_cli_requires_confirmation_and_preserves_unchanged_database(tmp_path):
-    path = tmp_path / "hina.sqlite3"
-    _legacy_database(path)
-    assert main(["--database", str(path), "--yes"]) == 2
-    with sqlite3.connect(path) as db:
-        assert "discarded_shared_turns" in epoch_columns(db)
-    assert main([
-        "--database", str(path), "--yes", "--offline-confirmed",
-    ]) == 0
-    with sqlite3.connect(path) as db:
-        assert epoch_columns(db) == CURRENT_COLUMNS

@@ -226,7 +226,6 @@ from hina_bot.core.store import Store
 from hina_bot.core.admin_db import AdminDatabase
 Store.create(':memory:').close()
 AdminDatabase.copy_to_memory().close()
-assert 'hina_bot.tooling.legacy_database' not in sys.modules
 assert 'hina_bot.tooling.db_migrations' not in sys.modules
 """
     subprocess.run([sys.executable, "-c", code], check=True, capture_output=True)

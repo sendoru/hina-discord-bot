@@ -1,17 +1,12 @@
 import asyncio
-import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
 from hina_bot.core.recent import RecentMessages
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.discord.chatlog_capture import set_capture_mode_override
 from hina_bot.discord.chatlog_commands import ChatLogCommands, _set_mode_override
-from hina_bot.tooling.legacy_database import convert_database
-from hina_bot.tooling.prepare_database import prepare_database
 
 
 class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
@@ -158,42 +153,6 @@ class ChatLogCommandTests(unittest.IsolatedAsyncioTestCase):
         await group.mode.callback(group, interaction, "off", "server")
         self.assertIn("DM에서는 서버 설정", interaction.response.send_message.call_args.args[0])
         store.close()
-
-    def test_legacy_mode_and_capture_settings_are_migrated_to_one_policy(self):
-        # Only the explicit offline converter may transform an old unversioned DB.
-        with tempfile.TemporaryDirectory() as tempdir:
-            path = str(Path(tempdir) / "legacy.sqlite3")
-            prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
-            store = Store.create(path)
-            store.set_chat_log_mode_override("global", "on")
-            set_capture_mode_override(store, "global", "direct")
-            store.set_chat_log_mode_override("guild:1", "off")
-            store.set_note("config:chatlog_unified_v1", "")
-            store.db.execute("DROP TABLE schema_migrations")
-            store.close()
-
-            convert_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
-            store = Store.create(path)
-            try:
-                self.assertEqual(store.note("config:chatlog_unified_v1"), "1")
-                global_scope = Scope(2, 20, 100)
-                disabled_scope = Scope(1, 10, 100)
-                self.assertIn(
-                    "최종 적용: **direct**",
-                    ChatLogCommands(NS(store=store, emoji_admin_ids={100}))._status_text(global_scope),
-                )
-                self.assertIn(
-                    "최종 적용: **off**",
-                    ChatLogCommands(NS(store=store, emoji_admin_ids={100}))._status_text(disabled_scope),
-                )
-                # Reopening must not repeat or overwrite the converted policy.
-                store.close()
-                prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
-                store = Store.create(path)
-                self.assertEqual(store.note("config:chatlog_unified_v1"), "1")
-                self.assertEqual(store.chat_log_mode_override("guild:1"), "off")
-            finally:
-                store.close()
 
     async def test_clear_only_drops_current_channel_recent_buffer(self):
         store, recent = Store.create(":memory:"), RecentMessages()
