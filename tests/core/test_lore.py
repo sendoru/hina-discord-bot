@@ -71,13 +71,10 @@ class LoreValidationTests(unittest.TestCase):
         timeline = "대책위원회 편 이후, 에덴조약 편에서 재회하고 협력한 시점. " * 5
         self.assertGreater(len(summary), 600)
         self.assertGreater(len(timeline), 120)
-        value = record(
-            summary=summary, timeline=timeline,
-            semantic_text=summary,
-        )
+        value = record(summary=summary, timeline=timeline)
         self.assertEqual(validate_record(value, accepted=True), value)
 
-        for field in ("summary", "timeline", "semantic_text"):
+        for field in ("summary", "timeline"):
             with self.subTest(field=field), self.assertRaises(LoreValidationError):
                 validate_record(value | {field: "   "}, accepted=True)
 
