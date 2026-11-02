@@ -32,7 +32,7 @@
 | `memory_item_edit_history.admin_command_id` | Discord 관리 수정에서 전달되고 Dashboard `memory_detail.html`에서 표시된다. | 실제 관리 이력이다. |
 | `emoji_registry.source_guild_id` | `discord/emoji_commands.EmojiRegistry.catalog`가 애플리케이션 이모지와 서버 이모지를 구분하고 외부 이모지 권한을 확인한다. | 기본값이 NULL이어도 의미가 있다. |
 | 설정의 `updated_at/captured_at` | Dashboard 런타임 설정 화면이 override 수정 시각과 시작 snapshot 시각을 구분한다. | 테스트 전용 timestamp가 아니다. |
-| `runtime_config`의 구형 `retrieval_v2_mode` 키 | 명시적 준비에서 기존 `rag_mode`가 없을 때 값을 변환하고 구형 키를 삭제한다. | 이전 입력으로만 지원한다. 새 DB에 만들지 않는다. |
+| `runtime_config`의 구형 `retrieval_v2_mode` 키 | 일반 준비가 발견하면 거부한다. 이를 `rag_mode`로 변환하던 오프라인 변환기는 #463에서 제거했다. | 새 DB에 만들지 않는다. |
 | Python `Settings.retrieval_v2_mode` | #463에서 retrieval v2와 함께 제거했다. 런타임은 `rag_mode`(off/v1/full)만 읽는다. | 구형 DB 키 변환은 위 행의 오프라인 준비 경로에만 남는다. |
 | `notes`의 `config:chatlog_unified_v1` 및 `config:chatlog_capture:*` | 전자는 일회 변환의 완료 표식, 후자는 현행 all/direct/off 설정의 저장 표현이다. | 표식·운영 설정을 일반 메모로 오인해 삭제하지 않는다. |
 
@@ -71,8 +71,9 @@
 ### reset epoch의 `discarded_structured_turns/discarded_shared_turns`
 
 현행 epoch 컬럼은 `id/reset_at/cutoff_message_id/backup_sha256`이다.
-폐기된 두 컬럼은 새 DDL에 없고, 전용 `migrate_conversation_reset_epochs`가
-백업 후 명시적으로 제거한다. 옛 fixture에 남은 것은 그 변환 경로 검증을 위해서다.
+폐기된 두 컬럼은 새 DDL에 없고, `hina-reset-conversation`이 백업 후 같은 트랜잭션에서
+`conversation_reset_epochs.ensure_epoch_schema`로 제거한다(별도 명령은 #463에서 제거).
+옛 fixture에 남은 것은 그 정리 경로 검증을 위해서다.
 현행 테이블에 테스트용 필드를 다시 추가하지 않는다.
 
 ## 전체 테이블의 사용 경계
@@ -104,8 +105,8 @@
   정의를 사용하며, 검사기에 박힌 별도 SQL과 재구성의 특수 분기를 제거했다.
 - 평가와 import dry-run의 임시 복제 작업을 `AdminDatabase.copy_to_memory`로 옮기고
   평가 전용 wrapper 파일을 제거했다. 실제 import는 사용하지 않을 복제본을 만들지 않는다.
-- JSON import CLI를 `tooling/runtime_migration.py`로 옮겼다. `hina-migrate-runtime`
-  명령은 유지하며 core가 평가/유지보수 도구를 import하던 역방향 의존을 제거했다.
+- JSON import CLI를 `tooling/runtime_migration.py`로 옮겼다. core가 평가/유지보수 도구를
+  import하던 역방향 의존을 제거했다. 이 명령(`hina-migrate-runtime`)은 이후 #463에서 제거했다.
 
 읽기 전용 open, schema 검사, 백업 검증, 트랜잭션 조정은 각각 실패 책임이 달라
 유지한다. 모든 SQL을 Repository로 옮기거나 파일 수를 줄이기 위해 계층을 합치지 않는다.

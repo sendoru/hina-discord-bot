@@ -43,6 +43,10 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Removed
 
+- 예전 DB 변환 도구를 제거했습니다(#463): `hina-upgrade-legacy-db`(비버전 DB 변환), `hina-migrate-runtime`(예전
+  JSON instruction/knowledge 이전, `INSTRUCTION_PATH`/`RUNTIME_LORE_PATH`/`CONTEXT_PATH`), `hina-migrate-reset-epochs`
+  (epoch 테이블 단독 정리). 일반 준비는 예전 형식 DB를 계속 거부하며, 오류 메시지가 #463 이전 버전의 변환기를
+  안내합니다. epoch 테이블 정리는 `hina-reset-conversation`이 계속 트랜잭션 안에서 수행합니다.
 - Retrieval v2를 제거했습니다(#463): `RAG_MODE=shadow`/`v2`, hybrid·semantic·ambient retrieval, exact
   relationship grounder, Gemini 임베딩 어댑터, calibration 도구, `RETRIEVAL_V2_*` 설정과 `RETRIEVAL_V2_MODE`
   별칭, `retrieval.v2` 텔레메트리, 응답 요청의 빈 `character_insights`/`reaction_guides` 필드. 운영 `.env`에

@@ -19,6 +19,14 @@ OWNED_TABLES = {component: {1: V1_TABLES[component]} for component in COMPONENTS
 OWNED_TABLES["store"][2] = V2_TABLES["store"]
 
 
+# The offline converter for pre-baseline databases was removed (#463). Older files must
+# be converted with a checkout that still has it before this version can open them.
+LEGACY_CONVERSION_HINT = (
+    "convert it offline with hina-upgrade-legacy-db from a version before #463 "
+    "(see docs/db-initialization.md)"
+)
+
+
 class SchemaError(RuntimeError):
     pass
 
@@ -74,7 +82,7 @@ def validate_schema(db, components=COMPONENTS, *, versions=None):
         version = versions[component] if versions is not None else len(HISTORY[component])
         tables = owned_tables(component, version)
         if schema_signature(db, tables) not in SCHEMA_SIGNATURES[component][version]:
-            raise SchemaError(f"Unsupported {component} schema; use hina-upgrade-legacy-db offline")
+            raise SchemaError(f"Unsupported {component} schema; {LEGACY_CONVERSION_HINT}")
 
 
 def require_current(db, components=COMPONENTS):

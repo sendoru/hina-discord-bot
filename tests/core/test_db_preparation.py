@@ -1,6 +1,5 @@
 """File-level contracts for explicit preparation, inspection and recovery."""
 
-import json
 import sqlite3
 from contextlib import closing
 from types import SimpleNamespace
@@ -19,7 +18,6 @@ from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
 from hina_bot.tooling import prepare_database as preparation
 from hina_bot.tooling.maintenance_backup import database_signature
-from hina_bot.tooling.runtime_migration import migrate
 
 
 def signature(path):
@@ -71,34 +69,6 @@ def test_bootstrap_repeated_prepare_and_open_do_not_rewrite_snapshot(tmp_path):
 
 
 
-
-
-@pytest.mark.parametrize("exists", [False, True, "store-only"])
-def test_json_dry_run_uses_clone_and_keeps_target_untouched(tmp_path, exists):
-    path = tmp_path / "target" / "admin.sqlite3"
-    if exists:
-        path.parent.mkdir()
-        if exists == "store-only":
-            Store.create(path).close()
-        else:
-            preparation.prepare_database(path, apply=True, offline_confirmed=True)
-    before = signature(path) if exists else None
-    source = tmp_path / "instructions.json"
-    source.write_text(json.dumps([{"id": "test.rule", "text": "import me"}]))
-    args = SimpleNamespace(
-        database=str(path),
-        instructions=str(source),
-        facts="",
-        contexts="",
-        dry_run=True,
-        replace=False,
-    )
-    assert migrate(args)["instructions"] == {"added": 1}
-    if exists:
-        assert signature(path) == before
-    else:
-        assert not path.parent.exists()
-    assert not (path.parent / "backups").exists()
 
 
 @pytest.mark.asyncio
@@ -170,7 +140,6 @@ def test_all_maintenance_inspections_keep_the_target_connection_readonly(tmp_pat
     from hina_bot.tooling import (
         flush_pending_memory,
         maintenance_db,
-        migrate_conversation_reset_epochs,
         reset_analysis_data,
         reset_conversation,
     )
@@ -193,8 +162,7 @@ def test_all_maintenance_inspections_keep_the_target_connection_readonly(tmp_pat
     assert flush_pending_memory.inspect_pending(path) == ()
     assert reset_conversation.inspect_reset(path).ready
     assert reset_analysis_data.build_reset_plan(path, usage_log_path="", event_log_path="").safe
-    assert migrate_conversation_reset_epochs.main(["--database", str(path), "--dry-run"]) == 0
-    assert len(opens) == 4
+    assert len(opens) == 3
     assert not any(
         statement.lstrip()
         .upper()

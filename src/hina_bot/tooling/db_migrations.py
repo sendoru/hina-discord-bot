@@ -9,6 +9,7 @@ from hina_bot.core.db_ddl import LEDGER_DDL, MEMORY_ANNOTATION_DDL, V1_TABLES
 from hina_bot.core.db_schema import (
     COMPONENTS,
     HISTORY,
+    LEGACY_CONVERSION_HINT,
     OWNED_TABLES,
     SchemaError,
     create_tables,
@@ -60,7 +61,7 @@ def inspect_connection(db, components=COMPONENTS):
     if tables and not tables & known:
         raise SchemaError("Not a recognized Hina database; refuse schema adoption")
     if "store" in components and "summaries" in tables:
-        raise SchemaError("Legacy database; run hina-upgrade-legacy-db offline")
+        raise SchemaError(f"Legacy database; {LEGACY_CONVERSION_HINT}")
     pending = []
     for component in COMPONENTS:
         if component not in components:
@@ -72,11 +73,11 @@ def inspect_connection(db, components=COMPONENTS):
             if present and component == "store":
                 marker = db.execute("SELECT text FROM notes WHERE scope='config:chatlog_unified_v1'").fetchone()
                 if marker is None or marker[0] != "1":
-                    raise SchemaError("Legacy chatlog settings; run hina-upgrade-legacy-db offline")
+                    raise SchemaError(f"Legacy chatlog settings; {LEGACY_CONVERSION_HINT}")
             if present and component == "settings" and db.execute(
                 "SELECT 1 FROM runtime_config WHERE key='retrieval_v2_mode'"
             ).fetchone():
-                raise SchemaError("Legacy RAG settings; run hina-upgrade-legacy-db offline")
+                raise SchemaError(f"Legacy RAG settings; {LEGACY_CONVERSION_HINT}")
         if versions.get(component, 0) < len(HISTORY[component]):
             pending.append(component)
     return tuple(pending)
