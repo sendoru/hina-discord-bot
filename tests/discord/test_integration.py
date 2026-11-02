@@ -45,7 +45,9 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         client = AsyncOpenAI(api_key="test-not-a-real-key",
                              http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
         self.llm = LLM(
-            Settings(discord_token="test", openai_api_key="test", summary_every=2, external_context_policy="full"),
+            # v1 keeps static lore as per-turn references, which the lore tests below inspect.
+            Settings(discord_token="test", openai_api_key="test", summary_every=2,
+                     external_context_policy="full", rag_mode="v1"),
             client=client,
         )
         self.store = Store.create(":memory:")

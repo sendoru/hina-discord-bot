@@ -28,6 +28,8 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Changed
 
+- `RAG_MODE`의 시작 기본값을 `v1`에서 `full`로 바꿨습니다(#463). 운영에서 쓰는 모드와 맞춘 것이며, DB
+  override가 있으면 그 값을 그대로 씁니다. `v1`은 정적 lore가 커질 때의 비상 경로로 남습니다.
 - 사용자 이름 해석은 별도 preflight resolver 대신 일반 답변의 `get_current_channel_members`
   도구 호출로 처리합니다. 사용자 명단은 매 요청에 선제적으로 포함하지 않고 모델이 실제로 요청한
   턴에만 provider로 전달됩니다.
@@ -41,6 +43,11 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Removed
 
+- Retrieval v2를 제거했습니다(#463): `RAG_MODE=shadow`/`v2`, hybrid·semantic·ambient retrieval, exact
+  relationship grounder, Gemini 임베딩 어댑터, calibration 도구, `RETRIEVAL_V2_*` 설정과 `RETRIEVAL_V2_MODE`
+  별칭, `retrieval.v2` 텔레메트리, 응답 요청의 빈 `character_insights`/`reaction_guides` 필드. 운영 `.env`에
+  `RAG_MODE=shadow`/`v2`가 있으면 시작을 거부하므로 지우거나 `full`/`v1`/`off`로 바꿔야 합니다. DB에 남은 예전
+  런타임 값은 읽을 때 무시됩니다. 웹 검색 전 로컬 근거 판단은 그대로입니다.
 - 실효성이 낮았던 exact/fuzzy/semantic identity resolver, historical alias fallback, `resolved_identities`
   context와 전용 Identity dashboard를 제거했습니다.
 

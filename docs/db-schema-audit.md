@@ -33,7 +33,7 @@
 | `emoji_registry.source_guild_id` | `discord/emoji_commands.EmojiRegistry.catalog`가 애플리케이션 이모지와 서버 이모지를 구분하고 외부 이모지 권한을 확인한다. | 기본값이 NULL이어도 의미가 있다. |
 | 설정의 `updated_at/captured_at` | Dashboard 런타임 설정 화면이 override 수정 시각과 시작 snapshot 시각을 구분한다. | 테스트 전용 timestamp가 아니다. |
 | `runtime_config`의 구형 `retrieval_v2_mode` 키 | 명시적 준비에서 기존 `rag_mode`가 없을 때 값을 변환하고 구형 키를 삭제한다. | 이전 입력으로만 지원한다. 새 DB에 만들지 않는다. |
-| Python `Settings.retrieval_v2_mode` | 현행 검색 코드가 사용하는 설정 호환 표현이다. | 위의 폐기된 DB 키와 혼동해 제거하지 않는다. |
+| Python `Settings.retrieval_v2_mode` | #463에서 retrieval v2와 함께 제거했다. 런타임은 `rag_mode`(off/v1/full)만 읽는다. | 구형 DB 키 변환은 위 행의 오프라인 준비 경로에만 남는다. |
 | `notes`의 `config:chatlog_unified_v1` 및 `config:chatlog_capture:*` | 전자는 일회 변환의 완료 표식, 후자는 현행 all/direct/off 설정의 저장 표현이다. | 표식·운영 설정을 일반 메모로 오인해 삭제하지 않는다. |
 
 ## 현행 필드 중 읽기 활용이 약한 부분

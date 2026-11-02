@@ -12,7 +12,6 @@ import sqlite3
 from functools import cache
 from pathlib import Path
 
-from hina_bot.core.config import LEGACY_RAG_MODES
 from hina_bot.core.db_connections import open_existing, open_readonly
 from hina_bot.core.db_ddl import LEDGER_DDL, QUEUE_DDL, STORE_DDL, V1_DDL, V1_TABLES
 from hina_bot.core.db_schema import SchemaError, require_current, schema_versions
@@ -22,6 +21,9 @@ from .db_migrations import apply_upgrades
 from .maintenance_backup import backup_schema_database, database_signature
 
 COMPONENTS = tuple(V1_DDL)
+# Old RETRIEVAL_V2_MODE values mapped to the remaining RAG modes (#463): shadow
+# answered with v1, and active (v2, now removed) maps to full, the current default.
+LEGACY_RAG_MODES = {"off": "v1", "shadow": "v1", "active": "full"}
 # Only these known legacy columns may be absent. Inspection and ALTER use the
 # same list; declarations are the existing upgrades, not a general schema DSL.
 LEGACY_COLUMNS = {

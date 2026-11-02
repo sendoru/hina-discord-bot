@@ -1,5 +1,13 @@
 # Canonical entities and exact relationship grounding (#312)
 
+> **Status (2026-11-02, #463):** the exact relationship grounder (`RelationshipGrounder`,
+> `RELATION_CONTEXT_POLICY`) was removed with the retrieval v2 runtime. The canonical
+> entity resolver and the request bridge (`build_resolved_retrieval_request`) remain, and
+> the pre-search local-evidence check uses them. The two supplemental relation rows moved
+> from `data/relationship_grounding.jsonl` to the test fixture
+> `tests/fixtures/relationship_grounding.jsonl`; they were never part of the default lore.
+> The sections below are the original design record.
+
 This is an **opt-in API**, based on #311/#318. Production still calls the legacy
 `LLM.lore_references()` and `enough_local()`. No extra LLM calls, runtime settings,
 SQLite migration, telemetry, prompt injection, embedding, or hybrid scoring are added.
@@ -100,22 +108,7 @@ priority order and does **not** pack them. `BundleComposer` applies the relation
 `UsageBudget` (`max_items`, `max_chars`) together with other sections. A score of 1 means
 binary exact eligibility, not certainty, semantic similarity, or a cross-lane fusion score.
 
-```python
-from hina_bot.ai.retrieval_request import build_resolved_retrieval_request
-from hina_bot.core.relationship_grounding import RelationshipGrounder
-from hina_bot.core.knowledge_retrieval import KnowledgeUsage
-from hina_bot.core.retrieval_v2 import BundleComposer, UsageBudget
-
-request = build_resolved_retrieval_request(routing_plan)
-grounder = RelationshipGrounder.load()
-relation_rows = grounder.ground(request)
-bundle = BundleComposer({
-    KnowledgeUsage.RELATION: UsageBudget(6, 3200),
-}).compose({
-    KnowledgeUsage.RELATION: relation_rows,
-})
-sections = bundle.context_sections()
-```
+(Removed in #463: the grounder and packing example that used to be here.)
 
 `RelationshipGrounder` only retrieves/orders exact relation rows. Final relation packing,
 deduplication against facts/insights/reactions, and optional total prompt limits belong to
@@ -140,8 +133,9 @@ addressing relationship. The original wording is retained. It does **not** confi
 Hina addresses Hoshino. We do not synthesize reverse addressing or a claim that no such
 addressing exists.
 
-Two rows live in `data/relationship_grounding.jsonl`, loaded explicitly by the grounder
-with the **existing LoreIndex schema**. Default legacy lore loading never reads this file:
+Two rows lived in `data/relationship_grounding.jsonl` (now the test fixture
+`tests/fixtures/relationship_grounding.jsonl`), loaded with the **existing LoreIndex
+schema**. Default lore loading never read this file:
 
 | New id | Evidence |
 | --- | --- |

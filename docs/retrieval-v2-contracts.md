@@ -1,5 +1,14 @@
 # Retrieval v2 contracts (#311)
 
+> **Status (2026-11-02, #463):** the retrieval v2 runtime was removed: the `shadow` and
+> `v2` RAG modes, hybrid/semantic and ambient retrieval, the exact relationship grounder,
+> and the `UsageBudget`/`pack_ranked`/`BundleComposer`/`lexical_bundle` packing helpers.
+> What remains are the `RetrievalRequest`, `RetrievalIntent` and `KnowledgeBundle` types
+> and the candidate metadata below. The pre-search local-evidence check uses them; see
+> [Structured local evidence sufficiency](retrieval-v2-evidence-sufficiency.md). Answers use
+> `RAG_MODE=full` (default) or `v1`; see [full-lore-mode.md](full-lore-mode.md). The rest of
+> this page is the design record from the time the contracts were introduced.
+
 This milestone began as an **opt-in contract and lexical adapter**, not a production
 rollout. `LLM.lore_references()`, runtime-first packing and `lore_reference` still use
 the legacy answer-context path until #316. #312–#315 now provide entity grounding, hybrid
@@ -84,43 +93,23 @@ Insight need not be spoken aloud, remains interpretation, and yields to direct c
 conversation evidence. Adding an insight or reaction must never satisfy factual/relation
 web fallback. Bundle membership alone is not a local-sufficiency verdict.
 
-`UsageBudget` now contains only packing limits (`max_items`, `max_chars`). Admission and
-score thresholds belong to each retriever/ranker before composition. `pack_ranked()` is
-the common packing primitive for already-admitted rows.
-
-`BundleComposer` is the single section-packing and cross-section deduplication boundary.
-It packs in relation → factual → ambient → reaction ownership order; when a duplicate is
-claimed by an earlier/more specific section, the later section can refill from its next
-ranked row. An optional total character cap can sit above section budgets. `lexical_bundle`
-remains a compatibility adapter that performs lexical admission then uses this composer.
-
-`context_sections()` is an explicit model-serialization boundary, reusing legacy item
-semantics while retaining all four sections. It does not flatten them or serialize
-request content, ranking diagnostics, or source metadata. Typed candidates retain rich
-provenance for #315/#316; content-free telemetry must be designed separately in #316.
-Consumers must add retrieval usage semantics to model context when a usage is activated (#314).
-
-The adapter accepts candidates from `LoreIndex`, `RuntimeKnowledgeRegistry`, or their
-union. It performs no entity matching, grounding, semantic retrieval, or scene filtering;
-callers must apply those policies before enabling future retrieval usage budgets. The adapter
-is deliberately not invoked from the production answer path yet.
+The packing helpers (`UsageBudget`, `pack_ranked`, `BundleComposer`, `lexical_bundle`)
+and `context_sections()` were removed with the v2 runtime (#463). The evidence check
+builds a `KnowledgeBundle` directly from the selected references.
 
 ## Follow-on work
 
 - #312: canonical resolver, exact profile/entity-pair grounding and ambiguity guards.
 - #313: lexical/semantic union, calibration, fusion eval and lexical fallback. No
   provider, vector database or external infrastructure is part of these contracts.
-- #314: implemented opt-in scene-aware semantic ambient retrieval, reviewed Hina inference
-  eligibility, high-threshold zero-result behavior and model consumption semantics. See
-  [Scene-aware ambient character insights](retrieval-v2-ambient.md).
+- #314: implemented opt-in scene-aware semantic ambient retrieval (removed in #463).
 - #315: implemented structured proposition-level evidence sufficiency and web-fallback routing; see [Structured local evidence sufficiency](retrieval-v2-evidence-sufficiency.md).
-- #316: production shadow wiring, content-free diagnostics and reversible rollout.
+- #316: production shadow wiring, content-free diagnostics and reversible rollout (removed
+  in #463; production uses `RAG_MODE=full`).
 
-Tests cover single-usage lexical parity (including packaged corpus), independent retrieval
-usage budgets, zero results, shared packing/deduplication, stable ties, source neutrality, additive validation,
-runtime compatibility, interpretation/unknown guards, reaction serialization, and causal
+Remaining tests cover additive metadata validation, runtime compatibility,
+interpretation/unknown guards, reaction serialization, bundle usage eligibility and causal
 request wiring. They do not pin model prompt prose or claim live-answer quality gains.
 
-The opt-in resolver and exact relation implementation from #312 are documented in
+The resolver from #312 (still used by the evidence check) is documented in
 [Canonical entity and relationship grounding](retrieval-v2-entity-grounding.md).
-The original lexical adapter and production behavior remain unchanged.

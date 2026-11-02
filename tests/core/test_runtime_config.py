@@ -605,48 +605,52 @@ def test_runtime_scalar_specs_expose_editor_constraints():
     assert stale.minimum == 60
     assert stale.maximum == 7 * 24 * 60 * 60
 
-def test_retrieval_v2_rollout_defaults_off_and_shadow_is_hot_reloadable():
+def test_rag_mode_defaults_to_full_with_only_off_v1_and_full():
     store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(_base(), store)
-        assert settings.retrieval_v2_mode == "off"
-        assert settings.retrieval_v2_timeout_seconds == pytest.approx(3.0)
-        assert settings.set_text("RETRIEVAL_V2_MODE", "shadow") == "shadow"
-        assert settings.set_text("RETRIEVAL_V2_TIMEOUT_SECONDS", "2.5") == pytest.approx(2.5)
-        assert settings.retrieval_v2_mode == "shadow"
-        assert settings.retrieval_v2_timeout_seconds == pytest.approx(2.5)
-        assert settings.set_text("RETRIEVAL_V2_MODE", "off") == "off"
+        assert settings.rag_mode == "full"
+        assert set(RUNTIME_SETTING_SPECS["rag_mode"].choices) == {"off", "v1", "full"}
+        assert settings.set_text("RAG_MODE", "v1") == "v1"
+        for removed in ("shadow", "v2"):
+            with pytest.raises(ValueError):
+                settings.set_text("RAG_MODE", removed)
+        assert settings.rag_mode == "v1"
+        # The old alias and the v2-only knobs are no longer runtime settings (#463).
+        for key in ("RETRIEVAL_V2_MODE", "RETRIEVAL_V2_TIMEOUT_SECONDS"):
+            with pytest.raises(ValueError):
+                settings.set_text(key, "off")
     finally:
         store.close()
 
 
-def test_settings_load_retrieval_v2_active_requires_matching_live_calibration(
+def test_stored_removed_rag_values_fall_back_to_startup():
+    store = Store.create(":memory:")
+    try:
+        store.settings.set_runtime_value("rag_mode", '"v2"')
+        store.settings.set_runtime_value("retrieval_v2_timeout_seconds", "2.5")
+        settings = RuntimeSettings(_base(), store)
+        assert settings.rag_mode == "full"
+        assert settings.source("rag_mode") == "startup"
+    finally:
+        store.close()
+
+
+def test_settings_load_rag_mode_defaults_to_full_and_ignores_old_alias(
     monkeypatch, tmp_path: Path,
 ):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DISCORD_TOKEN", "token")
     monkeypatch.setenv("OPENAI_API_KEY", "answer-key")
-    monkeypatch.setenv("GEMINI_API_KEY", "embedding-key")
+    monkeypatch.delenv("RAG_MODE", raising=False)
     monkeypatch.setenv("RETRIEVAL_V2_MODE", "active")
-    monkeypatch.setenv("RETRIEVAL_V2_FACTUAL_REJECT", "0.4")
-    monkeypatch.setenv("RETRIEVAL_V2_FACTUAL_STRONG", "0.8")
-    monkeypatch.setenv("RETRIEVAL_V2_AMBIENT_REJECT", "0.5")
-    monkeypatch.setenv("RETRIEVAL_V2_AMBIENT_STRONG", "0.9")
+    assert Settings.load().rag_mode == "full"
 
-    monkeypatch.delenv("RETRIEVAL_V2_CALIBRATION_BACKEND_KEY", raising=False)
-    with pytest.raises(ValueError, match="backend key"):
-        Settings.load()
+    monkeypatch.setenv("RAG_MODE", "v1")
+    assert Settings.load().rag_mode == "v1"
 
-    monkeypatch.setenv("RETRIEVAL_V2_CALIBRATION_BACKEND_KEY", "wrong")
-    with pytest.raises(ValueError, match="backend key"):
-        Settings.load()
-
-    monkeypatch.setenv(
-        "RETRIEVAL_V2_CALIBRATION_BACKEND_KEY",
-        "gemini:gemini-embedding-2:1:768:search-document-v1",
-    )
-    loaded = Settings.load()
-    assert loaded.retrieval_v2_mode == "active"
-    assert loaded.retrieval_v2_factual_reject == pytest.approx(0.4)
-    assert loaded.retrieval_v2_ambient_strong == pytest.approx(0.9)
+    for removed in ("shadow", "v2"):
+        monkeypatch.setenv("RAG_MODE", removed)
+        with pytest.raises(ValueError, match="RAG_MODE"):
+            Settings.load()
 
