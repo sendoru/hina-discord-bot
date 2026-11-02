@@ -68,8 +68,9 @@ async def chat_llm():
         api_key="test-not-a-real-key",
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
+    # Static lore lookup (v1) feeds the local-evidence check exercised here.
     llm = LLM(Settings(discord_token="test", openai_api_key="test", model="test-model", summary_every=2,
-                       usage_log_path="", chat_web_search=True), client=client)
+                       usage_log_path="", chat_web_search=True, rag_mode="v1"), client=client)
     llm.lore = LoreIndex([])
     yield llm, calls
     await llm.close()

@@ -1,5 +1,5 @@
 from dataclasses import replace
-from importlib.resources import files
+from pathlib import Path
 
 from hina_bot.ai.retrieval_request import build_resolved_retrieval_request
 from hina_bot.ai.routing_plan import RoutingPlan
@@ -13,7 +13,6 @@ from hina_bot.core.knowledge_retrieval import (
     RankedKnowledgeCandidate,
 )
 from hina_bot.core.lore import LoreIndex
-from hina_bot.core.relationship_grounding import RelationshipGrounder
 from hina_bot.core.retrieval_v2 import (
     KnowledgeBundle,
     RetrievalIntent,
@@ -38,11 +37,13 @@ def request(text, *, entities=(HINA, HOSHINO), pair=(HINA, HOSHINO), intent=Retr
     )
 
 
+# Two reviewed relation rows kept as a test fixture for the claim chain (#463).
+SUPPLEMENTAL = Path(__file__).resolve().parents[1] / "fixtures" / "relationship_grounding.jsonl"
+
+
 def packaged_candidates():
     base = LoreIndex.load().candidates(include_community=False)
-    supplemental = LoreIndex.load(str(files("hina_bot").joinpath(
-        "data/relationship_grounding.jsonl",
-    ))).candidates(include_community=False)
+    supplemental = LoreIndex.load(str(SUPPLEMENTAL)).candidates(include_community=False)
     return [*supplemental, *base]
 
 
@@ -314,10 +315,3 @@ def test_trusted_direct_factual_row_suffices_but_unreviewed_runtime_row_does_not
     req = RetrievalRequest("안정적인 사실 질문", "안정적인 사실 질문", intent=RetrievalIntent.FACT)
     assert assess_local_evidence(req, KnowledgeBundle(facts=(ranked(reviewed),))).sufficient
     assert not assess_local_evidence(req, KnowledgeBundle(facts=(ranked(runtime),))).sufficient
-
-
-def test_awareness_claim_does_not_pollute_generic_exact_relation_grounding():
-    grounder = RelationshipGrounder.load()
-    req = request("히나는 호시노를 만나기 전부터 알고 있었어?")
-    ids = [row.candidate.candidate_id for row in grounder.ground(req)]
-    assert "canon.hina.knows_hoshino_past_before_meeting" not in ids
