@@ -6,6 +6,15 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Added
 
+- 같은 공간에서 다시 언급돼 `duplicate`로 합쳐질 때, 인용이 없는 대상 annotation을 새 항목의 판정으로
+  보강합니다(#471). backfill로 만든 `source_unavailable`·`contextual` 기억이 재언급으로 `ambient`·
+  중요도 3과 인용을 받을 수 있습니다. 대상이 추출 공간(같은 realm이고 공개 출처이거나 같은 채널)에
+  있고, `admin` 판정이 아니며, 이미 인용이 없는 경우에만 적용합니다. 새 판정이 directive이면 같은
+  배치 verifier가 `keep`한 경우에만 쓰고, directive는 이 경로로 낮추지 않습니다(boundary를 style로
+  바꾸지도 않습니다). 관측·확인·사용 기록은 대상에 남고, `audience`는 대상 출처로 다시 좁힙니다.
+  `memory.shadow_extraction` 완료 이벤트에 `reinforced_annotations`(개수만)가 추가되고
+  `hina-memory-report`가 합산합니다. 대시보드 기억 상세는 같은 인용을 가진 superseded duplicate를
+  **Evidence items**로 링크합니다. DB 스키마 변경은 없습니다.
 - `hina-memory-response-eval`을 추가했습니다(#457 운영, #449 §10). 가상 사례의 기억을 심고 같은 턴을
   런타임 답변 경로로 `PERSONAL_MEMORY_READ_MODE`별(기본 `legacy`, `tiered`)로 보낸 뒤, judge 모델이
   무관한 턴의 profile·notes 선제 언급, 경계(`directives`·`quiet_boundaries`) 언급·암시, `just_passed`·
@@ -36,6 +45,11 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 - `RAG_MODE`의 시작 기본값을 `v1`에서 `full`로 바꿨습니다(#463). 운영에서 쓰는 모드와 맞춘 것이며, DB
   override가 있으면 그 값을 그대로 씁니다. `v1`은 정적 lore가 커질 때의 비상 경로로 남습니다.
+- 기억 삭제 계약(#449 §4.6)을 보강 인용까지 넓혔습니다(#471). 대시보드 영구 삭제나 채널 purge로 같은
+  인용을 가진 superseded duplicate가 모두 사라지면, 그 인용을 물려받은 대상 기억에서도 인용이 같은
+  트랜잭션에서 지워집니다. 자동 판정의 `ambient`는 `contextual`로, directive는 유지하되 unverified로
+  내려가고, `admin` 판정은 유지한 채 인용만 지웁니다. `/forget`과 realm·전체 purge는 양쪽을 함께
+  지우므로 영향이 없습니다.
 - 사용자 이름 해석은 별도 preflight resolver 대신 일반 답변의 `get_current_channel_members`
   도구 호출로 처리합니다. 사용자 명단은 매 요청에 선제적으로 포함하지 않고 모델이 실제로 요청한
   턴에만 provider로 전달됩니다.
