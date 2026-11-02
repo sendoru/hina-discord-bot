@@ -197,3 +197,43 @@ uv run hina-memory-extraction-eval --id extract_relative_date_resolved --repeat 
 - 서버 전용: `trust`, `subject_users`, `subject_users_include`
 
 모델 판정은 확률적이므로, 러너는 사례별 통과율과 실패한 제약을 기록하고 사람이 검토합니다.
+
+## 장기기억 응답 평가 (memory v2 읽기 경로)
+
+`memory_response_cases.jsonl`은 tiered 읽기 경로로 넘어가기 전에 답변이 기억을 어떻게 쓰는지 live 모델로
+비교하는 가상 사례입니다(#457 운영, #449 §10). `hina-memory-response-eval`이 사례마다 기억을 심은 뒤 같은
+턴을 런타임 답변 경로로 `PERSONAL_MEMORY_READ_MODE`별(기본 `legacy`, `tiered`)로 보내고, judge 모델이
+답변을 채점합니다.
+
+```bash
+uv run hina-memory-response-eval --provider gemini --model <answer-model> --judge-model <judge-model>  # judge는 같은 provider, 기본값은 smart 모델
+uv run hina-memory-response-eval --modes tiered --id dm_greeting_just_passed_exam --repeat 3
+uv run hina-memory-response-eval --no-judge   # 답변만 만들고 사람이 검토
+```
+
+지표는 모두 실패율이라 낮을수록 좋습니다.
+
+- `proactive_mention`(`not_raised`): 사용자가 꺼내지 않은 기억(profile·notes)을 먼저 꺼낸 비율
+- `boundary_leak`(`boundary`): 경계 화제를 꺼내거나 암시하거나, 그런 지침이 있다고 드러낸 비율.
+  같은 공간 경계는 `directives`, 다른 공간에서 만든 경계는 `quiet_boundaries`로 들어갑니다.
+- `status_misstatement`(`status`): 기억을 언급한 답변 중 `just_passed` 결과를 단정하거나, `unverified`를
+  지금 사실로 말하거나, `past`를 현재처럼 말한 비율. 언급하지 않은 답변은 `na`로 빼고
+  `referenced_rate`에 따로 남깁니다.
+- `recall_miss`(`recalls`): 사용자가 묻거나 가리킨 기억을 쓰지 못한 비율. 조용한 경로가 기억을 아예 안
+  써서 좋은 점수를 받지 못하게 하는 양성 대조입니다.
+
+judge와 별도로 `keyword_proxy_rate`(사용자가 말하지 않은 기억 keyword가 답변에 나온 비율)를 함께 남깁니다.
+`--no-judge`에서도 계산되지만 우연한 일치와 바꿔 말하기를 구분하지 못하는 근사치입니다.
+
+- 기억 날짜는 실행 시각 기준 상대값입니다(`observed_days_ago`, `confirmed_days_ago`, `event_in_days`).
+  content의 `{event}`는 일정의 월·일로 바뀌므로, 상태 정보가 없는 legacy도 같은 날짜를 봅니다.
+- `tiered`에서는 봇처럼 답변 뒤 사용 기록을 남겨서, 여러 턴 사례에도 cooldown과 안부 횟수 제한이
+  적용됩니다. `recall_memory`도 봇처럼 tiered에서만 등록됩니다. 웹 검색은 끕니다.
+- 사례의 `tiered_expect`는 첫 턴에서 tiered가 각 기억을 어디에 두는지(`profile`, `notes:T1`,
+  `quiet_boundaries` 등)입니다. `tests/tooling/test_memory_response_eval.py`가 모델 호출 없이 이 배치와
+  `status`를 확인하므로, 선택 규칙이 바뀌어 사례가 의도한 상황을 만들지 못하면 CI에서 실패합니다.
+
+결과는 `data/evals/memory-response-*.json`과 같은 이름의 Markdown(모드별 지표 표, 사례·턴별 답변, tiered
+선택과 사용 항목, `recall_memory` 호출 수, 판정 근거)에 저장됩니다. 사례마다 모드별 답변 요청과 턴마다
+judge 요청 1회가 나가는 유료 호출이며 일반 테스트에는 포함되지 않습니다. judge 판정은 확률적이므로
+비율만 보지 말고 Markdown의 실제 답변을 함께 확인합니다. 운영 공개 기록에는 비율만 남깁니다.

@@ -149,8 +149,9 @@ reaches a response:
 | `shadow` | the existing projection | the tiered selection in context provenance and `memory.selection` telemetry, plus shadow coverage after the reply |
 | `tiered` | `user_memory` and `relationship_profile` only | the same, plus usage after the reply |
 
-Run `hina-backfill-annotations` first, compare with `shadow`, then switch to `tiered`. `legacy` stays
-available as the rollback.
+Run `hina-backfill-annotations` first, compare with `shadow`, check the replies with
+`hina-memory-response-eval` (below), then switch to `tiered`. `legacy` stays available as the
+rollback.
 
 The selector (`core/memory_selection.py`) makes no model calls. Permission comes first: an item is
 a candidate only when `memory_access` is FULL for the current scope, except for the cross-space
@@ -247,6 +248,15 @@ logged as `memory.shadow_coverage_failed` and never affects the reply.
 Known limits: keyword matching is approximate (a coincidental keyword counts as used, and a
 paraphrased mention does not), and because shadow never records `last_used_at`, the 72-hour
 cooldown never applies in shadow. Shadow therefore selects slightly more than tiered would.
+
+**Response eval before switching** (#449 §10): shadow coverage shows what tiered would have left
+out, not how the model talks with what it gets. `hina-memory-response-eval` sends fictional cases
+through the runtime answer path in `legacy` and `tiered` and has a judge model grade each reply:
+unprompted mentions of profile or notes on unrelated turns, boundary topics raised or hinted
+(`directives` and `quiet_boundaries`), status framing (`just_passed`, `unverified`, `past`), and a
+recall control so a quiet path cannot score well by never using memory. The tiered run records
+usage after each reply like the bot, so multi-turn cases see the cooldown. These are paid calls;
+cases, metrics and options are described in `evals/README.md`.
 
 ### recall_memory tool
 
