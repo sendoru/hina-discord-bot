@@ -302,6 +302,7 @@ class MemorySummaryMixin:
                 applied_reconciliations = 0
                 deferred_reconciliations = 0
                 reconfirmed_items = persisted.reconfirmed
+                reinforced_annotations = 0
                 proposal_writer = getattr(store, "add_memory_reconciliation_proposal", None)
                 if callable(proposal_writer):
                     reconciliation = persist_reconciliation_proposals(
@@ -314,6 +315,7 @@ class MemorySummaryMixin:
                     applied_reconciliations = reconciliation.applied
                     deferred_reconciliations = reconciliation.deferred
                     reconfirmed_items += reconciliation.reconfirmed
+                    reinforced_annotations = reconciliation.reinforced
             completed_metrics = {
                 **metrics,
                 "accepted_items": len(parsed.items),
@@ -327,6 +329,7 @@ class MemorySummaryMixin:
                 "rejected_relationship_evidence": parsed.rejected_relationship_evidence,
                 "annotated_items": persisted.annotated,
                 "reconfirmed_items": reconfirmed_items,
+                "reinforced_annotations": reinforced_annotations,
                 "suppressed_relationship_items": persisted.suppressed_relationships,
                 "directive_items": directive_items,
                 "verified_directives": verified_directives,
