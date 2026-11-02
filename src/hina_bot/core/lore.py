@@ -132,10 +132,6 @@ def validate_record(record: dict, *, accepted: bool = False) -> dict:
             raise LoreValidationError(f"{record['id']}: claims require canonical entities")
         if any(not claim.entity_set() <= entities for claim in parsed_claims):
             raise LoreValidationError(f"{record['id']}: claim entities must be declared")
-    if "semantic_text" in record:
-        value = record["semantic_text"]
-        if not isinstance(value, str) or not value.strip():
-            raise LoreValidationError(f"{record['id']}: semantic_text must be non-empty")
     return record
 
 
@@ -190,7 +186,6 @@ class LoreIndex:
                 "confidence": record.get("confidence"),
                 "kr_release": record.get("kr_release"),
                 "source_metadata": tuple(sorted(record.get("source", {}).items())),
-                "semantic_text": record.get("semantic_text"),
                 "evidence_ids": tuple(record.get("evidence_ids", ())),
                 "claims": tuple(
                     evidence_claim_from_mapping(raw)

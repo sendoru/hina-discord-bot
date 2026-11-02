@@ -43,6 +43,8 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Removed
 
+- lore 기록의 `semantic_text` 필드를 더 이상 읽거나 검증하지 않습니다. 지운 semantic retrieval만 쓰던 필드이며,
+  남아 있어도 로드는 실패하지 않고 무시됩니다(#463 후속).
 - 예전 DB 변환 도구를 제거했습니다(#463): `hina-upgrade-legacy-db`(비버전 DB 변환), `hina-migrate-runtime`(예전
   JSON instruction/knowledge 이전, `INSTRUCTION_PATH`/`RUNTIME_LORE_PATH`/`CONTEXT_PATH`), `hina-migrate-reset-epochs`
   (epoch 테이블 단독 정리). 일반 준비는 예전 형식 DB를 계속 거부하며, 오류 메시지가 #463 이전 버전의 변환기를

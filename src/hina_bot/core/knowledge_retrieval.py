@@ -72,7 +72,6 @@ class KnowledgeCandidate:
     confidence: str | None = None
     kr_release: str | None = None
     source_metadata: tuple[tuple[str, str], ...] = ()
-    semantic_text: str | None = None
     evidence_ids: tuple[str, ...] = ()
     claims: tuple[EvidenceClaim, ...] = ()
 
@@ -84,11 +83,6 @@ class KnowledgeCandidate:
         if self.kind == "optional_reaction":
             return (KnowledgeUsage.REACTION,)
         return (KnowledgeUsage.FACTUAL,)
-
-    @property
-    def semantic_representation(self) -> str:
-        """Meaning text only; subjects/keywords are kept in the lexical channel."""
-        return self.semantic_text if self.semantic_text is not None else self.search_text
 
     def reference_item(self) -> dict:
         if self.kind == "optional_reaction":
