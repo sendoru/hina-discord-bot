@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hina_bot.ai.output_repair import OutputRepair, needs_output_repair
+from hina_bot.ai import output_repair
+from hina_bot.ai.output_repair import OutputRepair, needs_output_repair, strip_stray_id_markers
 from hina_bot.core.config import Settings
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
@@ -302,6 +303,152 @@ async def test_answer_pipeline_applies_repair_before_persisted_discord_reply(raw
         assert "tools" not in requests[1]
         assert "current_speaker" not in str(requests[1])
         assert "lore_reference" not in str(requests[1])
+    finally:
+        await llm.close()
+        store.close()
+
+
+MARKER_REPLY = (
+    "그럼 아까부터 혼자 누구한테 떠들고 있던 건데…… [1565771137684869141].\n\n"
+    "또 장난치는 거지? 정말이지, 종잡을 수가 없다니까."
+)
+MARKER_CLEANED = (
+    "그럼 아까부터 혼자 누구한테 떠들고 있던 건데…….\n\n"
+    "또 장난치는 거지? 정말이지, 종잡을 수가 없다니까."
+)
+
+
+@pytest.mark.parametrize(("raw", "cleaned", "removed"), [
+    (MARKER_REPLY, MARKER_CLEANED, 1),
+    ("당황스러웠어......[1562812225691983904]", "당황스러웠어......", 1),
+    ("좋아[18:1495269226938630315] 다음엔 같이 가자", "좋아 다음엔 같이 가자", 1),
+    ("[1562812225691983904] 안녕", "안녕", 1),
+    ("줄 끝 [1562812225691983904]\n다음 줄 [1562812225691983904]!", "줄 끝\n다음 줄!", 2),
+    ("코드는 `[1562812225691983904]`야 [1565771137684869141]",
+     "코드는 `[1562812225691983904]`야", 1),
+    ("<@1562812225691983904> 안녕 [1562812225691983904]",
+     "<@1562812225691983904> 안녕", 1),
+])
+def test_marker_fallback_removes_only_appended_snowflake_markers(raw, cleaned, removed):
+    assert strip_stray_id_markers(raw) == (cleaned, removed)
+    # Idempotent: a second pass changes nothing.
+    assert strip_stray_id_markers(cleaned) == (cleaned, 0)
+
+
+@pytest.mark.parametrize("text", [
+    "좋아 [1]",  # short citation-like numbers stay with the repair model
+    "확인해 [1:2]",
+    "정상적인 숫자 [1234567]",
+    "문서에서 [1562812225691983904]는 메시지 ID를 뜻해.",  # followed by a particle
+    "메시지 ID: [1562812225691983904].",  # discussed as an ID
+    "그 아이디는 [1562812225691983904]",
+    "숫자 예시는 `[1562812225691983904]`",
+    "```txt\n[1562812225691983904]\n```",
+    "링크 https://discord.com/channels/1/2/[1562812225691983904] 봐",
+    "[1562812225691983904](https://example.com)",  # Markdown link text
+    "[1562812225691983904]",  # nothing would remain
+    "21자리 숫자 [123456789012345678901].",
+])
+def test_marker_fallback_preserves_meaningful_numbers(text):
+    assert strip_stray_id_markers(text) == (text, 0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("response_status", "reply", "error", "event_status"), [
+    ("completed", "", TimeoutError("deadline"), "failed"),
+    ("incomplete", "좋아", None, "non_completed"),
+    ("completed", "", None, "empty"),
+])
+async def test_active_fallback_strips_markers_when_repair_fails(
+    response_status, reply, error, event_status,
+):
+    repair, _, usage = make_repair(reply=reply)
+    usage.status = response_status
+    usage.error = error
+    assert await repair.apply(MARKER_REPLY) == MARKER_CLEANED
+    statuses = [(operation, fields["status"]) for operation, fields in usage.events]
+    assert statuses == [("output.repair", event_status), ("output.marker_fallback", "applied")]
+    fallback = usage.events[-1][1]
+    assert fallback == {
+        "status": "applied", "output_repair_mode": "active", "output_markers_removed": 1,
+    }
+    assert "1565771137684869141" not in str(usage.events)
+    await repair.close()
+
+
+@pytest.mark.asyncio
+async def test_active_fallback_cleans_a_completed_repair_that_kept_the_marker():
+    repair, _, usage = make_repair(reply=MARKER_REPLY)
+    assert await repair.apply(MARKER_REPLY) == MARKER_CLEANED
+    assert usage.events[0][1]["status"] == "unchanged"
+    assert usage.events[-1][0] == "output.marker_fallback"
+    await repair.close()
+
+
+@pytest.mark.asyncio
+async def test_active_fallback_is_silent_when_nothing_is_removed():
+    repair, _, usage = make_repair(reply="좋아")
+    assert await repair.apply("좋아 [1]") == "좋아"
+    assert [operation for operation, _ in usage.events] == ["output.repair"]
+    await repair.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["off", "shadow"])
+async def test_off_and_shadow_keep_their_meaning(mode):
+    repair, _, usage = make_repair(mode=mode, reply=MARKER_CLEANED)
+    assert await repair.apply(MARKER_REPLY) == MARKER_REPLY
+    await repair.close()
+    assert all(operation != "output.marker_fallback" for operation, _ in usage.events)
+
+
+@pytest.mark.asyncio
+async def test_answer_pipeline_strips_markers_after_repair_deadline(monkeypatch):
+    """Integration: the repair request misses its deadline, yet the answer the bot
+    sends to Discord no longer carries the marker."""
+    import json
+
+    import httpx
+    from openai import AsyncOpenAI
+
+    from hina_bot.ai.runtime_llm import LLM
+    from hina_bot.core.routing import Scope, chunks
+    from hina_bot.discord.output_safety import neutralize_mentions
+
+    monkeypatch.setattr(output_repair, "_TIMEOUT_SECONDS", 0.05)
+    requests = []
+
+    async def handler(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        if len(requests) > 1:
+            await asyncio.sleep(1)  # the repair model answers too late
+        return httpx.Response(200, json={
+            "id": f"resp_{len(requests)}", "object": "response", "created_at": 0,
+            "status": "completed", "model": body["model"],
+            "output": [{
+                "id": "msg_1", "type": "message", "role": "assistant", "status": "completed",
+                "content": [{"type": "output_text", "text": MARKER_REPLY, "annotations": []}],
+            }],
+        })
+
+    client = AsyncOpenAI(
+        api_key="test", http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    settings = Settings(
+        discord_token="token", openai_api_key="test", provider="openai",
+        model="answer-model", fast_model="small-model",
+        output_repair_mode="active", output_repair_model="auto",
+        usage_log_path="", db_path=":memory:", chat_web_search=False,
+    )
+    llm = LLM(settings, client=client)
+    store = Store.create(":memory:")
+    try:
+        answer = await llm.answer(store, Scope(None, 10, 100), "사용자", "누구한테 말한 거야?")
+        assert answer == MARKER_CLEANED
+        assert len(requests) == 2 and requests[1]["model"] == "small-model"
+        delivered = "".join(chunks(neutralize_mentions(answer)))
+        assert "1565771137684869141" not in delivered
     finally:
         await llm.close()
         store.close()
