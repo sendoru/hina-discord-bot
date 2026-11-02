@@ -515,7 +515,7 @@ class UsageLogger:
             "status", "semantic_route_mode", "semantic_route_status",
             "output_repair_mode", "output_repair_model",
             "output_repair_original_chars", "output_repair_candidate_chars",
-            "output_repair_changed", "output_repair_elapsed_ms",
+            "output_repair_changed", "output_repair_elapsed_ms", "output_markers_removed",
             "semantic_route_level", "semantic_route_codes",
             "model_route_decision_source", "model_route_baseline_tier",
             "model_route_proposed_tier", "routing_classifier_provider",
