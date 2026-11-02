@@ -347,6 +347,97 @@ def legacy_annotation_defaults(kind: str) -> tuple[UsageMode, DirectiveType | No
     return UsageMode.CONTEXTUAL, None
 
 
+def reinforced_annotation(
+    target: MemoryAnnotation,
+    source: MemoryAnnotation,
+    *,
+    item_revision: int,
+    public_origin: bool,
+) -> MemoryAnnotation | None:
+    """Give a target without a quote the judgment of its same-space duplicate (#471).
+
+    ``source`` belongs to the duplicate the extractor just superseded into the target, so
+    its judgment already passed the parser (quote, tense and audience checks) and, for a
+    directive, the verification pass. The target keeps its observation, confirmation, use
+    and proactive markers; only the judgment fields and the quote are replaced.
+
+    Returns None when the target must stay as it is: an admin judgment, a target that
+    already has a quote, a source without a quote, or a directive change that would
+    silence a protected instruction (principle 6, §6.4).
+    """
+
+    if target.annotator == Annotator.ADMIN or target.evidence:
+        return None
+    if source.annotator != Annotator.EXTRACTOR or not source.evidence:
+        return None
+    if source.usage_mode == UsageMode.DIRECTIVE and not source.verified:
+        return None
+    if target.usage_mode == UsageMode.DIRECTIVE:
+        # Never demote a directive; a boundary also stays a boundary because a style
+        # directive is not carried across spaces (§7.2).
+        if source.usage_mode != UsageMode.DIRECTIVE:
+            return None
+        if (
+            target.directive_type == DirectiveType.BOUNDARY
+            and source.directive_type != DirectiveType.BOUNDARY
+        ):
+            return None
+    return enforce_consistency(
+        replace(
+            target,
+            item_revision=int(item_revision),
+            time_scope=source.time_scope,
+            stability=source.stability,
+            event_at=source.event_at,
+            recurrence=source.recurrence,
+            usage_mode=source.usage_mode,
+            directive_type=source.directive_type,
+            audience=source.audience,
+            importance=source.importance,
+            slot=source.slot,
+            keywords=source.keywords,
+            explicit=source.explicit,
+            evidence=source.evidence,
+            verified=source.verified,
+            lint_flags=source.lint_flags,
+            annotator=Annotator.EXTRACTOR,
+            annotator_version=source.annotator_version,
+        ),
+        # The target's own origin decides how far the audience may reach (principle 2).
+        public_origin=public_origin,
+    )
+
+
+def without_evidence(annotation: MemoryAnnotation) -> MemoryAnnotation:
+    """Drop a quote whose source item was deleted (§4.6 deletion contract).
+
+    An automated judgment falls back to what an annotation without a quote can justify:
+    ``ambient`` becomes ``contextual`` and a directive stays a directive but unverified,
+    so a boundary is never silenced. An admin judgment is a deliberate decision and is
+    kept; only the quote goes.
+    """
+
+    if not annotation.evidence:
+        return annotation
+    if annotation.annotator == Annotator.ADMIN:
+        return replace(annotation, evidence="")
+    flags = [*annotation.lint_flags, LINT_SOURCE_UNAVAILABLE]
+    usage = annotation.usage_mode
+    verified = annotation.verified
+    if usage == UsageMode.AMBIENT:
+        usage = UsageMode.CONTEXTUAL
+    elif usage == UsageMode.DIRECTIVE:
+        verified = False
+        flags.append(LINT_DIRECTIVE_UNVERIFIED)
+    return replace(
+        annotation,
+        evidence="",
+        usage_mode=usage,
+        verified=verified,
+        lint_flags=tuple(dict.fromkeys(flags)),
+    )
+
+
 __all__ = [
     "ADMIN_ANNOTATOR_VERSION",
     "EVIDENCE_MAX_CHARS",
@@ -384,6 +475,8 @@ __all__ = [
     "legacy_annotation_defaults",
     "local_turn_time",
     "normalize_text",
+    "reinforced_annotation",
     "valid_event_at",
     "valid_recurrence",
+    "without_evidence",
 ]

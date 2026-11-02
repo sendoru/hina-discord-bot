@@ -512,6 +512,13 @@ class Store:
     def reconfirm_memory_annotation(self, item_id: int, observed_at: str) -> bool:
         return self._memories.reconfirm_memory_annotation(item_id, observed_at)
 
+    def reinforce_memory_annotation(
+        self, scope: Scope, *, target_item_id: int, evidence_item_id: int
+    ) -> bool:
+        return self._memories.reinforce_memory_annotation(
+            scope, target_item_id=target_item_id, evidence_item_id=evidence_item_id
+        )
+
     def record_memory_usage(self, usages) -> int:
         return self._memories.record_memory_usage(usages)
 
@@ -615,6 +622,10 @@ class Store:
             ):
                 cursor = self.db.execute(f"DELETE FROM {table} WHERE scope LIKE ?", (prefix,))
                 deleted += self._rowcount(cursor)
+            # A public memory elsewhere in the realm may quote a duplicate purged here (#471).
+            quoting_targets = self._memories.reinforced_targets_of_channel(
+                scope.realm, scope.channel_id
+            )
             for table in ("memory_item_edit_history", "memory_item_annotations"):
                 self.db.execute(
                     f"""DELETE FROM {table}
@@ -635,6 +646,7 @@ class Store:
                 (scope.realm, str(scope.channel_id)),
             )
             deleted += self._rowcount(cursor)
+            self._memories.release_reinforced_evidence(quoting_targets)
         return deleted
 
     def purge_realm_memory(self, scope: Scope) -> int:
