@@ -6,6 +6,12 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Added
 
+- `hina-memory-response-eval`을 추가했습니다(#457 운영, #449 §10). 가상 사례의 기억을 심고 같은 턴을
+  런타임 답변 경로로 `PERSONAL_MEMORY_READ_MODE`별(기본 `legacy`, `tiered`)로 보낸 뒤, judge 모델이
+  무관한 턴의 profile·notes 선제 언급, 경계(`directives`·`quiet_boundaries`) 언급·암시, `just_passed`·
+  `unverified`·`past` 표현, 직접 물은 기억의 사용을 채점해 모드별 실패율과 Markdown 리포트를 남깁니다.
+  tiered에서는 봇처럼 답변 뒤 사용 기록을 남기고 `recall_memory`를 등록합니다. 유료 호출이며 일반
+  테스트에는 포함되지 않고, 사례가 의도한 tiered 배치를 만드는지는 CI에서 모델 호출 없이 확인합니다.
 - tiered 개인 기억 선택(shadow 포함)에 핵심 프로필(Tp)과 화제 이월을 추가했습니다. 중요도 3인
   ambient 생활 기억(ongoing·recurring, 지금 유효)은 어휘 일치 없이도 `user_memory.profile`로 항상
   들어가며, 이해에만 쓰고 먼저 꺼내지 않도록 정책 문구로 제한합니다. 서버에서는 같은 공간 출처이고
