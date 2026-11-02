@@ -1,10 +1,10 @@
-"""Deterministic bridge from authorized production routing inputs to the v2 contract."""
+"""Deterministic bridge from authorized production routing inputs to the retrieval contract."""
 
 import re
 from dataclasses import replace
 
 from hina_bot.core.entity_resolution import HINA_ENTITY_ID, EntityResolver
-from hina_bot.core.retrieval_v2 import RetrievalIntent, RetrievalRequest
+from hina_bot.core.retrieval_contracts import RetrievalIntent, RetrievalRequest
 
 from .information_routing import classify_information_request
 from .routing_plan import RoutingPlan
@@ -104,7 +104,7 @@ def build_resolved_retrieval_request(
     rp_subject: str | None = HINA_ENTITY_ID,
     call_prefixes: tuple[str, ...] | None = None,
 ) -> RetrievalRequest:
-    """Resolve only high-confidence current/causal identities for v2 retrieval.
+    """Resolve only high-confidence current/causal identities for the evidence check.
 
     Current-turn explicit entities win. A reviewed RP subject may complete one explicit
     counterpart only for high-precision relation grounding. Anchor identity is inherited

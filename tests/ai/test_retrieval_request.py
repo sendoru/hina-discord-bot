@@ -3,7 +3,7 @@ import pytest
 from hina_bot.ai.information_routing import classify_information_request
 from hina_bot.ai.retrieval_request import build_retrieval_request
 from hina_bot.ai.routing_plan import RoutingPlan
-from hina_bot.core.retrieval_v2 import RetrievalIntent
+from hina_bot.core.retrieval_contracts import RetrievalIntent
 
 
 @pytest.mark.parametrize("text,intent", [

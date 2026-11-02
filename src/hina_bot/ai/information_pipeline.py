@@ -262,7 +262,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         query = routing.routing_query
         request = classify_information_request(query, call_prefixes=self._call_prefixes())
         # Full mode keeps bounded runtime knowledge while compiling static lore
-        # once into the stable prompt prefix. Off/v2 skip both legacy channels.
+        # once into the stable prompt prefix. Off skips both channels.
         references = (
             self.lore_references(query) if use_lore
             else self.runtime_lore_references(query) if use_runtime_lore else []

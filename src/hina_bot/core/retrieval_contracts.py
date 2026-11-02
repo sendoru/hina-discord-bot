@@ -1,7 +1,8 @@
 """Retrieval request and evidence bundle types for the local-evidence web-search check.
 
-The retrieval v2 runtime that once filled these bundles was removed (#463); the
-web-search decision still builds a request and judges a selected evidence bundle.
+Formerly ``core/retrieval_v2.py``. The retrieval v2 runtime that once filled these
+bundles was removed (#463); the web-search decision still builds a request and judges
+a selected evidence bundle.
 """
 
 from dataclasses import dataclass

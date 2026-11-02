@@ -1,11 +1,12 @@
-# Retrieval v2 contracts (#311)
+# Retrieval contracts (#311)
 
 > **Status (2026-11-02, #463):** the retrieval v2 runtime was removed: the `shadow` and
 > `v2` RAG modes, hybrid/semantic and ambient retrieval, the exact relationship grounder,
 > and the `UsageBudget`/`pack_ranked`/`BundleComposer`/`lexical_bundle` packing helpers.
-> What remains are the `RetrievalRequest`, `RetrievalIntent` and `KnowledgeBundle` types
-> and the candidate metadata below. The pre-search local-evidence check uses them; see
-> [Structured local evidence sufficiency](retrieval-v2-evidence-sufficiency.md). Answers use
+> What remains are the `RetrievalRequest`, `RetrievalIntent` and `KnowledgeBundle` types in
+> `core/retrieval_contracts.py` (formerly `core/retrieval_v2.py`) and the candidate
+> metadata below. The pre-search local-evidence check uses them; see
+> [Structured local evidence sufficiency](evidence-sufficiency.md). Answers use
 > `RAG_MODE=full` (default) or `v1`; see [full-lore-mode.md](full-lore-mode.md). The rest of
 > this page is the design record from the time the contracts were introduced.
 
@@ -103,7 +104,7 @@ builds a `KnowledgeBundle` directly from the selected references.
 - #313: lexical/semantic union, calibration, fusion eval and lexical fallback. No
   provider, vector database or external infrastructure is part of these contracts.
 - #314: implemented opt-in scene-aware semantic ambient retrieval (removed in #463).
-- #315: implemented structured proposition-level evidence sufficiency and web-fallback routing; see [Structured local evidence sufficiency](retrieval-v2-evidence-sufficiency.md).
+- #315: implemented structured proposition-level evidence sufficiency and web-fallback routing; see [Structured local evidence sufficiency](evidence-sufficiency.md).
 - #316: production shadow wiring, content-free diagnostics and reversible rollout (removed
   in #463; production uses `RAG_MODE=full`).
 
@@ -112,4 +113,4 @@ interpretation/unknown guards, reaction serialization, bundle usage eligibility 
 request wiring. They do not pin model prompt prose or claim live-answer quality gains.
 
 The resolver from #312 (still used by the evidence check) is documented in
-[Canonical entity and relationship grounding](retrieval-v2-entity-grounding.md).
+[Canonical entity and relationship grounding](entity-grounding.md).
