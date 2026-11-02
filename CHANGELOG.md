@@ -43,6 +43,10 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Fixed
 
+- DB 파일이 없을 때 `hina-bot`이 SQLite의 `unable to open database file` traceback으로 죽던 문제를
+  고쳤습니다. 이제 찾은 경로와 `hina-prepare-db --yes --offline-confirmed`로 새로 만들라는 안내(이미
+  있어야 하는 DB라면 `DATABASE_PATH`·볼륨 마운트 확인)를 출력하고 종료합니다. 준비되지 않은 DB도
+  traceback 없이 `hina-prepare-db` 안내로 종료합니다. 런타임이 DB를 직접 만들지 않는 계약은 그대로입니다.
 - `OUTPUT_REPAIR_MODE=active`에서 교정 요청이 시간 초과·실패해 원문이 그대로 나갈 때도, 일반
   대화에 붙은 Discord snowflake형 숫자 마커(`[1565771137684869141]` 등, 17~32자리)를 결정적 규칙으로 지웁니다
   (#454). 짧은 숫자, 코드, URL, ID를 설명하는 문장은 보존하며 `off`/`shadow`의 동작은 그대로입니다.

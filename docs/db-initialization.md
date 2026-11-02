@@ -75,7 +75,13 @@ current preparer then applies the later explicit steps.
 - `tooling/db_migrations.py`: explicit baseline and ordered next-version steps;
   `tooling/prepare_database.py` owns file backup/connection/journal operations.
 - `open_readonly` never creates/migrates/configures writer PRAGMAs. `open_existing`
-  cannot recreate a missing file; callers close owned connections.
+  cannot recreate a missing file; callers close owned connections. Both report a
+  missing file as `DatabaseMissingError` (a `FileNotFoundError`) naming the resolved
+  path and `hina-prepare-db --yes --offline-confirmed`; other open failures keep
+  SQLite's own error.
+- `hina-bot` exits without a traceback when the database is missing or unprepared,
+  printing that guidance. It never creates the file, so a wrong `DATABASE_PATH` or an
+  unmounted volume cannot silently start on an empty database.
 - Store/AdminDatabase constructors bind prepared connections. Their open_existing
   factories validate the current schema; their create factories create only new
   areas with current DDL. They do not upgrade an existing file.

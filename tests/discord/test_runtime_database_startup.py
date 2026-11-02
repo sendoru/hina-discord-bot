@@ -102,3 +102,59 @@ def test_runtime_startup_capture_and_cleanup(tmp_path, monkeypatch, failure):
         assert db.execute("SELECT value FROM runtime_config_startup WHERE key='model'").fetchone()[
             0
         ] == ('"previous"' if failure else '"new-base"')
+
+
+def _fail_if_started(*args, **kwargs):
+    raise AssertionError("startup must stop before creating runtime resources")
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_runtime_startup_on_missing_database_exits_with_preparation_hint(
+    tmp_path, monkeypatch, nested
+):
+    path = tmp_path / "absent" / "hina.sqlite3" if nested else tmp_path / "hina.sqlite3"
+    before = sorted(tmp_path.iterdir())
+    settings = Settings(discord_token="test", db_path=str(path))
+    monkeypatch.setattr(Settings, "load", classmethod(lambda cls: settings))
+    monkeypatch.setattr(runtime_entry, "create_provider_client", _fail_if_started)
+    with pytest.raises(SystemExit) as caught:
+        runtime_entry.main()
+    message = str(caught.value)
+    assert str(path.resolve()) in message
+    assert "hina-prepare-db --yes --offline-confirmed" in message
+    assert "DATABASE_PATH" in message
+    # Runtime never creates the database or its directory.
+    assert sorted(tmp_path.iterdir()) == before
+
+
+def test_runtime_startup_on_unprepared_database_exits_with_preparation_hint(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "hina.sqlite3"
+    path.touch()
+    settings = Settings(discord_token="test", db_path=str(path))
+    monkeypatch.setattr(Settings, "load", classmethod(lambda cls: settings))
+    monkeypatch.setattr(runtime_entry, "create_provider_client", _fail_if_started)
+    with pytest.raises(SystemExit, match="run hina-prepare-db"):
+        runtime_entry.main()
+    assert path.read_bytes() == b""
+
+
+def test_runtime_startup_without_admin_area_exits_and_closes_store(tmp_path, monkeypatch):
+    path = tmp_path / "hina.sqlite3"
+    prepare_database(path, apply=True, components=("store", "settings"), offline_confirmed=True)
+    settings = Settings(discord_token="test", db_path=str(path))
+    monkeypatch.setattr(Settings, "load", classmethod(lambda cls: settings))
+    monkeypatch.setattr(runtime_entry, "create_provider_client", _fail_if_started)
+    opened = []
+    real_open = Store.open_existing
+
+    def capture(cls, *args, **kwargs):
+        opened.append(real_open(*args, **kwargs))
+        return opened[-1]
+
+    monkeypatch.setattr(Store, "open_existing", classmethod(capture))
+    with pytest.raises(SystemExit, match="run hina-prepare-db"):
+        runtime_entry.main()
+    with pytest.raises(sqlite3.ProgrammingError):
+        opened[0].db.execute("SELECT 1")
