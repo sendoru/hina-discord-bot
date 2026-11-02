@@ -56,7 +56,6 @@ this milestone's adapter has only existing integer lexical scores.
 | `fact_type`, `awareness`, `confidence` | Evidence class, existing knowledge level, review confidence |
 | `time`, `kr_release` | Existing timeline and release provenance |
 | `source_metadata` | Original source type/title/locator/url, separate from storage source |
-| `semantic_text` | Optional reviewed meaning text; fallback is summary/content `search_text` |
 | `evidence_ids` | Linked fact ids used to support reviewed derived claims |
 | `claims` | Optional typed propositions for sufficiency: predicate, canonical direction, value, time scope and polarity |
 
@@ -65,8 +64,9 @@ rows have no review-confidence/source-lane fields: absent values stay `None` / e
 Admin ownership and `world_fact` kind are not synthesized into verified fact evidence.
 Runtime interpretation keeps its existing certainty guard and stays explicit lookup.
 
-Static JSONL accepts optional `usage` (one value or a non-empty unique list), `entities`,
-`semantic_text`, and `evidence_ids`. Old rows need no rewrite or database migration.
+Static JSONL accepts optional `usage` (one value or a non-empty unique list), `entities`
+and `evidence_ids`. Old rows need no rewrite or database migration. The `semantic_text`
+field was only read by the removed semantic retrieval and is now ignored (#463).
 Multiple usages allow a reviewed inference to support both explicit QA and ambient RP
 without duplicating its identity. Defaults are factual for canon (including inference
 and unknown guards) and reaction for community memes. Ambient eligibility requires
