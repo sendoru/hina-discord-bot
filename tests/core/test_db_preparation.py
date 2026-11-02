@@ -10,7 +10,7 @@ import pytest
 from hina_bot.ai.llm import LLM
 from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.config import Settings
-from hina_bot.core.db_connections import open_readonly
+from hina_bot.core.db_connections import DatabaseMissingError, open_existing, open_readonly
 from hina_bot.core.db_schema import (
     SchemaError,
 )
@@ -32,13 +32,19 @@ def signature(path):
 def test_missing_inspection_never_creates_file_or_parent(tmp_path):
     path = tmp_path / "absent" / "한글 ?#.sqlite3"
     assert preparation.main(["--database", str(path), "--dry-run"]) == 0
-    with pytest.raises(sqlite3.OperationalError):
-        open_readonly(path)
-    with pytest.raises(sqlite3.OperationalError):
-        Store.open_existing(str(path))
+    for opener in (open_readonly, open_existing, Store.open_existing):
+        with pytest.raises(DatabaseMissingError, match="hina-prepare-db --yes --offline-confirmed"):
+            opener(str(path))
     assert not path.parent.exists()
     assert preparation.main(["--database", str(path), "--yes"]) == 2
     assert not path.parent.exists()
+
+
+def test_open_failure_on_an_existing_path_is_not_reported_as_missing(tmp_path):
+    # A directory exists but is not a database: keep SQLite's own error.
+    with pytest.raises(sqlite3.OperationalError) as caught:
+        open_existing(tmp_path)
+    assert not isinstance(caught.value, DatabaseMissingError)
 
 
 def test_bootstrap_repeated_prepare_and_open_do_not_rewrite_snapshot(tmp_path):

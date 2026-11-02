@@ -8,6 +8,7 @@ from hina_bot.core.admin_commands import (
     finish_admin_command,
     mark_interrupted_admin_commands,
 )
+from hina_bot.core.db_connections import DatabaseMissingError
 from hina_bot.core.store import Store
 
 
@@ -126,6 +127,6 @@ def test_enqueue_cannot_recreate_a_database_removed_after_path_validation(tmp_pa
         return connect(*args, **kwargs)
 
     monkeypatch.setattr(admin_commands.sqlite3, 'connect', remove_before_open)
-    with pytest.raises(sqlite3.OperationalError):
+    with pytest.raises(DatabaseMissingError):
         enqueue_admin_command(path, request_id='f' * 32, action='note.set')
     assert not path.exists()
