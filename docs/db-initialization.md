@@ -44,33 +44,26 @@ docker compose up -d
 preparer compares the pre-backup data fingerprint under BEGIN IMMEDIATE and
 rechecks the structures/history. A separate process must not restart as a writer.
 
-## Older unversioned databases: a separate offline command
+## Older unversioned databases: convert with an earlier version
 
 Normal preparation refuses old columns/constraints, old personal summaries and
-unconverted chatlog/RAG data. Only the independently invoked converter loads their
-structure analysis and transformation code:
+unconverted chatlog/RAG data, and the error says so. The offline converter
+`hina-upgrade-legacy-db` was removed in #463 together with the JSON import
+(`hina-migrate-runtime`) and the standalone epoch command (`hina-migrate-reset-epochs`):
+the only deployment had already been converted. To open such a file, convert an offline
+copy with a checkout that still has the converter (the last one is commit `ea5f7f7`), then
+run the current `hina-prepare-db`:
 
 ```sh
+git worktree add ../hina-legacy-converter ea5f7f7
+cd ../hina-legacy-converter
 uv run hina-upgrade-legacy-db --database /path/to/offline-copy.sqlite3 --dry-run
 uv run hina-upgrade-legacy-db --database /path/to/offline-copy.sqlite3 --yes --offline-confirmed
 ```
 
-The path must already exist; the converter has no environment-derived default.
-It first inspects read-only, then verifies a private full backup before writing.
-Unknown columns/constraints/indexes, custom views/triggers and incoming foreign
-keys that could be broken by a known table rebuild require manual review. It is
-not a repair tool for arbitrary or corrupt databases.
-
-Supported fixtures retain the known turns optional columns, memory lifecycle/
-evidence/history/proposal upgrades, old personal-summary cursors and chatlog/RAG
-conversion. Existing structured cursors win. The old personal summary is removed
-by its existing conversion contract; its complete original remains in the backup.
-The converter canonicalizes known table/index SQL to the fixed v1 spelling so
-runtime does not need every historical DDL spelling. It preserves every copied
-column value, ID, revision, provenance, timestamp and AUTOINCREMENT high-water,
-including deleted highest IDs. Unsafe dependencies are refused before mutation.
-All conversion/DDL/history writes share one transaction; SQL/commit failure rolls
-back the complete operation. A registered current file is a no-op.
+That checkout's `docs/db-initialization.md` describes the converter's backup,
+refusal and canonicalization contract. It converts to the frozen v1 baseline, so the
+current preparer then applies the later explicit steps.
 
 ## Ownership, startup and evaluation
 
@@ -81,8 +74,6 @@ back the complete operation. A registered current file is a no-op.
   refused conservatively, even if it might be semantically equivalent.
 - `tooling/db_migrations.py`: explicit baseline and ordered next-version steps;
   `tooling/prepare_database.py` owns file backup/connection/journal operations.
-- `tooling/legacy_database.py`: old format analysis/conversion. Runtime and normal
-  preparation never import this module. See [baseline review](db-baseline-v1.md).
 - `open_readonly` never creates/migrates/configures writer PRAGMAs. `open_existing`
   cannot recreate a missing file; callers close owned connections.
 - Store/AdminDatabase constructors bind prepared connections. Their open_existing
@@ -95,11 +86,8 @@ back the complete operation. A registered current file is a no-op.
   constructs Store/admin/provider/LLM/bot, then captures the base startup snapshot.
   Failed initialization closes resources; failed snapshot preserves the old one.
 
-The JSON import command remains `hina-migrate-runtime`; source JSON validation,
-registry transactions, backup, dry-run isolation and content markers are separate
-from schema preparation. JSON dry-run explicitly prepares a missing/current admin
-area on its disposable copy, matching real import without touching the source.
-Legacy admin structures still require the separate converter.
+Runtime instructions and knowledge live only in the admin DB; the old JSON import
+command (`hina-migrate-runtime`) was removed in #463.
 Flush/reset/epoch/analysis maintenance retain their own
 backup and commit contracts. Ordinary opening does not change audit epoch schemas.
 
@@ -139,9 +127,8 @@ docker compose up -d
 ```
 
 The step runs inside the preparer's transaction with the verified backup taken
-first; a failure leaves the file at v1. `hina-upgrade-legacy-db` still converts old
-files to frozen v1 and then applies the same explicit steps, so its output is
-current. Code from before store v2 refuses a v2 file as a future version, so going
+first; a failure leaves the file at v1. The removed `hina-upgrade-legacy-db` (before
+#463) converts old files to frozen v1, after which the same explicit steps apply. Code from before store v2 refuses a v2 file as a future version, so going
 back means restoring the pre-upgrade backup, which drops anything written since.
 
 The upgrade creates an empty table. New extractions annotate their own items; existing

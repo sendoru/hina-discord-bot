@@ -18,8 +18,6 @@ from hina_bot.ai.memory_summary import MemorySummaryMixin
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind, RelationshipEvidence
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.tooling.legacy_database import convert_database
-from hina_bot.tooling.prepare_database import prepare_database
 
 
 def _settings(**overrides):
@@ -351,53 +349,6 @@ def test_persist_shadow_items_never_upgrades_private_source_visibility():
     store.close()
 
 
-
-def test_legacy_summary_cursor_is_migrated_then_table_dropped(tmp_path):
-    path = tmp_path / "legacy-summary.sqlite3"
-    scope = Scope(None, 10, 100)
-    prepare_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
-    store = Store.create(str(path), history_turns=12)
-    _add_turns(store, scope, 101, 6)
-    history = store.history(scope)
-    baseline = history[3]["id"]
-    with store.db:
-        store.db.execute(
-            """CREATE TABLE summaries (
-                   scope TEXT PRIMARY KEY, realm TEXT NOT NULL, user_id TEXT NOT NULL,
-                   name TEXT NOT NULL DEFAULT '', text TEXT NOT NULL,
-                   through_id INTEGER NOT NULL, exportable INTEGER NOT NULL
-               )"""
-        )
-        store.db.execute(
-            """INSERT INTO summaries(
-                   scope,realm,user_id,name,text,through_id,exportable
-               ) VALUES (?,?,?,?,?,?,?)""",
-            (
-                scope.conversation,
-                scope.realm,
-                str(scope.user_id),
-                "User",
-                "기존 요약",
-                baseline,
-                1,
-            ),
-        )
-    store.db.execute("DROP TABLE schema_migrations")
-    store.close()
-
-    convert_database(path, apply=True, offline_confirmed=True, components=('store', 'settings'))
-    migrated = Store.create(str(path), history_turns=12)
-    try:
-        assert migrated.memory_extraction_cursor(scope) == baseline
-        assert [
-            row["message_id"]
-            for row in migrated.pending_memory_extraction(scope)
-        ] == ["105", "106"]
-        assert migrated.db.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='summaries'"
-        ).fetchone() is None
-    finally:
-        migrated.close()
 
 @pytest.mark.asyncio
 async def test_structured_extraction_runs_at_four_turns():
