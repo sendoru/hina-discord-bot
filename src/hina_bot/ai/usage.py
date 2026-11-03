@@ -566,6 +566,8 @@ class UsageLogger:
             "request_input_chars", "request_chars_total", "visible_input_chars",
             "rag_mode", "rag_selected_context",
             "rag_full_items", "rag_full_chars", "rag_full_audience_excluded",
+            "rag_tool_calls", "rag_tool_query_count", "rag_tool_result_items",
+            "rag_tool_result_chars", "rag_tool_result_ids", "rag_tool_elapsed_ms",
         }
         row = {
             "at": datetime.now(UTC).isoformat(),
