@@ -6,6 +6,22 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Added
 
+- 장기 기억 추출이 사용자가 올린 사진을 보조 입력으로 받을 수 있게 했습니다(#472, `MEMORY_VISUAL_INPUT=on`,
+  기본 `off`). 추출은 4턴 배치·stale sweep·`hina-flush-memory`·재시도로 나중에 돌아 그때는 이미지를 얻을 수
+  없으므로, 본인이 올린 현재 메시지의 이미지 첨부(본문이 있는 턴만)를 DB와 같은 폴더의 `visual_pending/`에
+  추출이 끝날 때까지만 임시 보관합니다. 사진은 사용자가 말한 대상의 종류·외형·제목을 보강하는 데만 쓰이며
+  사진만으로 기억을 만들지 않습니다: 사진을 근거로 쓴 항목은 `visual_refs`로 밝히고 사용자 발화에서 옮긴
+  `evidence`가 없으면 거부되며, 통과한 항목에는 `visual_grounded` lint 표시와 confidence 0.75 상한이 붙습니다.
+  사진 때문에 추출 요청이 실패하면 텍스트만으로 한 번 다시 보냅니다. 임시 보관은 `/memory clear`, `/memory purge`,
+  대시보드 purge, 오프라인 `hina-reset-conversation`·`hina-reset-analysis-data`, 메시지 삭제, 추출 커밋, 만료,
+  시작·주기 sweep에서 지워지고 DB 스키마는 바뀌지 않습니다. 용량은 `MEMORY_VISUAL_PENDING_MAX_MB`(기본 256)와
+  사용자당 8장/24 MiB를 넘으면 가장 오래 쓰이지 않은 사진부터 퇴출합니다. 같은 이미지가 메모리 모델에 한 번 더
+  전송되므로 메모리 모델이 이미지를 받을 수 있어야 하고, 켜기 전에 `hina-memory-extraction-eval`의
+  `extract_visual_*` 사례(`--image-dir`, 사진은 운영자가 준비)로 기준선과 비교하길 권합니다.
+  `hina-memory-extraction-eval`은 사례 턴의 `images`, `visual_grounded`·`confidence_max` 제약을 지원하고 사진이
+  없는 사례는 `skipped`로 기록합니다. `hina-memory-report`는 전달한 이미지 수·바이트, `visual_grounded` 항목 수,
+  텍스트 폴백 실행 수를 집계합니다. 자세한 범위는 `docs/vision-input.md`를 참고하세요.
+
 - `hina-memory-response-eval`을 추가했습니다(#457 운영, #449 §10). 가상 사례의 기억을 심고 같은 턴을
   런타임 답변 경로로 `PERSONAL_MEMORY_READ_MODE`별(기본 `legacy`, `tiered`)로 보낸 뒤, judge 모델이
   무관한 턴의 profile·notes 선제 언급, 경계(`directives`·`quiet_boundaries`) 언급·암시, `just_passed`·
@@ -34,6 +50,7 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Changed
 
+- `/memory clear`의 완료 안내가 추출을 기다리던 임시 보관 사진도 삭제했음을 알려 줍니다.
 - `RAG_MODE`의 시작 기본값을 `v1`에서 `full`로 바꿨습니다(#463). 운영에서 쓰는 모드와 맞춘 것이며, DB
   override가 있으면 그 값을 그대로 씁니다. `v1`은 정적 lore가 커질 때의 비상 경로로 남습니다.
 - 사용자 이름 해석은 별도 preflight resolver 대신 일반 답변의 `get_current_channel_members`

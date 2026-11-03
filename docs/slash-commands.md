@@ -23,7 +23,7 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 | `/memory remove item_id:<ID> confirm:true` | 내 활성 기억 하나를 `retracted`로 철회 (원본 및 감사 이력은 유지) |
 | `/memory preference value:normal\|read_only\|off` | 사용자별 전역 기억 읽기·쓰기 동의 설정 |
 | `/memory status` | 개인 설정과 관리자 정책의 교집합인 실제 읽기·쓰기 상태 확인 |
-| `/memory clear confirm:true` | 해당 서버 또는 DM에서 자동으로 쌓인 내 대화 기록·기억 삭제 |
+| `/memory clear confirm:true` | 해당 서버 또는 DM에서 자동으로 쌓인 내 대화 기록·기억과, 추출을 기다리던 임시 보관 사진 삭제 |
 
 모든 명령 응답은 실행한 사용자에게만 표시됩니다. 개인 설정은 Discord 사용자 ID 기준으로
 모든 서버와 DM에 적용되며, 기존 관리자 전역/서버/채널 설정에서 금지한 권한을 되살릴 수 없습니다.
@@ -100,8 +100,9 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 `/state show`를 사용합니다. 여러 서버·채널의 직접 설정과 전체 상속 결과는
 Dashboard `/state`에서 확인합니다.
 
-`/memory purge`는 자동 대화 기록·요약·공유 요약만 범위에 맞게 삭제합니다. 개인/서버 수동 메모와
-memory/chatlog 설정 자체는 유지합니다.
+`/memory purge`는 자동 대화 기록·요약·공유 요약과, 메모리 추출을 기다리며 임시 보관 중인 사진
+([vision input](vision-input.md#장기-기억-추출용-임시-보관-memory_visual_input))만 범위에 맞게
+삭제합니다. 개인/서버 수동 메모와 memory/chatlog 설정 자체는 유지합니다.
 
 ## 현재 컨텍스트 상태 조회
 
