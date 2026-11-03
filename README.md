@@ -38,6 +38,24 @@ uv run hina-prepare-db --yes --offline-confirmed
 uv run hina-bot
 ```
 
+## CLI 명령어 도움말
+
+등록된 관리·평가 명령어를 확인하려면 통합 CLI를 사용하세요.
+
+```bash
+uv run hina                         # 기본 사용법
+uv run hina commands                # 그룹별 전체 명령어
+uv run hina help env-export         # 환경변수 추출 명령의 상세 옵션
+uv run hina help reset-conversation # 위험한 작업의 도움말 조회
+```
+
+기존의 `hina-*` 명령어들은 그대로 동작하며, 통합 CLI는 명령어를 실행하지 않고
+목록이나 도움말만 보여줍니다. 봇 및 대시보드는 자체 `--help`를 지원하지 않아
+간단한 실행 안내만 제공합니다. `[CAUTION]`이 표시된 명령어는 실제 실행할 때
+파일이나 DB 내용을 변경할 수 있습니다. 통합 CLI의 자체 출력은 폰트와 로케일 호환성을
+고려해 영어 및 ASCII 문자만 사용합니다. 다만 기존 명령어에 전달한 `--help`의 내용은
+개별 명령어의 원래 언어를 따릅니다.
+
 DB 준비는 최초 설치/스키마 업그레이드 때 명시적으로 실행합니다.
 조회·dry-run·유지보수는 봇 시작 설정 스냅샷을 덮어쓰지 않습니다.
 [DB 초기화·이전·복구 절차](docs/db-initialization.md)를 참고하세요. 구형 비버전 DB는
