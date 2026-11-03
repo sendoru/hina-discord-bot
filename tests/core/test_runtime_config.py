@@ -119,7 +119,7 @@ def test_env_example_lists_all_runtime_setting_names():
     template = (Path(__file__).resolve().parents[2] / ".env.example").read_text(
         encoding="utf-8"
     )
-    listed = set(re.findall(r"(?m)^\\s*#?\\s*([A-Z][A-Z0-9_]*)=", template))
+    listed = set(re.findall(r"(?m)^\s*#?\s*([A-Z][A-Z0-9_]*)=", template))
     missing = {spec.env_name for spec in RUNTIME_SETTING_SPECS.values()} - listed
     assert not missing, f"Missing runtime environment variables in .env.example: {sorted(missing)}"
 
@@ -130,11 +130,11 @@ def test_settings_loads_output_repair_from_dotenv_and_runtime_reset(monkeypatch,
                  "OUTPUT_REPAIR_MODEL", "OUTPUT_REPAIR_TIMEOUT_SECONDS"):
         monkeypatch.delenv(name, raising=False)
     (tmp_path / ".env").write_text(
-        "DISCORD_TOKEN=token\\n"
-        "OPENAI_API_KEY=key\\n"
-        "OUTPUT_REPAIR_MODE=shadow\\n"
-        "OUTPUT_REPAIR_MODEL=repair-model\\n"
-        "OUTPUT_REPAIR_TIMEOUT_SECONDS=2.5\\n",
+        "DISCORD_TOKEN=token\n"
+        "OPENAI_API_KEY=key\n"
+        "OUTPUT_REPAIR_MODE=shadow\n"
+        "OUTPUT_REPAIR_MODEL=repair-model\n"
+        "OUTPUT_REPAIR_TIMEOUT_SECONDS=2.5\n",
         encoding="utf-8",
     )
 
