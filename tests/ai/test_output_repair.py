@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hina_bot.ai import output_repair
-from hina_bot.ai.output_repair import OutputRepair, needs_output_repair, strip_stray_id_markers
+from hina_bot.ai.output_repair import (
+    OutputRepair, needs_output_repair, normalize_stray_escapes, strip_stray_id_markers,
+)
 from hina_bot.core.config import Settings
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
@@ -57,6 +59,7 @@ def test_preflight_only_routes_probable_format_errors():
         "확인해 [11111111111111111111111111111111:22222222222222222222222222222222]"
     )
     assert needs_output_repair(r"안녕\n다음 줄")
+    assert needs_output_repair(r"안녕\t다음 칸")
     assert needs_output_repair("정말, 가만히 있<b></b>어주니까")
     assert needs_output_repair("안녕 <strong>친구</strong>")
     assert needs_output_repair('인사 <span class="emphasis">안녕</span>')
@@ -109,7 +112,7 @@ async def test_active_uses_fast_model_no_original_context_or_images(original, re
     assert kwargs["thinking_level"] == "minimal"
     assert kwargs["store"] is False
     assert "tools" not in kwargs
-    assert kwargs["deadline_seconds"] <= 3
+    assert kwargs["deadline_seconds"] == pytest.approx(3.0)
     assert usage.events[-1][1]["status"] == status
     assert original not in str(usage.events)
     assert reply not in str(usage.events)
@@ -206,11 +209,19 @@ async def test_runtime_settings_can_change_mode_and_model_without_restart():
     try:
         assert settings.output_repair_mode == "off"
         assert settings.output_repair_model == "auto"
+        assert settings.output_repair_timeout_seconds == pytest.approx(3.0)
         assert await repair.apply("좋아 [1]") == "좋아 [1]"
         settings.set_text("output_repair_mode", "active")
         settings.set_text("output_repair_model", "chosen-model")
+        settings.set_text("output_repair_timeout_seconds", "0.5")
         assert await repair.apply("좋아 [1]") == "좋아"
         assert usage.calls[0][2]["model"] == "chosen-model"
+        assert usage.calls[0][2]["deadline_seconds"] == pytest.approx(0.5)
+        settings.set_text("OUTPUT_REPAIR_TIMEOUT_SECONDS", "7.25")
+        assert await repair.apply("좋아 [1]") == "좋아"
+        assert usage.calls[1][2]["deadline_seconds"] == pytest.approx(7.25)
+        settings.reset("output_repair_timeout_seconds")
+        assert settings.output_repair_timeout_seconds == pytest.approx(3.0)
         with pytest.raises(ValueError):
             settings.set_text("output_repair_mode", "invalid")
         assert settings.output_repair_mode == "active"
@@ -306,6 +317,59 @@ async def test_answer_pipeline_applies_repair_before_persisted_discord_reply(raw
     finally:
         await llm.close()
         store.close()
+
+
+
+@pytest.mark.parametrize(("raw", "cleaned", "count"), [
+    (r"안녕\n다음 줄", "안녕\n다음 줄", 1),
+    (r"첫 줄\r\n둘째 줄", "첫 줄\n둘째 줄", 1),
+    (r"안녕\r다음\t칸", "안녕\n다음\t칸", 2),
+    (r"안녕\n\n두 줄", "안녕\n\n두 줄", 2),
+])
+def test_escape_fallback_decodes_stray_whitespace(raw, cleaned, count):
+    assert normalize_stray_escapes(raw) == (cleaned, count)
+    assert normalize_stray_escapes(cleaned) == (cleaned, 0)
+
+
+def test_escape_fallback_preserves_code_urls_paths_and_literal_examples():
+    text = r'코드 `\n` 경로 C:\new\test.txt URL https://example.com/a\n 예시 "\n" 및 \\n'
+    assert normalize_stray_escapes(text) == (text, 0)
+    fenced = "예시 ```txt\n\\n\n```는 코드야"
+    assert normalize_stray_escapes(fenced) == (fenced, 0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("status", "reply", "error", "event_status"), [
+    ("completed", "", TimeoutError("deadline"), "failed"),
+    ("incomplete", "안녕", None, "non_completed"),
+    ("completed", "", None, "empty"),
+    ("completed", r"안녕\n다음 줄", None, "unchanged"),
+])
+async def test_active_escape_fallback_cleans_failed_or_unchanged_repair(
+    status, reply, error, event_status,
+):
+    repair, _, usage = make_repair(reply=reply)
+    usage.status = status
+    usage.error = error
+    assert await repair.apply(r"안녕\n다음 줄") == "안녕\n다음 줄"
+    assert [(op, fields["status"]) for op, fields in usage.events] == [
+        ("output.repair", event_status),
+        ("output.escape_fallback", "applied"),
+    ]
+    assert usage.events[-1][1] == {
+        "status": "applied", "output_repair_mode": "active",
+        "output_escapes_normalized": 1,
+    }
+    await repair.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["off", "shadow"])
+async def test_off_and_shadow_do_not_unescape_output(mode):
+    repair, _, usage = make_repair(mode=mode, reply="안녕\n다음 줄")
+    assert await repair.apply(r"안녕\n다음 줄") == r"안녕\n다음 줄"
+    await repair.close()
+    assert all(op != "output.escape_fallback" for op, _ in usage.events)
 
 
 MARKER_REPLY = (
@@ -408,7 +472,7 @@ async def test_off_and_shadow_keep_their_meaning(mode):
 
 
 @pytest.mark.asyncio
-async def test_answer_pipeline_strips_markers_after_repair_deadline(monkeypatch):
+async def test_answer_pipeline_strips_markers_after_repair_deadline():
     """Integration: the repair request misses its deadline, yet the answer the bot
     sends to Discord no longer carries the marker."""
     import json
@@ -420,7 +484,6 @@ async def test_answer_pipeline_strips_markers_after_repair_deadline(monkeypatch)
     from hina_bot.core.routing import Scope, chunks
     from hina_bot.discord.output_safety import neutralize_mentions
 
-    monkeypatch.setattr(output_repair, "_TIMEOUT_SECONDS", 0.05)
     requests = []
 
     async def handler(request):
@@ -444,6 +507,7 @@ async def test_answer_pipeline_strips_markers_after_repair_deadline(monkeypatch)
         discord_token="token", openai_api_key="test", provider="openai",
         model="answer-model", fast_model="small-model",
         output_repair_mode="active", output_repair_model="auto",
+        output_repair_timeout_seconds=0.25,
         usage_log_path="", db_path=":memory:", chat_web_search=False,
     )
     llm = LLM(settings, client=client)
