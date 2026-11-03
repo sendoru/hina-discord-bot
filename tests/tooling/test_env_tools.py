@@ -9,8 +9,10 @@ import pytest
 from hina_bot.core.config import Settings
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
-from hina_bot.tooling.env_export import export_env, main as export_main
-from hina_bot.tooling.env_normalize import main as normalize_main, normalize_env
+from hina_bot.tooling.env_export import export_env
+from hina_bot.tooling.env_export import main as export_main
+from hina_bot.tooling.env_normalize import main as normalize_main
+from hina_bot.tooling.env_normalize import normalize_env
 from hina_bot.tooling.env_template import parse_template, parse_values, render_template
 
 ROOT = Path(__file__).resolve().parents[2]
