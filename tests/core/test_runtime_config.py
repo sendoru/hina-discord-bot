@@ -605,12 +605,13 @@ def test_runtime_scalar_specs_expose_editor_constraints():
     assert stale.minimum == 60
     assert stale.maximum == 7 * 24 * 60 * 60
 
-def test_rag_mode_defaults_to_full_with_only_off_v1_and_full():
+def test_rag_mode_defaults_to_full_and_accepts_tool_mode():
     store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(_base(), store)
         assert settings.rag_mode == "full"
-        assert set(RUNTIME_SETTING_SPECS["rag_mode"].choices) == {"off", "v1", "full"}
+        assert set(RUNTIME_SETTING_SPECS["rag_mode"].choices) == {"off", "v1", "full", "tool"}
+        assert settings.set_text("RAG_MODE", "tool") == "tool"
         assert settings.set_text("RAG_MODE", "v1") == "v1"
         for removed in ("shadow", "v2"):
             with pytest.raises(ValueError):
@@ -648,6 +649,8 @@ def test_settings_load_rag_mode_defaults_to_full_and_ignores_old_alias(
 
     monkeypatch.setenv("RAG_MODE", "v1")
     assert Settings.load().rag_mode == "v1"
+    monkeypatch.setenv("RAG_MODE", "tool")
+    assert Settings.load().rag_mode == "tool"
 
     for removed in ("shadow", "v2"):
         monkeypatch.setenv("RAG_MODE", removed)
