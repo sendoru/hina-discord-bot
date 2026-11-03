@@ -86,3 +86,74 @@ def test_empty_match_and_budget_never_return_unrelated_or_oversized_rows():
     assert index.search(["고유 검색어"], max_chars=50)["results"] == []
     with pytest.raises(ValueError):
         index.search(["고유 검색어"], limit=6)
+
+
+def test_rare_subject_beats_common_name_in_rank():
+    rows = [
+        candidate("canon.generic." + str(i), "히나는 평범한 업무를 한다.",
+                  subjects=("히나",), keywords=("히나",))
+        for i in range(24)
+    ]
+    rows.append(candidate(
+        "canon.special", "아코는 선도부 행정 업무를 담당한다.",
+        subjects=("히나", "아코"), keywords=("아코", "행정 업무"),
+    ))
+    results = LoreKeywordIndex(rows).search(["히나 아코 행정 업무"])
+    assert results["results"][0]["id"] == "canon.special"
+
+
+def test_korean_particles_spacing_and_compounds_preserve_recall():
+    index = LoreKeywordIndex([
+        candidate("canon.school", "게헨나 학원의 선도부장이 담당한다.",
+                  subjects=("게헨나 학원",), keywords=("선도부장",)),
+        candidate("canon.staff", "아코는 선도부 행정관이다.",
+                  subjects=("아코",), keywords=("선도부 행정관",)),
+    ])
+    assert index.search(["게 헨나 학원에서 선도 부장의 일"])[
+        "results"][0]["id"] == "canon.school"
+    assert index.search(["아코랑 선도부 행정관으로"])[
+        "results"][0]["id"] == "canon.staff"
+
+
+def test_multiple_queries_fuse_and_deduplicate_overlapping_candidates():
+    index = LoreKeywordIndex([
+        candidate("canon.alpha", "첫째 인물 설정", subjects=("첫째 인물",)),
+        candidate("canon.beta", "둘째 인물 설정", subjects=("둘째 인물",)),
+    ])
+    values = index.search(["첫째 인물", "둘째 인물", "첫째 인물"])
+    ids = [row["id"] for row in values["results"]]
+    assert "canon.alpha" in ids and "canon.beta" in ids
+    assert len(ids) == len(set(ids))
+
+
+def test_real_packaged_lore_queries_retrieve_reviewed_entries():
+    # Actual corpus, no new JSONL metadata/aliases and no embedding calls.
+    from hina_bot.core.lore import LoreIndex
+
+    index = LoreKeywordIndex(LoreIndex.load().candidates(include_community=False))
+    queries = (
+        (["아코 선도부 선임 행정관"], "canon.ako.role_in_gehenna_and_relationship_with_hina"),
+        (["마코토 만마전 의장"], "canon.gehenna.makoto.position"),
+        (["호시노 유메 죽음 사고"], "canon.hina.understands_yume_death_not_hoshino_fault_vol1_ch3"),
+    )
+    for text, expected in queries:
+        results = index.search(text, limit=5)
+        assert expected in [item["id"] for item in results["results"]], text
+
+
+def test_unrelated_query_does_not_return_generic_gram_only_hits():
+    index = LoreKeywordIndex([
+        candidate("canon.one", "선도부는 공식 조직입니다.",
+                  subjects=("선도부",)),
+    ])
+    assert index.search(["기하학의 다변수 적분"])["results"] == []
+
+
+def test_total_serialized_budget_includes_response_envelope():
+    index = LoreKeywordIndex([
+        candidate("canon.one", "기록", subjects=("기록",)),
+    ])
+    response = index.search(["기록"], max_chars=150)
+    assert len(__import__("json").dumps(
+        response, ensure_ascii=False, separators=(",", ":"),
+    )) <= 150
