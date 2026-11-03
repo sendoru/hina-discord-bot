@@ -160,6 +160,11 @@ VISION_MAX_STICKERS=8
 개별 이미지 5 MiB, 한 호출 전체 12 MiB의 byte limit도 별도로 적용됩니다. 파일 byte 크기와 실제
 이미지 token 비용은 동일하지 않으며 provider/model과 이미지 크기에 따라 달라질 수 있습니다.
 
+선택 기능으로 `MEMORY_VISUAL_INPUT=on`이면 본인이 올린 사진을 장기 기억 추출이 끝날 때까지만 디스크에
+임시 보관해 추출 요청에 함께 보냅니다(기본 `off`). 사진은 사용자가 말한 대상의 속성을 보강할 뿐 사진만으로
+기억을 만들지 않으며, 추출 후·`/memory clear`·메시지 삭제·만료 때 지워집니다.
+자세한 범위와 한도는 [docs/vision-input.md](docs/vision-input.md#장기-기억-추출용-임시-보관-memory_visual_input)를 참고하세요.
+
 현재 지원하지 않는 범위:
 
 - Discord embed와 일반 URL을 따라가 이미지로 해석
