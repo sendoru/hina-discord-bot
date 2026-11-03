@@ -7,10 +7,10 @@ screenshot); they are untrusted data and never a standalone source of a memory.
 
 from __future__ import annotations
 
-import base64
 import json
 from collections.abc import Iterable
-from dataclasses import dataclass
+
+from hina_bot.core.pending_visuals import MemoryVisual
 
 # One extraction call covers a four-turn batch. Keep the request small enough for inline
 # image upload and bound the token cost of a batch that happens to contain photos.
@@ -20,20 +20,6 @@ MEMORY_VISUAL_MAX_BYTES = 8 * 1024 * 1024
 MEMORY_VISUAL_CONFIDENCE_CAP = 0.75
 _SUPPORTED_MIME = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 _METADATA_LABEL = "Untrusted visual evidence metadata(JSON):"
-
-
-@dataclass(frozen=True)
-class MemoryVisual:
-    """One image attached to a pending turn, addressed by that turn's message id."""
-
-    message_id: str
-    index: int
-    mime_type: str
-    data: bytes
-
-    def data_url(self) -> str:
-        encoded = base64.b64encode(self.data).decode("ascii")
-        return f"data:{self.mime_type};base64,{encoded}"
 
 
 def select_memory_visuals(

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import sqlite3
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
@@ -21,9 +22,12 @@ from .memory_items import (
     RelationshipEvidence,
 )
 from .memory_repository import MemoryRepository
+from .pending_visuals import NullPendingVisualStore, PendingVisualStore
 from .routing import Scope
 from .scope_overrides import memory_mode_capabilities, resolve_scope_chain
 from .settings_repository import SettingsRepository
+
+log = logging.getLogger("hina")
 
 
 class SharedSummaryConflict(RuntimeError):
@@ -41,11 +45,21 @@ class Store:
     live in repositories; batch commits and cross-table purges remain coordinated here.
     """
 
-    def __init__(self, db: sqlite3.Connection, history_turns: int = 12):
+    def __init__(
+        self,
+        db: sqlite3.Connection,
+        history_turns: int = 12,
+        pending_visuals: PendingVisualStore | None = None,
+    ):
         """Take ownership of an already prepared connection; performs no SQL."""
         if not isinstance(db, sqlite3.Connection):
             raise TypeError("Use open_existing() or create() with a path")
         self.db = db
+        # User photos wait here for memory extraction; every deletion path below must
+        # also clear them (#472). The default stores nothing.
+        self.pending_visuals = (
+            pending_visuals if pending_visuals is not None else NullPendingVisualStore()
+        )
         self.settings = SettingsRepository(db)
         self._conversations = ConversationRepository(db, history_turns)
         self._atomic_memory_batch_open = False
@@ -597,6 +611,34 @@ class Store:
                 "DELETE FROM memory_reconciliation_proposals WHERE origin_realm=? AND user_id=?",
                 (scope.realm, str(scope.user_id)),
             )
+        self._discard_pending_visuals("discard_user", scope.realm, str(scope.user_id))
+
+    def _discard_pending_visuals(self, operation: str, *args) -> None:
+        """Clear pending photos after the database commit; a file error never undoes a purge.
+
+        Anything this misses stays unreachable: the sweep deletes images whose turn row is
+        gone, so a failure here only delays the cleanup.
+        """
+        try:
+            getattr(self.pending_visuals, operation)(*args)
+        except Exception as exc:  # noqa: BLE001 - cleanup must not fail a committed purge
+            log.warning("Pending visual cleanup failed (%s, op=%s)", type(exc).__name__, operation)
+
+    def discard_pending_visuals_for_message(self, channel_id, message_id) -> None:
+        """Drop the pending photos of one Discord message its author deleted."""
+        try:
+            row = self.db.execute(
+                "SELECT realm,user_id FROM turns WHERE message_id=? AND scope LIKE ?",
+                (str(message_id), f"%:channel:{int(channel_id)}:user:%"),
+            ).fetchone()
+        except (sqlite3.Error, ValueError) as exc:
+            log.warning("Pending visual lookup failed (%s)", type(exc).__name__)
+            return
+        if row is not None:
+            self._discard_pending_visuals(
+                "discard_messages", row["realm"], str(channel_id), row["user_id"],
+                [str(message_id)],
+            )
 
     @staticmethod
     def _rowcount(cursor) -> int:
@@ -635,6 +677,7 @@ class Store:
                 (scope.realm, str(scope.channel_id)),
             )
             deleted += self._rowcount(cursor)
+        self._discard_pending_visuals("discard_channel", scope.realm, str(scope.channel_id))
         return deleted
 
     def purge_realm_memory(self, scope: Scope) -> int:
@@ -667,6 +710,7 @@ class Store:
                 (scope.realm,),
             )
             deleted += self._rowcount(cursor)
+        self._discard_pending_visuals("discard_realm", scope.realm)
         return deleted
 
     def purge_all_memory(self) -> int:
@@ -685,6 +729,7 @@ class Store:
             ):
                 cursor = self.db.execute(f"DELETE FROM {table}")
                 deleted += self._rowcount(cursor)
+        self._discard_pending_visuals("discard_all")
         return deleted
 
     def shared_summary(self, scope):
