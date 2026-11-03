@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import metadata
-from typing import Mapping
 
 DISTRIBUTION = "hina-discord-bot"
 CATEGORY_ORDER = (
