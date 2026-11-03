@@ -1,7 +1,9 @@
 # Vision input
 
 비전 입력은 Discord 대화에서 실제로 제공된 이미지를 현재 `answer()` 요청에만 붙이는 입력 확장입니다.
-이미지 bytes나 base64를 SQLite 장기 기억 또는 recent chatlog에 저장하지 않습니다.
+이미지 bytes나 base64를 SQLite 장기 기억 또는 recent chatlog에 저장하지 않습니다. 유일한 예외는
+`MEMORY_VISUAL_INPUT=on`일 때 본인이 올린 사진을 **메모리 추출이 끝날 때까지만** 디스크에 임시로
+두는 [장기 기억 추출용 임시 보관](#장기-기억-추출용-임시-보관-memory_visual_input)이며 기본값은 꺼짐입니다.
 
 ## 지원 범위
 
@@ -110,11 +112,66 @@ provider adapter
 
 ## 보관 범위
 
-이미지 bytes는 `ContextVar`를 통해 현재 `answer()` 요청에만 전달합니다. 장기 기억 요약과 공유 기억
-요약에는 넣지 않습니다. 이미지 원본·base64·Discord CDN URL도 기억용 데이터로 저장하지 않습니다.
+이미지 bytes는 `ContextVar`를 통해 현재 `answer()` 요청에 전달합니다. 공유 기억 요약에는 넣지
+않습니다. 이미지 원본·base64·Discord CDN URL은 SQLite나 recent chatlog에 저장하지 않고, 장기 기억
+항목(`memory_items`)에도 이미지 자체나 URL이 들어가지 않습니다. 예외는 아래 임시 보관뿐입니다.
 
 최근 이미지를 사용할 때도 과거 이미지 bytes를 캐시하는 대신 Discord의 제한된 같은 채널 history에서
 현재 요청에 필요한 항목만 다시 읽습니다. 따라서 봇 프로세스가 이미지를 장기 보관하지 않습니다.
+
+## 장기 기억 추출용 임시 보관 (`MEMORY_VISUAL_INPUT`)
+
+사진 속 종류·외형·제목은 사용자의 말만으로는 기억에 남지 않습니다(예: "우리 애 오늘 미용했어"와
+강아지 사진). 구조화 기억 추출은 4턴 배치, stale sweep(기본 8시간), `hina-flush-memory`, 실패 후
+재시도로 **나중에** 돌기 때문에, 그때는 이미지를 다시 얻을 수 없습니다. 그래서 `MEMORY_VISUAL_INPUT=on`
+이면 사진을 추출이 끝날 때까지만 디스크에 두었다가 추출 요청에 함께 보내고 지웁니다. 기본값은 `off`이며
+시작 시에만 읽습니다.
+
+**무엇을 보관하나**
+
+- 본인이 올린 **현재 메시지의 이미지 첨부**만. 커스텀 이모지, 스티커, 답장 대상·최근 채널의 이미지,
+  다른 사람이 올린 사진은 보관하지 않습니다.
+- 사용자 발화가 있는 턴만. 사진만 보내고 말이 없으면 기억의 근거가 될 발화가 없어 보관하지 않습니다.
+- 메모리 쓰기가 허용된 턴만 (`/memory mode`가 쓰기를 막으면 보관하지 않음).
+- 한 턴 최대 2장, 한 장 5 MiB.
+
+**어디에, 얼마나**
+
+- `DATABASE_PATH`와 같은 폴더의 `visual_pending/{guild|dm}-{id}/{채널}/{사용자}/{메시지}.{n}.{확장자}`.
+  Docker에서는 `data/` 볼륨 안입니다. 폴더는 0700, 파일은 0600이고 id는 숫자만 경로에 들어갑니다.
+- 전체 상한 `MEMORY_VISUAL_PENDING_MAX_MB`(기본 256, 16~4096)와 사용자당 상한(8장/24 MiB)을 넘으면
+  **가장 오래 쓰이지 않은 사진부터** 지웁니다(읽을 때 사용 시각이 갱신됨). 사진이 지워진 턴은 텍스트만으로
+  추출됩니다.
+- SQLite에는 사진도 경로도 기록하지 않습니다. DB 백업(`maintenance_backup`)에도 포함되지 않습니다.
+
+**언제 지워지나**
+
+- 그 턴이 포함된 추출 배치가 커밋된 직후(보낸 사진과 보내지 못한 사진 모두, 기능이 꺼져 있어도).
+  실패하거나 응답이 무효이면 재시도를 위해 남깁니다.
+- 만료: `max(24시간, STRUCTURED_MEMORY_STALE_AFTER_SECONDS + 2 × STRUCTURED_MEMORY_SWEEP_INTERVAL_SECONDS)`.
+  추출 대기 중인 한 턴짜리 tail은 영영 추출되지 않을 수 있어서 만료가 필요합니다.
+- 사용자가 `/memory clear`로 기억을 지울 때(해당 서버·DM의 본인 사진), 관리자의 `/memory purge`(채널·서버)와
+  대시보드 전역 purge, 오프라인 `hina-reset-conversation`·`hina-reset-analysis-data` 실행 후.
+- 사용자가 그 메시지를 삭제할 때(단일·일괄). 메시지 **편집**은 처리하지 않습니다. 링크 임베드가 풀릴 때도
+  Discord가 편집 이벤트를 보내서 첨부가 사라졌다는 뜻이 아니기 때문입니다.
+- 안전망: 봇 시작 때와 stale sweep 주기마다, 더는 추출을 기다리지 않는 턴의 사진을 지웁니다.
+  어떤 삭제 경로가 실패해도 사진이 영구히 남지 않습니다. 이 정리는 기능이 꺼져 있어도 동작합니다.
+
+**추출에서 어떻게 쓰이나**
+
+- 한 요청에 최근 4장/8 MiB까지, 각 이미지에 그 턴의 `message_id` 라벨을 붙여 보냅니다. 같은 이미지가
+  답변 모델에 이어 **메모리 모델에 한 번 더** 전송되므로, 메모리 모델도 이미지를 받을 수 있어야 합니다.
+- 이미지와 그 안의 글자는 신뢰할 수 없는 데이터입니다. 사용자가 직접 말한 대상(“우리 애”, “이 게임”)의
+  속성을 보강하는 데만 쓰고, **사진만으로 새 기억을 만들지 않습니다.** 사진을 근거로 쓴 항목은
+  `visual_refs`에 해당 턴을 밝혀야 하고, 그 항목은 사용자 발화에서 그대로 옮긴 `evidence`가 없으면
+  거부됩니다. 통과한 항목은 `visual_grounded` 표시와 confidence 0.75 상한이 붙고, 내용에는 “사진상 …로
+  보임”처럼 귀속이 남습니다.
+- 사진 때문에 요청이 실패하거나 빈 응답이 오면 같은 요청을 텍스트만으로 한 번 다시 보냅니다. 사진은
+  기억을 풍부하게 할 뿐 막지 않으며, 이때의 응답은 시각 근거로 인정하지 않습니다.
+- 사진 보관·삭제와 추출은 content-free 이벤트로만 남습니다: `memory.visual_stored`(저장 수·제안 수·퇴출 수),
+  `memory.visual_store_failed`, `memory.visual_swept`, `memory.visual_sweep_failed`, 그리고
+  `memory.shadow_extraction`의 `visual_images`·`visual_bytes`·`visual_fallback`·`visual_grounded_items`.
+  `hina-memory-report`가 합계를 집계합니다.
 
 ## Provider 동작
 
@@ -225,8 +282,8 @@ data/hina_references/
 - PDF/문서 등 이미지가 아닌 파일 해석
 - Lottie 스티커 렌더링
 - 최근 메시지의 커스텀 이모지를 passive context로 재다운로드
-- 이미지 원본/base64의 SQLite 또는 메모리 장기 캐시
-- 이미지 caption을 생성해 장기 기억에 자동 저장
+- 이미지 원본/base64의 SQLite 저장과 추출이 끝난 뒤의 장기 보관 (임시 보관 규칙은 위 절 참고)
+- 이미지 caption을 따로 생성해 저장 (사진은 추출 요청에 직접 전달하며, 사진만으로 기억을 만들지 않음)
 - 이미지 생성·편집
 - 커스텀 이모지별 사전 caption 캐시
 
@@ -254,3 +311,8 @@ GIF는 `image/gif` 그대로 provider에 전달합니다. 애니메이션의 여
 - OpenAI, Gemini, OpenRouter의 실제 운영 provider/model 조합별 smoke test
 - usage/error 로그에 이미지 원본/base64/Discord CDN URL이 남지 않음
 - 이미지 원본이 SQLite memory 또는 recent chatlog에 저장되지 않음
+- `MEMORY_VISUAL_INPUT=off`(기본)에서는 `visual_pending/`이 만들어지지 않음
+- 본인 현재 메시지의 첨부만, 본문이 있을 때만 임시 보관됨 (이모지·스티커·답장·타인 사진은 제외)
+- 추출 배치 커밋 후, `/memory clear`·purge·reset 후, 메시지 삭제 후, 만료 후 사진이 지워짐
+- 사진만으로는 기억이 만들어지지 않고, 사진 유래 항목에는 `visual_grounded`와 confidence 상한이 붙음
+- 사진 요청이 실패하면 텍스트만으로 재시도되고 배치가 막히지 않음

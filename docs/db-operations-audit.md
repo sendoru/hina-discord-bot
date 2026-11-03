@@ -43,7 +43,7 @@ epoch/JSON 이전 CLI와 그 호출부·테스트를 조사했다. 정적 참조
 | --- | --- |
 | Store 메서드의 Repository 위임 | 실제 봇·추출·Discord 관리 호출이 사용하는 facade다. caller-owned 연결과 추출 write context가 필요하다. 범용 CRUD/Service로 바꾸지 않는다. |
 | 추출 batch, 공개 요약 guard, 완료 대화 공동 저장 | 각기 다른 입력·충돌·원자성 계약이다. 공통 transaction decorator로 숨기지 않는다. 저장 실패·커서 경합·purge 후 stale 저장·두 연결 가시성 검증을 유지한다. |
-| forget/channel/realm/all purge | 범위 조건, 반환 삭제 건수, edit history 처리 순서와 보존 대상이 다르다. 현재 삭제 계약을 바꾸는 일괄 삭제 helper를 만들지 않는다. |
+| forget/channel/realm/all purge | 범위 조건, 반환 삭제 건수, edit history 처리 순서와 보존 대상이 다르다. 현재 삭제 계약을 바꾸는 일괄 삭제 helper를 만들지 않는다. 각 경로는 DB 커밋 **이후** 임시 보관 사진을 지우는 `pending_visuals` 호출(`discard_user`/`discard_channel`/`discard_realm`/`discard_all`)을 따로 갖고, 실패해도 이미 커밋된 삭제를 되돌리지 않는다. 새 삭제 경로를 추가하면 이 호출과 `tests/core/test_pending_visual_deletion.py`·`test_pending_visual_files.py`의 매트릭스도 함께 갱신한다. |
 | 관리 큐 claim/action/finish | 서로 다른 커밋이다. 중단 후 action을 재실행하면 안 되므로 일반 작업 실행기나 단일 트랜잭션으로 합치지 않는다. |
 | Registry SQL과 nested AdminDatabase.transaction | JSON import가 레지스트리 쓰기를 하나로 묶는다. 검증·ID/내용 비교·budget 확인은 실제 관리/LLM 경로에서 사용한다. 별도 Repository를 추가하지 않는다. |
 | 유지보수 pending/plan 쿼리 | reset 종류별 삭제 대상과 허용하는 구형 스키마가 다르다. Store getter는 커서를 생성할 수 있어 read-only 조사에 대신 쓸 수 없다. |

@@ -241,3 +241,46 @@ async def test_the_configured_disk_limit_reaches_the_store(tmp_path):
         assert harness.store.pending_visuals.max_bytes == 17 * 1024 * 1024
     finally:
         await harness.bot.close()
+
+
+# -- the two halves together ---------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_photo_held_at_chat_time_reaches_extraction_and_is_then_deleted(harness):
+    from hina_bot.ai.memory_summary import MemorySummaryMixin
+
+    await harness.send(text="히나야 안녕", id=1)
+    await harness.send(text="히나야 우리 애 오늘 미용했어", id=2, visuals=[visual("2")])
+    await harness.send(text="히나야 고마워", id=3)
+    await harness.send(text="히나야 잘 자", id=4)
+    assert harness.held("2") != {}
+
+    reply = NS(status="completed", output_text=json.dumps({"items": [{
+        "content": "강아지(사진상 말티즈로 보임)를 키움", "kind": "fact", "disclosure": "local",
+        "confidence": 0.95, "source_message_ids": ["2"], "evidence": "우리 애 오늘 미용했어",
+        "time_scope": "ongoing", "stability": "long", "usage_mode": "ambient",
+        "visual_refs": ["2"],
+    }]}, ensure_ascii=False))
+    worker = MemorySummaryMixin()
+    worker.settings = NS(
+        memory_visual_input=True, model="fixed-model", model_routing_mode="fixed",
+        memory_routing_smart_threshold=2.0, memory_output_tokens=4096,
+        gemini_thinking_level="low", provider="openai", structured_memory_every=4,
+    )
+    worker.client = object()
+    worker.usage = NS(request=AsyncMock(return_value=reply), routing_event=lambda *a, **k: None)
+
+    assert await worker.extract_structured_memory(harness.store, SCOPE)
+
+    (message,) = worker.usage.request.await_args.kwargs["input"]
+    images = [block for block in message["content"] if block["type"] == "input_image"]
+    assert len(images) == 1 and images[0]["image_url"].startswith("data:image/png;base64,")
+    labels = [
+        block["text"] for block in message["content"]
+        if block.get("type") == "input_text" and block["text"].startswith("Untrusted")
+    ]
+    assert json.loads(labels[0].split(":", 1)[1])["message_id"] == "2"
+    (item,) = harness.store.memory_items(100)
+    assert item.confidence == 0.75 and item.source_message_ids == ("2",)
+    assert harness.held("2") == {}

@@ -94,6 +94,13 @@ The parser never trusts a judgment it cannot check (#449 principle 6):
   (`disclosure_defaulted`), and an unknown `kind` becomes `fact` (`kind_defaulted`). An unknown kind
   on a row with relationship evidence is still rejected, since it may be a relationship.
 
+- With `MEMORY_VISUAL_INPUT=on` the extractor may also receive the user's own photos held for the
+  batch ([vision input](vision-input.md#장기-기억-추출용-임시-보관-memory_visual_input), #472). A
+  photo only enriches what the user said: an item that relies on one names the turn in `visual_refs`,
+  must still quote the user's utterance as `evidence` (otherwise it is rejected), is capped at
+  confidence 0.75 and carries the `visual_grounded` lint flag. `visual_refs` is honoured only for
+  turns that had a photo in that request; a text-only retry gets no visual credit.
+
 Directive items get one more small request (`verify_memory_directives`) before the commit. The
 verifier sees only the directive items and the user utterances they cite: `keep` marks the item
 verified, `temporary` (boundaries only) keeps it verified as a short ongoing boundary, and `reject`
