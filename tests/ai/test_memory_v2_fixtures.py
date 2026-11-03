@@ -235,12 +235,15 @@ CONSTRAINT_KEYS = {
     "match_all", "match_any", "not_match_any", "time_scope", "time_scope_in", "stability_in",
     "event_at", "recurrence_prefix", "usage_mode", "usage_mode_in", "directive_type",
     "audience", "importance_min", "explicit", "slot", "relation", "relation_absent",
-    "trust", "subject_users", "subject_users_include",
+    "trust", "subject_users", "subject_users_include", "visual_grounded", "confidence_max",
 }
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 
 def _check_constraint(constraint: dict, refs: set[str]) -> None:
     assert constraint and set(constraint) <= CONSTRAINT_KEYS, constraint
+    assert isinstance(constraint.get("visual_grounded", True), bool), constraint
+    assert 0 < constraint.get("confidence_max", 1.0) <= 1.0, constraint
     for key in ("match_all", "match_any", "not_match_any"):
         assert all(isinstance(value, str) and value for value in constraint.get(key, ["x"]))
     assert constraint.get("time_scope", "ongoing") in TIME_SCOPES
@@ -284,6 +287,11 @@ def test_extraction_fixture_contract():
                 assert USER.fullmatch(turn["user_id"]) and turn["speaker"].strip()
             else:
                 assert "user_id" not in turn
+            # Eval photos live outside the repository; a case may only name a file in the
+            # operator's image directory, never a path.
+            for name in turn.get("images", ()):
+                assert case["target"] == "personal", case["id"]
+                assert Path(name).name == name and Path(name).suffix in IMAGE_SUFFIXES, name
         refs = {memory["ref"] for memory in case.get("existing_memories", [])}
         for memory in case.get("existing_memories", []):
             assert memory["content"].strip()
