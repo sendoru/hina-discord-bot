@@ -529,6 +529,7 @@ class UsageLogger:
             "rejected_relations", "rejected_relationship_evidence",
             "annotated_items", "reconfirmed_items", "suppressed_relationship_items",
             "directive_items", "verified_directives", "rejected_directives",
+            "visual_images", "visual_bytes", "visual_fallback", "visual_grounded_items",
             "memory_read_mode", "memory_t0_items", "memory_t1_items", "memory_t2_items",
             "memory_t4_items", "memory_quiet_boundaries", "memory_followup_attempted",
             "memory_excluded_permission", "memory_excluded_threshold",
