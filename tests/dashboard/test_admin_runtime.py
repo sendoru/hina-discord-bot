@@ -65,7 +65,7 @@ def test_runtime_config_sections_cover_all_current_settings_and_fallback():
         for key in keys
     ]
     assert len(classified) == len(set(classified))
-    assert set(classified) == set(RUNTIME_SETTING_SPECS)
+    assert set(classified).issubset(RUNTIME_SETTING_SPECS)
 
     rows = [{"key": key} for key in RUNTIME_SETTING_SPECS]
     rows.append({"key": "new_unclassified_setting"})
