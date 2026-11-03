@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -60,6 +61,9 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "ROUTING_CLASSIFIER_API_KEY",
         "ROUTING_CLASSIFIER_TIMEOUT_SECONDS",
         "ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS",
+        "OUTPUT_REPAIR_MODE",
+        "OUTPUT_REPAIR_MODEL",
+        "OUTPUT_REPAIR_TIMEOUT_SECONDS",
         "GEMINI_THINKING_LEVEL",
         "GEMINI_FAST_THINKING_LEVEL",
         "GEMINI_SMART_THINKING_LEVEL",
@@ -98,6 +102,8 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.routing_classifier_model == settings.fast_model
     assert settings.routing_classifier_timeout_seconds == pytest.approx(4.0)
     assert settings.routing_classifier_max_output_tokens == 256
+    assert settings.output_repair_mode == "off"
+    assert settings.output_repair_model == "auto"
     assert settings.output_repair_timeout_seconds == pytest.approx(3.0)
     assert settings.channel_context_chars == 6000
     assert settings.history_max_chars == 12000
@@ -106,6 +112,83 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.runtime_default_location == ""
     assert settings.event_log_path == "data/logs/events.jsonl"
 
+
+
+
+def test_env_example_lists_all_runtime_setting_names():
+    template = (Path(__file__).resolve().parents[2] / ".env.example").read_text(
+        encoding="utf-8"
+    )
+    listed = set(re.findall(r"(?m)^\s*#?\s*([A-Z][A-Z0-9_]*)=", template))
+    missing = {spec.env_name for spec in RUNTIME_SETTING_SPECS.values()} - listed
+    assert not missing, f"Missing runtime environment variables in .env.example: {sorted(missing)}"
+
+
+def test_settings_loads_output_repair_from_dotenv_and_runtime_reset(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    for name in ("DISCORD_TOKEN", "OPENAI_API_KEY", "OUTPUT_REPAIR_MODE",
+                 "OUTPUT_REPAIR_MODEL", "OUTPUT_REPAIR_TIMEOUT_SECONDS"):
+        monkeypatch.delenv(name, raising=False)
+    (tmp_path / ".env").write_text(
+        "DISCORD_TOKEN=token\n"
+        "OPENAI_API_KEY=key\n"
+        "OUTPUT_REPAIR_MODE=shadow\n"
+        "OUTPUT_REPAIR_MODEL=repair-model\n"
+        "OUTPUT_REPAIR_TIMEOUT_SECONDS=2.5\n",
+        encoding="utf-8",
+    )
+
+    base = Settings.load()
+    assert base.output_repair_mode == "shadow"
+    assert base.output_repair_model == "repair-model"
+    assert base.output_repair_timeout_seconds == pytest.approx(2.5)
+
+    store = Store.create(":memory:")
+    try:
+        settings = RuntimeSettings(base, store)
+        assert settings.set_text("OUTPUT_REPAIR_MODE", "active") == "active"
+        assert settings.set_text("OUTPUT_REPAIR_MODEL", "db-model") == "db-model"
+        assert settings.set_text("OUTPUT_REPAIR_TIMEOUT_SECONDS", "0.5") == 0.5
+        assert settings.output_repair_mode == "active"
+        assert settings.output_repair_model == "db-model"
+        assert settings.output_repair_timeout_seconds == pytest.approx(0.5)
+        assert settings.reset("OUTPUT_REPAIR_MODE") == "shadow"
+        assert settings.reset("OUTPUT_REPAIR_MODEL") == "repair-model"
+        assert settings.reset("OUTPUT_REPAIR_TIMEOUT_SECONDS") == pytest.approx(2.5)
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    ("name", "raw"),
+    [
+        ("OUTPUT_REPAIR_MODE", "invalid"),
+        ("OUTPUT_REPAIR_MODE", ""),
+        ("OUTPUT_REPAIR_MODEL", ""),
+        ("OUTPUT_REPAIR_MODEL", "x" * 201),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "invalid"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "nan"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "inf"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "0.24"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "30.01"),
+    ],
+)
+def test_settings_rejects_invalid_output_repair_env(monkeypatch, tmp_path: Path, name, raw):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv(name, raw)
+    with pytest.raises(ValueError, match=name):
+        Settings.load()
+
+
+@pytest.mark.parametrize("seconds", ["0.25", "30.0"])
+def test_settings_accepts_output_repair_timeout_bounds(monkeypatch, tmp_path: Path, seconds):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("OUTPUT_REPAIR_TIMEOUT_SECONDS", seconds)
+    assert Settings.load().output_repair_timeout_seconds == pytest.approx(float(seconds))
 
 
 def test_settings_rejects_invalid_gemini_search_api_mode(monkeypatch, tmp_path: Path):
