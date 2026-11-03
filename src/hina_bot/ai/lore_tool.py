@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from time import perf_counter
 
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate
@@ -23,6 +24,19 @@ LORE_TOOL_POLICY = (
     "지식 수준(직접 경험/전언/추정/미확정), 시점, 인물 관계의 근거를 구분하세요. "
     "결과가 없다면 설정을 날조하지 말고 확인할 수 있는 범위에서 자연스럽게 답변하세요."
 )
+
+@dataclass
+class LoreToolTrace:
+    """Per-answer counters, including failures and retries."""
+
+    calls: int = 0
+    hits: int = 0
+    empty: int = 0
+    errors: int = 0
+    query_count: int = 0
+    result_items: int = 0
+    result_chars: int = 0
+
 
 LORE_TOOL_SPEC = LocalToolSpec(
     name="search_lore",
@@ -62,17 +76,23 @@ def attach_lore_search(
     *,
     include_community: bool,
     event: Callable[..., None],
+    trace: LoreToolTrace | None = None,
 ) -> LocalToolRegistry:
     """Keep existing local tools; rate-limit lore queries per answer, not globally."""
     registry = original.copy() if original is not None else LocalToolRegistry()
     calls = 0
+    trace = trace if trace is not None else LoreToolTrace()
 
     def handler(arguments: dict) -> dict:
         nonlocal calls
         calls += 1
+        trace.calls += 1
         started = perf_counter()
         queries = arguments.get("queries")
+        query_count = len(queries) if isinstance(queries, list) else 0
+        trace.query_count += query_count
         results: dict = {"status": "invalid_arguments", "results": []}
+        status = "invalid_arguments"
         try:
             if calls > 2:
                 raise LocalToolError("lore_search_limit_exceeded")
@@ -92,21 +112,36 @@ def attach_lore_search(
                 )
             except (ValueError, TypeError) as exc:
                 raise LocalToolError("invalid_lore_query") from exc
+            status = results["status"]
+            if status == "ok":
+                trace.hits += 1
+            else:
+                trace.empty += 1
+            trace.result_items += len(results["results"])
+            trace.result_chars += len(json.dumps(
+                results, ensure_ascii=False, separators=(",", ":"),
+            ))
             return results
+        except LocalToolError:
+            trace.errors += 1
+            status = "limit_exceeded" if calls > 2 else "invalid_arguments"
+            raise
+        except Exception:
+            trace.errors += 1
+            status = "internal_tool_error"
+            raise
         finally:
-            # Content-free event. Query text is intentionally not written to logs.
+            # Content-free telemetry; raw queries remain in provider interactions only.
             event(
                 "rag.tool",
-                status=results["status"] if calls <= 2 else "limit_exceeded",
+                status=status,
                 rag_tool_calls=calls,
-                rag_tool_query_count=len(queries) if isinstance(queries, list) else 0,
+                rag_tool_query_count=query_count,
                 rag_tool_result_items=len(results["results"]),
                 rag_tool_result_chars=len(json.dumps(
                     results, ensure_ascii=False, separators=(",", ":"),
                 )),
-                rag_tool_result_ids=[
-                    row["id"] for row in results["results"]
-                ],
+                rag_tool_result_ids=[row["id"] for row in results["results"]],
                 rag_tool_elapsed_ms=round((perf_counter() - started) * 1000),
             )
 
@@ -114,4 +149,4 @@ def attach_lore_search(
     return registry
 
 
-__all__ = ["LORE_TOOL_POLICY", "LORE_TOOL_SPEC", "attach_lore_search"]
+__all__ = ["LORE_TOOL_POLICY", "LORE_TOOL_SPEC", "LoreToolTrace", "attach_lore_search"]
