@@ -3,8 +3,8 @@ from contextvars import ContextVar
 
 import discord
 
-from .vision import message_has_visual
 from .forward_context import message_context_text
+from .vision import message_has_visual
 
 log = logging.getLogger("hina")
 
