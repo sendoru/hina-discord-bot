@@ -383,7 +383,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         )
         if rag_mode == "full":
             information = replace(information, full_lore=True)
-        selected_rag = rag_mode if rag_mode in {"v1", "full"} else "none"
+        selected_rag = rag_mode if rag_mode in {"v1", "full", "tool"} else "none"
 
         assembly_store = store
         assembly_public_context = public_context

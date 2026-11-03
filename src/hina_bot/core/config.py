@@ -27,8 +27,8 @@ def gemini_store_enabled(settings, domain: str, *, provider: str | None = None) 
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
-# off: no knowledge RAG; v1: lexical lore lookup (fallback); full: compiled static lore.
-RAG_MODES = frozenset({"off", "v1", "full"})
+# tool: model-controlled local keyword search; full/v1 remain rollback paths.
+RAG_MODES = frozenset({"off", "v1", "full", "tool"})
 # Memory v2 read path (#449 §11 P2): legacy prompt, shadow comparison, or tiered selection.
 PERSONAL_MEMORY_READ_MODES = frozenset({"legacy", "shadow", "tiered"})
 MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})

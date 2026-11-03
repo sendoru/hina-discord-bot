@@ -8,6 +8,7 @@ from hina_bot.core.compact_lore import compile_compact_lore
 from hina_bot.core.config import Settings
 from hina_bot.core.instructions import InstructionRegistry
 from hina_bot.core.lore import LoreIndex
+from hina_bot.core.lore_tool_search import LoreKeywordIndex
 from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
 from .output_repair import OutputRepair
@@ -50,6 +51,7 @@ class LLM:
         self.runtime_lore = RuntimeKnowledgeRegistry(self.admin_db, kind="world_fact")
         self.story_context = RuntimeKnowledgeRegistry(self.admin_db, kind="interpretation")
         self.lore = LoreIndex.load(settings.lore_path)
+        self.lore_keyword_index = LoreKeywordIndex(self.lore.candidates())
         self.compact_lore_with_community = compile_compact_lore(self.lore)
         self.compact_lore_without_community = compile_compact_lore(
             self.lore, include_community=False
