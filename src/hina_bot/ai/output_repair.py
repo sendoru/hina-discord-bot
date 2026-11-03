@@ -90,6 +90,8 @@ def strip_stray_id_markers(text: str) -> tuple[str, int]:
     if not removed or not result.strip():
         return text, 0
     return result, removed
+
+
 # Only unescape whitespace control sequences that leaked into ordinary dialogue.
 # Preserve code, URLs, Windows/UNC paths, and quoted standalone escape examples.
 # Negative lookbehind avoids changing a deliberately doubled backslash (\\n).
