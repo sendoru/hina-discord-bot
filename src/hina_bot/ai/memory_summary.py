@@ -6,6 +6,7 @@ import logging
 import re
 
 from hina_bot.core.config import gemini_store_enabled
+from hina_bot.core.memory_annotations import LINT_VISUAL_GROUNDED
 from hina_bot.core.store import SharedSummaryConflict
 
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
@@ -24,7 +25,7 @@ from .memory_extraction import (
     shadow_extraction_payload,
 )
 from .memory_model_routing import build_memory_model_plan
-from .memory_visual import extraction_input
+from .memory_visual import extraction_input, select_memory_visuals, visual_message_ids
 
 NO_MEMORY = "<NO_MEMORY>"
 log = logging.getLogger("hina")
@@ -186,6 +187,71 @@ class MemorySummaryMixin:
         items, verified, demoted = apply_directive_verification(items, text)
         return items, len(payload["items"]), verified, demoted
 
+    def _pending_visuals_for(self, store, scope, message_ids) -> list:
+        """Photos the users of these turns attached, newest first within the request limits.
+
+        Empty when the feature is off, the store keeps none, or reading fails: extraction then
+        simply runs on the text, which is always enough to produce a memory.
+        """
+
+        if not getattr(self.settings, "memory_visual_input", False):
+            return []
+        getter = getattr(getattr(store, "pending_visuals", None), "get", None)
+        if not callable(getter):
+            return []
+        try:
+            held = getter(
+                scope.realm, str(scope.channel_id), str(scope.user_id), list(message_ids),
+            )
+        except Exception as exc:  # noqa: BLE001 - photos are optional input
+            log.warning("Pending visual read failed (%s)", type(exc).__name__)
+            return []
+        return select_memory_visuals(
+            visual for message_id in message_ids for visual in held.get(message_id, ())
+        )
+
+    def _discard_extracted_visuals(self, store, scope, message_ids) -> None:
+        """Delete the photos of turns whose extraction has just been committed.
+
+        This runs whether or not the feature is on, so a photo never outlives its turn's
+        extraction. A failure only delays deletion to the next sweep.
+        """
+
+        discard = getattr(getattr(store, "pending_visuals", None), "discard_messages", None)
+        if not callable(discard):
+            return
+        try:
+            discard(scope.realm, str(scope.channel_id), str(scope.user_id), list(message_ids))
+        except Exception as exc:  # noqa: BLE001 - the batch is committed
+            log.warning("Pending visual cleanup failed (%s)", type(exc).__name__)
+
+    async def _extraction_response(self, plan, payload, visuals):
+        """Run the extraction request; return ``(response, fell_back_to_text)``.
+
+        A request that carries photos and fails, or comes back empty, is repeated once with the
+        text alone: a photo may only enrich a memory, never block one.
+        """
+
+        if visuals:
+            try:
+                response = await self._memory_request(
+                    "extract_memory_items_shadow", SHADOW_EXTRACTION_POLICY, payload, plan,
+                    images=visuals,
+                )
+                if response.status == "completed" and response.output_text.strip():
+                    return response, False
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - retried below without photos
+                log.warning(
+                    "Memory extraction with photos failed (%s); retrying on text",
+                    type(exc).__name__,
+                )
+        response = await self._memory_request(
+            "extract_memory_items_shadow", SHADOW_EXTRACTION_POLICY, payload, plan,
+        )
+        return response, bool(visuals)
+
     async def _extract_memory_items_shadow(
         self, store, scope, pending, *, expected_cursor: int
     ) -> bool:
@@ -263,14 +329,17 @@ class MemorySummaryMixin:
         )
         metrics["candidate_items"] = len(reconciliation_candidates)
         metrics["evidence_turns"] = len(evidence_context)
+        visuals = self._pending_visuals_for(
+            store, scope, [turn["message_id"] for turn in turns]
+        )
+        metrics["visual_images"] = len(visuals)
+        metrics["visual_bytes"] = sum(len(visual.data) for visual in visuals)
         _record_shadow_extraction(self.usage, "requested", **metrics)
         try:
-            response = await self._memory_request(
-                "extract_memory_items_shadow",
-                SHADOW_EXTRACTION_POLICY,
-                payload,
-                plan,
-            )
+            response, fell_back = await self._extraction_response(plan, payload, visuals)
+            if fell_back:
+                visuals = []
+                metrics["visual_fallback"] = True
             if response.status != "completed" or not response.output_text.strip():
                 _record_shadow_extraction(self.usage, "empty", **metrics)
                 return False
@@ -280,6 +349,7 @@ class MemorySummaryMixin:
                 allowed_source_ids=allowed_source_ids,
                 allowed_target_item_ids={item.id for item in candidate_items},
                 source_turns=source_turns,
+                visual_message_ids=visual_message_ids(visuals),
             )
             if not parsed.valid:
                 _record_shadow_extraction(self.usage, "invalid", **metrics)
@@ -325,8 +395,14 @@ class MemorySummaryMixin:
                     applied_reconciliations = reconciliation.applied
                     deferred_reconciliations = reconciliation.deferred
                     reconfirmed_items += reconciliation.reconfirmed
+            self._discard_extracted_visuals(store, scope, allowed_source_ids)
             completed_metrics = {
                 **metrics,
+                "visual_grounded_items": sum(
+                    1 for item in items
+                    if item.annotation is not None
+                    and LINT_VISUAL_GROUNDED in item.annotation.lint_flags
+                ),
                 "accepted_items": len(parsed.items),
                 "stored_items": persisted.stored,
                 "duplicate_items": persisted.duplicates,
