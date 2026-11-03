@@ -11,8 +11,8 @@ import math
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from .knowledge_retrieval import KnowledgeCandidate
 
@@ -72,9 +72,7 @@ def _is_allowed(candidate: KnowledgeCandidate, include_community: bool) -> bool:
         return include_community
     if candidate.lane == "community_meme":
         return False
-    if candidate.fact_type in {"adaptation", "fandom"}:
-        return False
-    return True
+    return candidate.fact_type not in {"adaptation", "fandom"}
 
 
 class LoreKeywordIndex:
