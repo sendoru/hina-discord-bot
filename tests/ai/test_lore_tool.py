@@ -129,3 +129,58 @@ async def test_tool_mode_omits_full_lore_and_passes_tool_result_back_to_model(tm
     assert any(row.get("operation") == "rag.mode"
                and row.get("rag_selected_context") == "tool" for row in events)
     assert not any(row.get("operation") == "rag.full" for row in events)
+
+
+@pytest.mark.asyncio
+async def test_tool_mode_always_logs_no_call_and_never_injects_static_lore(tmp_path):
+    client = NS(responses=NS(), close=AsyncMock())
+    llm = LLM(Settings(
+        discord_token="test", db_path=":memory:",
+        provider="openai", model_routing_mode="fixed",
+        routing_classifier_mode="off", chat_web_search=False,
+        rag_mode="tool", usage_log_path=str(tmp_path / "usage.jsonl"),
+    ), client=client)
+    llm.usage.request = AsyncMock(return_value=NS(
+        status="completed", output_text="응.", output=[],
+    ))
+    store = Store.create(":memory:")
+    try:
+        answer = await llm.answer(
+            store, Scope(None, 20, 100), "사용자", "안녕", use_memory=False,
+        )
+        request = llm.usage.request.await_args.kwargs
+    finally:
+        await llm.close()
+        store.close()
+
+    assert answer == "응."
+    assert "[검수된 정적 설정 자료" not in request["instructions"]
+    assert any(row["name"] == "search_lore"
+               for row in request["tools"] if row["type"] == "function")
+    rows = [
+        json.loads(line) for line in
+        (tmp_path / "usage.jsonl").read_text().splitlines()
+    ]
+    summaries = [row for row in rows if row.get("operation") == "rag.tool.turn"]
+    assert len(summaries) == 1
+    assert summaries[0]["status"] == "not_called"
+    assert summaries[0]["rag_tool_turn_calls"] == 0
+
+
+@pytest.mark.asyncio
+async def test_tool_turn_summary_counts_retry_and_empty_result(tmp_path):
+    events = []
+    registry = attach_lore_search(
+        None, index(), lambda: (),
+        include_community=False,
+        event=lambda operation, **values: events.append((operation, values)),
+    )
+    first = await registry.execute(LocalToolCall(
+        "a", "search_lore", {"queries": ["관련 없는 검색어"]},
+    ))
+    second = await registry.execute(LocalToolCall(
+        "b", "search_lore", {"queries": ["문서 기록"]},
+    ))
+    assert first.output["status"] == "not_found"
+    assert second.output["status"] == "ok"
+    assert [e[1]["status"] for e in events] == ["not_found", "ok"]

@@ -20,7 +20,7 @@ Changing `LORE_PATH` still requires a restart to rebuild the static index.
    A maximum of 3 phrases, each 2–90 characters, is accepted.
 3. Local, deterministic ranking searches accepted static lore indexed at startup
    and **currently enabled** admin knowledge read from the DB per call. It uses
-   subject/keyword aliases, IDF-weighted whole words, and Korean trigrams.
+   subject/keyword aliases, IDF-weighted whole words, Korean trigrams and basic particle/spacing normalization. Repeated protagonist names are downweighted by document frequency.
    Missing canonical entity metadata is **never an exclusion filter**.
 4. Up to 5 nonduplicate results (default 4), constrained by an overall
    6,000-character JSON budget, return a stable ID, content, kind,
@@ -39,7 +39,7 @@ that the referenced subject does not exist.
 ## Diagnostics and limitations
 
 - `rag.mode`: the selected mode per answer.
-- `rag.tool`: per-call success / empty / invalid / limit status, query count,
+- `rag.tool.turn`: emitted for **every** `tool` answer, including `not_called`, with call/re-query/hit/empty/error counts and returned-character totals. A tool not called is an observation, not proof the answer needed lore.\n- `rag.tool`: per-call success / empty / invalid / limit status, query count,
   result count, result IDs, serialized result character count, local elapsed ms.
   Query text is intentionally not copied into the usage log; when provider
   interaction storage is enabled, inspect the stored function call as needed.
@@ -62,3 +62,16 @@ answers and cached-token counts, then widen rollout. If factual grounding or
 latency regresses, switch to `full` or `v1` immediately without a deploy.
 Existing memory selection, URL Context, Google Search, safety policy and
 Discord local tools are unaffected.
+
+## Fixed-scope limitations and next diagnostic step
+
+The JSONL schema, records, `compact_lore.py` and full-mode prompt output
+are unchanged. The index only derives search-time tokens and aliases. Logs
+can show **non-use / empty matches / repeated searches / returned IDs**, but
+they cannot automatically infer a poor query or a misread reference: review
+stored Gemini interactions and the final answer for those cases. No raw user
+search text is persisted in routing telemetry.
+
+Mock-HTTP provider tests cover both Gemini Interactions and GenerateContent
+with Google Search, URL Context and `search_lore` enabled together; actual
+provider acceptance and live relevance still require a small opt-in rollout.
