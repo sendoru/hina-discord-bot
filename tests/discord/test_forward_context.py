@@ -19,7 +19,6 @@ from hina_bot.discord.forward_context import message_context_text
 from hina_bot.discord.reply_context import collect_reply_context
 from hina_bot.discord.web_bot import HinaClient
 
-
 FORWARD_TEXT = "(네 옷자락을 손가락으로 꼭 쥐며) ...계속 있어 줄게."
 
 
