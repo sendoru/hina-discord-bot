@@ -20,6 +20,7 @@ from .bot import CURRENT_TYPING_ACTIVE, CURRENT_TYPING_STOP
 from .bot import HinaClient as BaseHinaClient
 from .chat_history_tool import register_chat_history_tool
 from .chatlog_capture import capture_mode
+from .forward_context import message_context_text
 from .interaction_context import build_interaction_context
 from .member_directory import channel_member_tool_registry
 from .memory_recall_tool import register_memory_recall_tool
@@ -255,7 +256,7 @@ class HinaClient(BaseHinaClient):
                 if policy == "direct" and not own_bot and historical_text is None:
                     continue
                 has_visual = message_has_visual(old)
-                if not old.content and not has_visual:
+                if not message_context_text(old) and not has_visual:
                     continue
                 historical_scope = Scope(
                     scope.guild_id,
@@ -267,7 +268,7 @@ class HinaClient(BaseHinaClient):
                     historical_scope,
                     old.id,
                     old.author.display_name,
-                    old.content,
+                    message_context_text(old),
                     role="assistant" if own_bot else ("bot" if other_bot else "user"),
                     unix_time=old.created_at.timestamp(),
                     author_user_id=old.author.id,
@@ -336,13 +337,13 @@ class HinaClient(BaseHinaClient):
                 scope.guild_id is not None
                 and self.store.chat_log_enabled(scope)
                 and capture_mode(self.store, scope) == "all"
-                and (message.content or message_has_visual(message))
+                and (message_context_text(message) or message_has_visual(message))
             ):
                 self.recent.add(
                     scope,
                     message.id,
                     message.author.display_name,
-                    message.content,
+                    message_context_text(message),
                     role="bot",
                     has_visual=message_has_visual(message),
                 )
