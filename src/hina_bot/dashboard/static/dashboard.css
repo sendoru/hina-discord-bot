@@ -3171,7 +3171,6 @@ pre {
 
 .runtime-config-section[hidden],
 .runtime-config-no-results[hidden],
-.runtime-config-setting-row[hidden],
 [data-runtime-config-setting-row][hidden] {
   display: none;
 }
