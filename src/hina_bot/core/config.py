@@ -98,6 +98,7 @@ class Settings:
     # Runtime-editable output proofreader; no additional .env variables.
     output_repair_mode: str = "off"
     output_repair_model: str = "auto"
+    output_repair_timeout_seconds: float = 3.0
     routing_classifier_mode: str = "off"
     routing_classifier_provider: str = "openai"
     routing_classifier_model: str = "gpt-4.1-mini"
