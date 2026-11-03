@@ -9,10 +9,10 @@ from hina_bot.core.admin_commands import AdminCommand
 from hina_bot.core.config import Settings
 from hina_bot.core.db_schema import initialize_connection
 from hina_bot.core.runtime_config import RUNTIME_SETTING_SPECS, RuntimeSettings
-from hina_bot.dashboard.routes.admin_runtime import RUNTIME_CONFIG_SECTIONS, _runtime_sections
 from hina_bot.core.store import Store
 from hina_bot.dashboard.app import create_app
 from hina_bot.dashboard.config import DashboardSettings
+from hina_bot.dashboard.routes.admin_runtime import RUNTIME_CONFIG_SECTIONS, _runtime_sections
 from hina_bot.discord.admin_commands import execute_admin_command
 
 
