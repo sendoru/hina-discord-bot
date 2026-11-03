@@ -7,7 +7,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hina_bot.ai.output_repair import (
-    OutputRepair, needs_output_repair, normalize_stray_escapes, strip_stray_id_markers,
+    OutputRepair,
+    needs_output_repair,
+    normalize_stray_escapes,
+    strip_stray_id_markers,
 )
 from hina_bot.core.config import Settings
 from hina_bot.core.runtime_config import RuntimeSettings
