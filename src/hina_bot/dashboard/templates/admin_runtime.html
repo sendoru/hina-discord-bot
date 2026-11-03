@@ -12,12 +12,30 @@
   {% endif %}
 </span>
 {%- endmacro %}
-{% block title %}Runtime Config · Hina Dashboard{% endblock %}
-{% block content %}
-<section class="page-heading">
-  <div>
-    <h1>Runtime Config</h1>
-    <p class="muted">DB override를 봇 프로세스의 RuntimeSettings를 통해 적용합니다. startup 값은 봇 시작 시 캡처한 설정을 함께 보여줍니다.</p>
+{% macro runtime_section_table(rows) -%}
+
+  <div class="runtime-config-toolbar">
+    <label class="sr-only" for="runtime-config-search">Search settings</label>
+    <input id="runtime-config-search" type="search" data-runtime-config-search-input
+           placeholder="Search by key, environment variable, or description"
+           autocomplete="off" aria-label="Search runtime settings">
+    <span class="muted" data-runtime-config-search-count aria-live="polite"></span>
+  </div>
+  <p class="muted runtime-config-no-results" data-runtime-config-no-results hidden>No matching settings found.</p>
+  <div class="runtime-config-sections">
+    {% for section in sections %}
+    <details class="runtime-config-section" data-runtime-config-section
+             id="runtime-config-section-{{ section.id }}" {% if loop.first %}open{% endif %}>
+      <summary class="runtime-config-section-summary">
+        <span class="runtime-config-section-label">
+          <strong>{{ section.title }}</strong>
+          <small>{{ section.description }}</small>
+        </span>
+        <span class="runtime-config-section-count" data-runtime-config-section-count>{{ section.rows | length }}</span>
+      </summary>
+      {{ runtime_section_table(section.rows) }}
+    </details>
+    {% endfor %}
   </div>
 </section>
 
