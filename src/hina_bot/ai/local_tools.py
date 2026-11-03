@@ -98,7 +98,7 @@ class LocalToolRegistry:
             raise ValueError(f"Duplicate local tool: {spec.name}")
         self._tools[spec.name] = _RegisteredTool(spec, handler)
 
-    def copy(self) -> "LocalToolRegistry":
+    def copy(self) -> LocalToolRegistry:
         """Request-local registry copy: never mutate shared Discord tool handlers."""
         clone = LocalToolRegistry()
         clone._tools = self._tools.copy()
