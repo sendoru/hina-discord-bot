@@ -12,6 +12,8 @@ import discord
 import httpx
 
 from hina_bot.ai.vision import VisualInput
+from hina_bot.core.image_mime import sniff_image_mime
+from hina_bot.core.pending_visuals import MemoryVisual
 
 log = logging.getLogger("hina")
 
@@ -109,16 +111,7 @@ class VisionFetchCache:
             self._remove(next(iter(self.entries)))
 
 
-def _sniff_image_mime(data: bytes) -> str | None:
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if data.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if data.startswith((b"GIF87a", b"GIF89a")):
-        return "image/gif"
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "image/webp"
-    return None
+_sniff_image_mime = sniff_image_mime
 
 
 async def _download(url: str) -> bytes:
@@ -420,3 +413,23 @@ async def collect_visual_inputs(
 
     return result
 
+
+def memory_visuals_for_turn(visuals, *, user_id, message_id) -> list[MemoryVisual]:
+    """The photos this user attached to this very message, for later memory extraction.
+
+    Custom emoji, stickers, images from a replied-to or recent message and anything another
+    person posted never qualify: the memory is the sender's own, and only their own photo can
+    say something about them.
+    """
+
+    mine = [
+        visual for visual in visuals
+        if visual.source == "attachment"
+        and visual.context_kind == "current_message"
+        and str(visual.author_user_id) == str(user_id)
+        and str(visual.message_id) == str(message_id)
+    ]
+    return [
+        MemoryVisual(str(message_id), number, visual.mime_type, visual.data)
+        for number, visual in enumerate(mine, 1)
+    ]
