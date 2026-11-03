@@ -3141,6 +3141,94 @@ pre {
 }
 
 
+/* Runtime configuration navigation */
+.runtime-config-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin: 12px 0 16px;
+}
+
+.runtime-config-toolbar input[type="search"] {
+  flex: 1 1 280px;
+  width: 100%;
+  max-width: 620px;
+  min-width: 0;
+}
+
+.runtime-config-sections {
+  display: grid;
+  gap: 12px;
+}
+
+.runtime-config-section {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.runtime-config-section[hidden],
+.runtime-config-no-results[hidden],
+.runtime-config-setting-row[hidden],
+[data-runtime-config-setting-row][hidden] {
+  display: none;
+}
+
+.runtime-config-section-summary {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.runtime-config-section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.runtime-config-section-summary::before {
+  content: "▸";
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.runtime-config-section[open] > .runtime-config-section-summary::before {
+  content: "▾";
+}
+
+.runtime-config-section-summary:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+.runtime-config-section-label {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+}
+
+.runtime-config-section-label small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.runtime-config-section-count {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(145, 175, 255, .08);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.runtime-config-section > .runtime-config-table-wrap {
+  border-top: 1px solid var(--border);
+}
+
 /* Runtime config editor layout */
 .runtime-config-table-wrap {
   overflow-x: auto;
