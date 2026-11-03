@@ -26,6 +26,7 @@ from .information_plan import InformationPlan
 from .llm import LLM as BaseLLM
 from .llm import POLICY
 from .local_tools import CURRENT_LOCAL_TOOLS, LocalToolExecutor
+from .lore_tool import LORE_TOOL_POLICY, attach_lore_search
 from .managed_tools import (
     CODE_EXECUTION_POLICY,
     ManagedToolCapability,
@@ -644,6 +645,17 @@ class RequestAssembler(BaseLLM):
         }]
 
         local_tool_registry = CURRENT_LOCAL_TOOLS.get()
+        if getattr(self.settings, "rag_mode", "full") == "tool":
+            local_tool_registry = attach_lore_search(
+                local_tool_registry,
+                self.lore_keyword_index,
+                lambda: (
+                    *self.runtime_lore.candidates(),
+                    *self.story_context.candidates(),
+                ),
+                include_community=self.settings.community_lore,
+                event=self.usage.routing_event,
+            )
         local_tool_schemas = (
             local_tool_registry.schemas()
             if local_tool_registry is not None
@@ -753,6 +765,9 @@ class RequestAssembler(BaseLLM):
             )
             instruction_parts.append(url_policy)
             instruction_group_chars["instruction_tools_chars"] += len(url_policy)
+        if getattr(self.settings, "rag_mode", "full") == "tool":
+            instruction_parts.append(LORE_TOOL_POLICY)
+            instruction_group_chars["instruction_tools_chars"] += len(LORE_TOOL_POLICY)
         if managed_tool_config(self.settings.provider):
             instruction_parts.append(CODE_EXECUTION_POLICY)
             instruction_group_chars["instruction_tools_chars"] += len(
