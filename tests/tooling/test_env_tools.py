@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -170,7 +169,6 @@ def test_export_db_optional_bool_true_false_and_inherit(tmp_path):
         "GEMINI_STORE_MEMORY_INTERACTIONS=true\nDATABASE_PATH=d.sqlite3\n",
         encoding="utf-8",
     )
-    template = tmp_path / ".env.example"
     # Use the repository template because runtime parity is required for full export.
     template = ROOT / ".env.example"
     store = Store.create(str(tmp_path / "d.sqlite3"))
