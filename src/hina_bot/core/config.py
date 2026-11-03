@@ -95,7 +95,7 @@ class Settings:
     fast_output_tokens: int = 4096
     smart_output_tokens: int = 8192
     memory_output_tokens: int = 4096
-    # Runtime-editable output proofreader; no additional .env variables.
+    # Runtime-editable output proofreader; .env supplies startup values.
     output_repair_mode: str = "off"
     output_repair_model: str = "auto"
     output_repair_timeout_seconds: float = 3.0
@@ -268,6 +268,26 @@ class Settings:
 
         memory_output_tokens = int(os.getenv("MEMORY_MAX_OUTPUT_TOKENS", "4096"))
 
+        output_repair_mode = os.getenv("OUTPUT_REPAIR_MODE", "off").strip().lower()
+        if output_repair_mode not in {"off", "shadow", "active"}:
+            raise ValueError("OUTPUT_REPAIR_MODE는 off, shadow, active 중 하나여야 합니다.")
+        output_repair_model = os.getenv("OUTPUT_REPAIR_MODEL", "auto").strip()
+        if not output_repair_model or len(output_repair_model) > 200 or any(
+            c in output_repair_model for c in "\r\n\0"
+        ):
+            raise ValueError("OUTPUT_REPAIR_MODEL은 줄바꿈 없이 1~200자여야 합니다.")
+        try:
+            output_repair_timeout_seconds = float(
+                os.getenv("OUTPUT_REPAIR_TIMEOUT_SECONDS", "3.0")
+            )
+        except ValueError as exc:
+            raise ValueError("OUTPUT_REPAIR_TIMEOUT_SECONDS는 숫자여야 합니다.") from exc
+        if not (math.isfinite(output_repair_timeout_seconds)
+                and 0.25 <= output_repair_timeout_seconds <= 30.0):
+            raise ValueError(
+                "OUTPUT_REPAIR_TIMEOUT_SECONDS는 0.25~30.0 사이의 유한한 숫자여야 합니다."
+            )
+
         keys = {
             "openai": os.getenv("OPENAI_API_KEY", "").strip(),
             "gemini": os.getenv("GEMINI_API_KEY", "").strip(),
@@ -396,6 +416,9 @@ class Settings:
             fast_model=fast_model, smart_model=smart_model,
             fast_output_tokens=fast_output_tokens,
             smart_output_tokens=smart_output_tokens,
+            output_repair_mode=output_repair_mode,
+            output_repair_model=output_repair_model,
+            output_repair_timeout_seconds=output_repair_timeout_seconds,
             routing_classifier_mode=routing_classifier_mode,
             routing_classifier_provider=routing_classifier_provider,
             routing_classifier_model=routing_classifier_model,
