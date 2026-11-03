@@ -89,3 +89,25 @@ async def test_non_gemini_empty_response_is_not_retried(tmp_path):
     row = json.loads(path.read_text())
     assert row["api_attempts"] == 1
     assert "empty_response_retries" not in row
+
+
+@pytest.mark.asyncio
+async def test_gemini_function_call_without_text_is_not_retried(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    response = _response("", input_tokens=85, output_tokens=15)
+    response.output = [NS(
+        type="function_call", call_id="call_1", id="call_1",
+        name="search_lore", arguments='{"queries":["히나"]}',
+    )]
+    create = AsyncMock(return_value=response)
+    client = NS(provider_name="gemini", responses=NS(create=create))
+
+    result = await logger.request(client, "answer", model="gemini-test", input="질문")
+    logger.close()
+
+    assert result is response
+    assert create.await_count == 1
+    logged = json.loads(path.read_text())
+    assert logged["api_attempts"] == 1
+    assert "empty_response_retries" not in logged

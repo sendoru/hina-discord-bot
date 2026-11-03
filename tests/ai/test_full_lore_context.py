@@ -69,3 +69,17 @@ async def test_full_mode_includes_static_prefix_and_dynamic_refs_without_embeddi
     finally:
         await llm.close()
         store.close()
+
+
+def test_new_tool_index_never_mutates_compact_full_lore_output():
+    from hina_bot.core.compact_lore import compile_compact_lore
+    from hina_bot.core.lore import LoreIndex
+    from hina_bot.core.lore_tool_search import LoreKeywordIndex
+
+    lore = LoreIndex.load()
+    before = compile_compact_lore(lore)
+    index = LoreKeywordIndex(lore.candidates())
+    index.search(["히나 아코 관계"], limit=5)
+    after = compile_compact_lore(lore)
+    assert before == after
+    assert before.items > 100

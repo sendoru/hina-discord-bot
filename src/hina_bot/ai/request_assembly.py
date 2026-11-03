@@ -25,7 +25,8 @@ from .freshness import FreshnessMode
 from .information_plan import InformationPlan
 from .llm import LLM as BaseLLM
 from .llm import POLICY
-from .local_tools import CURRENT_LOCAL_TOOLS, LocalToolExecutor
+from .local_tools import CURRENT_LOCAL_TOOLS, LocalToolExecutor, extract_local_tool_calls
+from .lore_tool import LORE_TOOL_POLICY, LoreToolTrace, attach_lore_search
 from .managed_tools import (
     CODE_EXECUTION_POLICY,
     ManagedToolCapability,
@@ -644,6 +645,20 @@ class RequestAssembler(BaseLLM):
         }]
 
         local_tool_registry = CURRENT_LOCAL_TOOLS.get()
+        lore_trace = None
+        if getattr(self.settings, "rag_mode", "full") == "tool":
+            lore_trace = LoreToolTrace()
+            local_tool_registry = attach_lore_search(
+                local_tool_registry,
+                self.lore_keyword_index,
+                lambda: (
+                    *self.runtime_lore.candidates(),
+                    *self.story_context.candidates(),
+                ),
+                include_community=self.settings.community_lore,
+                event=self.usage.routing_event,
+                trace=lore_trace,
+            )
         local_tool_schemas = (
             local_tool_registry.schemas()
             if local_tool_registry is not None
@@ -753,6 +768,9 @@ class RequestAssembler(BaseLLM):
             )
             instruction_parts.append(url_policy)
             instruction_group_chars["instruction_tools_chars"] += len(url_policy)
+        if getattr(self.settings, "rag_mode", "full") == "tool":
+            instruction_parts.append(LORE_TOOL_POLICY)
+            instruction_group_chars["instruction_tools_chars"] += len(LORE_TOOL_POLICY)
         if managed_tool_config(self.settings.provider):
             instruction_parts.append(CODE_EXECUTION_POLICY)
             instruction_group_chars["instruction_tools_chars"] += len(
@@ -870,14 +888,46 @@ class RequestAssembler(BaseLLM):
                     **current_request,
                 )
 
-        if local_tool_registry is not None and local_tool_schemas:
-            tool_loop = await LocalToolExecutor(local_tool_registry).run(
-                send_answer,
-                request,
-            )
-            response = tool_loop.response
-        else:
-            response = await send_answer(request)
+        tool_loop = None
+        request_completed = False
+        try:
+            if local_tool_registry is not None and local_tool_schemas:
+                tool_loop = await LocalToolExecutor(local_tool_registry).run(
+                    send_answer,
+                    request,
+                )
+                response = tool_loop.response
+            else:
+                response = await send_answer(request)
+            request_completed = True
+        finally:
+            if lore_trace is not None:
+                # Count even malformed model tool arguments that the registry rejected.
+                requested = sum(
+                    call.name == "search_lore"
+                    for result in (tool_loop.responses if tool_loop else ())
+                    for call in extract_local_tool_calls(result)
+                )
+                attempted = max(lore_trace.calls, requested)
+                errors = lore_trace.errors + max(0, requested - lore_trace.calls)
+                status = (
+                    "request_error" if not request_completed else
+                    "not_called" if not attempted else
+                    "error" if errors else
+                    "not_found" if not lore_trace.hits else "completed"
+                )
+                self.usage.routing_event(
+                    "rag.tool.turn",
+                    status=status,
+                    rag_tool_turn_calls=attempted,
+                    rag_tool_turn_requeries=max(0, attempted - 1),
+                    rag_tool_turn_queries=lore_trace.query_count,
+                    rag_tool_turn_hits=lore_trace.hits,
+                    rag_tool_turn_empty=lore_trace.empty,
+                    rag_tool_turn_errors=errors,
+                    rag_tool_turn_result_items=lore_trace.result_items,
+                    rag_tool_turn_result_chars=lore_trace.result_chars,
+                )
 
         text = response_text(response, hide_citations=hide_web_citations(provenance))
         if response.status != "completed" or not text:
