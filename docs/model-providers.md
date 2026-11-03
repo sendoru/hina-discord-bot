@@ -275,17 +275,18 @@ Discord 응답에 실수로 포함된 `[1]`, `[1562812225691983904]` 같은 인�
 같은 provider의 소형 LLM으로 최소 교정을 시도합니다. 모델에는 최초 답변 텍스트와 짧은 교정 지침만
 전달하며 원본 대화 문맥, 기억, 이미지, 도구, 캐릭터 프롬프트는 다시 보내지 않습니다.
 
-추가 `.env` 설정을 만들지 않고 기존 대시보드의 Runtime Settings에서 두 항목만 설정합니다.
+추가 `.env` 설정을 만들지 않고 기존 대시보드의 Runtime Settings에서 다음 세 항목을 설정합니다.
 
 | 런타임 키 | 기본값 | 설명 |
 | --- | --- | --- |
 | `output_repair_mode` | `off` | `off`: 사용 안 함, `shadow`: 비동기로 교정 결과만 기록, `active`: 정상 완료된 비어 있지 않은 교정 결과로 답변 교체, 교정 결과와 무관하게 아래 ID 마커 fallback 적용 |
 | `output_repair_model` | `auto` | `auto`는 현재 `fast_model`, 아니면 동일 provider에서 지원되는 모델 이름 |
+| `output_repair_timeout_seconds` | `3.0` | API 호출의 데드라인(초). 대시보드에서 즉시 변경 가능, 0.25~30.0초 |
 
 예: `output_repair_mode=shadow`, `output_repair_model=auto`. `active`는 모델별 실측을 마친
 뒤 권장합니다. 앱을 재시작하지 않고 설정을 변경할 수 있습니다. provider는 일반 채팅과 동일하고
-기존 API 키를 사용하므로 별도 provider/key/temperature/timeout/token-budget 환경변수는 없습니다.
-교정 요청에는 최대 512 출력 토큰과 3초 제한을 적용합니다.
+기존 API 키를 사용하므로 별도 provider/key/temperature/token-budget 환경변수는 없습니다.
+교정 요청의 최대 출력은 512토큰이며, 호출 데드라인은 기본 3초(런타임 변경 가능)입니다.
 
 정규식은 호출 여부만 결정하며 숫자형 인용 마커(`[1]`, `[1:2]`,
 `[1562812225691983904]` 등, 각 숫자 부분 1~32자리)나 HTML 태그를 직접 삭제하지 않습니다.
@@ -298,9 +299,9 @@ Discord 응답에 실수로 포함된 `[1]`, `[1562812225691983904]` 같은 인�
 교정 모델에 맡기며, 교정 결과를 정규식·길이·문자열 유사도로 승인하거나 거절하지 않습니다. 호출 실패·미완료 응답·
 빈 교정 결과는 원본으로 폴백합니다. `shadow`는 답변 전송을 기다리게 하지 않습니다.
 
-**ID 마커 fallback (`active` 전용, #454)**: 교정 요청이 3초 제한을 넘기거나 실패하면 원본이 그대로
-나가므로, `active`에서는 교정 단계가 끝난 뒤(실패·미완료·빈 결과로 원본에 폴백한 경우와 교정이
-완료된 경우 모두) 일반 대화에 붙은 것이 분명한 숫자형 마커만 결정적 규칙으로 지웁니다.
+**Deterministic fallback (`active` 전용)**: 교정 요청이 설정된 데드라인을 넘기거나 실패하면
+원본으로 돌아오므로, `active`에서는 교정 단계가 끝난 뒤(실패·미완료·빈 결과로 원본에 폴백한
+경우와 교정이 완료된 경우 모두) 명확한 형식 오류를 규칙 기반으로 처리합니다.
 
 - 대상: 대괄호 안의 17~32자리 Discord snowflake형 숫자가 문장·줄 끝이나 문장부호, 공백 앞에 올 때.
   모델이 만든 마커는 실제 ID가 아니어서 snowflake의 최대 20자리를 넘기도 하므로, 상한은 교정 호출
@@ -315,10 +316,17 @@ Discord 응답에 실수로 포함된 `[1]`, `[1562812225691983904]` 같은 인�
 - 마커만 남는 답변은 빈 답변이 되지 않도록 원문을 그대로 둡니다. 다시 적용해도 결과는 같습니다.
 - `off`와 `shadow`의 의미는 바꾸지 않았습니다. 두 모드에서는 이 fallback도 적용하지 않습니다.
 
+**이스케이프 문자 fallback**: 대화 본문에 실수로 남은 리터럴 `\\n`, `\\r\\n`, `\\r`을 실제
+줄바꿈으로, `\\t`를 탭으로 변환합니다. 단, 인라인·펜스 코드, URL, Windows/UNC 경로,
+`"\\n"`처럼 인용한 단독 이스케이프 문자, 이중 백슬래시는 보존합니다. 
+ID 마커 fallback과 같이 `active`에만 적용되며, 반복 적용해도 결과가 바뀌지 않습니다.
+
 `usage.jsonl`의 `operation=output_repair`에는 추가 API 토큰/지연시간이 기록되고,
 `operation=output.repair`에는 `status`, 모드, 모델, 원본·후보 문자 수 및 변경 여부만
 기록합니다. ID 마커 fallback이 실제로 지운 경우에만 `operation=output.marker_fallback`에
-`status=applied`, 모드, 지운 개수(`output_markers_removed`)를 남깁니다. 원문이나 교정본을 telemetry에 중복으로 저장하지 않습니다. 동일 응답의
+`status=applied`, 모드, 지운 개수(`output_markers_removed`)를 남기며, 이스케이프 문자 교정은
+`operation=output.escape_fallback`에 변환 개수(`output_escapes_normalized`)를 기록합니다.
+원문이나 교정본을 telemetry에 중복으로 저장하지 않습니다. 동일 응답의
 교정 평가에는 trace의 원본 모델 출력을 확인하세요. API 호출 실패도 원래 답변을 막지 않습니다.
 
 ## 같은 eval을 여러 provider에서 비교
