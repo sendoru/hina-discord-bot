@@ -92,6 +92,9 @@ LINT_DIRECTIVE_INCOMPLETE = "directive_without_type"
 LINT_DIRECTIVE_REJECTED = "directive_rejected"
 LINT_DIRECTIVE_UNVERIFIED = "directive_unverified"
 LINT_AUDIENCE_NARROWED = "audience_narrowed"
+# A detail the extractor read from a user photo (#472); the quoted user utterance still
+# carries the claim, so this marks an attribute that came from the image.
+LINT_VISUAL_GROUNDED = "visual_grounded"
 
 
 @dataclass(frozen=True)

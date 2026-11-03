@@ -24,6 +24,7 @@ from .memory_extraction import (
     shadow_extraction_payload,
 )
 from .memory_model_routing import build_memory_model_plan
+from .memory_visual import extraction_input
 
 NO_MEMORY = "<NO_MEMORY>"
 log = logging.getLogger("hina")
@@ -130,11 +131,21 @@ SHARED_SUMMARY_POLICY = BASE_SUMMARY_POLICY + MEMORY_SELECTION_POLICY + TRANSIEN
 class MemorySummaryMixin:
     """Provide structured-memory extraction and the remaining shared-summary path."""
 
-    async def _memory_request(self, operation: str, instructions: str, payload: dict, plan):
+    async def _memory_request(
+        self, operation: str, instructions: str, payload: dict, plan, *, images=(),
+    ):
+        include_media_resolution = (
+            self.settings.provider == "gemini" and str(plan.model).lower().startswith("gemini-3")
+        )
         request = {
             "model": plan.model,
             "instructions": instructions,
-            "input": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            # With no images this stays the plain payload string, as before.
+            "input": extraction_input(
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                images,
+                include_media_resolution=include_media_resolution,
+            ),
             "max_output_tokens": plan.max_output_tokens,
             "store": gemini_store_enabled(self.settings, "memory"),
         }

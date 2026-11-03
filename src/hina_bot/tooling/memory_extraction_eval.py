@@ -30,10 +30,17 @@ from hina_bot.ai.memory_extraction import (
 )
 from hina_bot.ai.memory_model_routing import build_memory_model_plan
 from hina_bot.ai.memory_summary import MemorySummaryMixin
+from hina_bot.ai.memory_visual import (
+    MemoryVisual,
+    select_memory_visuals,
+    visual_message_ids,
+)
 from hina_bot.ai.providers import create_provider_client, normalize_provider
 from hina_bot.ai.usage import UsageLogger
 from hina_bot.core.config import Settings
+from hina_bot.core.image_mime import sniff_image_mime
 from hina_bot.core.memory_annotations import (
+    LINT_VISUAL_GROUNDED,
     Annotator,
     MemoryAnnotation,
     Stability,
@@ -46,6 +53,8 @@ from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
 
 DEFAULT_CASES = Path("evals/memory_extraction_cases.jsonl")
 DEFAULT_RESULTS = Path("data/evals")
+# Eval photos are supplied by the operator and never committed (see evals/README.md).
+DEFAULT_IMAGES = Path("data/evals/images")
 # Fictional identifiers; eval payloads never carry real Discord ids.
 SPEAKER_ID = "910001"
 CHANNEL_ID = "920001"
@@ -125,6 +134,33 @@ def case_inputs(case: dict, zone: str):
     return payload, allowed, source_turns, refs, public
 
 
+def load_case_images(
+    case: dict, image_dir: Path | None
+) -> tuple[list[MemoryVisual], list[str]]:
+    """Read the photos a case attaches to its turns; unreadable names are returned too.
+
+    Turn ``m{n}`` carries the images listed in its ``images``. Only a bare file name is
+    accepted so a case cannot point outside the image directory.
+    """
+
+    visuals: list[MemoryVisual] = []
+    missing: list[str] = []
+    for turn_index, turn in enumerate(case["turns"], 1):
+        for image_index, name in enumerate(turn.get("images", ()), 1):
+            data = b""
+            if image_dir is not None and Path(name).name == name:
+                try:
+                    data = (image_dir / name).read_bytes()
+                except OSError:
+                    data = b""
+            mime = sniff_image_mime(data) if data else None
+            if mime is None:
+                missing.append(name)
+                continue
+            visuals.append(MemoryVisual(f"m{turn_index}", image_index, mime, data))
+    return visuals, missing
+
+
 def _value(annotation, name):
     value = getattr(annotation, name, None)
     return value.value if hasattr(value, "value") else value
@@ -154,6 +190,11 @@ def constraint_failures(item, constraint: dict, refs: dict[str, int]) -> list[st
             )
         elif key == "relation_absent":
             ok = (item.relation is None) is bool(expected)
+        elif key == "confidence_max":
+            ok = item.confidence <= float(expected)
+        elif key == "visual_grounded":
+            flags = annotation.lint_flags if annotation is not None else ()
+            ok = (LINT_VISUAL_GROUNDED in flags) is bool(expected)
         elif annotation is None:
             ok = False
         elif key == "importance_min":
@@ -191,6 +232,7 @@ def _item_report(item) -> dict:
     return {
         "content": item.content,
         "kind": item.kind.value,
+        "confidence": item.confidence,
         **({"relation": {"type": item.relation.relation, "target": item.relation.target_item_id}}
            if item.relation else {}),
         **({
@@ -204,7 +246,17 @@ def _item_report(item) -> dict:
     }
 
 
-async def run_case(worker, case: dict) -> dict:
+async def run_case(worker, case: dict, image_dir: Path | None = None) -> dict:
+    visuals, missing = load_case_images(case, image_dir)
+    if missing:
+        # Photos are operator-supplied, so a case without them is skipped, not failed.
+        return {
+            "id": case["id"],
+            "status": "skipped",
+            "failures": [],
+            "missing_images": sorted(set(missing)),
+        }
+    visuals = select_memory_visuals(visuals)
     zone = getattr(worker.settings, "runtime_timezone", "") or "Asia/Seoul"
     payload, allowed, source_turns, refs, public = case_inputs(case, zone)
     response = await worker._memory_request(
@@ -212,6 +264,7 @@ async def run_case(worker, case: dict) -> dict:
         SHADOW_EXTRACTION_POLICY,
         payload,
         build_memory_model_plan(worker.settings, "", payload, shared=False),
+        **({"images": visuals} if visuals else {}),
     )
     if response.status != "completed" or not response.output_text.strip():
         return {"id": case["id"], "status": "error", "failures": ["empty extractor response"]}
@@ -220,6 +273,7 @@ async def run_case(worker, case: dict) -> dict:
         allowed_source_ids=allowed,
         allowed_target_item_ids=set(refs.values()),
         source_turns=source_turns,
+        visual_message_ids=visual_message_ids(visuals),
     )
     if not parsed.valid:
         return {"id": case["id"], "status": "invalid", "failures": ["invalid extractor JSON"],
@@ -251,13 +305,18 @@ def summarize(results: list[dict]) -> dict:
     for row in results:
         by_case.setdefault(row["id"], Counter())[row["status"]] += 1
     statuses = Counter(row["status"] for row in results)
+    # A skipped case (its photos are not on this machine) was never scored.
+    scored = len(results) - statuses["skipped"]
     return {
         "runs": len(results),
         "cases": len(by_case),
         "status": dict(statuses),
-        "pass_rate": round(statuses["passed"] / len(results), 3) if results else None,
+        "pass_rate": round(statuses["passed"] / scored, 3) if scored else None,
         "per_case_pass_rate": {
-            case_id: round(counts["passed"] / sum(counts.values()), 3)
+            case_id: (
+                round(counts["passed"] / (sum(counts.values()) - counts["skipped"]), 3)
+                if sum(counts.values()) > counts["skipped"] else None
+            )
             for case_id, counts in sorted(by_case.items())
         },
     }
@@ -305,15 +364,19 @@ async def run(args, worker=None) -> tuple[list[dict], dict]:
     owned = worker is None
     worker = worker or _EvalWorker(_settings(args))
     results = []
+    image_dir = getattr(args, "image_dir", None)
     try:
         for _ in range(args.repeat):
             for case in cases:
                 try:
-                    row = await run_case(worker, case)
+                    row = await run_case(worker, case, image_dir)
                 except Exception as exc:  # noqa: BLE001 - one case must not stop the run
                     row = {"id": case["id"], "status": "error", "failures": [type(exc).__name__]}
                 results.append(row)
-                detail = "; ".join(row["failures"])
+                detail = "; ".join(row["failures"]) or (
+                    "missing images: " + ", ".join(row["missing_images"])
+                    if row.get("missing_images") else ""
+                )
                 print(f"{row['id']}: {row['status']}{' - ' + detail if detail else ''}")
     finally:
         if owned:
@@ -324,6 +387,10 @@ async def run(args, worker=None) -> tuple[list[dict], dict]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Live personal memory extraction eval (#451)")
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
+    parser.add_argument(
+        "--image-dir", type=Path, default=DEFAULT_IMAGES,
+        help="folder with the photos that image cases attach (skipped when missing)",
+    )
     parser.add_argument("--provider", choices=("openai", "gemini", "openrouter"))
     parser.add_argument("--model")
     parser.add_argument("--gemini-thinking-level", choices=("minimal", "low", "medium", "high"))
