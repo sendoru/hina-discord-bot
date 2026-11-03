@@ -36,20 +36,22 @@ def test_root_shows_help_without_discovering_or_running_commands(monkeypatch, ca
     output = capsys.readouterr().out
     assert "hina commands" in output
     assert "hina help" in output
+    assert output.isascii()
 
 
 def test_commands_grouped_and_warn_about_writes(capsys):
     assert cli.main(["commands"]) == 0
     output = capsys.readouterr().out
-    assert "[실행]" in output
-    assert "[환경 설정]" in output
-    assert "[DB · 유지보수]" in output
-    assert "[평가 · 분석]" in output
+    assert "[Run]" in output
+    assert "[Environment]" in output
+    assert "[Database / Maintenance]" in output
+    assert "[Evaluation / Analysis]" in output
     assert "hina-env-export" in output
     assert "hina-reset-conversation" in output
-    assert " [주의]" in output
+    assert " [CAUTION]" in output
     assert "hina help env-export" in output
-    assert output.index("[실행]") < output.index("[DB · 유지보수]")
+    assert output.index("[Run]") < output.index("[Database / Maintenance]")
+    assert output.isascii()
 
 
 @pytest.mark.parametrize(
@@ -80,8 +82,9 @@ def test_unsafe_command_help_calls_only_module_help(monkeypatch, capsys):
         )
     ]
     output = capsys.readouterr().out
-    assert "주의" in output
-    assert "대화 기록 초기화" in output
+    assert "CAUTION" in output
+    assert "Reset conversation history" in output
+    assert output.isascii()
 
 
 @pytest.mark.parametrize("name", ["bot", "dashboard"])
@@ -92,8 +95,9 @@ def test_service_help_never_starts_services(monkeypatch, capsys, name):
     )
     assert cli.main(["help", name]) == 0
     output = capsys.readouterr().out
-    assert "자체 --help를 지원하지 않는" in output
+    assert "does not support --help" in output
     assert f"hina-{name}" in output
+    assert output.isascii()
 
 
 def test_unknown_help_does_not_execute_anything(monkeypatch, capsys):
@@ -102,7 +106,7 @@ def test_unknown_help_does_not_execute_anything(monkeypatch, capsys):
         lambda *a, **k: pytest.fail("Must not execute an unknown command"),
     )
     assert cli.main(["help", "unknown"]) == 2
-    assert "알 수 없는 명령어" in capsys.readouterr().err
+    assert "Unknown command" in capsys.readouterr().err
 
 
 def test_unclassified_new_entry_point_is_still_discoverable(capsys):
@@ -113,9 +117,9 @@ def test_unclassified_new_entry_point_is_still_discoverable(capsys):
     )
     cli.print_commands({"hina-new-tool": extra})
     output = capsys.readouterr().out
-    assert "[기타]" in output
+    assert "[Other]" in output
     assert "hina-new-tool" in output
-    assert "설명 미등록" in output
+    assert "No description" in output
 
 
 def test_missing_install_metadata_has_actionable_error(monkeypatch, capsys):
