@@ -98,6 +98,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.routing_classifier_model == settings.fast_model
     assert settings.routing_classifier_timeout_seconds == pytest.approx(4.0)
     assert settings.routing_classifier_max_output_tokens == 256
+    assert settings.output_repair_timeout_seconds == pytest.approx(3.0)
     assert settings.channel_context_chars == 6000
     assert settings.history_max_chars == 12000
     assert settings.lore_max_items == 6
@@ -376,6 +377,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
         smart_output_tokens=8192,
         memory_output_tokens=4096,
         routing_classifier_max_output_tokens=256,
+        output_repair_timeout_seconds=3.0,
         cooldown=5,
         summary_every=8,
         structured_memory_every=4,
@@ -394,6 +396,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
     assert settings.set_text("SMART_MAX_OUTPUT_TOKENS", "9000") == 9000
     assert settings.set_text("MEMORY_MAX_OUTPUT_TOKENS", "5000") == 5000
     assert settings.set_text("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "384") == 384
+    assert settings.set_text("OUTPUT_REPAIR_TIMEOUT_SECONDS", "6.5") == pytest.approx(6.5)
     assert settings.set_text("COOLDOWN_SECONDS", "1.5") == pytest.approx(1.5)
     assert settings.set_text("SUMMARY_EVERY", "6") == 6
     assert settings.set_text("STRUCTURED_MEMORY_EVERY", "3") == 3
@@ -413,6 +416,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
         assert reloaded.smart_output_tokens == 9000
         assert reloaded.memory_output_tokens == 5000
         assert reloaded.routing_classifier_max_output_tokens == 384
+        assert reloaded.output_repair_timeout_seconds == pytest.approx(6.5)
         assert reloaded.cooldown == pytest.approx(1.5)
         assert reloaded.summary_every == 6
         assert reloaded.structured_memory_every == 3
@@ -424,6 +428,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
         assert reloaded.empty_response_reply == "fallback"
         assert reloaded.source("FAST_MAX_OUTPUT_TOKENS") == "db"
         assert reloaded.source("RUNTIME_TIMEZONE") == "db"
+        assert reloaded.source("OUTPUT_REPAIR_TIMEOUT_SECONDS") == "db"
     finally:
         store.close()
 
@@ -520,6 +525,11 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
         ("MEMORY_MAX_OUTPUT_TOKENS", "127"),
         ("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "31"),
         ("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "1025"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "0.24"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "30.01"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "nan"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "inf"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "invalid"),
         ("COOLDOWN_SECONDS", "-1"),
         ("SUMMARY_EVERY", "1"),
         ("STRUCTURED_MEMORY_EVERY", "31"),
