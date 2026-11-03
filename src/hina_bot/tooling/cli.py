@@ -147,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.action is None:
         parser.print_help()
         print("\n사용 가능한 명령어: hina commands")
+        print("상세 도움말: hina help <명령어>")
         return 0
 
     try:
