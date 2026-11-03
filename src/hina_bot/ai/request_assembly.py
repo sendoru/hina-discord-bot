@@ -889,6 +889,7 @@ class RequestAssembler(BaseLLM):
                 )
 
         tool_loop = None
+        request_completed = False
         try:
             if local_tool_registry is not None and local_tool_schemas:
                 tool_loop = await LocalToolExecutor(local_tool_registry).run(
@@ -898,6 +899,7 @@ class RequestAssembler(BaseLLM):
                 response = tool_loop.response
             else:
                 response = await send_answer(request)
+            request_completed = True
         finally:
             if lore_trace is not None:
                 # Count even malformed model tool arguments that the registry rejected.
@@ -909,6 +911,7 @@ class RequestAssembler(BaseLLM):
                 attempted = max(lore_trace.calls, requested)
                 errors = lore_trace.errors + max(0, requested - lore_trace.calls)
                 status = (
+                    "request_error" if not request_completed else
                     "not_called" if not attempted else
                     "error" if errors else
                     "not_found" if not lore_trace.hits else "completed"
