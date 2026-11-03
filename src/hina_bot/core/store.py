@@ -22,7 +22,12 @@ from .memory_items import (
     RelationshipEvidence,
 )
 from .memory_repository import MemoryRepository
-from .pending_visuals import NullPendingVisualStore, PendingVisualStore
+from .pending_visuals import (
+    DiskPendingVisualStore,
+    NullPendingVisualStore,
+    PendingVisualStore,
+    pending_visual_root,
+)
 from .routing import Scope
 from .scope_overrides import memory_mode_capabilities, resolve_scope_chain
 from .settings_repository import SettingsRepository
@@ -75,7 +80,7 @@ class Store:
             require_current(db, ('store', 'settings'))
             db.execute('PRAGMA journal_mode=WAL')
             db.execute('PRAGMA secure_delete=ON')
-            return cls(db, history_turns)
+            return cls(db, history_turns, DiskPendingVisualStore(pending_visual_root(path)))
         except BaseException:
             db.close()
             raise
@@ -102,7 +107,10 @@ class Store:
             initialize_connection(db, ('store', 'settings'))
             db.execute('PRAGMA journal_mode=WAL')
             db.execute('PRAGMA secure_delete=ON')
-            return cls(db, history_turns)
+            pending = (
+                DiskPendingVisualStore(pending_visual_root(path)) if path != ':memory:' else None
+            )
+            return cls(db, history_turns, pending)
         except BaseException:
             db.close()
             raise
@@ -639,6 +647,24 @@ class Store:
                 "discard_messages", row["realm"], str(channel_id), row["user_id"],
                 [str(message_id)],
             )
+
+    def pending_visual_keys(self) -> set[tuple[str, str, str, str]]:
+        """``(realm, channel_id, user_id, message_id)`` of turns still awaiting extraction.
+
+        A stored photo is valid only while its turn is in this set; the sweep deletes the rest.
+        """
+        rows = self.db.execute(
+            """SELECT t.realm,t.scope,t.user_id,t.message_id FROM turns t
+               LEFT JOIN memory_extraction_cursors c ON c.scope=t.scope
+               WHERE t.id>COALESCE(c.through_id,0)"""
+        ).fetchall()
+        keys = set()
+        for row in rows:
+            fields = str(row["scope"]).split(":")
+            # {realm kind}:{id}:channel:{channel id}:user:{user id}
+            if len(fields) == 6 and fields[2] == "channel" and fields[4] == "user":
+                keys.add((row["realm"], fields[3], str(row["user_id"]), str(row["message_id"])))
+        return keys
 
     @staticmethod
     def _rowcount(cursor) -> int:
