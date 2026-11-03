@@ -27,6 +27,7 @@ from hina_bot.core.scope_overrides import MemoryMode
 from hina_bot.core.store import Store
 
 from .admin_commands import initialize_admin_commands, run_admin_command_once
+from .forward_context import message_context_text
 from .emoji_commands import EmojiRegistry
 from .output_safety import neutralize_mentions
 from .target_recent import CURRENT_CHANNEL_CONTEXT
@@ -535,7 +536,7 @@ class HinaClient(discord.Client):
                 if old.author.bot and not own_bot:
                     continue
                 has_visual = message_has_visual(old)
-                if not old.content and not has_visual:
+                if not message_context_text(old) and not has_visual:
                     continue
                 historical_scope = Scope(
                     scope.guild_id, scope.channel_id, old.author.id, scope.public_at_capture)
@@ -554,7 +555,7 @@ class HinaClient(discord.Client):
                     historical_scope,
                     old.id,
                     old.author.display_name,
-                    old.content,
+                    message_context_text(old),
                     role="assistant" if own_bot else "user",
                     unix_time=old.created_at.timestamp(),
                     author_user_id=old.author.id,
@@ -639,7 +640,7 @@ class HinaClient(discord.Client):
                 scope,
                 message.id,
                 message.author.display_name,
-                message.content,
+                message_context_text(message),
                 role="bot" if bot_author else "user",
                 unix_time=created_at.timestamp() if created_at is not None else None,
                 author_user_id=message.author.id,
