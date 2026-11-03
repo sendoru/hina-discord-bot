@@ -39,7 +39,8 @@ that the referenced subject does not exist.
 ## Diagnostics and limitations
 
 - `rag.mode`: the selected mode per answer.
-- `rag.tool.turn`: emitted for **every** `tool` answer, including `not_called`, with call/re-query/hit/empty/error counts and returned-character totals. A tool not called is an observation, not proof the answer needed lore.\n- `rag.tool`: per-call success / empty / invalid / limit status, query count,
+- `rag.tool.turn`: emitted for **every** `tool` answer, including `not_called`, with call/re-query/hit/empty/error counts and returned-character totals. A tool not called is an observation, not proof the answer needed lore.
+- `rag.tool`: per-call success / empty / invalid / limit status, query count,
   result count, result IDs, serialized result character count, local elapsed ms.
   Query text is intentionally not copied into the usage log; when provider
   interaction storage is enabled, inspect the stored function call as needed.

@@ -184,3 +184,31 @@ async def test_tool_turn_summary_counts_retry_and_empty_result(tmp_path):
     assert first.output["status"] == "not_found"
     assert second.output["status"] == "ok"
     assert [e[1]["status"] for e in events] == ["not_found", "ok"]
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_is_not_mistaken_for_tool_nonuse(tmp_path):
+    client = NS(responses=NS(), close=AsyncMock())
+    llm = LLM(Settings(
+        discord_token="test", db_path=":memory:",
+        provider="openai", model_routing_mode="fixed",
+        routing_classifier_mode="off", chat_web_search=False,
+        rag_mode="tool", usage_log_path=str(tmp_path / "usage.jsonl"),
+    ), client=client)
+    llm.usage.request = AsyncMock(side_effect=RuntimeError("provider error"))
+    store = Store.create(":memory:")
+    try:
+        with pytest.raises(RuntimeError, match="provider error"):
+            await llm.answer(
+                store, Scope(None, 20, 100), "사용자", "관계 알려줘", use_memory=False,
+            )
+    finally:
+        await llm.close()
+        store.close()
+    rows = [
+        json.loads(line) for line in
+        (tmp_path / "usage.jsonl").read_text().splitlines()
+    ]
+    summaries = [row for row in rows if row.get("operation") == "rag.tool.turn"]
+    assert len(summaries) == 1
+    assert summaries[0]["status"] == "request_error"
