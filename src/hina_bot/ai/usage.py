@@ -432,6 +432,7 @@ class UsageLogger:
             completed_empty = (
                 provider == "gemini"
                 and getattr(response, "status", None) == "completed"
+                and not _has_function_call(response)
                 and not _visible_text(response).strip()
             )
             if completed_empty:
@@ -568,6 +569,10 @@ class UsageLogger:
             "rag_full_items", "rag_full_chars", "rag_full_audience_excluded",
             "rag_tool_calls", "rag_tool_query_count", "rag_tool_result_items",
             "rag_tool_result_chars", "rag_tool_result_ids", "rag_tool_elapsed_ms",
+            "rag_tool_turn_calls", "rag_tool_turn_requeries",
+            "rag_tool_turn_queries", "rag_tool_turn_hits", "rag_tool_turn_empty",
+            "rag_tool_turn_errors", "rag_tool_turn_result_items",
+            "rag_tool_turn_result_chars",
         }
         row = {
             "at": datetime.now(UTC).isoformat(),
