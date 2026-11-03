@@ -3,6 +3,7 @@ from contextvars import ContextVar
 
 import discord
 
+from .forward_context import message_context_text
 from .vision import message_has_visual
 
 log = logging.getLogger("hina")
@@ -11,7 +12,7 @@ REPLY_CONTEXT = ContextVar("reply_context", default=())
 
 
 def _row(target, bot_id: int) -> dict | None:
-    content = (getattr(target, "content", "") or "").strip()
+    content = message_context_text(target).strip()
     author = getattr(target, "author", None)
     user_id = getattr(author, "id", None)
     has_visual = message_has_visual(target)
