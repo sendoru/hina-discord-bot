@@ -151,6 +151,52 @@ class HinaClient(BaseHinaClient):
         self.visual_cache = VisionFetchCache()
         install_slash_commands(self)
 
+    async def on_message_edit(self, before, after):
+        """Update only already-admitted recent rows when Discord resolves an embed.
+
+        Edits do not create conversation turns or regenerate a bot reply. Context
+        eligibility and capture mode were decided by the original on_message.
+        """
+        guild = getattr(after, "guild", None)
+        channel = getattr(after, "channel", None)
+        author = getattr(after, "author", None)
+        if guild is not None and channel is not None and author is not None:
+            scope = Scope(guild.id, channel.id, author.id)
+            rows = self.recent.buffers.get(self.recent._key(scope), ())
+            for row in rows:
+                if (
+                    str(row.get("message_id")) == str(getattr(after, "id", ""))
+                    and str(row.get("author_user_id")) == str(author.id)
+                ):
+                    row["content"] = message_context_text(after)[:4000]
+                    row["has_visual"] = message_has_visual(after)
+                    break
+        if channel is not None:
+            self.visual_cache.invalidate(channel.id, getattr(after, "id", None))
+
+    @staticmethod
+    async def _refresh_missing_embed(message):
+        """One bounded Discord-only reread; never wait/poll or visit the linked site."""
+        if getattr(message, "embeds", None) or not re.search(
+            r"https?://", str(getattr(message, "content", "") or "")
+        ):
+            return message
+        channel = getattr(message, "channel", None)
+        fetch = getattr(channel, "fetch_message", None)
+        if not callable(fetch):
+            return message
+        try:
+            refreshed = await fetch(message.id)
+        except (discord.HTTPException, ValueError, TypeError):
+            return message
+        if (
+            getattr(refreshed, "id", None) == getattr(message, "id", None)
+            and getattr(getattr(refreshed, "author", None), "id", None)
+                == getattr(getattr(message, "author", None), "id", None)
+        ):
+            return refreshed
+        return message
+
     async def on_raw_message_edit(self, payload):
         self.visual_cache.invalidate(payload.channel_id, payload.message_id)
 
@@ -420,6 +466,8 @@ class HinaClient(BaseHinaClient):
         self, message, text, scope, preflight_started, typing_start_ms
     ):
         preflight_turn_id = new_turn_id() if text is not None else None
+        if text is not None:
+            message = await self._refresh_missing_embed(message)
         strict_egress = strict_policy(self.settings.external_context_policy)
         third_party_mention = any(
             getattr(user, "id", None) not in {self.user.id, scope.user_id}
