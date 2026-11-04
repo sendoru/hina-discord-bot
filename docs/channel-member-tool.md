@@ -1,8 +1,12 @@
 # 현재 채널 멤버 조회 도구
 
-일반 답변 모델은 guild 텍스트 채널에서 `get_current_channel_members` 로컬 function tool을
-`tool_choice=auto`로 사용할 수 있습니다. 이 도구는 사용자가 말한 사람을 Discord 사용자와
-연결하거나 정확한 user mention ID가 필요한 경우를 위한 것입니다.
+모든 Discord 답변 요청에서 `get_current_channel_members` 로컬 function tool을
+사전 채널 유형·lexical 판정 없이 `tool_choice=auto`로 제공할 수 있습니다. 이 도구는 사용자가
+말한 사람을 Discord 사용자와 연결하거나 정확한 user mention ID가 필요한 경우를 위한 것입니다.
+실제 멤버 조회는 **guild 텍스트 채널·공개 스레드**에서만 허용됩니다.
+비공개 스레드의 전체 참여자 목록은 부모 채널 권한만으로 확인할 수 없으므로,
+현재는 조회를 거부합니다. DM·기타 지원하지 않는 범위에서는
+스키마는 제공하되 호출 시 `unsupported_scope`를 반환합니다.
 
 ## Discord 전제
 
@@ -18,7 +22,8 @@
 도구에는 인자가 없습니다. 현재 요청의 guild와 채널은 애플리케이션이 고정하므로 모델이 다른
 guild/channel ID를 지정할 수 없습니다.
 
-반환 대상은 현재 채널에 `view_channel` 권한이 있는 일반 사용자입니다. 히나 자신과 다른 봇은
+반환 대상은 현재 채널 또는 공개 스레드에 `view_channel` 권한이 있는 일반 사용자입니다.
+히나 자신과 다른 봇은
 제외합니다. 각 사용자에 대해 다음 필드만 반환합니다.
 
 - `user_id`: Discord user ID
@@ -32,8 +37,9 @@ guild/channel ID를 지정할 수 없습니다.
 
 ## 요청과 token 비용
 
-멤버 목록은 모든 answer request에 선제적으로 붙이지 않습니다. 첫 answer request에는 function schema만
-포함하고, 모델이 실제로 도구를 호출한 경우에만 현재 채널 멤버 목록이 function output으로 다음 model
+멤버 목록은 모든 answer request에 선제적으로 붙이지 않습니다. 첫 answer request에는
+채널 종류와 무관하게 function schema만 포함하고, 모델이 실제로 도구를 호출하고
+권한·지원 범위 검사를 통과한 경우에만 현재 채널 멤버 목록이 function output으로 다음 model
 round에 전달됩니다. 따라서 일반 잡담에서는 roster token 비용이 발생하지 않습니다.
 
 도구 호출은 기존 bounded local-function loop를 사용합니다. 모델이 반복해서 로컬 도구만 호출하면

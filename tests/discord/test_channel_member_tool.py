@@ -111,6 +111,43 @@ async def test_channel_member_tool_fails_closed_when_directory_is_incomplete():
     assert result.output == {"error": "member_directory_incomplete"}
 
 
-def test_channel_member_tool_is_not_exposed_outside_guild_text_channels():
-    message = NS(guild=None, channel=NS(), author=member(100))
-    assert channel_member_tool_registry(message, 99) is None
+@pytest.mark.asyncio
+async def test_thread_member_lookup_uses_thread_permissions():
+    message = runtime()
+    thread = MagicMock(spec=discord.Thread)
+    thread.id = 10
+    thread.type = discord.ChannelType.public_thread
+    thread.permissions_for.side_effect = message.channel.permissions_for.side_effect
+    message.channel = thread
+
+    registry = channel_member_tool_registry(message, 99)
+    assert registry is not None
+    assert [tool["name"] for tool in registry.schemas()] == ["get_current_channel_members"]
+
+    result = await registry.execute(LocalToolCall("thread", "get_current_channel_members", {}))
+    assert result.is_error is False
+    assert [row["user_id"] for row in result.output["members"]] == ["200", "100"]
+    assert result.output["count"] == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["dm", "unsupported_guild_channel", "private_thread"])
+async def test_channel_member_schema_is_offered_but_unsupported_scope_is_denied(kind):
+    if kind == "dm":
+        message = NS(guild=None, channel=MagicMock(spec=discord.DMChannel),
+                     author=member(100))
+    else:
+        message = runtime()
+        if kind == "private_thread":
+            thread = MagicMock(spec=discord.Thread)
+            thread.type = discord.ChannelType.private_thread
+            message.channel = thread
+        else:
+            message.channel = MagicMock(spec=discord.VoiceChannel)
+
+    registry = channel_member_tool_registry(message, 99)
+    assert registry is not None
+    assert [tool["name"] for tool in registry.schemas()] == ["get_current_channel_members"]
+    result = await registry.execute(LocalToolCall("unsupported", "get_current_channel_members", {}))
+    assert result.is_error is True
+    assert result.output == {"error": "unsupported_scope"}
