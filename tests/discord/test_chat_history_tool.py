@@ -18,7 +18,11 @@ from hina_bot.core.config import Settings
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.discord.chat_history_tool import CHAT_HISTORY_TOOL, ChatHistoryLookup, register_chat_history_tool
+from hina_bot.discord.chat_history_tool import (
+    CHAT_HISTORY_TOOL,
+    ChatHistoryLookup,
+    register_chat_history_tool,
+)
 from hina_bot.discord.chatlog_capture import set_capture_mode_override
 from hina_bot.discord.member_directory import channel_member_tool_registry
 from hina_bot.discord.turn_provenance import CURRENT_TURN_PROVENANCE
