@@ -127,6 +127,8 @@ async def test_history_and_member_schemas_reach_model_regardless_of_channel_type
 ):
     channel = MagicMock(spec=channel_cls)
     channel.id = 10
+    if channel_cls is discord.Thread:
+        channel.type = discord.ChannelType.public_thread
     channel.permissions_for.return_value = NS(view_channel=True, read_message_history=True)
     if hasattr(channel, 'history'):
         channel.history.side_effect = runtime.channel.history.side_effect
@@ -174,6 +176,22 @@ async def test_history_and_member_schemas_reach_model_regardless_of_channel_type
         assert result.is_error is True
         assert result.output == {'error': 'unsupported_scope'}
         assert runtime.calls == []
+
+
+@pytest.mark.asyncio
+async def test_private_thread_history_schema_is_visible_but_lookup_fails_closed(runtime):
+    thread = MagicMock(spec=discord.Thread)
+    thread.id = 10
+    thread.type = discord.ChannelType.private_thread
+    runtime.message.channel = thread
+
+    registry = LocalToolRegistry()
+    register_chat_history_tool(registry, runtime.message, 99, runtime.store, runtime.settings)
+    assert [s['name'] for s in registry.schemas()] == ['get_chat_history']
+    result = await registry.execute(LocalToolCall('private', 'get_chat_history', {}))
+    assert result.is_error is True
+    assert result.output == {'error': 'unsupported_scope'}
+    assert runtime.calls == []
 
 
 @pytest.mark.asyncio
