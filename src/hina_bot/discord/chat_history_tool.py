@@ -12,6 +12,7 @@ from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
 from hina_bot.core.routing import Scope
 
 from .chatlog_capture import capture_mode
+from .private_thread_access import check_private_thread_access, private_thread_member_ids
 from .target_context import direct_history_trigger
 from .turn_provenance import CURRENT_TURN_PROVENANCE
 
@@ -68,11 +69,6 @@ class ChatHistoryLookup:
                 raise LocalToolError('unsupported_scope')
         elif not isinstance(channel, (discord.TextChannel, discord.Thread)):
             raise LocalToolError('unsupported_scope')
-        # Private threads have membership restrictions beyond parent-channel
-        # permissions; do not read without a verified membership path.
-        if (isinstance(channel, discord.Thread)
-                and channel.type == discord.ChannelType.private_thread):
-            raise LocalToolError('unsupported_scope')
         if not self.store.chat_log_enabled(self.scope):
             raise LocalToolError('history_disabled')
         if guild is None:
@@ -91,6 +87,15 @@ class ChatHistoryLookup:
                     raise LocalToolError('permission_denied')
         return ('direct' if strict_policy(self.settings.external_context_policy)
                 or capture_mode(self.store, self.scope) == 'direct' else 'all')
+
+    async def _verify_private_thread_access(self):
+        channel = self.message.channel
+        if (isinstance(channel, discord.Thread)
+                and channel.type == discord.ChannelType.private_thread):
+            ids = await private_thread_member_ids(channel)
+            check_private_thread_access(
+                channel, self.message.guild, self.message.author.id, self.bot_id, ids,
+            )
 
     def _arguments(self, arguments):
         if set(arguments) - {'query', 'include_before_reset', 'before_message_id', 'cursor'}:
@@ -148,6 +153,7 @@ class ChatHistoryLookup:
                 raise LocalToolError('budget_exhausted')
             visibility = self._visibility()
             query, include, upper = self._arguments(arguments)
+            await self._verify_private_thread_access()
             cutoff = self.store.latest_conversation_reset_cutoff()
             lower = 0 if include else cutoff
             result = await self._lookup(query, include, upper, lower, cutoff, visibility)
@@ -238,6 +244,9 @@ class ChatHistoryLookup:
                 page_full = True
                 break
         self._visibility()
+        # Membership and permissions can change while Discord history is loading.
+        # Re-fetch participants before releasing any private thread content.
+        await self._verify_private_thread_access()
         self.returned_chars += chars
         self.returned_ids.update(row['message_id'] for row in rows)
         more = bool(fetched) and (page_full or len(fetched) == limit or bool(failure))
