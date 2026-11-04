@@ -116,6 +116,7 @@ async def test_thread_member_lookup_uses_thread_permissions():
     message = runtime()
     thread = MagicMock(spec=discord.Thread)
     thread.id = 10
+    thread.type = discord.ChannelType.public_thread
     thread.permissions_for.side_effect = message.channel.permissions_for.side_effect
     message.channel = thread
 
@@ -130,14 +131,19 @@ async def test_thread_member_lookup_uses_thread_permissions():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", ["dm", "unsupported_guild_channel"])
+@pytest.mark.parametrize("kind", ["dm", "unsupported_guild_channel", "private_thread"])
 async def test_channel_member_schema_is_offered_but_unsupported_scope_is_denied(kind):
     if kind == "dm":
         message = NS(guild=None, channel=MagicMock(spec=discord.DMChannel),
                      author=member(100))
     else:
         message = runtime()
-        message.channel = MagicMock(spec=discord.VoiceChannel)
+        if kind == "private_thread":
+            thread = MagicMock(spec=discord.Thread)
+            thread.type = discord.ChannelType.private_thread
+            message.channel = thread
+        else:
+            message.channel = MagicMock(spec=discord.VoiceChannel)
 
     registry = channel_member_tool_registry(message, 99)
     assert registry is not None
