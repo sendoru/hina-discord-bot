@@ -7,6 +7,7 @@ import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 import discord
 import httpx
@@ -43,6 +44,7 @@ class VisionLimits:
     attachments: int = 4
     emojis: int = 12
     stickers: int = 8
+    embeds: int = 2
 
     @classmethod
     def from_settings(cls, settings) -> VisionLimits:
@@ -57,6 +59,7 @@ class VisionLimits:
             "attachment": self.attachments,
             "emoji": self.emojis,
             "sticker": self.stickers,
+            "embed": self.embeds,
         }[source]
 
 
@@ -146,6 +149,82 @@ def _sticker_candidate(sticker):
     return url, str(getattr(sticker, "name", "") or "")
 
 
+def _safe_discord_proxy_url(url: str) -> str:
+    """Allow only Discord-served HTTPS proxies, never arbitrary preview URLs."""
+    if not url or len(url) > 2048:
+        return ""
+    try:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").lower()
+        approved = host in {"media.discordapp.net", "cdn.discordapp.com"} or (
+            re.fullmatch(r"images-ext-[0-9]+\.discordapp\.net", host) is not None
+        )
+        if (
+            parsed.scheme != "https" or not approved
+            or parsed.port not in (None, 443)
+            or parsed.username or parsed.password or not parsed.path.startswith("/")
+        ):
+            return ""
+    except ValueError:
+        return ""
+    return url
+
+
+def _discord_proxy_url(media) -> str:
+    return _safe_discord_proxy_url(str(getattr(media, "proxy_url", "") or ""))
+
+
+def _embed_candidates(message):
+    """Images supplied by Discord embeds: main image first, fallback thumbnail.
+
+    Skip images already attached directly to this same message. Profile icons
+    and provider favicons are deliberately never treated as message images.
+    """
+    attached = {
+        str(getattr(item, "url", "") or "")
+        for item in (getattr(message, "attachments", None) or ())
+    }
+    seen = set()
+    for embed in (getattr(message, "embeds", None) or ())[:2]:
+        for field, name in (("image", "미리보기 이미지"), ("thumbnail", "미리보기 썸네일")):
+            media = getattr(embed, field, None)
+            if media is None:
+                continue
+            original = str(getattr(media, "url", "") or "")
+            url = _discord_proxy_url(media)
+            if (original and original in attached) or (url and url in seen):
+                break
+            if not url:
+                continue
+            seen.add(url)
+            yield url, name
+            break  # One media item per embed, never also a profile-like thumbnail.
+
+
+async def _download_embed(url: str) -> bytes:
+    """Stream only Discord proxy URLs, rejecting redirects and oversized data."""
+    if not _safe_discord_proxy_url(url):
+        return b""
+    async with (
+        httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as client,
+        client.stream("GET", url) as response,
+    ):
+        response.raise_for_status()
+        size = response.headers.get("content-length")
+        if size:
+            try:
+                if int(size) > MAX_VISUAL_BYTES:
+                    return b""
+            except ValueError:
+                pass
+        body = bytearray()
+        async for chunk in response.aiter_bytes():
+            if len(body) + len(chunk) > MAX_VISUAL_BYTES:
+                return b""
+            body.extend(chunk)
+        return bytes(body)
+
+
 def message_has_visual(message, *, include_inline_emojis: bool = True) -> bool:
     """Return whether a Discord message carries a supported visual source without fetching bytes."""
     for attachment in getattr(message, "attachments", ()):
@@ -156,6 +235,8 @@ def message_has_visual(message, *, include_inline_emojis: bool = True) -> bool:
         _sticker_candidate(sticker) is not None
         for sticker in getattr(message, "stickers", ())
     ):
+        return True
+    if next(_embed_candidates(message), None) is not None:
         return True
     return bool(
         include_inline_emojis
@@ -239,12 +320,13 @@ async def collect_visual_inputs(
     limits: VisionLimits | None = None,
     cache: VisionFetchCache | None = None,
     downloader=_download,
+    embed_downloader=_download_embed,
     max_context_messages: int = MAX_CONTEXT_VISUAL_MESSAGES,
 ) -> list[VisualInput]:
     """Fetch visuals only from the current message and already-selected message context."""
     limits = limits or VisionLimits()
     result: list[VisualInput] = []
-    counts = {"attachment": 0, "emoji": 0, "sticker": 0}
+    counts = {"attachment": 0, "emoji": 0, "sticker": 0, "embed": 0}
     used = 0
     seen_message_ids: set[str] = set()
 
@@ -325,6 +407,7 @@ async def collect_visual_inputs(
             candidate = _sticker_candidate(sticker)
             if candidate is not None:
                 remote.append((candidate[0], "sticker", candidate[1]))
+        remote.extend((url, "embed", name) for url, name in _embed_candidates(target))
 
         for url, source, name in remote:
             if used >= MAX_TOTAL_VISUAL_BYTES:
@@ -332,7 +415,7 @@ async def collect_visual_inputs(
             if not has_room(source):
                 continue
             try:
-                data = await downloader(url)
+                data = await (embed_downloader if source == "embed" else downloader)(url)
             except Exception as exc:  # noqa: BLE001 - do not log Discord CDN URLs
                 log.warning("Visual asset read failed (%s)", type(exc).__name__)
                 continue

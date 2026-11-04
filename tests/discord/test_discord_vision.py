@@ -855,3 +855,122 @@ def test_historical_visual_cache_invalidation_clears_both_reference_variants():
     assert cache.get((10, "42", False)) is None
     assert cache.get((10, "42", True)) is None
     assert cache.get((11, "42", False)) == ()
+
+
+
+def _embed_media(*, proxy_url="https://images-ext-1.discordapp.net/external/test/image.png",
+                 original_url="https://x.com/example/photo.png"):
+    return NS(
+        image=NS(proxy_url=proxy_url, url=original_url),
+        thumbnail=NS(proxy_url="https://images-ext-1.discordapp.net/external/test/thumb.png",
+                     url="https://x.com/example/thumb.png"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_discord_embed_image_is_included_with_message_provenance():
+    fetch_image = AsyncMock(return_value=PNG)
+    message = NS(
+        id=501, content="히나야 이거 봐",
+        author=NS(id=100, display_name="공유자"),
+        attachments=[], stickers=[], embeds=[_embed_media()],
+    )
+    assert message_has_visual(message)
+    visuals = await collect_visual_inputs(message, embed_downloader=fetch_image)
+    assert [(v.source, v.name, v.author_user_id, v.message_id) for v in visuals] == [
+        ("embed", "미리보기 이미지", "100", "501"),
+    ]
+    assert "링크 미리보기" in visuals[0].label(1)
+    fetch_image.assert_awaited_once_with(
+        "https://images-ext-1.discordapp.net/external/test/image.png"
+    )
+
+
+@pytest.mark.asyncio
+async def test_discord_embed_thumbnail_is_used_only_when_main_image_missing():
+    fetch_image = AsyncMock(return_value=PNG)
+    item = _embed_media()
+    item.image = None
+    message = NS(content="https://youtu.be/example", attachments=[], stickers=[], embeds=[item])
+    visuals = await collect_visual_inputs(message, embed_downloader=fetch_image)
+    assert [(v.source, v.name) for v in visuals] == [("embed", "미리보기 썸네일")]
+    fetch_image.assert_awaited_once_with(item.thumbnail.proxy_url)
+
+
+@pytest.mark.asyncio
+async def test_embed_proxy_restriction_blocks_untrusted_and_non_https_urls():
+    fetch_image = AsyncMock(return_value=PNG)
+    for url in (
+        "http://images-ext-1.discordapp.net/anything",
+        "https://127.0.0.1/private",
+        "https://images-ext-1.discordapp.net.evil.example/file",
+        "https://images-ext-1.discordapp.net:8443/file",
+        "https://user@images-ext-1.discordapp.net/file",
+        "https://169.254.169.254/latest/meta-data",
+    ):
+        item = _embed_media(proxy_url=url)
+        item.thumbnail = None
+        message = NS(content="link", attachments=[], stickers=[], embeds=[item])
+        assert not message_has_visual(message)
+        assert await collect_visual_inputs(message, embed_downloader=fetch_image) == []
+    fetch_image.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_embed_media_deduplicates_attachments_and_respects_limit_and_mime():
+    attachment = NS(
+        size=len(PNG), content_type="image/png", filename="attached.png",
+        url="https://x.com/example/photo.png", read=AsyncMock(return_value=PNG),
+    )
+    item = _embed_media()
+    item.thumbnail = None
+    extra = _embed_media(
+        proxy_url="https://images-ext-1.discordapp.net/external/test/other.png",
+        original_url="https://x.com/example/other.png",
+    )
+    extra.thumbnail = None
+    fetch_image = AsyncMock(return_value=PNG)
+    message = NS(
+        content="link", attachments=[attachment], stickers=[],
+        embeds=[item, extra],
+    )
+    visuals = await collect_visual_inputs(
+        message, embed_downloader=fetch_image,
+        limits=VisionLimits(attachments=1, emojis=0, stickers=0, embeds=1),
+    )
+    assert [v.source for v in visuals] == ["attachment", "embed"]
+    fetch_image.assert_awaited_once_with(extra.image.proxy_url)
+
+    invalid = NS(content="link", attachments=[], stickers=[], embeds=[extra])
+    assert await collect_visual_inputs(
+        invalid, embed_downloader=AsyncMock(return_value=b"not an image")
+    ) == []
+
+
+@pytest.mark.asyncio
+async def test_selected_reply_embed_image_respects_provenance_and_visibility():
+    target = NS(
+        id=610, content="link", author=NS(id=200, display_name="원본 공유자"),
+        attachments=[], stickers=[], embeds=[_embed_media()],
+    )
+    channel = NS(id=10, fetch_message=AsyncMock(return_value=target))
+    current = NS(
+        id=611, content="히나야 이거 봐",
+        author=NS(id=100, display_name="질문자"),
+        channel=channel, attachments=[], stickers=[], embeds=[],
+    )
+    refs = [VisualContextRef("610", "replied_message", "explicit_reply")]
+    images = await collect_visual_inputs(
+        current, context_refs=refs, embed_downloader=AsyncMock(return_value=PNG),
+    )
+    assert len(images) == 1
+    assert images[0].context_kind == "replied_message"
+    assert images[0].reference_strength == "explicit_reply"
+    assert images[0].author_user_id == "200"
+    assert images[0].message_id == "610"
+
+    channel.fetch_message.reset_mock()
+    assert await collect_visual_inputs(
+        current, context_refs=[], embed_downloader=AsyncMock(return_value=PNG),
+    ) == []
+    channel.fetch_message.assert_not_awaited()

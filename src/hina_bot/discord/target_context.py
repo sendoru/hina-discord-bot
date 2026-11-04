@@ -7,6 +7,7 @@ import discord
 
 from hina_bot.core.routing import trigger_text
 
+from .forward_context import message_context_text
 from .vision import message_has_visual
 
 log = logging.getLogger("hina")
@@ -113,7 +114,7 @@ async def collect(
             )
             if visibility_mode == "direct" and not direct_trigger:
                 continue
-            text_value = (getattr(old, "content", "") or "").strip()
+            text_value = message_context_text(old).strip()
             has_visual = message_has_visual(old)
             if ((not text_value and not has_visual)
                     or len(found[uid]) >= limits["messages"]
