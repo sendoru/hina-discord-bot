@@ -130,6 +130,7 @@ class VisualInput:
             "attachment": "첨부 이미지",
             "emoji": "커스텀 이모지",
             "sticker": "스티커",
+            "embed": "Discord 링크 미리보기 이미지",
         }.get(self.source, "이미지")
         context = {
             "current_message": "현재 메시지",
