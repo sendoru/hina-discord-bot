@@ -7,6 +7,8 @@ explicit instead of attributing its text to the forwarding user or to Hina.
 
 from __future__ import annotations
 
+from .embed_context import message_embed_text
+
 
 def message_context_text(message) -> str:
     """Combine the sender's own text with bounded, clearly attributed forward text."""
@@ -20,6 +22,9 @@ def message_context_text(message) -> str:
                 + text
             )
 
-    if not forwarded:
-        return content
-    return "\n\n".join(([content] if content.strip() else []) + forwarded)
+    preview = message_embed_text(message)
+    return "\n\n".join(
+        ([content] if content.strip() else [])
+        + forwarded
+        + ([preview] if preview else [])
+    )

@@ -112,6 +112,9 @@ class VisualInput:
         return f"data:{self.mime_type};base64,{encoded}"
 
     def input_url(self) -> str:
+        # Discord proxy links can expire; use the validated bytes already fetched.
+        if self.source == "embed":
+            return self.data_url()
         return self.uri if self.uri.startswith("https://") else self.data_url()
 
     def media_resolution(self) -> str:
@@ -130,6 +133,7 @@ class VisualInput:
             "attachment": "첨부 이미지",
             "emoji": "커스텀 이모지",
             "sticker": "스티커",
+            "embed": "Discord 링크 미리보기 이미지",
         }.get(self.source, "이미지")
         context = {
             "current_message": "현재 메시지",
