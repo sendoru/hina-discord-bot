@@ -63,6 +63,8 @@ def current_channel_members(
         or getattr(guild, "unavailable", False)
         or not isinstance(channel, (discord.TextChannel, discord.Thread))
         or channel.permissions_for(message.author).view_channel is not True
+        or getattr(guild, "me", None) is None
+        or channel.permissions_for(guild.me).view_channel is not True
     ):
         return ChannelMemberDirectory((), False)
 
