@@ -84,10 +84,12 @@ def channel_member_tool_registry(
         registry = LocalToolRegistry()
 
     def get_current_channel_members(_arguments):
+        channel = getattr(message, "channel", None)
         if (
             getattr(message, "guild", None) is None
-            or not isinstance(getattr(message, "channel", None),
-                              (discord.TextChannel, discord.Thread))
+            or not isinstance(channel, (discord.TextChannel, discord.Thread))
+            or (isinstance(channel, discord.Thread)
+                and channel.type == discord.ChannelType.private_thread)
         ):
             raise LocalToolError("unsupported_scope")
         directory = current_channel_members(message, bot_id)
