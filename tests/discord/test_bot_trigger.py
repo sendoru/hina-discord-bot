@@ -1244,7 +1244,7 @@ async def test_typing_stops_before_fallback_reply_send(tmp_path):
 
 @pytest.mark.asyncio
 async def test_current_link_embed_reaches_llm_without_replacing_original_user_text(base_client):
-    client, store, llm, channel, guild, _ = base_client
+    client, _store, llm, channel, guild, _ = base_client
     author = NS(
         id=100, bot=False, display_name="공유자",
         guild_permissions=NS(manage_guild=False),
