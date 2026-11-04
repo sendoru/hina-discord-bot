@@ -104,7 +104,8 @@ def channel_member_tool_registry(
         if guild is None or not isinstance(channel, (discord.TextChannel, discord.Thread)):
             raise LocalToolError("unsupported_scope")
         private_ids = None
-        if isinstance(channel, discord.Thread) and channel.type == discord.ChannelType.private_thread:
+        if (isinstance(channel, discord.Thread)
+                and channel.type == discord.ChannelType.private_thread):
             # Check current caller/bot permissions before fetching any private roster.
             for candidate in (guild.get_member(message.author.id), guild.me):
                 if candidate is None or channel.permissions_for(candidate).view_channel is not True:
