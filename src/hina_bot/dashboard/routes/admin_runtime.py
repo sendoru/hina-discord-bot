@@ -33,6 +33,152 @@ def _runtime_edit_value(value: object) -> str:
 COLLECTION_KINDS = {"prefixes", "discord_ids"}
 
 
+# Keep dashboard grouping independent of the runtime settings schema. Newly added
+# settings without a category remain visible in the "Other" section.
+RUNTIME_CONFIG_SECTIONS = (
+    (
+        "discord",
+        "Discord & Replies",
+        "Triggers, reply behavior, and cooldowns",
+        (
+            "call_prefixes",
+            "dm_always_reply",
+            "always_reply_channel_ids",
+            "cooldown",
+            "empty_call_reply",
+            "special_dm_empty_call_reply",
+            "empty_response_reply",
+        ),
+    ),
+    (
+        "models",
+        "Models & Generation",
+        "Model selection, routing, tokens, and thinking levels",
+        (
+            "model_routing_mode",
+            "model",
+            "fast_model",
+            "smart_model",
+            "model_routing_smart_threshold",
+            "output_tokens",
+            "fast_output_tokens",
+            "smart_output_tokens",
+            "routing_classifier_max_output_tokens",
+            "gemini_thinking_level",
+            "gemini_fast_thinking_level",
+            "gemini_smart_thinking_level",
+        ),
+    ),
+    (
+        "context",
+        "Conversation & Privacy",
+        "Conversation history, context collection, and privacy boundaries",
+        (
+            "external_context_policy",
+            "public_memory_in_dm",
+            "channel_context_chars",
+            "history_max_chars",
+        ),
+    ),
+    (
+        "memory",
+        "Memory & Retrieval",
+        "Memory access, extraction, lore, and retrieval settings",
+        (
+            "rag_mode",
+            "personal_memory_read_mode",
+            "memory_session_followup",
+            "community_lore",
+            "memory_output_tokens",
+            "memory_routing_smart_threshold",
+            "summary_every",
+            "structured_memory_every",
+            "structured_memory_stale_after_seconds",
+            "lore_max_items",
+            "lore_max_chars",
+        ),
+    ),
+    (
+        "tools",
+        "Search & Tools",
+        "Web search and tool execution modes",
+        (
+            "chat_web_search",
+            "gemini_search_api_mode",
+        ),
+    ),
+    (
+        "repair",
+        "Output Repair",
+        "Response post-processing and repair fallback",
+        (
+            "output_repair_mode",
+            "output_repair_model",
+            "output_repair_timeout_seconds",
+        ),
+    ),
+    (
+        "logging",
+        "Interactions Logging",
+        "Gemini interactions storage and per-call overrides",
+        (
+            "gemini_store_interactions",
+            "gemini_store_answer_interactions",
+            "gemini_store_memory_interactions",
+            "gemini_store_output_repair_interactions",
+            "gemini_store_knowledge_interactions",
+            "gemini_store_classifier_interactions",
+        ),
+    ),
+    (
+        "environment",
+        "Runtime Environment",
+        "Timezone, locale, and default location",
+        (
+            "runtime_timezone",
+            "runtime_locale",
+            "runtime_default_location",
+        ),
+    ),
+)
+
+
+def _runtime_sections(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    grouped = {
+        section_id: [] for section_id, _, _, _ in RUNTIME_CONFIG_SECTIONS
+    }
+    grouped["other"] = []
+    categories = {
+        key: section_id
+        for section_id, _, _, keys in RUNTIME_CONFIG_SECTIONS
+        for key in keys
+    }
+    for row in rows:
+        grouped[categories.get(str(row["key"]), "other")].append(row)
+
+    sections = [
+        {
+            "id": section_id,
+            "title": title,
+            "description": description,
+            "rows": grouped[section_id],
+        }
+        for section_id, title, description, _ in RUNTIME_CONFIG_SECTIONS
+        if grouped[section_id]
+    ]
+    if grouped["other"]:
+        sections.append(
+            {
+                "id": "other",
+                "title": "Other",
+                "description": "Settings that have not yet been categorized",
+                "rows": grouped["other"],
+            }
+        )
+    return sections
+
+
+
 def _collection_items(value: object, kind: str) -> list[str]:
     if kind == "prefixes" and isinstance(value, tuple):
         return [str(item) for item in value]
@@ -250,7 +396,7 @@ def build_router(
             request=request,
             name="admin_runtime.html",
             context={
-                "rows": _runtime_rows(repository),
+                "sections": _runtime_sections(_runtime_rows(repository)),
                 "actions": repository.admin_command_rows(
                     action_prefix="runtime.",
                     limit=30,
