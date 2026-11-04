@@ -2,7 +2,7 @@
 
 일반 답변 모델에는 채널 종류나 사용자 발화 내용으로 사전 판별하지 않고 **항상**
 `get_chat_history` 스키마를 제공합니다. 실제 조회는 모델이 `tool_choice=auto`로
-선택한 경우에만 실행하며, **현재 guild 텍스트 채널·공개 스레드 또는 현재 1:1 DM**에서
+선택한 경우에만 실행하며, **현재 guild 텍스트 채널·공개/비공개 스레드 또는 현재 1:1 DM**에서
 허용된 기록을 읽을 수 있습니다. 실제 함수 호출 전에는
 이 도구의 Discord history·원문 repository 조회가 실행되지 않습니다. 멤버 조회 도구와 같은
 요청별 registry 및 기존 Gemini Interactions adapter/local-function loop를 사용합니다.
@@ -36,8 +36,9 @@
   커서와 `before_message_id`를 함께 쓰거나 다른 요청의 커서를 재사용할 수 없습니다.
 
 모델은 guild/channel/user ID, 조회 한도나 저장소를 지정할 수 없습니다. 조회 범위는
-현재 guild 텍스트 채널·공개 스레드 또는 1:1 DM에 고정됩니다. 비공개 스레드는
-참여 권한 검증이 별도로 필요하므로 현재 조회를 거부합니다. group DM이나 기타 채널 유형에서도
+현재 guild 텍스트 채널·공개/비공개 스레드 또는 1:1 DM에 고정됩니다.
+비공개 스레드에서는 요청자와 봇이 스레드에 참여했거나 `manage_threads` 권한을 가졌는지
+실제 참여자 목록을 확인해 검증합니다. group DM이나 기타 채널 유형에서도
 도구 스키마는 제공되지만, 지원하지 않는 범위에서 호출되면 `unsupported_scope`를 반환하며
 Discord 기록은 읽지 않습니다. 서버 전체 및 다른 채널 검색도 지원하지 않습니다.
 현재 요청 메시지와 이후 메시지는 반환하지 않습니다.
@@ -68,6 +69,9 @@ archive의 실패 기록, 내부 prompt, memory_context, 오류·디버깅 메�
 조회 전과 결과 반환 전에 chatlog 설정, 요청자와 봇의 현재 `view_channel` 및
 `read_message_history`를 검사합니다. off이면 모든 출처를 차단합니다. DM은 현재 recipient가
 요청자인지 검사합니다. guild member cache에서 현재 요청자의 권한을 확인하지 못해도 차단합니다.
+비공개 스레드는 부모 채널의 `permissions_for()`만으로 참여 여부를 알 수 없으므로,
+조회 전후에 `Thread.fetch_members()`로 요청자와 봇의 실제 접근 가능 여부를 재확인합니다.
+API 오류·불완전한 참여자 목록이면 기록을 제공하지 않습니다.
 
 `EXTERNAL_CONTEXT_POLICY=bot_interactions_only` 또는 capture mode=direct에서는 기존 routing과
 동일한 호출 근거를 확인한 사용자 발화만 허용합니다. DB에 있다는 사실이나 exportable 플래그만으로
