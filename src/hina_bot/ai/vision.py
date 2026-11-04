@@ -112,6 +112,9 @@ class VisualInput:
         return f"data:{self.mime_type};base64,{encoded}"
 
     def input_url(self) -> str:
+        # Discord proxy links can expire; use the validated bytes already fetched.
+        if self.source == "embed":
+            return self.data_url()
         return self.uri if self.uri.startswith("https://") else self.data_url()
 
     def media_resolution(self) -> str:
