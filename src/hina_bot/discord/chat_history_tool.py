@@ -68,6 +68,11 @@ class ChatHistoryLookup:
                 raise LocalToolError('unsupported_scope')
         elif not isinstance(channel, (discord.TextChannel, discord.Thread)):
             raise LocalToolError('unsupported_scope')
+        # Private threads have membership restrictions beyond parent-channel
+        # permissions; do not read without a verified membership path.
+        if (isinstance(channel, discord.Thread)
+                and channel.type == discord.ChannelType.private_thread):
+            raise LocalToolError('unsupported_scope')
         if not self.store.chat_log_enabled(self.scope):
             raise LocalToolError('history_disabled')
         if guild is None:
