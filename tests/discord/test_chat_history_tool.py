@@ -18,7 +18,11 @@ from hina_bot.core.config import Settings
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.discord.chat_history_tool import ChatHistoryLookup, register_chat_history_tool
+from hina_bot.discord.chat_history_tool import (
+    CHAT_HISTORY_TOOL,
+    ChatHistoryLookup,
+    register_chat_history_tool,
+)
 from hina_bot.discord.chatlog_capture import set_capture_mode_override
 from hina_bot.discord.member_directory import channel_member_tool_registry
 from hina_bot.discord.turn_provenance import CURRENT_TURN_PROVENANCE
@@ -79,6 +83,21 @@ def reset_cutoff(runtime, cutoff=100):
             'INSERT INTO conversation_reset_epochs(reset_at,cutoff_message_id,backup_sha256) '
             'VALUES (?,?,?)', (datetime.now(UTC).isoformat(), cutoff, 'test'),
         )
+
+
+def test_history_tool_description_covers_conversation_resumption_and_opt_out():
+    """Prompt-only P0 guidance must preserve the expected model tool-choice contract."""
+    description = CHAT_HISTORY_TOOL.description
+    assert all(phrase in description for phrase in (
+        '몇 시간 전', '아까 그거', '전에 제안한 방법',
+        '추측하거나 다시 설명해 달라고 하기 전에 조회',
+        '현재 문맥만으로 충분', '독립적인 새 질문',
+        'query 없이', '부분/빈 결과', 'recall_memory',
+    ))
+    assert 'required' not in CHAT_HISTORY_TOOL.parameters
+    assert set(CHAT_HISTORY_TOOL.parameters['properties']) == {
+        'query', 'include_before_reset', 'before_message_id', 'cursor',
+    }
 
 
 @pytest.mark.asyncio
