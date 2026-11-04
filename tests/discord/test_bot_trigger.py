@@ -1239,3 +1239,30 @@ async def test_typing_stops_before_fallback_reply_send(tmp_path):
         channel.typing.return_value.__aexit__.assert_awaited_once()
     finally:
         await bot.close()
+
+
+
+@pytest.mark.asyncio
+async def test_current_link_embed_reaches_llm_without_replacing_original_user_text(base_client):
+    client, store, llm, channel, guild, _ = base_client
+    author = NS(
+        id=100, bot=False, display_name="공유자",
+        guild_permissions=NS(manage_guild=False),
+    )
+    original = "히나야 이 링크 봐줘 https://x.com/example/status/1"
+    message = make_message(
+        channel, guild, message_id=202, author=author, text=original,
+    )
+    message.embeds = [NS(
+        url="https://x.com/example/status/1",
+        title="할로윈 게시물", description="다들 해피 할로윈!",
+        author=NS(name="원본 게시자"), fields=[],
+    )]
+    await client.on_message(message)
+
+    llm.answer.assert_awaited_once()
+    model_input = llm.answer.call_args.args[3]
+    assert model_input.startswith(original)
+    assert "다들 해피 할로윈!" in model_input
+    assert "원본 게시자" in model_input
+    assert client.recent.context(Scope(1, 10, 100), 9999)[0]["content"].startswith(original)
