@@ -16,7 +16,7 @@ class ChannelMemberDirectory:
 CHANNEL_MEMBER_TOOL = LocalToolSpec(
     name="get_current_channel_members",
     description=(
-        "현재 Discord 채널의 사용자 이름과 user_id를 조회합니다. 이름·별명으로 사람을 "
+        "현재 Discord 서버 텍스트 채널·스레드의 사용자 이름과 user_id를 조회합니다. 이름·별명으로 사람을 "
         "식별하거나 정확한 mention ID가 필요할 때 사용하세요. 불러 달라거나 핑해 달라는 "
         "대상이 확인되면 반환된 user_id를 <@user_id>로 사용할 수 있으며, 여러 후보가 "
         "그럴듯하면 임의로 고르지 마세요."
@@ -57,6 +57,8 @@ def current_channel_members(message, bot_id: int) -> ChannelMemberDirectory:
         guild is None
         or getattr(guild, "unavailable", False)
         or not isinstance(channel, (discord.TextChannel, discord.Thread))
+        or (isinstance(channel, discord.Thread)
+            and channel.type == discord.ChannelType.private_thread)
         or channel.permissions_for(message.author).view_channel is not True
     ):
         return ChannelMemberDirectory((), False)
