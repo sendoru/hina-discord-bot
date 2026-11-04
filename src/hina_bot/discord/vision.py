@@ -149,9 +149,8 @@ def _sticker_candidate(sticker):
     return url, str(getattr(sticker, "name", "") or "")
 
 
-def _discord_proxy_url(media) -> str:
+def _safe_discord_proxy_url(url: str) -> str:
     """Allow only Discord-served HTTPS proxies, never arbitrary preview URLs."""
-    url = str(getattr(media, "proxy_url", "") or "")
     if not url or len(url) > 2048:
         return ""
     try:
@@ -169,6 +168,10 @@ def _discord_proxy_url(media) -> str:
     except ValueError:
         return ""
     return url
+
+
+def _discord_proxy_url(media) -> str:
+    return _safe_discord_proxy_url(str(getattr(media, "proxy_url", "") or ""))
 
 
 def _embed_candidates(message):
@@ -189,7 +192,9 @@ def _embed_candidates(message):
                 continue
             original = str(getattr(media, "url", "") or "")
             url = _discord_proxy_url(media)
-            if not url or url in seen or (original and original in attached):
+            if (original and original in attached) or (url and url in seen):
+                break
+            if not url:
                 continue
             seen.add(url)
             yield url, name
@@ -198,7 +203,7 @@ def _embed_candidates(message):
 
 async def _download_embed(url: str) -> bytes:
     """Stream only Discord proxy URLs, rejecting redirects and oversized data."""
-    if not _discord_proxy_url(type("Media", (), {"proxy_url": url})()):
+    if not _safe_discord_proxy_url(url):
         return b""
     async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as client:
         async with client.stream("GET", url) as response:
