@@ -48,6 +48,7 @@ def runtime(*, chunked=True):
         unavailable=False,
         chunked=chunked,
         members=[target, hidden, other_bot, self_bot],
+        me=self_bot,
     )
     message = NS(guild=guild, channel=channel, author=author)
     return message
@@ -219,6 +220,20 @@ async def test_private_thread_member_fetch_error_has_no_partial_roster():
     )
     result = await channel_member_tool_registry(message, 99).execute(
         LocalToolCall("failure", "get_current_channel_members", {}),
+    )
+    assert result.is_error is True
+    assert result.output == {"error": "member_directory_incomplete"}
+
+
+
+@pytest.mark.asyncio
+async def test_private_text_channel_rejects_roster_after_bot_loses_visibility():
+    message = runtime()
+    message.channel.permissions_for.side_effect = lambda person: NS(
+        view_channel=person.id != 99,
+    )
+    result = await channel_member_tool_registry(message, 99).execute(
+        LocalToolCall("revoked", "get_current_channel_members", {}),
     )
     assert result.is_error is True
     assert result.output == {"error": "member_directory_incomplete"}
