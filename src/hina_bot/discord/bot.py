@@ -27,8 +27,8 @@ from hina_bot.core.scope_overrides import MemoryMode
 from hina_bot.core.store import Store
 
 from .admin_commands import initialize_admin_commands, run_admin_command_once
-from .emoji_commands import EmojiRegistry
 from .embed_context import message_embed_text
+from .emoji_commands import EmojiRegistry
 from .forward_context import message_context_text
 from .output_safety import neutralize_mentions
 from .target_recent import CURRENT_CHANNEL_CONTEXT
