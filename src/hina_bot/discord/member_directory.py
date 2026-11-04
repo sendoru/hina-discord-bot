@@ -36,7 +36,7 @@ def _visible_human(message, member, bot_id: int) -> bool:
     if not isinstance(user_id, int) or user_id <= 0 or user_id == bot_id:
         return False
     channel = getattr(message, "channel", None)
-    if not isinstance(channel, discord.TextChannel):
+    if not isinstance(channel, (discord.TextChannel, discord.Thread)):
         return False
     return channel.permissions_for(member).view_channel is True
 
@@ -56,7 +56,7 @@ def current_channel_members(message, bot_id: int) -> ChannelMemberDirectory:
     if (
         guild is None
         or getattr(guild, "unavailable", False)
-        or not isinstance(channel, discord.TextChannel)
+        or not isinstance(channel, (discord.TextChannel, discord.Thread))
         or channel.permissions_for(message.author).view_channel is not True
     ):
         return ChannelMemberDirectory((), False)
@@ -78,16 +78,16 @@ def current_channel_members(message, bot_id: int) -> ChannelMemberDirectory:
 def channel_member_tool_registry(
     message, bot_id: int, *, registry: LocalToolRegistry | None = None,
 ) -> LocalToolRegistry | None:
-    if (
-        getattr(message, "guild", None) is None
-        or not isinstance(getattr(message, "channel", None), discord.TextChannel)
-    ):
-        return None
-
     if registry is None:
         registry = LocalToolRegistry()
 
     def get_current_channel_members(_arguments):
+        if (
+            getattr(message, "guild", None) is None
+            or not isinstance(getattr(message, "channel", None),
+                              (discord.TextChannel, discord.Thread))
+        ):
+            raise LocalToolError("unsupported_scope")
         directory = current_channel_members(message, bot_id)
         if not directory.complete:
             raise LocalToolError("member_directory_incomplete")
