@@ -220,10 +220,17 @@ async def test_private_thread_history_rejects_missing_member_before_read(runtime
 @pytest.mark.asyncio
 async def test_private_thread_history_rechecks_membership_after_history_io(runtime):
     thread = private_thread_runtime(runtime)
-    thread.fetch_members.side_effect = [
+    snapshots = [
         [NS(id=99), NS(id=100), NS(id=200)],
         [NS(id=99), NS(id=200)],
     ]
+
+    async def members_after_access_change():
+        snapshot = snapshots.pop(0)
+        thread.member_count = len(snapshot)
+        return snapshot
+
+    thread.fetch_members.side_effect = members_after_access_change
     runtime.messages.append(old(10, 'must not return'))
     with pytest.raises(LocalToolError, match='permission_denied'):
         await runtime.lookup()({})
