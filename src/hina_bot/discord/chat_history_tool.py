@@ -60,9 +60,16 @@ class ChatHistoryLookup:
     def _visibility(self):
         message = self.message
         channel = message.channel
+        guild = message.guild
+        # The schema is always available; enforce supported scopes and access only
+        # when the model actually requests a history lookup.
+        if guild is None:
+            if not isinstance(channel, discord.DMChannel):
+                raise LocalToolError('unsupported_scope')
+        elif not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            raise LocalToolError('unsupported_scope')
         if not self.store.chat_log_enabled(self.scope):
             raise LocalToolError('history_disabled')
-        guild = message.guild
         if guild is None:
             if getattr(getattr(channel, 'recipient', None), 'id', None) != message.author.id:
                 raise LocalToolError('permission_denied')
@@ -275,8 +282,7 @@ class ChatHistoryLookup:
 
 
 def register_chat_history_tool(registry, message, bot_id, store, settings, *, events=None):
-    if (isinstance(message.channel, discord.TextChannel) and message.guild is not None
-            or isinstance(message.channel, discord.DMChannel) and message.guild is None):
-        registry.register(CHAT_HISTORY_TOOL, ChatHistoryLookup(
-            message, bot_id, store, settings, events=events,
-        ))
+    """Offer the function on every answer; validate the channel at invocation time."""
+    registry.register(CHAT_HISTORY_TOOL, ChatHistoryLookup(
+        message, bot_id, store, settings, events=events,
+    ))
