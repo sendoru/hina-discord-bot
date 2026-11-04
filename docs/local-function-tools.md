@@ -55,8 +55,10 @@ The loop is bounded to four local-tool rounds by default. Exceeding the limit ra
 
 ## Current rollout
 
-일반 guild 텍스트 채널 응답에는 `get_current_channel_members` 로컬 function tool을 제공합니다.
-모델이 현재 채널의 사람을 이름·별명으로 식별하거나 정확한 mention ID가 필요하다고 판단한 경우에만
+모든 Discord 답변 요청에 `get_current_channel_members` 로컬 function tool 스키마를
+등록합니다. 실제 호출은 모델이 판단하며, 현재 guild 텍스트 채널·스레드에서만
+멤버를 조회합니다. 다른 공간에서는 안전한 오류를 반환합니다. 모델이 현재 채널의
+사람을 이름·별명으로 식별하거나 정확한 mention ID가 필요하다고 판단한 경우에만
 이 도구를 호출합니다. 멤버 명단은 초기 answer request에 포함되지 않으며, 실제 tool call 이후의
 function output으로만 provider에 전달됩니다.
 
