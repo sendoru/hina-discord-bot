@@ -205,22 +205,24 @@ async def _download_embed(url: str) -> bytes:
     """Stream only Discord proxy URLs, rejecting redirects and oversized data."""
     if not _safe_discord_proxy_url(url):
         return b""
-    async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as client:
-        async with client.stream("GET", url) as response:
-            response.raise_for_status()
-            size = response.headers.get("content-length")
-            if size:
-                try:
-                    if int(size) > MAX_VISUAL_BYTES:
-                        return b""
-                except ValueError:
-                    pass
-            body = bytearray()
-            async for chunk in response.aiter_bytes():
-                if len(body) + len(chunk) > MAX_VISUAL_BYTES:
+    async with (
+        httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as client,
+        client.stream("GET", url) as response,
+    ):
+        response.raise_for_status()
+        size = response.headers.get("content-length")
+        if size:
+            try:
+                if int(size) > MAX_VISUAL_BYTES:
                     return b""
-                body.extend(chunk)
-            return bytes(body)
+            except ValueError:
+                pass
+        body = bytearray()
+        async for chunk in response.aiter_bytes():
+            if len(body) + len(chunk) > MAX_VISUAL_BYTES:
+                return b""
+            body.extend(chunk)
+        return bytes(body)
 
 
 def message_has_visual(message, *, include_inline_emojis: bool = True) -> bool:
