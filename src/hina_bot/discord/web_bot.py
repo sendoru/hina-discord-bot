@@ -20,6 +20,7 @@ from .bot import CURRENT_TYPING_ACTIVE, CURRENT_TYPING_STOP
 from .bot import HinaClient as BaseHinaClient
 from .chat_history_tool import register_chat_history_tool
 from .chatlog_capture import capture_mode
+from .embed_context import message_embed_text
 from .forward_context import message_context_text
 from .interaction_context import build_interaction_context
 from .member_directory import channel_member_tool_registry
@@ -349,7 +350,7 @@ class HinaClient(BaseHinaClient):
                 )
             return
 
-        if text == "" and getattr(message, "reference", None) is None and not message_has_visual(message):
+        if text == "" and getattr(message, "reference", None) is None and not message_has_visual(message) and not message_embed_text(message):
             # A bare call without a current or explicit-reply visual always takes
             # the fixed-reply path. Do not fetch old visual context for it.
             token = CURRENT_TURN_ID.set(new_turn_id())
