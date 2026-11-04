@@ -28,6 +28,7 @@ from hina_bot.core.store import Store
 
 from .admin_commands import initialize_admin_commands, run_admin_command_once
 from .emoji_commands import EmojiRegistry
+from .embed_context import message_embed_text
 from .forward_context import message_context_text
 from .output_safety import neutralize_mentions
 from .target_recent import CURRENT_CHANNEL_CONTEXT
@@ -817,7 +818,7 @@ class HinaClient(discord.Client):
                         return
                     self.cooldowns[key] = cooldown_received_at
 
-                    if not text and not _has_strong_visual_context(CURRENT_VISUAL_INPUTS.get()):
+                    if not text and not message_embed_text(message) and not _has_strong_visual_context(CURRENT_VISUAL_INPUTS.get()):
                         raw_turn_persistence = "skipped"
                         raw_turn_persistence_reason = "fixed_reply_no_raw_turn"
                         stage = "delivery"
@@ -904,7 +905,7 @@ class HinaClient(discord.Client):
                                     self.store,
                                     scope,
                                     message.author.display_name,
-                                    text,
+                                    "\n\n".join(filter(None, (text, message_embed_text(message)))),
                                     public_context=context,
                                     channel_context=(
                                         (
