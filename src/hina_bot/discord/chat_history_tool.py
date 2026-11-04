@@ -90,7 +90,8 @@ class ChatHistoryLookup:
 
     async def _verify_private_thread_access(self):
         channel = self.message.channel
-        if isinstance(channel, discord.Thread) and channel.type == discord.ChannelType.private_thread:
+        if (isinstance(channel, discord.Thread)
+                and channel.type == discord.ChannelType.private_thread):
             ids = await private_thread_member_ids(channel)
             check_private_thread_access(
                 channel, self.message.guild, self.message.author.id, self.bot_id, ids,
