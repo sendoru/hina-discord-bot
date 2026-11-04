@@ -1,7 +1,9 @@
 # 필요한 때에만 과거 대화 조회
 
-일반 답변 모델은 현재 guild 텍스트 채널 또는 현재 1:1 DM에서 `get_chat_history`를
-`tool_choice=auto`로 호출할 수 있습니다. 평상시에는 schema만 선언하며, 실제 함수 호출 전에는
+일반 답변 모델에는 채널 종류나 사용자 발화 내용으로 사전 판별하지 않고 **항상**
+`get_chat_history` 스키마를 제공합니다. 실제 조회는 모델이 `tool_choice=auto`로
+선택한 경우에만 실행하며, **현재 guild 텍스트 채널·스레드 또는 현재 1:1 DM**에서
+허용된 기록을 읽을 수 있습니다. 실제 함수 호출 전에는
 이 도구의 Discord history·원문 repository 조회가 실행되지 않습니다. 멤버 조회 도구와 같은
 요청별 registry 및 기존 Gemini Interactions adapter/local-function loop를 사용합니다.
 
@@ -33,8 +35,10 @@
 - `cursor`: 이전 호출이 반환한 요청 내부 커서. query·reset 범위를 유지합니다.
   커서와 `before_message_id`를 함께 쓰거나 다른 요청의 커서를 재사용할 수 없습니다.
 
-모델은 guild/channel/user ID, 조회 한도나 저장소를 지정할 수 없습니다. 첫 버전은 일반 guild
-텍스트 채널과 1:1 DM만 지원하며 thread, group DM, 서버 전체 및 다른 채널 검색은 지원하지 않습니다.
+모델은 guild/channel/user ID, 조회 한도나 저장소를 지정할 수 없습니다. 조회 범위는
+현재 guild 텍스트 채널·스레드 또는 1:1 DM에 고정됩니다. group DM이나 기타 채널 유형에서도
+도구 스키마는 제공되지만, 지원하지 않는 범위에서 호출되면 `unsupported_scope`를 반환하며
+Discord 기록은 읽지 않습니다. 서버 전체 및 다른 채널 검색도 지원하지 않습니다.
 현재 요청 메시지와 이후 메시지는 반환하지 않습니다.
 
 ## Reset과 자료 출처
@@ -95,7 +99,8 @@ assistant ID로 사용하거나 DB 저장 시각을 답변 작성 시각으로 �
 일치 결과를 보장하지 않습니다. 예산을 다 쓰면 커서가 있어도 더 조회할 수 없습니다.
 
 정상 결과는 `ok`/`empty`/`partial`, 검사 범위, `has_more`, `next_cursor`, `stop_reason`을
-포함합니다. 권한 없음(`permission_denied`), 기록 비활성(`history_disabled`), 잘못된 입력·커서,
+포함합니다. 지원하지 않는 채널(`unsupported_scope`), 권한 없음(`permission_denied`),
+기록 비활성(`history_disabled`), 잘못된 입력·커서,
 예산 소진, 출처 조회 실패(`source_unavailable`)는 안전한 함수 오류로 구분합니다. 일부 자료를
 검사한 뒤 실패하면 `partial`과 `source_unavailable` 이유를 반환합니다. 원본 예외는 공개하지 않습니다.
 
