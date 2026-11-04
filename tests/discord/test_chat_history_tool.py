@@ -115,6 +115,86 @@ async def test_schema_registration_does_not_read_history_and_coexists_with_membe
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(('channel_cls', 'has_guild', 'supported'), [
+    (discord.TextChannel, True, True),
+    (discord.Thread, True, True),
+    (discord.VoiceChannel, True, False),
+    (discord.DMChannel, False, True),
+    (discord.GroupChannel, False, False),
+])
+async def test_history_and_member_schemas_reach_model_regardless_of_channel_type(
+    runtime, channel_cls, has_guild, supported,
+):
+    channel = MagicMock(spec=channel_cls)
+    channel.id = 10
+    if channel_cls is discord.Thread:
+        channel.type = discord.ChannelType.public_thread
+    channel.permissions_for.return_value = NS(view_channel=True, read_message_history=True)
+    if hasattr(channel, 'history'):
+        channel.history.side_effect = runtime.channel.history.side_effect
+    if channel_cls is discord.DMChannel:
+        channel.recipient = runtime.message.author
+    runtime.message.channel = channel
+    if not has_guild:
+        runtime.message.guild = None
+
+    registry = LocalToolRegistry()
+    channel_member_tool_registry(runtime.message, 99, registry=registry)
+    register_chat_history_tool(registry, runtime.message, 99, runtime.store, runtime.settings)
+    assert {s['name'] for s in registry.schemas()} == {
+        'get_chat_history', 'get_current_channel_members',
+    }
+    assert runtime.calls == []
+
+    client = NS(provider_name='gemini', responses=NS(), close=AsyncMock())
+    llm = LLM(Settings(discord_token='test', provider='gemini',
+                       model='gemini-3-flash-preview', model_routing_mode='fixed',
+                       routing_classifier_mode='off', chat_web_search=False), client=client)
+    llm.usage.request = AsyncMock(return_value=NS(
+        status='completed', output_text='확인했어.', output=[],
+    ))
+    token = CURRENT_LOCAL_TOOLS.set(registry)
+    try:
+        scope = Scope(1 if has_guild else None, 10, 100)
+        result = await llm.answer(runtime.store, scope, 'caller',
+                                  '그냥 새로운 질문이야', use_memory=False)
+        assert result == '확인했어.'
+        sent = llm.usage.request.await_args.kwargs
+        assert sent['tool_choice'] == 'auto'
+        assert {tool['name'] for tool in sent['tools'] if tool['type'] == 'function'} >= {
+            'get_chat_history', 'get_current_channel_members',
+        }
+        assert runtime.calls == []
+    finally:
+        CURRENT_LOCAL_TOOLS.reset(token)
+        await llm.close()
+
+    result = await registry.execute(LocalToolCall('history', 'get_chat_history', {}))
+    if supported:
+        assert result.is_error is False
+    else:
+        assert result.is_error is True
+        assert result.output == {'error': 'unsupported_scope'}
+        assert runtime.calls == []
+
+
+@pytest.mark.asyncio
+async def test_private_thread_history_schema_is_visible_but_lookup_fails_closed(runtime):
+    thread = MagicMock(spec=discord.Thread)
+    thread.id = 10
+    thread.type = discord.ChannelType.private_thread
+    runtime.message.channel = thread
+
+    registry = LocalToolRegistry()
+    register_chat_history_tool(registry, runtime.message, 99, runtime.store, runtime.settings)
+    assert [s['name'] for s in registry.schemas()] == ['get_chat_history']
+    result = await registry.execute(LocalToolCall('private', 'get_chat_history', {}))
+    assert result.is_error is True
+    assert result.output == {'error': 'unsupported_scope'}
+    assert runtime.calls == []
+
+
+@pytest.mark.asyncio
 async def test_default_cutoff_and_direct_jump_before_reset_with_discord_only(runtime):
     reset_cutoff(runtime)
     runtime.messages.extend([old(90), old(150), old(1000), old(1001)])

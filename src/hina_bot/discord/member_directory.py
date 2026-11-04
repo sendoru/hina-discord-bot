@@ -16,7 +16,7 @@ class ChannelMemberDirectory:
 CHANNEL_MEMBER_TOOL = LocalToolSpec(
     name="get_current_channel_members",
     description=(
-        "현재 Discord 채널의 사용자 이름과 user_id를 조회합니다. 이름·별명으로 사람을 "
+        "현재 Discord 서버 텍스트 채널·스레드의 사용자 이름과 user_id를 조회합니다. 이름·별명으로 사람을 "
         "식별하거나 정확한 mention ID가 필요할 때 사용하세요. 불러 달라거나 핑해 달라는 "
         "대상이 확인되면 반환된 user_id를 <@user_id>로 사용할 수 있으며, 여러 후보가 "
         "그럴듯하면 임의로 고르지 마세요."
@@ -36,7 +36,7 @@ def _visible_human(message, member, bot_id: int) -> bool:
     if not isinstance(user_id, int) or user_id <= 0 or user_id == bot_id:
         return False
     channel = getattr(message, "channel", None)
-    if not isinstance(channel, discord.TextChannel):
+    if not isinstance(channel, (discord.TextChannel, discord.Thread)):
         return False
     return channel.permissions_for(member).view_channel is True
 
@@ -56,7 +56,9 @@ def current_channel_members(message, bot_id: int) -> ChannelMemberDirectory:
     if (
         guild is None
         or getattr(guild, "unavailable", False)
-        or not isinstance(channel, discord.TextChannel)
+        or not isinstance(channel, (discord.TextChannel, discord.Thread))
+        or (isinstance(channel, discord.Thread)
+            and channel.type == discord.ChannelType.private_thread)
         or channel.permissions_for(message.author).view_channel is not True
     ):
         return ChannelMemberDirectory((), False)
@@ -78,16 +80,18 @@ def current_channel_members(message, bot_id: int) -> ChannelMemberDirectory:
 def channel_member_tool_registry(
     message, bot_id: int, *, registry: LocalToolRegistry | None = None,
 ) -> LocalToolRegistry | None:
-    if (
-        getattr(message, "guild", None) is None
-        or not isinstance(getattr(message, "channel", None), discord.TextChannel)
-    ):
-        return None
-
     if registry is None:
         registry = LocalToolRegistry()
 
     def get_current_channel_members(_arguments):
+        channel = getattr(message, "channel", None)
+        if (
+            getattr(message, "guild", None) is None
+            or not isinstance(channel, (discord.TextChannel, discord.Thread))
+            or (isinstance(channel, discord.Thread)
+                and channel.type == discord.ChannelType.private_thread)
+        ):
+            raise LocalToolError("unsupported_scope")
         directory = current_channel_members(message, bot_id)
         if not directory.complete:
             raise LocalToolError("member_directory_incomplete")
