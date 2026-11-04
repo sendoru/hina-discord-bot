@@ -178,19 +178,80 @@ async def test_history_and_member_schemas_reach_model_regardless_of_channel_type
         assert runtime.calls == []
 
 
-@pytest.mark.asyncio
-async def test_private_thread_history_schema_is_visible_but_lookup_fails_closed(runtime):
+def private_thread_runtime(runtime, *, member_ids=(99, 100, 200)):
     thread = MagicMock(spec=discord.Thread)
-    thread.id = 10
+    thread.id = runtime.message.channel.id
     thread.type = discord.ChannelType.private_thread
+    thread.member_count = len(member_ids)
+    thread.permissions_for.return_value = NS(
+        view_channel=True, read_message_history=True, manage_threads=False,
+    )
+    thread.fetch_members = AsyncMock(return_value=[NS(id=value) for value in member_ids])
+    thread.history.side_effect = runtime.channel.history.side_effect
     runtime.message.channel = thread
+    return thread
 
+
+@pytest.mark.asyncio
+async def test_private_thread_history_reads_only_when_caller_and_bot_have_access(runtime):
+    thread = private_thread_runtime(runtime)
+    runtime.messages.append(old(10, 'private thread message'))
     registry = LocalToolRegistry()
     register_chat_history_tool(registry, runtime.message, 99, runtime.store, runtime.settings)
-    assert [s['name'] for s in registry.schemas()] == ['get_chat_history']
+    assert [schema['name'] for schema in registry.schemas()] == ['get_chat_history']
     result = await registry.execute(LocalToolCall('private', 'get_chat_history', {}))
-    assert result.is_error is True
-    assert result.output == {'error': 'unsupported_scope'}
+    assert result.is_error is False
+    assert [row['content'] for row in result.output['messages']] == ['private thread message']
+    assert thread.fetch_members.await_count == 2
+    assert len(runtime.calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('member_ids', [(99, 200), (100, 200)])
+async def test_private_thread_history_rejects_missing_member_before_read(runtime, member_ids):
+    thread = private_thread_runtime(runtime, member_ids=member_ids)
+    runtime.messages.append(old(10, 'must not read'))
+    with pytest.raises(LocalToolError, match='permission_denied'):
+        await runtime.lookup()({})
+    thread.fetch_members.assert_awaited_once()
+    assert runtime.calls == []
+
+
+@pytest.mark.asyncio
+async def test_private_thread_history_rechecks_membership_after_history_io(runtime):
+    thread = private_thread_runtime(runtime)
+    thread.fetch_members.side_effect = [
+        [NS(id=99), NS(id=100), NS(id=200)],
+        [NS(id=99), NS(id=200)],
+    ]
+    runtime.messages.append(old(10, 'must not return'))
+    with pytest.raises(LocalToolError, match='permission_denied'):
+        await runtime.lookup()({})
+    assert thread.fetch_members.await_count == 2
+    assert len(runtime.calls) == 1
+    assert CURRENT_CONTEXT_PROVENANCE.get() is None
+
+
+@pytest.mark.asyncio
+async def test_private_thread_history_allows_manage_threads_for_nonparticipant(runtime):
+    thread = private_thread_runtime(runtime, member_ids=(99, 200))
+    thread.permissions_for.side_effect = lambda person: NS(
+        view_channel=True, read_message_history=True,
+        manage_threads=person.id == 100,
+    )
+    runtime.messages.append(old(10, 'mod readable'))
+    result = await runtime.lookup()({})
+    assert [row['content'] for row in result['messages']] == ['mod readable']
+
+
+@pytest.mark.asyncio
+async def test_private_thread_history_fails_closed_if_member_list_unavailable(runtime):
+    thread = private_thread_runtime(runtime)
+    thread.fetch_members.side_effect = discord.Forbidden(
+        MagicMock(status=403, reason='forbidden'), 'forbidden',
+    )
+    with pytest.raises(LocalToolError, match='permission_denied'):
+        await runtime.lookup()({})
     assert runtime.calls == []
 
 
