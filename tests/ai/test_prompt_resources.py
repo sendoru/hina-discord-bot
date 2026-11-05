@@ -70,6 +70,6 @@ def test_memory_extraction_policies_are_loaded_from_named_resources():
         "{{ANNOTATION_FIELD_RULES}}", annotation
     )
     assert DIRECTIVE_VERIFICATION_POLICY == verification
-    assert all(text.endswith("\\n") for text in (
+    assert all(text.endswith("\n") for text in (
         ANNOTATION_FIELD_RULES, SHADOW_EXTRACTION_POLICY, DIRECTIVE_VERIFICATION_POLICY
     ))
