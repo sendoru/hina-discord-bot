@@ -270,8 +270,10 @@ class Settings:
         memory_output_tokens = int(os.getenv("MEMORY_MAX_OUTPUT_TOKENS", "4096"))
 
         output_repair_mode = os.getenv("OUTPUT_REPAIR_MODE", "off").strip().lower()
-        if output_repair_mode not in {"off", "shadow", "active"}:
-            raise ValueError("OUTPUT_REPAIR_MODE는 off, shadow, active 중 하나여야 합니다.")
+        if output_repair_mode not in {"off", "conservative", "aggressive"}:
+            raise ValueError(
+                "OUTPUT_REPAIR_MODE는 off, conservative, aggressive 중 하나여야 합니다."
+            )
         output_repair_model = os.getenv("OUTPUT_REPAIR_MODEL", "auto").strip()
         if not output_repair_model or len(output_repair_model) > 200 or any(
             c in output_repair_model for c in "\r\n\0"
