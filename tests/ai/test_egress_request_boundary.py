@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 
 from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.runtime_llm import LLM
+from hina_bot.ai.request_assembly import TARGET_HISTORY_POLICY
 from hina_bot.core.config import Settings
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
 from hina_bot.core.routing import Scope
@@ -138,7 +139,7 @@ async def test_bot_interactions_only_filters_provider_payload_even_if_broad_cont
         assert "MY-NOTE" in serialized
         assert "MY-PUBLIC-MEMORY" in serialized
         assert "TARGET-HISTORY" in serialized
-        assert "[대상 사용자의 채널 발언]" in payload["instructions"]
+        assert TARGET_HISTORY_POLICY.strip() in payload["instructions"]
         # The admin-written server note is not member conversation (#449 decision 17).
         assert "SERVER-NOTE" in serialized
 
