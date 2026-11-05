@@ -42,7 +42,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
-    "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. v1은 정적 lore도 어휘 검색으로 일부만 넣는 비상 경로이고, off는 지식 검색을 하지 않습니다.",
+    "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. v1은 기존 어휘 검색, off는 지식 검색을 끕니다.",
     "personal_memory_read_mode": "개인 장기기억을 응답에 넣는 방식입니다. legacy는 기존 전량 주입, shadow는 legacy로 답하면서 계층형 선택 결과만 trace에 기록, tiered는 관련 있는 기억만 계층별로 넣습니다.",
     "memory_session_followup": "8시간 이상 공백 뒤 첫 인사에서 지난 일정 등을 먼저 물어볼 범위입니다. off는 끔, dm은 DM에서만, all은 서버에서도 같은 공간의 공개해도 되는 항목 1개까지 허용합니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
@@ -50,6 +50,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
     "output_repair_mode": "최종 답변에 형식 오류가 의심될 때 소형 모델로 최소 교정합니다. off: 사용 안 함, shadow: 비동기 비교만, active: 정상 완료된 비어 있지 않은 교정 결과를 적용합니다.",
     "output_repair_model": "교정에 사용할 모델입니다. auto는 현재 fast_model을 사용합니다. 기본 채팅 provider와 API 키를 공유합니다.",
+    "output_repair_timeout_seconds": "출력 교정 API 호출의 데드라인(초)입니다. 시간 초과 시 active 모드에서는 안전한 형식 오류만 규칙 기반으로 보정합니다.",
     "fast_model": "adaptive routing의 fast tier에서 사용할 모델 이름입니다.",
     "smart_model": "adaptive routing의 smart tier에서 사용할 모델 이름입니다.",
     "output_tokens": "fixed routing에서 한 요청에 허용할 provider 공통 최대 출력 토큰 예산입니다.",
@@ -155,6 +156,10 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     ),
     "output_repair_model": _runtime_spec(
         "output_repair_model", "OUTPUT_REPAIR_MODEL", "string", maximum=200,
+    ),
+    "output_repair_timeout_seconds": _runtime_spec(
+        "output_repair_timeout_seconds", "OUTPUT_REPAIR_TIMEOUT_SECONDS", "float",
+        minimum=0.25, maximum=30.0,
     ),
     "fast_model": _runtime_spec("fast_model", "LLM_FAST_MODEL", "string", maximum=200),
     "smart_model": _runtime_spec("smart_model", "LLM_SMART_MODEL", "string", maximum=200),

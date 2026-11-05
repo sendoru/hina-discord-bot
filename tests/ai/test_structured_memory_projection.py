@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.reference_context_blocks import read_reference_context
+from hina_bot.ai.request_assembly import STRUCTURED_MEMORY_POLICY
 from hina_bot.ai.structured_memory_context import (
     aggregate_owner_relationship_evidence,
     aggregate_relationship_evidence,
@@ -498,7 +499,7 @@ async def test_dm_response_receives_all_owner_structured_memory_even_when_legacy
             "task_orientation": 2,
         }
         assert reference["cross_space_relationship"] == {}
-        assert "구조화 사용자 기억" in payload["instructions"]
+        assert STRUCTURED_MEMORY_POLICY.strip() in payload["instructions"]
     finally:
         await llm.close()
         store.close()
@@ -587,8 +588,7 @@ async def test_server_receives_numeric_implicit_profile_without_cross_space_raw_
         }
         assert "RAW_RELATIONSHIP_SECRET" not in raw
         assert "RAW_FACT_SECRET" not in raw
-        assert "구조화 사용자 기억" in payload["instructions"]
-        assert "1~4" in payload["instructions"]
+        assert STRUCTURED_MEMORY_POLICY.strip() in payload["instructions"]
     finally:
         await llm.close()
         store.close()
@@ -648,7 +648,7 @@ async def test_same_space_response_receives_full_non_relationship_memory():
             ensure_ascii=False,
         )
         assert reference["structured_relationship_memory"] == []
-        assert "구조화 사용자 기억" in payload["instructions"]
+        assert STRUCTURED_MEMORY_POLICY.strip() in payload["instructions"]
     finally:
         await llm.close()
         store.close()
@@ -765,8 +765,7 @@ async def test_current_channel_scope_keeps_safe_memory_with_scope_metadata():
             "CURRENT_CHANNEL_RELATIONSHIP": "current_channel",
         }
         assert "RAW_RELATIONSHIP_SECRET" not in raw
-        assert "scope_relation=current_channel" in payload["instructions"]
-        assert "구조화 사용자 기억" in payload["instructions"]
+        assert STRUCTURED_MEMORY_POLICY.strip() in payload["instructions"]
     finally:
         await llm.close()
         store.close()

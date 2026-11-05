@@ -27,10 +27,12 @@ from hina_bot.core.scope_overrides import MemoryMode
 from hina_bot.core.store import Store
 
 from .admin_commands import initialize_admin_commands, run_admin_command_once
+from .embed_context import message_embed_text
 from .emoji_commands import EmojiRegistry
+from .forward_context import message_context_text
 from .output_safety import neutralize_mentions
 from .target_recent import CURRENT_CHANNEL_CONTEXT
-from .vision import message_has_visual
+from .vision import memory_visuals_for_turn, message_has_visual
 
 log = logging.getLogger("hina")
 
@@ -190,6 +192,11 @@ class HinaClient(discord.Client):
         )
         self.settings = settings
         self.store = store if store is not None else Store.open_existing(settings.db_path, settings.history_turns)
+        configure_pending_visuals = getattr(self.store.pending_visuals, "configure", None)
+        if configure_pending_visuals is not None:
+            configure_pending_visuals(
+                max_bytes=settings.memory_visual_pending_max_mb * 1024 * 1024
+            )
         self.llm = llm
         self.emoji_registry = EmojiRegistry(self, self.store)
         self.emoji_admin_ids = set(settings.bot_admin_ids)
@@ -261,6 +268,9 @@ class HinaClient(discord.Client):
                 self._admin_command_loop(),
                 name="dashboard-admin-commands",
             )
+        # Photos whose turn is gone (deleted, reset, extracted elsewhere) are cleaned up at
+        # startup too, because the periodic sweep can be turned off.
+        self._sweep_pending_visuals()
         interval = self.settings.structured_memory_sweep_interval_seconds
         if interval > 0 and self.memory_sweep_task is None:
             self.memory_sweep_task = asyncio.create_task(
@@ -331,6 +341,7 @@ class HinaClient(discord.Client):
             await asyncio.sleep(interval)
             if self.stopping:
                 return
+            self._sweep_pending_visuals()
             try:
                 await self._sweep_stale_structured_memory()
             except asyncio.CancelledError:
@@ -347,6 +358,70 @@ class HinaClient(discord.Client):
                     type(exc).__name__,
                     error["error_fingerprint"],
                 )
+
+    def _pending_visual_ttl_seconds(self) -> float:
+        """Long enough for the stale sweep to extract a tail before its photo expires."""
+        settings = self.settings
+        return max(
+            24 * 60 * 60,
+            settings.structured_memory_stale_after_seconds
+            + 2 * settings.structured_memory_sweep_interval_seconds,
+        )
+
+    def _sweep_pending_visuals(self) -> None:
+        """Delete photos whose turn is no longer waiting for extraction, and expired ones."""
+        try:
+            removed = self.store.pending_visuals.sweep(
+                self.store.pending_visual_keys(),
+                max_age_seconds=self._pending_visual_ttl_seconds(),
+            )
+        except Exception as exc:  # noqa: BLE001 - cleanup must never stop the bot
+            error = safe_exception_fields(exc, "pending_visual_sweep")
+            self.events.emit("memory.visual_sweep_failed", level="warning", **error)
+            log.warning(
+                "Pending visual sweep failed (%s, fingerprint=%s)",
+                type(exc).__name__, error["error_fingerprint"],
+            )
+            return
+        if removed:
+            self.events.emit("memory.visual_swept", removed=removed)
+
+    def _keep_pending_visuals(self, scope: Scope, message_id: int, text: str, scope_kind: str):
+        """Hold this turn's own photos until memory extraction has read them.
+
+        Needs a user utterance to anchor the memory, so a photo sent with no text is not kept.
+        A failure here never affects the turn, which is already stored.
+        """
+        if not self.settings.memory_visual_input or not text.strip():
+            return
+        visuals = memory_visuals_for_turn(
+            CURRENT_VISUAL_INPUTS.get(), user_id=scope.user_id, message_id=message_id
+        )
+        if not visuals:
+            return
+        pending = self.store.pending_visuals
+        evicted_before = getattr(pending, "evicted", 0)
+        try:
+            stored = pending.put(
+                scope.realm, str(scope.channel_id), str(scope.user_id), str(message_id), visuals
+            )
+        except Exception as exc:  # noqa: BLE001 - the turn is already stored
+            error = safe_exception_fields(exc, "pending_visual_store")
+            self.events.emit(
+                "memory.visual_store_failed", level="warning", scope=scope_kind, **error
+            )
+            log.warning(
+                "Pending visual store failed (%s, fingerprint=%s)",
+                type(exc).__name__, error["error_fingerprint"],
+            )
+            return
+        self.events.emit(
+            "memory.visual_stored",
+            scope=scope_kind,
+            images=stored,
+            offered=len(visuals),
+            evicted=getattr(pending, "evicted", 0) - evicted_before,
+        )
 
     async def _sweep_stale_structured_memory(self):
         scopes = self.store.stale_memory_extraction_scopes(
@@ -462,7 +537,7 @@ class HinaClient(discord.Client):
                 if old.author.bot and not own_bot:
                     continue
                 has_visual = message_has_visual(old)
-                if not old.content and not has_visual:
+                if not message_context_text(old) and not has_visual:
                     continue
                 historical_scope = Scope(
                     scope.guild_id, scope.channel_id, old.author.id, scope.public_at_capture)
@@ -481,7 +556,7 @@ class HinaClient(discord.Client):
                     historical_scope,
                     old.id,
                     old.author.display_name,
-                    old.content,
+                    message_context_text(old),
                     role="assistant" if own_bot else "user",
                     unix_time=old.created_at.timestamp(),
                     author_user_id=old.author.id,
@@ -566,7 +641,7 @@ class HinaClient(discord.Client):
                 scope,
                 message.id,
                 message.author.display_name,
-                message.content,
+                message_context_text(message),
                 role="bot" if bot_author else "user",
                 unix_time=created_at.timestamp() if created_at is not None else None,
                 author_user_id=message.author.id,
@@ -743,7 +818,7 @@ class HinaClient(discord.Client):
                         return
                     self.cooldowns[key] = cooldown_received_at
 
-                    if not text and not _has_strong_visual_context(CURRENT_VISUAL_INPUTS.get()):
+                    if not text and not message_embed_text(message) and not _has_strong_visual_context(CURRENT_VISUAL_INPUTS.get()):
                         raw_turn_persistence = "skipped"
                         raw_turn_persistence_reason = "fixed_reply_no_raw_turn"
                         stage = "delivery"
@@ -830,7 +905,7 @@ class HinaClient(discord.Client):
                                     self.store,
                                     scope,
                                     message.author.display_name,
-                                    text,
+                                    "\n\n".join(filter(None, (text, message_embed_text(message)))),
                                     public_context=context,
                                     channel_context=(
                                         (
@@ -933,6 +1008,7 @@ class HinaClient(discord.Client):
                         )
                         raw_turn_persistence = "stored"
                         raw_turn_persistence_reason = ""
+                        self._keep_pending_visuals(scope, message.id, text, scope_kind)
 
                 memory_failures = 0
                 if save_memory:

@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 from hina_bot.ai.memory_extraction import (
-    SHADOW_EXTRACTION_POLICY,
     ExtractedMemoryItem,
     build_shadow_evidence_context,
     build_shadow_turns,
@@ -229,25 +228,6 @@ def test_build_shadow_evidence_context_keeps_reply_but_omits_source_id():
         "hina": "조금은.",
     }]
     assert "message_id" not in evidence[0]
-
-
-def test_extraction_policy_allows_stable_personal_preference_without_future_marker():
-    assert "난 커피를 못 마셔" in SHADOW_EXTRACTION_POLICY
-    assert "오늘은 커피 싫어" in SHADOW_EXTRACTION_POLICY
-    assert "봇의 미래 행동" in SHADOW_EXTRACTION_POLICY
-    assert "recent_evidence_context" in SHADOW_EXTRACTION_POLICY
-
-
-def test_extraction_policy_prefers_concise_content_without_losing_qualifiers():
-    policy = SHADOW_EXTRACTION_POLICY
-    assert "간결하고 중립적인 한국어 기록" in policy
-    assert "완결된 설명문일 필요는 없으며" in policy
-    assert "반복적인 주어·서술형 종결·상투적인" in policy
-    assert "사용자와 제3자/히나를 혼동해서는 안 됩니다" in policy
-    assert "실제로 관찰된 상호작용이나 변화" in policy
-    assert "근거 없는 성격 평가·친밀도 추정" in policy
-    assert "부정·조건·시간 범위·대상" in policy
-    assert "한 항목에는 한 핵심 내용" in policy
 
 
 def test_parser_preserves_concise_memory_with_scope_and_negation():

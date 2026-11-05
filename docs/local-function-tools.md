@@ -55,15 +55,18 @@ The loop is bounded to four local-tool rounds by default. Exceeding the limit ra
 
 ## Current rollout
 
-일반 guild 텍스트 채널 응답에는 `get_current_channel_members` 로컬 function tool을 제공합니다.
-모델이 현재 채널의 사람을 이름·별명으로 식별하거나 정확한 mention ID가 필요하다고 판단한 경우에만
+모든 Discord 답변 요청에 `get_current_channel_members` 로컬 function tool 스키마를
+등록합니다. 실제 호출은 모델이 판단하며, 현재 guild 텍스트 채널·공개/비공개 스레드에서만
+멤버를 조회합니다. 다른 공간에서는 안전한 오류를 반환합니다. 모델이 현재 채널의
+사람을 이름·별명으로 식별하거나 정확한 mention ID가 필요하다고 판단한 경우에만
 이 도구를 호출합니다. 멤버 명단은 초기 answer request에 포함되지 않으며, 실제 tool call 이후의
 function output으로만 provider에 전달됩니다.
 
 도구 자체의 Discord 접근·privacy 범위는 [채널 멤버 도구](channel-member-tool.md)를 참고하세요.
 
-같은 요청 registry에는 현재 채널 또는 1:1 DM의 과거 원문을 필요한 때에만 조회하는
-`get_chat_history`도 등록됩니다. 자동 문맥과 reset 이전 명시 조회의 구분, 조회 예산·권한·출처 처리는
+모든 Discord 답변 요청의 registry에는 `get_chat_history`를 사전 내용/채널 유형 판정 없이
+등록합니다. 모델이 실제로 호출했을 때 현재 채널·공개/비공개 스레드 또는 1:1 DM의 접근 가능 범위를
+검증하며, 지원하지 않는 채널에서는 안전한 도구 오류를 반환합니다. 자동 문맥과 reset 이전 명시 조회의 구분, 조회 예산·권한·출처 처리는
 [과거 대화 조회 도구](chat-history-tool.md)를 참고하세요.
 
 `PERSONAL_MEMORY_READ_MODE=tiered`이고 현재 사용자의 기억 읽기가 허용되면 `recall_memory`도 등록됩니다.

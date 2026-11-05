@@ -9,7 +9,9 @@
   extraction cursor와 batch journal, `sqlite_sequence`, 메모리/채팅 설정,
   notes, 런타임 지침과 지식, 관리 메타데이터, Trace/usage/event JSONL,
   그리고 디버깅용 `conversation_debug_archive`.
-- **초기화:** 운영용 `turns`, `shared_calls`, `failed_turns`, `shared_summaries`.
+- **초기화:** 운영용 `turns`, `shared_calls`, `failed_turns`, `shared_summaries`,
+  그리고 메모리 추출을 기다리던 임시 보관 사진(`visual_pending/`, `MEMORY_VISUAL_INPUT`).
+  사진은 DB 백업에 들어 있지 않으므로 복원할 수 없다.
   `turns`와 `failed_turns`는 삭제 전 디버그 아카이브에 복사하며,
   대시보드의 대화/Trace 조회에서는 예전 기록을 계속 볼 수 있다.
   공유 요약에만 남아 있던 정보는 운영 컨텍스트에서 사라진다. 전체 DB 백업에 원본을 보관한다.

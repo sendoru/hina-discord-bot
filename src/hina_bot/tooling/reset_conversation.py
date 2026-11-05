@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from hina_bot.core.pending_visuals import discard_all_pending_visuals
+
 from .conversation_reset_epochs import ensure_epoch_schema
 from .maintenance_backup import BackupInfo, backup_sqlite
 from .maintenance_db import (
@@ -239,6 +241,8 @@ def reset_conversation(
             db.rollback()
             raise
         db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        # Photos waiting for memory extraction belong to the turns that were just cleared.
+        discard_all_pending_visuals(path)
         return plan, ResetResult(snapshot, reset_id, now.isoformat(), deleted, archived)
     finally:
         db.close()

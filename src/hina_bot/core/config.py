@@ -27,8 +27,8 @@ def gemini_store_enabled(settings, domain: str, *, provider: str | None = None) 
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
-# off: no knowledge RAG; v1: lexical lore lookup (fallback); full: compiled static lore.
-RAG_MODES = frozenset({"off", "v1", "full"})
+# tool: model-controlled local keyword search; full/v1 remain rollback paths.
+RAG_MODES = frozenset({"off", "v1", "full", "tool"})
 # Memory v2 read path (#449 §11 P2): legacy prompt, shadow comparison, or tiered selection.
 PERSONAL_MEMORY_READ_MODES = frozenset({"legacy", "shadow", "tiered"})
 MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})
@@ -95,9 +95,10 @@ class Settings:
     fast_output_tokens: int = 4096
     smart_output_tokens: int = 8192
     memory_output_tokens: int = 4096
-    # Runtime-editable output proofreader; no additional .env variables.
+    # Runtime-editable output proofreader; .env supplies startup values.
     output_repair_mode: str = "off"
     output_repair_model: str = "auto"
+    output_repair_timeout_seconds: float = 3.0
     routing_classifier_mode: str = "off"
     routing_classifier_provider: str = "openai"
     routing_classifier_model: str = "gpt-4.1-mini"
@@ -159,6 +160,10 @@ class Settings:
     vision_max_stickers: int = 8
     # Startup-only: empty disables the fixed image reference.
     vision_hina_reference_path: str = ""
+    # Startup-only (#472): keep a user's own photos on disk until memory extraction has
+    # read them, then delete. Off by default.
+    memory_visual_input: bool = False
+    memory_visual_pending_max_mb: int = 256
 
     def api_key_for(self, provider: str) -> str:
         provider = _provider(provider, "provider")
@@ -262,6 +267,26 @@ class Settings:
             ) from exc
 
         memory_output_tokens = int(os.getenv("MEMORY_MAX_OUTPUT_TOKENS", "4096"))
+
+        output_repair_mode = os.getenv("OUTPUT_REPAIR_MODE", "off").strip().lower()
+        if output_repair_mode not in {"off", "shadow", "active"}:
+            raise ValueError("OUTPUT_REPAIR_MODE는 off, shadow, active 중 하나여야 합니다.")
+        output_repair_model = os.getenv("OUTPUT_REPAIR_MODEL", "auto").strip()
+        if not output_repair_model or len(output_repair_model) > 200 or any(
+            c in output_repair_model for c in "\r\n\0"
+        ):
+            raise ValueError("OUTPUT_REPAIR_MODEL은 줄바꿈 없이 1~200자여야 합니다.")
+        try:
+            output_repair_timeout_seconds = float(
+                os.getenv("OUTPUT_REPAIR_TIMEOUT_SECONDS", "3.0")
+            )
+        except ValueError as exc:
+            raise ValueError("OUTPUT_REPAIR_TIMEOUT_SECONDS는 숫자여야 합니다.") from exc
+        if not (math.isfinite(output_repair_timeout_seconds)
+                and 0.25 <= output_repair_timeout_seconds <= 30.0):
+            raise ValueError(
+                "OUTPUT_REPAIR_TIMEOUT_SECONDS는 0.25~30.0 사이의 유한한 숫자여야 합니다."
+            )
 
         keys = {
             "openai": os.getenv("OPENAI_API_KEY", "").strip(),
@@ -377,6 +402,11 @@ class Settings:
         vision_max_emojis = int(os.getenv("VISION_MAX_EMOJIS", "12"))
         vision_max_stickers = int(os.getenv("VISION_MAX_STICKERS", "8"))
 
+        memory_visual_input = os.getenv("MEMORY_VISUAL_INPUT", "off").strip().lower() or "off"
+        if memory_visual_input not in {"off", "on"}:
+            raise ValueError("MEMORY_VISUAL_INPUT은 off 또는 on이어야 합니다.")
+        memory_visual_pending_max_mb = int(os.getenv("MEMORY_VISUAL_PENDING_MAX_MB", "256"))
+
         s = cls(
             discord_token=token,
             provider=provider,
@@ -386,6 +416,9 @@ class Settings:
             fast_model=fast_model, smart_model=smart_model,
             fast_output_tokens=fast_output_tokens,
             smart_output_tokens=smart_output_tokens,
+            output_repair_mode=output_repair_mode,
+            output_repair_model=output_repair_model,
+            output_repair_timeout_seconds=output_repair_timeout_seconds,
             routing_classifier_mode=routing_classifier_mode,
             routing_classifier_provider=routing_classifier_provider,
             routing_classifier_model=routing_classifier_model,
@@ -456,6 +489,8 @@ class Settings:
             vision_max_emojis=vision_max_emojis,
             vision_max_stickers=vision_max_stickers,
             vision_hina_reference_path=os.getenv("VISION_HINA_REFERENCE_PATH", "").strip(),
+            memory_visual_input=memory_visual_input == "on",
+            memory_visual_pending_max_mb=memory_visual_pending_max_mb,
         )
         if s.special_dm_user_id is not None and s.special_dm_user_id <= 0:
             raise ValueError("SPECIAL_DM_USER_ID는 양의 Discord 사용자 ID여야 합니다.")
@@ -479,7 +514,8 @@ class Settings:
                 and 0 <= s.vision_max_attachments <= 32
                 and 0 <= s.vision_max_emojis <= 32
                 and 0 <= s.vision_max_stickers <= 32
-                and vision_total <= 32):
+                and vision_total <= 32
+                and 16 <= s.memory_visual_pending_max_mb <= 4096):
             raise ValueError("설정 범위 오류: cooldown 0~3600, concurrency 1~20, "
                              "output_tokens 128~65536, fast output <= smart output, "
                              "memory output tokens 128~65536, "
@@ -488,5 +524,6 @@ class Settings:
                              "structured_memory_every와 summary_every는 각각 2 <= cadence <= history_turns <= 30, "
                              "structured memory stale은 60초~7일, sweep interval은 0 또는 60초~24시간, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
-                             "vision source quota는 각각 0~32이고 합계는 32 이하")
+                             "vision source quota는 각각 0~32이고 합계는 32 이하, "
+                             "memory visual pending 상한은 16~4096 MB")
         return s

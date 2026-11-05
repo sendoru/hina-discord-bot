@@ -7,6 +7,8 @@ OpenAI/Gemini/OpenRouter LLM provider를 사용합니다. 공식 서비스나 �
 멀티 provider와 **현재 턴 이미지 입력**을 함께 다룹니다. 비전 기능은 1차 구현 범위를 먼저 실제
 Discord에서 검증하고 있으며, 검증 전에는 버그 수정과 문서 정리를 제외한 추가 확장을 하지 않습니다.
 
+설정 파일 정리와 운영 설정 내보내기: [Dotenv 관리 도구](docs/env-tools.md)
+
 ## 주요 기능
 
 - `@멘션`, 답장 핑, 메시지 시작의 `히나야` 같은 호출어로 일반 대화
@@ -35,6 +37,24 @@ uv run hina-prepare-db --dry-run
 uv run hina-prepare-db --yes --offline-confirmed
 uv run hina-bot
 ```
+
+## CLI 명령어 도움말
+
+등록된 관리·평가 명령어를 확인하려면 통합 CLI를 사용하세요.
+
+```bash
+uv run hina                         # 기본 사용법
+uv run hina commands                # 그룹별 전체 명령어
+uv run hina help env-export         # 환경변수 추출 명령의 상세 옵션
+uv run hina help reset-conversation # 위험한 작업의 도움말 조회
+```
+
+기존의 `hina-*` 명령어들은 그대로 동작하며, 통합 CLI는 명령어를 실행하지 않고
+목록이나 도움말만 보여줍니다. 봇 및 대시보드는 자체 `--help`를 지원하지 않아
+간단한 실행 안내만 제공합니다. `[CAUTION]`이 표시된 명령어는 실제 실행할 때
+파일이나 DB 내용을 변경할 수 있습니다. 통합 CLI의 자체 출력은 폰트와 로케일 호환성을
+고려해 영어 및 ASCII 문자만 사용합니다. 다만 기존 명령어에 전달한 `--help`의 내용은
+개별 명령어의 원래 언어를 따릅니다.
 
 DB 준비는 최초 설치/스키마 업그레이드 때 명시적으로 실행합니다.
 조회·dry-run·유지보수는 봇 시작 설정 스냅샷을 덮어쓰지 않습니다.
@@ -159,6 +179,11 @@ VISION_MAX_STICKERS=8
 각 값은 0~32이고 합계는 32 이하여야 합니다. 0이면 해당 source를 비전 입력에서 끕니다.
 개별 이미지 5 MiB, 한 호출 전체 12 MiB의 byte limit도 별도로 적용됩니다. 파일 byte 크기와 실제
 이미지 token 비용은 동일하지 않으며 provider/model과 이미지 크기에 따라 달라질 수 있습니다.
+
+선택 기능으로 `MEMORY_VISUAL_INPUT=on`이면 본인이 올린 사진을 장기 기억 추출이 끝날 때까지만 디스크에
+임시 보관해 추출 요청에 함께 보냅니다(기본 `off`). 사진은 사용자가 말한 대상의 속성을 보강할 뿐 사진만으로
+기억을 만들지 않으며, 추출 후·`/memory clear`·메시지 삭제·만료 때 지워집니다.
+자세한 범위와 한도는 [docs/vision-input.md](docs/vision-input.md#장기-기억-추출용-임시-보관-memory_visual_input)를 참고하세요.
 
 현재 지원하지 않는 범위:
 

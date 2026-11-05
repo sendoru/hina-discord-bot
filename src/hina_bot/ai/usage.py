@@ -432,6 +432,7 @@ class UsageLogger:
             completed_empty = (
                 provider == "gemini"
                 and getattr(response, "status", None) == "completed"
+                and not _has_function_call(response)
                 and not _visible_text(response).strip()
             )
             if completed_empty:
@@ -516,6 +517,7 @@ class UsageLogger:
             "output_repair_mode", "output_repair_model",
             "output_repair_original_chars", "output_repair_candidate_chars",
             "output_repair_changed", "output_repair_elapsed_ms", "output_markers_removed",
+            "output_escapes_normalized",
             "semantic_route_level", "semantic_route_codes",
             "model_route_decision_source", "model_route_baseline_tier",
             "model_route_proposed_tier", "routing_classifier_provider",
@@ -530,6 +532,7 @@ class UsageLogger:
             "annotated_items", "reconfirmed_items", "reinforced_annotations",
             "suppressed_relationship_items",
             "directive_items", "verified_directives", "rejected_directives",
+            "visual_images", "visual_bytes", "visual_fallback", "visual_grounded_items",
             "memory_read_mode", "memory_t0_items", "memory_t1_items", "memory_t2_items",
             "memory_t4_items", "memory_quiet_boundaries", "memory_followup_attempted",
             "memory_excluded_permission", "memory_excluded_threshold",
@@ -566,6 +569,12 @@ class UsageLogger:
             "request_input_chars", "request_chars_total", "visible_input_chars",
             "rag_mode", "rag_selected_context",
             "rag_full_items", "rag_full_chars", "rag_full_audience_excluded",
+            "rag_tool_calls", "rag_tool_query_count", "rag_tool_result_items",
+            "rag_tool_result_chars", "rag_tool_result_ids", "rag_tool_elapsed_ms",
+            "rag_tool_turn_calls", "rag_tool_turn_requeries",
+            "rag_tool_turn_queries", "rag_tool_turn_hits", "rag_tool_turn_empty",
+            "rag_tool_turn_errors", "rag_tool_turn_result_items",
+            "rag_tool_turn_result_chars",
         }
         row = {
             "at": datetime.now(UTC).isoformat(),

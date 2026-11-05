@@ -1,6 +1,60 @@
 (() => {
   const scalarEditors = document.querySelectorAll("[data-runtime-config-editor]");
 
+  const searchInput = document.querySelector("[data-runtime-config-search-input]");
+  const searchCount = document.querySelector("[data-runtime-config-search-count]");
+  const noResults = document.querySelector("[data-runtime-config-no-results]");
+  const sections = Array.from(document.querySelectorAll("[data-runtime-config-section]"));
+  let openBeforeSearch = null;
+
+  const filterSettings = () => {
+    if (!(searchInput instanceof HTMLInputElement)) return;
+    const query = searchInput.value.trim().toLocaleLowerCase();
+    if (query && openBeforeSearch === null) {
+      openBeforeSearch = new Map(sections.map((section) => [section, section.open]));
+    }
+
+    let matched = 0;
+    let total = 0;
+    for (const section of sections) {
+      const settingRows = section.querySelectorAll("[data-runtime-config-setting-row]");
+      let visible = 0;
+      for (const settingRow of settingRows) {
+        const key = settingRow.querySelector("[data-runtime-config-help-toggle]")?.dataset.runtimeConfigHelpToggle;
+        const matches = !query || (settingRow.dataset.runtimeConfigSearch || "").includes(query);
+        settingRow.hidden = !matches;
+        if (matches) visible += 1;
+
+        if (key) {
+          const help = document.getElementById(`runtime-config-help-${key}`);
+          const collection = document.getElementById(`runtime-collection-${key}`);
+          const helpToggle = settingRow.querySelector("[data-runtime-config-help-toggle]");
+          const manageToggle = settingRow.querySelector("[data-runtime-collection-manage]");
+          if (help) help.hidden = !matches || helpToggle?.getAttribute("aria-expanded") !== "true";
+          if (collection) collection.hidden = !matches || manageToggle?.getAttribute("aria-expanded") !== "true";
+        }
+      }
+      total += settingRows.length;
+      matched += visible;
+      section.hidden = Boolean(query) && visible === 0;
+      const count = section.querySelector("[data-runtime-config-section-count]");
+      if (count) count.textContent = query ? `${visible} / ${settingRows.length}` : String(settingRows.length);
+      if (query && visible) section.open = true;
+    }
+
+    if (!query && openBeforeSearch !== null) {
+      for (const [section, wasOpen] of openBeforeSearch) section.open = wasOpen;
+      openBeforeSearch = null;
+    }
+    if (searchCount) searchCount.textContent = query ? `${matched} / ${total} settings` : `${total} settings`;
+    if (noResults) noResults.hidden = !query || matched > 0;
+  };
+
+  if (searchInput instanceof HTMLInputElement) {
+    searchInput.addEventListener("input", filterSettings);
+    filterSettings();
+  }
+
   const closeScalarEditor = (editor, { restore = true } = {}) => {
     const input = editor.querySelector("[data-runtime-config-input]");
     const actionView = editor.querySelector("[data-runtime-config-action-view]");
@@ -40,7 +94,7 @@
     });
   }
 
-  const tableWrap = document.querySelector(".runtime-config-table-wrap");
+  const tableWraps = Array.from(document.querySelectorAll(".runtime-config-table-wrap"));
   const helpRows = Array.from(
     document.querySelectorAll("[data-runtime-config-help-row]"),
   );
@@ -60,13 +114,15 @@
   const buttonForKey = (key) =>
     manageButtons.find((button) => button.dataset.runtimeCollectionManage === key);
 
-  const availableExpandedRowWidth = () =>
-    tableWrap instanceof HTMLElement ? Math.max(0, tableWrap.clientWidth - 24) : 0;
+  const availableExpandedRowWidth = (row) => {
+    const tableWrap = row.closest(".runtime-config-table-wrap");
+    return tableWrap instanceof HTMLElement ? Math.max(0, tableWrap.clientWidth - 24) : 0;
+  };
 
   const sizeHelpRow = (row) => {
     const help = row.querySelector(".runtime-config-help");
     if (!(help instanceof HTMLElement)) return;
-    const available = availableExpandedRowWidth();
+    const available = availableExpandedRowWidth(row);
     if (available > 0) {
       help.style.setProperty("--runtime-config-help-width", `${available}px`);
     }
@@ -75,7 +131,7 @@
   const sizeCollectionEditor = (row) => {
     const editor = row.querySelector("[data-runtime-collection-editor]");
     if (!(editor instanceof HTMLElement)) return;
-    const available = availableExpandedRowWidth();
+    const available = availableExpandedRowWidth(row);
     editor.style.setProperty(
       "--runtime-collection-editor-width",
       `${available}px`,
@@ -325,7 +381,7 @@
     });
   }
 
-  if (tableWrap instanceof HTMLElement && "ResizeObserver" in window) {
+  if (tableWraps.length && "ResizeObserver" in window) {
     const observer = new ResizeObserver(() => {
       for (const row of helpRows) {
         if (!row.hidden) sizeHelpRow(row);
@@ -334,7 +390,7 @@
         if (!row.hidden) sizeCollectionEditor(row);
       }
     });
-    observer.observe(tableWrap);
+    for (const tableWrap of tableWraps) observer.observe(tableWrap);
   } else {
     window.addEventListener("resize", () => {
       for (const row of helpRows) {

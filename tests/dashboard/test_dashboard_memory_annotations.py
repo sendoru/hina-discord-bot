@@ -248,3 +248,29 @@ async def test_runtime_rejects_stale_revision_and_narrows_private_audience():
     assert annotation.audience == Audience.OWNER
     assert annotation.observed_at == store.memory_item(item_id).created_at
     store.close()
+
+
+def test_a_memory_backed_by_a_photo_is_visible_and_in_the_review_queue(tmp_path):
+    from hina_bot.core.memory_annotations import LINT_VISUAL_GROUNDED
+
+    database = tmp_path / "hina.sqlite3"
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
+    item_id = store.add_memory_item(PUBLIC, "강아지(사진상 말티즈로 보임)를 키움", kind="fact",
+                                    disclosure="local", confidence=0.75)
+    annotation = parse_annotation(
+        {"evidence": "우리 애 미용했어", "time_scope": "ongoing", "usage_mode": "contextual"},
+        MemoryKind.FACT, [{"user": "우리 애 미용했어", "at": "2026-10-30 03:00:00"}],
+    )
+    store.upsert_memory_annotation(replace(
+        annotation, memory_item_id=item_id, lint_flags=(LINT_VISUAL_GROUNDED,),
+    ))
+    store.close()
+
+    app = create_app(_settings(tmp_path, database))
+    with TestClient(app) as client:
+        detail = client.get(f"/memory/{item_id}")
+        queue = client.get("/memory", params={"annotation": "flagged"})
+
+    assert "<code>visual_grounded</code>" in detail.text
+    assert f">#{item_id}</a>" in queue.text
