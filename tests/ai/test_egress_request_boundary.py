@@ -5,8 +5,8 @@ import pytest
 from openai import AsyncOpenAI
 
 from hina_bot.ai.reference_context_blocks import read_reference_context
-from hina_bot.ai.runtime_llm import LLM
 from hina_bot.ai.request_assembly import TARGET_HISTORY_POLICY
+from hina_bot.ai.runtime_llm import LLM
 from hina_bot.core.config import Settings
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
 from hina_bot.core.routing import Scope
