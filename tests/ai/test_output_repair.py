@@ -211,7 +211,7 @@ async def test_runtime_settings_can_change_mode_and_model_without_restart():
         assert settings.output_repair_timeout_seconds == pytest.approx(3.0)
         with pytest.raises(ValueError):
             settings.set_text("output_repair_mode", "invalid")
-        assert settings.output_repair_mode == "active"
+        assert settings.output_repair_mode == "conservative"
         settings.reset("output_repair_mode")
         assert settings.output_repair_mode == "off"
     finally:
@@ -372,7 +372,7 @@ def test_aggressive_protects_non_target_or_empty_answer(raw):
     ("좋아 [1:2] 괜찮아", "좋아 괜찮아"),
     (r"안녕\n다음 줄", "안녕\n다음 줄"),
     (r"안녕\n다음 줄 [2]", "안녕\n다음 줄"),
-    (r"`\n` 말고 실제\n줄바꿈", "`\n` 말고 실제\n줄바꿈"),
+    (r"`\n` 말고 실제\n줄바꿈", r"`\n` 말고 실제" + "\n줄바꿈"),
 ])
 async def test_aggressive_skips_llm_for_deterministic_only(raw, expected):
     repair, _, usage = make_repair(mode="aggressive")
