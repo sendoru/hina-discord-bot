@@ -349,6 +349,7 @@ def eval_settings(args) -> Settings:
         prompt_path=os.getenv("CHARACTER_PROMPT_PATH", ""),
         output_tokens=int(os.getenv("MAX_OUTPUT_TOKENS", "1000")),
         history_turns=int(os.getenv("HISTORY_TURNS", "12")),
+        raw_retention_turns=int(os.getenv("RAW_RETENTION_TURNS", "1000")),
         history_max_chars=(
             _arg(args, "history_max_chars", None)
             if _arg(args, "history_max_chars", None) is not None
@@ -438,7 +439,10 @@ async def run_case(
 ) -> dict:
     mode = case.get("mode", "dm")
     scope = scope_for(mode)
-    store = Store.create(":memory:", history_turns=llm.settings.history_turns)
+    store = Store.create(
+        ":memory:", history_turns=llm.settings.history_turns,
+        raw_retention_turns=llm.settings.raw_retention_turns,
+    )
     responses = []
     turn_ids = []
     error = ""

@@ -1,8 +1,4 @@
-"""Behavior contracts for the Store split, including intentionally bounded retention.
-
-These describe current behavior, not the future archive/reset policy. Keep policy
-changes separate from moving SQL between modules.
-"""
+"""Store transaction/purge contracts, updated for cursor-protected raw retention."""
 
 import sqlite3
 
@@ -14,14 +10,14 @@ from hina_bot.core.store import Store
 
 @pytest.fixture
 def store(tmp_path):
-    instance = Store.create(str(tmp_path / "contracts.sqlite3"), history_turns=2)
+    instance = Store.create(str(tmp_path / "contracts.sqlite3"), history_turns=2, raw_retention_turns=2)
     try:
         yield instance
     finally:
         instance.close()
 
 
-def test_raw_retention_is_per_scope_and_can_remove_unextracted_sources(store):
+def test_prompt_history_is_per_scope_and_pending_sources_are_retained(store):
     scope = Scope(1, 10, 100, True)
     other = Scope(1, 10, 200, True)
     store.add(other, 90, "other", "reply")
@@ -32,9 +28,9 @@ def test_raw_retention_is_per_scope_and_can_remove_unextracted_sources(store):
     assert [row["message_id"] for row in store.history(other)] == ["90"]
     assert store.memory_extraction_cursor(scope) == 0
     assert [row["message_id"] for row in store.pending_memory_extraction(scope)] == [
-        "102", "103",
+        "101", "102", "103",
     ]
-    assert not store.seen(101)
+    assert store.seen(101)
     assert store.seen(102)
 
 
@@ -42,6 +38,7 @@ def test_pruning_failure_rolls_back_new_turn_and_keeps_previous_history(store):
     scope = Scope(None, 10, 100)
     for message_id in (101, 102):
         store.add(scope, message_id, str(message_id), "reply")
+    store.save_memory_extraction_cursor(scope, store.history(scope)[-1]["id"])
     before = [dict(row) for row in store.history(scope)]
     store.db.execute(
         """CREATE TRIGGER reject_turn_prune BEFORE DELETE ON turns
@@ -78,7 +75,7 @@ def test_shared_cursor_uses_shared_ids_and_failure_rows_are_not_memory_input(sto
         "SELECT message_id FROM failed_turns ORDER BY id"
     )] == ["202", "203"]
     assert [row["message_id"] for row in store.pending_memory_extraction(scope)] == [
-        "102", "103",
+        "101", "102", "103",
     ]
     assert store.shared_summary(scope) == ("summary", shared[0]["id"])
 

@@ -55,6 +55,8 @@ class Store:
         db: sqlite3.Connection,
         history_turns: int = 12,
         pending_visuals: PendingVisualStore | None = None,
+        *,
+        raw_retention_turns: int = 1000,
     ):
         """Take ownership of an already prepared connection; performs no SQL."""
         if not isinstance(db, sqlite3.Connection):
@@ -66,7 +68,7 @@ class Store:
             pending_visuals if pending_visuals is not None else NullPendingVisualStore()
         )
         self.settings = SettingsRepository(db)
-        self._conversations = ConversationRepository(db, history_turns)
+        self._conversations = ConversationRepository(db, history_turns, raw_retention_turns)
         self._atomic_memory_batch_open = False
         self._memories = MemoryRepository(
             db, user_name=lambda scope: self.user_name(scope),
@@ -74,19 +76,22 @@ class Store:
         )
 
     @classmethod
-    def open_existing(cls, path: str, history_turns: int = 12):
+    def open_existing(cls, path: str, history_turns: int = 12, *, raw_retention_turns: int = 1000):
         db = open_existing(path)
         try:
             require_current(db, ('store', 'settings'))
             db.execute('PRAGMA journal_mode=WAL')
             db.execute('PRAGMA secure_delete=ON')
-            return cls(db, history_turns, DiskPendingVisualStore(pending_visual_root(path)))
+            return cls(
+                db, history_turns, DiskPendingVisualStore(pending_visual_root(path)),
+                raw_retention_turns=raw_retention_turns,
+            )
         except BaseException:
             db.close()
             raise
 
     @classmethod
-    def create(cls, path: str, history_turns: int = 12):
+    def create(cls, path: str, history_turns: int = 12, *, raw_retention_turns: int = 1000):
         """Explicit bootstrap for a new file or isolated test DB.
 
         Existing files must be prepared with the backed-up preparation CLI first.
@@ -95,7 +100,7 @@ class Store:
         if path != ':memory:':
             path = str(Path(path).expanduser())
         if path != ':memory:' and Path(path).exists():
-            return cls.open_existing(path, history_turns)
+            return cls.open_existing(path, history_turns, raw_retention_turns=raw_retention_turns)
         if path != ':memory:':
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             # Refuse to overwrite a file created by another process.
@@ -110,7 +115,7 @@ class Store:
             pending = (
                 DiskPendingVisualStore(pending_visual_root(path)) if path != ':memory:' else None
             )
-            return cls(db, history_turns, pending)
+            return cls(db, history_turns, pending, raw_retention_turns=raw_retention_turns)
         except BaseException:
             db.close()
             raise
@@ -121,6 +126,8 @@ class Store:
 
     @history_turns.setter
     def history_turns(self, value: int):
+        if not 1 <= value <= self._conversations.raw_retention_turns:
+            raise ValueError("history_turns must fit within raw_retention_turns")
         self._conversations.history_turns = value
 
     def close(self):
@@ -784,7 +791,9 @@ class Store:
         try:
             previous = self._conversations.shared_summary_row(scope)
             through = previous["through_id"] if previous is not None else 0
-            pending = self._conversations.shared_calls_after(scope, through)
+            pending = self._conversations.shared_calls_after(
+                scope, through, limit=self.history_turns,
+            )
             self.db.commit()
             return previous, pending
         except BaseException:

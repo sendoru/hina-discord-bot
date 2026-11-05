@@ -32,8 +32,8 @@ class PausedSummary(MemorySummaryMixin):
 @pytest.fixture
 def stores(tmp_path):
     path = tmp_path / "summary.sqlite3"
-    first = Store.create(path, history_turns=3)
-    second = Store.open_existing(path, history_turns=3)
+    first = Store.create(path, history_turns=3, raw_retention_turns=3)
+    second = Store.open_existing(path, history_turns=3, raw_retention_turns=3)
     scope = Scope(1, 10, 100, public_at_capture=True)
     with first.db:
         first._conversations.write_shared_call(scope, 101, "name-secret", "source-secret")
@@ -49,7 +49,7 @@ def stores(tmp_path):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mutation", [
     "purge_channel_memory", "purge_realm_memory", "purge_all_memory", "forget",
-    "source", "summary", "cursor", "name", "delete_summary", "prune",
+    "source", "summary", "cursor", "name", "delete_summary", "delete_source",
 ])
 async def test_changed_input_is_rejected_without_resurrection_or_cursor_regression(stores, mutation):
     first, second, scope = stores
@@ -62,10 +62,9 @@ async def test_changed_input_is_rejected_without_resurrection_or_cursor_regressi
             getattr(second, mutation)(scope)
         elif mutation == "purge_all_memory":
             second.purge_all_memory()
-        elif mutation == "prune":
-            for number in (102, 103, 104):
-                with second.db:
-                    second._conversations.write_shared_call(scope, number, "other", "new")
+        elif mutation == "delete_source":
+            with second.db:
+                second.db.execute("DELETE FROM shared_calls")
         else:
             with second.db:
                 if mutation == "source":
@@ -108,6 +107,33 @@ async def test_new_calls_and_unrelated_changes_do_not_discard_valid_work(stores)
         assert [row["message_id"] for row in second.pending_shared(scope)] == ["102"]
         assert llm.usage.routing_event.call_args.kwargs["status"] == "committed"
     finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_auto_pruning_keeps_inflight_summary_prefix_and_next_request_is_bounded(stores):
+    first, second, scope = stores
+    llm = PausedSummary()
+    task = asyncio.create_task(llm.summarize_shared(first, scope))
+    try:
+        await asyncio.wait_for(llm.entered.wait(), 2)
+        for number in range(102, 142):
+            second.record_completed_turn(scope, number, "new", "reply")
+        llm.release.set()
+        await asyncio.wait_for(task, 2)
+        assert first.shared_summary(scope)[1] == 1
+        assert len(first.pending_shared(scope)) == 40
+        previous, pending = first.shared_summary_snapshot(scope)
+        assert [r["message_id"] for r in pending] == ["102", "103", "104"]
+        first.commit_shared_summary(scope, pending, expected_summary=previous, text="next")
+        second.record_completed_turn(scope, 142, "new", "reply")
+        assert [r["message_id"] for r in first.pending_shared(scope)] == list(
+            map(str, range(105, 143))
+        )
+        assert len(first.history(scope)) == 3
+    finally:
+        llm.release.set()
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
 
