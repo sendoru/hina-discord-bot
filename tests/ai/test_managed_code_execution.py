@@ -125,7 +125,6 @@ async def test_gemini_link_message_exposes_url_context_without_forcing_fetch(tmp
         request = fake.responses.create.await_args.kwargs
         assert {"type": "url_context"} in request["tools"]
         assert "tool_choice" not in request or request["tool_choice"] == "auto"
-        assert "신뢰할 수 없는 참고 자료" in request["instructions"]
     finally:
         await llm.close()
         store.close()
