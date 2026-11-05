@@ -37,7 +37,7 @@ hina-reset-conversation = "hina_bot.tooling.reset_conversation:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-hina_bot = ["prompts/*.md", "prompts/integration/*.md", "data/*.jsonl", "dashboard/templates/*.html", "dashboard/static/*.css", "dashboard/static/*.js"]
+hina_bot = ["prompts/*.md", "prompts/integration/*.md", "prompts/memory/*.md", "data/*.jsonl", "dashboard/templates/*.html", "dashboard/static/*.css", "dashboard/static/*.js"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
