@@ -333,7 +333,7 @@ async def test_conservative_escape_fallback_cleans_failed_or_unchanged_repair(
 async def test_off_do_not_unescape_output(mode):
     repair, _, usage = make_repair(mode=mode, reply="안녕\n다음 줄")
     assert await repair.apply(r"안녕\n다음 줄") == r"안녕\n다음 줄"
-        assert all(op != "output.escape_fallback" for op, _ in usage.events)
+    assert all(op != "output.escape_fallback" for op, _ in usage.events)
 
 
 
@@ -501,7 +501,7 @@ async def test_conservative_fallback_is_silent_when_nothing_is_removed():
 async def test_off_keep_their_meaning(mode):
     repair, _, usage = make_repair(mode=mode, reply=MARKER_CLEANED)
     assert await repair.apply(MARKER_REPLY) == MARKER_REPLY
-        assert all(operation != "output.marker_fallback" for operation, _ in usage.events)
+    assert all(operation != "output.marker_fallback" for operation, _ in usage.events)
 
 
 @pytest.mark.asyncio
