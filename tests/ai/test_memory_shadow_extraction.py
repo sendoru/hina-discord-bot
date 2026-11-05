@@ -358,6 +358,39 @@ async def test_structured_extraction_runs_at_four_turns():
 
 
 @pytest.mark.asyncio
+async def test_outage_backlog_survives_modes_then_drains_in_fixed_batches(tmp_path):
+    path = tmp_path / "backlog.sqlite3"
+    scope = Scope(None, 10, 100)
+    store = Store.create(path, history_turns=12, raw_retention_turns=12)
+    _add_turns(store, scope, 101, 40)
+    harness = _harness(RuntimeError("provider unavailable"))
+    assert await harness.extract_structured_memory(store, scope) is False
+    assert store.memory_extraction_cursor(scope) == 0
+    assert len(store.pending_memory_extraction(scope)) == 40
+    for mode in ("off", "read_only"):
+        store.set_user_memory_mode(100, mode)
+        assert await harness.extract_structured_memory(store, scope) is False
+    assert harness.usage.request.await_count == 1
+    store.close()
+    store = Store.open_existing(path, history_turns=12, raw_retention_turns=12)
+    try:
+        store.set_user_memory_mode(100, "normal")
+        harness = _harness(*[_response('{"items":[]}') for _ in range(10)])
+        for through in range(4, 41, 4):
+            assert await harness.extract_structured_memory(store, scope) is True
+            assert store.memory_extraction_cursor(scope) == through
+            assert len(store.pending_memory_extraction(scope)) == 40 - through
+        assert len(store.history(scope)) == 12
+        # Cleanup occurs on the next source write, not inside an extraction commit.
+        store.add(scope, 141, "new", "reply")
+        assert store.db.execute("SELECT COUNT(*) FROM turns").fetchone()[0] == 12
+        assert store.memory_extraction_cursor(scope) == 40
+        assert len(store.pending_memory_extraction(scope)) == 1
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
 async def test_partial_structured_extraction_requires_explicit_min_turns():
     store = Store.create(":memory:", history_turns=12)
     scope = Scope(None, 10, 100)

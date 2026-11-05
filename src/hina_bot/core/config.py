@@ -138,6 +138,7 @@ class Settings:
     structured_memory_stale_after_seconds: int = 8 * 60 * 60
     structured_memory_sweep_interval_seconds: int = 60 * 60
     history_turns: int = 12
+    raw_retention_turns: int = 1000
     history_max_chars: int = 12000
     usage_log_path: str = "data/logs/usage.jsonl"
     event_log_path: str = "data/logs/events.jsonl"
@@ -473,6 +474,7 @@ class Settings:
             ),
             channel_context_chars=int(os.getenv("CHANNEL_CONTEXT_CHARS", "6000")),
             history_turns=int(os.getenv("HISTORY_TURNS", "12")),
+            raw_retention_turns=int(os.getenv("RAW_RETENTION_TURNS", "1000")),
             history_max_chars=int(os.getenv("HISTORY_MAX_CHARS", "12000")),
             usage_log_path=os.getenv("USAGE_LOG_PATH", "data/logs/usage.jsonl"),
             event_log_path=os.getenv("EVENT_LOG_PATH", "data/logs/events.jsonl"),
@@ -526,4 +528,6 @@ class Settings:
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하, "
                              "memory visual pending 상한은 16~4096 MB")
+        if not s.history_turns <= s.raw_retention_turns <= 100000:
+            raise ValueError("RAW_RETENTION_TURNS는 HISTORY_TURNS 이상, 100000 이하여야 해요.")
         return s

@@ -15,6 +15,8 @@ The [final #397–#398 review](db-final-review.md) consolidates schema ownership
 `db_ddl.py` and `db_schema.py`; earlier schema filenames below are historical.
 The subsequent [fixed v1 baseline](db-baseline-v1.md) isolates old schema conversion
 in an explicit offline tool; runtime validates current versions/metadata only.
+The later [raw retention policy](raw-retention.md) supersedes historical claims below
+that history_turns deletes unprocessed sources; #398 also made completed/public writes atomic.
 
 ## Ownership
 

@@ -58,6 +58,9 @@ COMMAND_INFO: dict[str, CommandInfo] = {
     "hina-memory-report": CommandInfo(
         "Evaluation / Analysis", "Generate a long-term memory report"
     ),
+    "hina-retention-report": CommandInfo(
+        "Database / Maintenance", "Inspect raw retention and protected backlog (read-only)"
+    ),
     "hina-memory-extraction-eval": CommandInfo(
         "Evaluation / Analysis", "Evaluate memory extraction"
     ),

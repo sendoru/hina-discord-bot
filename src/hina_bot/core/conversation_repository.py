@@ -1,19 +1,60 @@
-"""Conversation SQL using the runtime Store connection and existing retention policy."""
+"""Conversation SQL with separate prompt limits and cursor-protected retention."""
 
 import json
+import logging
 import sqlite3
 
 from .memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_CONTEXT
 from .observability import current_turn_id
 from .routing import Scope
 
+log = logging.getLogger("hina")
+
 
 class ConversationRepository:
     """Standalone methods retain commits; write_* helpers borrow a caller transaction."""
 
-    def __init__(self, db: sqlite3.Connection, history_turns: int = 12):
+    def __init__(
+        self, db: sqlite3.Connection, history_turns: int = 12,
+        raw_retention_turns: int = 1000,
+    ):
+        if not 1 <= history_turns <= raw_retention_turns <= 100000:
+            raise ValueError("Expected 1 <= history_turns <= raw_retention_turns <= 100000")
         self.db = db
         self.history_turns = history_turns
+        self.raw_retention_turns = raw_retention_turns
+
+    def _prune(self, table, scope, *, cursor_table=None):
+        """Borrow the insert transaction; fixed internal table names only.
+
+        Each table has its own ID space. Missing cursors protect all successful inputs.
+        No cursor initialization/advancement, memory deletion or archive is performed here.
+        """
+        processed = (
+            f"AND id <= COALESCE((SELECT through_id FROM {cursor_table} WHERE scope=?),0)"
+            if cursor_table else ""
+        )
+        params = (scope.conversation,)
+        if cursor_table:
+            params += (scope.conversation,)
+        self.db.execute(
+            f"DELETE FROM {table} WHERE id IN (SELECT id FROM {table} "
+            f"WHERE scope=? {processed} AND id < COALESCE("
+            f"(SELECT id FROM {table} WHERE scope=? ORDER BY id DESC LIMIT 1 OFFSET ?),0) "
+            "ORDER BY id LIMIT 1000)",
+            params + (scope.conversation, self.raw_retention_turns - 1),
+        )
+        if cursor_table:
+            count = self.db.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE scope=?", (scope.conversation,),
+            ).fetchone()[0]
+            # Report the first overflow and every target-sized increase, without identifiers.
+            if count > self.raw_retention_turns and (count - 1) % self.raw_retention_turns == 0:
+                log.warning(
+                    "Protected conversation backlog exceeds retention target: table=%s "
+                    "retained=%d target=%d; inspect with hina-retention-report",
+                    table, count, self.raw_retention_turns,
+                )
 
     def user_name(self, scope: Scope) -> str:
         """Return the latest observed human-readable name for this scoped user."""
@@ -191,10 +232,7 @@ class ConversationRepository:
             "INSERT INTO turns(scope,realm,user_id,name,message_id,content,reply,exportable,"
             "turn_id,memory_context,context_provenance) VALUES (?,?,?,?,?,?,?,?,?,?,?)", values,
         )
-        # Keep the existing retention policy; its separation belongs to #399.
-        self.db.execute("DELETE FROM turns WHERE scope=? AND id NOT IN "
-                        "(SELECT id FROM turns WHERE scope=? ORDER BY id DESC LIMIT ?)",
-                        (scope.conversation, scope.conversation, self.history_turns))
+        self._prune("turns", scope, cursor_table="memory_extraction_cursors")
 
     def add_failed_turn(
         self,
@@ -233,14 +271,7 @@ class ConversationRepository:
                     str(error_fingerprint or ""),
                 ),
             )
-            self.db.execute(
-                """DELETE FROM failed_turns
-                   WHERE scope=? AND id NOT IN (
-                       SELECT id FROM failed_turns
-                       WHERE scope=? ORDER BY id DESC LIMIT ?
-                   )""",
-                (scope.conversation, scope.conversation, self.history_turns),
-            )
+            self._prune("failed_turns", scope)
 
     def write_shared_call(self, scope, message_id, name, content):
         if scope.guild_id is None or not scope.public_at_capture:
@@ -249,9 +280,7 @@ class ConversationRepository:
                         "(scope,realm,user_id,message_id,name,content) VALUES (?,?,?,?,?,?)",
                         (scope.conversation, scope.realm, str(scope.user_id), str(message_id),
                          name[:100], content))
-        self.db.execute("DELETE FROM shared_calls WHERE scope=? AND id NOT IN "
-                        "(SELECT id FROM shared_calls WHERE scope=? ORDER BY id DESC LIMIT ?)",
-                        (scope.conversation, scope.conversation, self.history_turns))
+        self._prune("shared_calls", scope, cursor_table="shared_summaries")
 
     def shared_summary(self, scope):
         row = self.db.execute("SELECT text,through_id FROM shared_summaries WHERE scope=?",
