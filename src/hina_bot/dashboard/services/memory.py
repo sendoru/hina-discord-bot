@@ -486,13 +486,23 @@ class MemoryService(ReadService):
             )
             newer_state = old_state
 
+        annotation = _annotation_view(
+            item,
+            self.repository.memory_item_annotation(item_id),
+            datetime.now(ZoneInfo(self.timezone)) if self.timezone else datetime.now(UTC),
+        )
+        # Superseded duplicates that quote the same words: where a reinforced quote came
+        # from, and what a permanent delete of them would take from this item (#471).
+        annotation["evidence_items"] = (
+            self.repository.memory_item_evidence_items(
+                item_id, str(annotation["row"].get("evidence") or "")
+            )
+            if annotation["row"] is not None
+            else []
+        )
         return {
             "item": item,
-            "annotation": _annotation_view(
-                item,
-                self.repository.memory_item_annotation(item_id),
-                datetime.now(ZoneInfo(self.timezone)) if self.timezone else datetime.now(UTC),
-            ),
+            "annotation": annotation,
             "sources": sources,
             "neighbors": neighbors,
             "history": history,

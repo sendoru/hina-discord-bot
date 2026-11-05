@@ -121,6 +121,7 @@ class ReconciliationPersistResult:
     applied: int
     deferred: int
     reconfirmed: int = 0
+    reinforced: int = 0
 
 
 def _row_value(row, key: str, default=""):
@@ -846,16 +847,20 @@ def persist_reconciliation_proposals(
     """Persist proposals and conservatively apply safe lifecycle transitions.
 
     An applied duplicate also confirms its surviving target, so frequently
-    re-mentioned memories stay distinguishable from stale one-off ones.
+    re-mentioned memories stay distinguishable from stale one-off ones. When the
+    target has no quote yet (a backfilled memory), the duplicate's judgment and quote
+    reinforce it first, within this extraction scope's disclosure space (#471).
     """
 
     stored = 0
     applied = 0
     deferred = 0
     reconfirmed = 0
+    reinforced = 0
     finder = getattr(store, "memory_reconciliation_proposal_id", None)
     applier = getattr(store, "apply_memory_reconciliation_proposal", None)
     reconfirm = getattr(store, "reconfirm_memory_annotation", None)
+    reinforce = getattr(store, "reinforce_memory_annotation", None)
     for item, item_id in zip(items, item_ids, strict=True):
         if item_id is None or item.relation is None:
             continue
@@ -885,16 +890,19 @@ def persist_reconciliation_proposals(
         outcome = applier(proposal_id, min_confidence=threshold)
         if outcome == "applied":
             applied += 1
-            if (
-                item.relation.relation == "duplicate"
-                and item.annotation is not None
-                and callable(reconfirm)
-                and reconfirm(item.relation.target_item_id, item.annotation.observed_at)
-            ):
-                reconfirmed += 1
+            if item.relation.relation == "duplicate" and item.annotation is not None:
+                target_id = item.relation.target_item_id
+                if callable(reinforce) and reinforce(
+                    scope, target_item_id=target_id, evidence_item_id=item_id
+                ):
+                    reinforced += 1
+                if callable(reconfirm) and reconfirm(target_id, item.annotation.observed_at):
+                    reconfirmed += 1
         elif outcome != "already_applied":
             deferred += 1
-    return ReconciliationPersistResult(stored, applied, deferred, reconfirmed=reconfirmed)
+    return ReconciliationPersistResult(
+        stored, applied, deferred, reconfirmed=reconfirmed, reinforced=reinforced
+    )
 
 
 __all__ = [

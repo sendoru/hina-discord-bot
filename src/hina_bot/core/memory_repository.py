@@ -16,6 +16,8 @@ from .memory_annotations import (
     admin_annotation,
     admin_annotation_fields,
     enforce_consistency,
+    reinforced_annotation,
+    without_evidence,
 )
 from .memory_items import (
     MemoryDisclosure,
@@ -267,6 +269,129 @@ class MemoryRepository:
                 (str(observed_at), int(item_id)),
             )
         return bool(cursor.rowcount)
+
+    def reinforce_memory_annotation(
+        self, scope: Scope, *, target_item_id: int, evidence_item_id: int
+    ) -> bool:
+        """Give a duplicate's target the judgment and quote of the duplicate (#471).
+
+        ``evidence_item_id`` is the new item the extractor just superseded into the target,
+        so the quote stays traceable as a superseded row. Only the extraction scope's own
+        disclosure space may reinforce (principle 2): a target from another realm, or from
+        another channel that is not public, is only reconfirmed by the caller. The checks and
+        the write share one transaction with the extraction batch.
+        """
+
+        target_id, source_id = int(target_item_id), int(evidence_item_id)
+        if target_id == source_id:
+            return False
+        with self._write_context():
+            rows = {
+                int(row["id"]): row
+                for row in self.db.execute(
+                    """SELECT id,user_id,kind,status,superseded_by,revision,origin_realm,
+                              origin_channel_id,origin_public_at_capture
+                       FROM memory_items WHERE id IN (?,?)""",
+                    (target_id, source_id),
+                )
+            }
+            target, source = rows.get(target_id), rows.get(source_id)
+            if target is None or source is None:
+                return False
+            owner = str(scope.user_id)
+            if str(target["user_id"]) != owner or str(source["user_id"]) != owner:
+                return False
+            if (
+                str(target["status"]) != MemoryStatus.ACTIVE.value
+                or str(source["status"]) != MemoryStatus.SUPERSEDED.value
+                or int(source["superseded_by"] or 0) != target_id
+            ):
+                return False
+            if MemoryKind.RELATIONSHIP.value in (str(target["kind"]), str(source["kind"])):
+                return False
+            # The selector's same-space rule: same realm, and a public origin or this channel.
+            if str(target["origin_realm"]) != scope.realm or not (
+                bool(target["origin_public_at_capture"])
+                or str(target["origin_channel_id"]) == str(scope.channel_id)
+            ):
+                return False
+            current = self.memory_annotation(target_id)
+            evidence = self.memory_annotation(source_id)
+            if current is None or evidence is None:
+                return False
+            reinforced = reinforced_annotation(
+                current,
+                evidence,
+                item_revision=int(target["revision"]),
+                public_origin=str(target["origin_realm"]).startswith("guild:")
+                and bool(target["origin_public_at_capture"]),
+            )
+            if reinforced is None:
+                return False
+            self._write_annotation_row(reinforced)
+        return True
+
+    def _reinforced_targets(
+        self, doomed_item: str, surviving_target: str, params: tuple
+    ) -> list[tuple[int, str]]:
+        """Targets whose quote came from a duplicate that is about to be deleted.
+
+        The quote is the one the target and a superseded duplicate share (#471). Targets
+        that are deleted together with the duplicate need no cleanup, so the caller names
+        which targets survive. Both predicates are fixed SQL fragments, never user input.
+        """
+
+        rows = self.db.execute(
+            f"""SELECT DISTINCT t.id AS target_id, ta.evidence AS evidence
+                FROM memory_items c
+                JOIN memory_item_annotations ca ON ca.memory_item_id=c.id
+                JOIN memory_items t ON t.id=c.superseded_by
+                JOIN memory_item_annotations ta ON ta.memory_item_id=t.id
+                WHERE ca.evidence<>'' AND ca.evidence=ta.evidence
+                  AND {doomed_item} AND {surviving_target}""",
+            params,
+        ).fetchall()
+        return [(int(row["target_id"]), str(row["evidence"])) for row in rows]
+
+    def reinforced_targets_of_item(self, item_id: int) -> list[tuple[int, str]]:
+        """Capture, before deleting one item, the targets quoting what that item said."""
+
+        return self._reinforced_targets("c.id=?", "t.id<>?", (int(item_id), int(item_id)))
+
+    def reinforced_targets_of_channel(
+        self, realm: str, channel_id: int | str
+    ) -> list[tuple[int, str]]:
+        """Capture, before a channel purge, the surviving targets quoting purged duplicates."""
+
+        return self._reinforced_targets(
+            "c.origin_realm=? AND c.origin_channel_id=?",
+            "NOT (t.origin_realm=? AND t.origin_channel_id=?)",
+            (realm, str(channel_id), realm, str(channel_id)),
+        )
+
+    def release_reinforced_evidence(self, targets: list[tuple[int, str]]) -> int:
+        """Drop quotes that no remaining duplicate backs, in the deleting transaction.
+
+        Run after the duplicate rows are gone (§4.6): a quote that another superseded
+        duplicate still carries stays, anything else is removed from the target.
+        """
+
+        cleared = 0
+        for target_id, evidence in targets:
+            backed = self.db.execute(
+                """SELECT 1 FROM memory_items c
+                   JOIN memory_item_annotations ca ON ca.memory_item_id=c.id
+                   WHERE c.superseded_by=? AND ca.evidence=? LIMIT 1""",
+                (int(target_id), evidence),
+            ).fetchone()
+            if backed is not None:
+                continue
+            annotation = self.memory_annotation(target_id)
+            if annotation is None or annotation.evidence != evidence:
+                continue
+            self._write_annotation_row(without_evidence(annotation))
+            cleared += 1
+        return cleared
 
     def add_memory_item(
         self,
@@ -520,6 +645,8 @@ class MemoryRepository:
             if int(row["revision"]) != expected_revision:
                 raise ValueError("Memory item has changed; reload before deleting")
 
+            # A target that quotes this item's words loses that quote with it (#471, §4.6).
+            quoting_targets = self.reinforced_targets_of_item(item_id)
             for table in ("memory_item_edit_history", "memory_item_annotations"):
                 self.db.execute(f"DELETE FROM {table} WHERE memory_item_id=?", (item_id,))
             self.db.execute(
@@ -539,6 +666,7 @@ class MemoryRepository:
             )
             if deleted.rowcount != 1:
                 raise ValueError("Memory item has changed; reload before deleting")
+            self.release_reinforced_evidence(quoting_targets)
 
     def reference_gated_memory_candidates(self, scope: Scope, *, limit: int = 24):
         """Return recent active owner memories whose cross-space access is reference-gated."""
