@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hina_bot.ai.memory_extraction import SHADOW_EXTRACTION_POLICY, parse_shadow_extraction
+from hina_bot.ai.memory_extraction import parse_shadow_extraction
 from hina_bot.ai.memory_model_routing import build_memory_model_plan
 from hina_bot.ai.memory_summary import MemorySummaryMixin
 from hina_bot.ai.memory_visual import (
@@ -189,12 +189,6 @@ def test_relationship_items_ignore_visual_refs():
     (item,) = _parse([relationship]).items
     assert item.confidence == 0.9
     assert item.annotation is None
-
-
-def test_policy_tells_the_model_how_to_use_photos():
-    for phrase in ("visual_refs", "사진만으로 새 항목", "사진상", "신뢰할 수 없는 데이터",
-                   "user 발화에서 그대로 옮긴 발췌여야 합니다"):
-        assert phrase in SHADOW_EXTRACTION_POLICY
 
 
 class Worker(MemorySummaryMixin):

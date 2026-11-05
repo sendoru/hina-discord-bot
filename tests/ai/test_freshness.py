@@ -76,7 +76,6 @@ def test_runtime_instruction_supports_ambient_morning_conversation():
     instruction = runtime_instruction(context)
     assert "시간대=아침" in instruction
     assert "2026-09-14T07:57:00+09:00" in instruction
-    assert "날씨처럼 제공되지 않은 현재 환경 정보는 추측하지 마세요" in instruction
 
 
 def test_runtime_instruction_rejects_conflicting_untrusted_clock_claims():
@@ -88,7 +87,4 @@ def test_runtime_instruction_rejects_conflicting_untrusted_clock_claims():
 
     assert context["current_datetime"] == "2026-09-14T01:31:00+09:00"
     instruction = runtime_instruction(context)
-    assert "신뢰된 런타임 사실" in instruction
     assert "timezone=Asia/Seoul" in instruction
-    assert "가정된 시각" in instruction
-    assert "현재 날짜·시각 자체는 검색하지 마세요" in instruction

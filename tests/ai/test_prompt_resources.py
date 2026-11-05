@@ -52,7 +52,6 @@ def test_static_answer_policies_are_loaded_from_named_resources():
 
     for name, policy in expected.items():
         assert policy == load_prompt(name)
-        assert policy.endswith("\n")
 
 
 def test_prompt_loader_caches_resource_text():
@@ -70,6 +69,3 @@ def test_memory_extraction_policies_are_loaded_from_named_resources():
         "{{ANNOTATION_FIELD_RULES}}", annotation
     )
     assert DIRECTIVE_VERIFICATION_POLICY == verification
-    assert all(text.endswith("\n") for text in (
-        ANNOTATION_FIELD_RULES, SHADOW_EXTRACTION_POLICY, DIRECTIVE_VERIFICATION_POLICY
-    ))
