@@ -5,6 +5,7 @@ import pytest
 from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
+from hina_bot.ai.request_assembly import CURRENT_CHANNEL_SCOPE_POLICY
 from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
@@ -75,7 +76,7 @@ async def test_current_channel_query_keeps_manual_notes_but_excludes_public_cont
         assert "CURRENT_CHANNEL_PERSONAL" in json.dumps(
             reference["personal_recent_conversation"], ensure_ascii=False
         )
-        assert "현재 채널 범위" in payload["instructions"]
+        assert CURRENT_CHANNEL_SCOPE_POLICY.strip() in payload["instructions"]
         assert "OTHER_CHANNEL_PUBLIC_CONTEXT" not in json.dumps(
             reference,
             ensure_ascii=False,
@@ -120,7 +121,7 @@ async def test_server_query_keeps_authorized_cross_channel_context():
         assert reference["server_note"] == "SERVER_NOTE_MARKER"
         assert reference["user_note"] == "USER_NOTE_MARKER"
         assert reference["public_server_context"][0]["summary"] == "SERVER_PUBLIC_CONTEXT"
-        assert "현재 채널 범위" not in payload["instructions"]
+        assert CURRENT_CHANNEL_SCOPE_POLICY.strip() not in payload["instructions"]
     finally:
         await llm.close()
         store.close()
