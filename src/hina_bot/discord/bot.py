@@ -191,7 +191,10 @@ class HinaClient(discord.Client):
             max_messages=None,
         )
         self.settings = settings
-        self.store = store if store is not None else Store.open_existing(settings.db_path, settings.history_turns)
+        self.store = store if store is not None else Store.open_existing(
+            settings.db_path, settings.history_turns,
+            raw_retention_turns=settings.raw_retention_turns,
+        )
         configure_pending_visuals = getattr(self.store.pending_visuals, "configure", None)
         if configure_pending_visuals is not None:
             configure_pending_visuals(

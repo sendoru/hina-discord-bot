@@ -152,7 +152,10 @@ async def run_flush(
     base = Settings.load()
     if Path(base.db_path).resolve() != database.resolve():
         base = replace(base, db_path=str(database))
-    store = Store.open_existing(str(database), history_turns=base.history_turns)
+    store = Store.open_existing(
+        str(database), history_turns=base.history_turns,
+        raw_retention_turns=base.raw_retention_turns,
+    )
     worker = None
     try:
         settings = RuntimeSettings(base, store)

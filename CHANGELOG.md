@@ -6,6 +6,12 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Added
 
+- 자동 문맥 `HISTORY_TURNS`와 별도로 `RAW_RETENTION_TURNS`(기본 scope·테이블별 1000건)를
+  적용합니다(#399). 구조화 추출·공개 요약 미처리 원본은 한도 초과도 보호하고, 실패 감사는
+  유한 보존합니다. 공개 요약 입력은 기존 history 한도로 제한하며 명시적 삭제·memory mode는
+  기존 계약을 유지합니다. 읽기 전용 `hina-retention-report`로 backlog·용량을 확인할 수 있습니다.
+  기간 만료·새 archive·스키마 변경은 없으며, 구버전 rollback은 다시 원본을 삭제할 수 있으므로
+  [측정 결과와 복귀 절차](docs/raw-retention.md)를 확인하세요.
 - 같은 공간에서 다시 언급돼 `duplicate`로 합쳐질 때, 인용이 없는 대상 annotation을 새 항목의 판정으로
   보강합니다(#471). backfill로 만든 `source_unavailable`·`contextual` 기억이 재언급으로 `ambient`·
   중요도 3과 인용을 받을 수 있습니다. 대상이 추출 공간(같은 realm이고 공개 출처이거나 같은 채널)에

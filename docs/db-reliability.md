@@ -5,6 +5,10 @@ These changes build on the explicit preparation and ownership contracts in
 transaction coordinator. The business schema, retention limits, memory modes and
 purge deletion sets are unchanged.
 
+Historical retention statements below describe #398. [Raw retention](raw-retention.md)
+now separates deletion from history_turns and protects pending summary/extraction inputs;
+the transaction/source-conflict contracts described here remain in force.
+
 ## Shared summaries
 
 Generation takes a coherent, short read snapshot of the previous summary row

@@ -438,7 +438,10 @@ async def run_case(llm, case: dict, *, judge_model: str | None, attempt: int = 1
     mode = llm.settings.personal_memory_read_mode
     zone = ZoneInfo(getattr(llm.settings, "runtime_timezone", "") or "Asia/Seoul")
     now = datetime.now(zone)
-    store = Store.create(":memory:", history_turns=llm.settings.history_turns)
+    store = Store.create(
+        ":memory:", history_turns=llm.settings.history_turns,
+        raw_retention_turns=llm.settings.raw_retention_turns,
+    )
     row = {"id": case["id"], "covers": case["covers"], "mode": mode, "attempt": attempt,
            "turns": [], "error": ""}
     try:

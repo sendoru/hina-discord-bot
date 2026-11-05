@@ -125,7 +125,8 @@ context_provenance JSON에 저장하고 원문을 복제하지 않습니다. 새
 
 전달된 답변의 실제 메시지 ID도 같은 JSON에 저장합니다. 재시작 후 DM/개인 최근 이력 및 Discord
 hydration에서 보존된 출처 표지를 복원합니다. 이 메타데이터도 기존 turns 보존 범위를 따르며, 이미
-prune된 행의 출처를 복원하지 않습니다. 장기 보존 확대는 #399, 범위별 논리 reset은 #400,
+prune된 행의 출처를 복원하지 않습니다. #399의 [원본 보존 정책](raw-retention.md)은
+자동 문맥과 별도로 적용하며, 범위별 논리 reset은 #400,
 더 넓은 명시 검색·Dashboard 연계는 #401의 별도 범위입니다.
 
 `history.lookup` telemetry에는 호출 결과·반환 건수/문자 수·검사 건수·출처 종류·소요 시간 또는
