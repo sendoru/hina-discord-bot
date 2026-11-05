@@ -13,8 +13,8 @@ import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 
-from hina_bot.ai.prompts import load_prompt
 from hina_bot.ai.memory_visual import MEMORY_VISUAL_CONFIDENCE_CAP
+from hina_bot.ai.prompts import load_prompt
 from hina_bot.core.memory_annotations import (
     EVIDENCE_MAX_CHARS,
     LINT_DEFAULTED,
