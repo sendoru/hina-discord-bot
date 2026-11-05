@@ -35,7 +35,7 @@ class Usage:
         self.events.append((operation, metadata))
 
 
-def make_repair(*, mode="active", reply="좋아", model="auto", provider="gemini"):
+def make_repair(*, mode="conservative", reply="좋아", model="auto", provider="gemini"):
     settings = Settings(
         discord_token="bot-token", provider=provider,
         output_repair_mode=mode, output_repair_model=model,
@@ -102,7 +102,7 @@ def test_preflight_only_routes_probable_format_errors():
     (r'코드는 `items[1]`과 `"\n"`이야. [1]',
      r'코드는 `items[1]`과 `"\n"`이야. [1]', "unchanged"),
 ])
-async def test_active_uses_fast_model_no_original_context_or_images(original, reply, status):
+async def test_conservative_uses_fast_model_no_original_context_or_images(original, reply, status):
     repair, client, usage = make_repair(reply=reply)
     assert await repair.apply(original) == reply
     assert len(usage.calls) == 1
@@ -118,8 +118,7 @@ async def test_active_uses_fast_model_no_original_context_or_images(original, re
     assert usage.events[-1][1]["status"] == status
     assert original not in str(usage.events)
     assert reply not in str(usage.events)
-    await repair.close()
-
+    
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("provider", "enabled", "expected"), [
@@ -130,13 +129,12 @@ async def test_active_uses_fast_model_no_original_context_or_images(original, re
 async def test_repair_respects_global_gemini_store(provider, enabled, expected):
     repair, _, usage = make_repair(provider=provider)
     repair.settings = Settings(
-        discord_token="token", provider=provider, output_repair_mode="active",
+        discord_token="token", provider=provider, output_repair_mode="conservative",
         gemini_store_interactions=enabled, fast_model="fast-llm",
     )
     assert await repair.apply("좋아 [1]") == "좋아"
     assert usage.calls[0][2]["store"] is expected
-    await repair.close()
-
+    
 
 @pytest.mark.asyncio
 async def test_off_or_healthy_output_skips_second_request():
@@ -148,7 +146,7 @@ async def test_off_or_healthy_output_skips_second_request():
     assert await repair.apply("가만히 있<b></b>어") == "가만히 있<b></b>어"
     assert usage.calls == []
     repair.settings = Settings(
-        discord_token="token", output_repair_mode="active",
+        discord_token="token", output_repair_mode="conservative",
     )
     assert await repair.apply("평범한 인사.") == "평범한 인사."
     assert await repair.apply("`<b>코드</b>`") == "`<b>코드</b>`"
@@ -156,18 +154,7 @@ async def test_off_or_healthy_output_skips_second_request():
         "`[1562812225691983904]`"
     )
     assert usage.calls == []
-    await repair.close()
-
-
-@pytest.mark.asyncio
-async def test_shadow_does_not_change_answer_and_emits_comparison():
-    repair, _, usage = make_repair(mode="shadow", reply="좋아")
-    assert await repair.apply("가만히 있<b></b>어") == "가만히 있<b></b>어"
-    await repair.close()
-    assert len(usage.calls) == 1
-    assert usage.events[-1][1]["output_repair_changed"] is True
-    assert usage.events[-1][1]["output_repair_mode"] == "shadow"
-
+    
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("original", ["좋아 [1]", "가만히 있<b></b>어"])
@@ -177,8 +164,7 @@ async def test_failure_falls_back_to_original(original):
     assert await repair.apply(original) == original
     assert usage.events[-1][1]["status"] == "failed"
     assert "sensitive-provider-message" not in str(usage.events)
-    await repair.close()
-
+    
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("response_status", "reply", "event_status"), [
@@ -195,8 +181,7 @@ async def test_non_completed_or_empty_repair_preserves_original(
     assert await repair.apply("좋아 [1]") == "좋아 [1]"
     assert len(usage.calls) == 1
     assert usage.events[-1][1]["status"] == event_status
-    await repair.close()
-
+    
 
 @pytest.mark.asyncio
 async def test_runtime_settings_can_change_mode_and_model_without_restart():
@@ -213,7 +198,7 @@ async def test_runtime_settings_can_change_mode_and_model_without_restart():
         assert settings.output_repair_model == "auto"
         assert settings.output_repair_timeout_seconds == pytest.approx(3.0)
         assert await repair.apply("좋아 [1]") == "좋아 [1]"
-        settings.set_text("output_repair_mode", "active")
+        settings.set_text("output_repair_mode", "conservative")
         settings.set_text("output_repair_model", "chosen-model")
         settings.set_text("output_repair_timeout_seconds", "0.5")
         assert await repair.apply("좋아 [1]") == "좋아"
@@ -230,28 +215,7 @@ async def test_runtime_settings_can_change_mode_and_model_without_restart():
         settings.reset("output_repair_mode")
         assert settings.output_repair_mode == "off"
     finally:
-        await repair.close()
-        store.close()
-
-
-@pytest.mark.asyncio
-async def test_shadow_backpressure_sends_original_immediately():
-    repair, _, usage = make_repair(mode="shadow")
-    gate = asyncio.Event()
-
-    async def blocked(*args, **kwargs):
-        await gate.wait()
-        return NS(status="completed", output_text="좋아")
-
-    usage.request = blocked
-    try:
-        for _ in range(3):
-            assert await repair.apply("좋아 [1]") == "좋아 [1]"
-        assert usage.events[-1][1]["status"] == "backpressure"
-        assert len(repair._tasks) == 2
-    finally:
-        gate.set()
-        await repair.close()
+                store.close()
 
 
 @pytest.mark.asyncio
@@ -301,7 +265,7 @@ async def test_answer_pipeline_applies_repair_before_persisted_discord_reply(raw
     settings = Settings(
         discord_token="token", openai_api_key="test", provider="openai",
         model="answer-model", fast_model="small-model",
-        output_repair_mode="active", output_repair_model="auto",
+        output_repair_mode="conservative", output_repair_model="auto",
         usage_log_path="", db_path=":memory:", chat_web_search=False,
     )
     llm = LLM(settings, client=client)
@@ -347,7 +311,7 @@ def test_escape_fallback_preserves_code_urls_paths_and_literal_examples():
     ("completed", "", None, "empty"),
     ("completed", r"안녕\n다음 줄", None, "unchanged"),
 ])
-async def test_active_escape_fallback_cleans_failed_or_unchanged_repair(
+async def test_conservative_escape_fallback_cleans_failed_or_unchanged_repair(
     status, reply, error, event_status,
 ):
     repair, _, usage = make_repair(reply=reply)
@@ -359,19 +323,90 @@ async def test_active_escape_fallback_cleans_failed_or_unchanged_repair(
         ("output.escape_fallback", "applied"),
     ]
     assert usage.events[-1][1] == {
-        "status": "applied", "output_repair_mode": "active",
+        "status": "applied", "output_repair_mode": "conservative",
         "output_escapes_normalized": 1,
     }
-    await repair.close()
+    
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["off"])
+async def test_off_do_not_unescape_output(mode):
+    repair, _, usage = make_repair(mode=mode, reply="안녕\n다음 줄")
+    assert await repair.apply(r"안녕\n다음 줄") == r"안녕\n다음 줄"
+        assert all(op != "output.escape_fallback" for op, _ in usage.events)
+
+
+
+@pytest.mark.parametrize(("raw", "expected", "removed"), [
+    ("좋아 [1]", "좋아", 1),
+    ("좋아 [1:2]", "좋아", 1),
+    ("좋아 [1234567] 다음에 봐", "좋아 다음에 봐", 1),
+    ("그건 [1565771137684869141] 아닌가?", "그건 아닌가?", 1),
+    ("문서에서 [123]는 의미가 있어.", "문서에서 는 의미가 있어.", 1),
+    ("코드는 `[1]`야 [2]", "코드는 `[1]`야", 1),
+    ("```txt\n[1]\n``` [2]", "```txt\n[1]\n```", 1),
+    ("[1](https://example.com) [2]", "[1](https://example.com)", 1),
+    ("[1] [2] 그럼", "그럼", 2),
+])
+def test_aggressive_strips_numeric_brackets(raw, expected, removed):
+    assert strip_stray_id_markers(raw, aggressive=True) == (expected, removed)
+    assert strip_stray_id_markers(expected, aggressive=True) == (expected, 0)
+
+
+@pytest.mark.parametrize("raw", [
+    "코드 `[1]`와 ```md\n[2]\n```",
+    "[1](https://example.com)",
+    "URL https://example.com/[1]",
+    "숫자 아닌 [1번]과 [가]",
+    "[1:2:3]",
+    "[111111111111111111111111111111111]",
+    "[1]",
+])
+def test_aggressive_protects_non_target_or_empty_answer(raw):
+    assert strip_stray_id_markers(raw, aggressive=True) == (raw, 0)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["off", "shadow"])
-async def test_off_and_shadow_do_not_unescape_output(mode):
-    repair, _, usage = make_repair(mode=mode, reply="안녕\n다음 줄")
-    assert await repair.apply(r"안녕\n다음 줄") == r"안녕\n다음 줄"
-    await repair.close()
-    assert all(op != "output.escape_fallback" for op, _ in usage.events)
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("좋아 [1]", "좋아"),
+    ("좋아 [1:2] 괜찮아", "좋아 괜찮아"),
+    (r"안녕\n다음 줄", "안녕\n다음 줄"),
+    (r"안녕\n다음 줄 [2]", "안녕\n다음 줄"),
+    (r"`\n` 말고 실제\n줄바꿈", "`\n` 말고 실제\n줄바꿈"),
+])
+async def test_aggressive_skips_llm_for_deterministic_only(raw, expected):
+    repair, _, usage = make_repair(mode="aggressive")
+    assert await repair.apply(raw) == expected
+    assert not usage.calls
+    assert all(op != "output.repair" for op, _ in usage.events)
+
+
+@pytest.mark.asyncio
+async def test_aggressive_calls_llm_only_for_remaining_html_and_passes_clean_input():
+    repair, _, usage = make_repair(mode="aggressive", reply="안녕\n다음 줄 좋아")
+    original = r"안녕\n다음 줄 <b>좋아</b> [1]"
+    assert await repair.apply(original) == "안녕\n다음 줄 좋아"
+    assert len(usage.calls) == 1
+    assert usage.calls[0][2]["input"] == "안녕\n다음 줄 <b>좋아</b>"
+    assert usage.events[-1][0] == "output.repair"
+
+
+@pytest.mark.asyncio
+async def test_aggressive_deadline_keeps_precleaned_answer():
+    repair, _, usage = make_repair(mode="aggressive")
+    usage.error = TimeoutError("late")
+    assert await repair.apply("좋아 [1] <b>고마워</b>") == "좋아 <b>고마워</b>"
+    assert len(usage.calls) == 1
+    assert usage.calls[0][2]["input"] == "좋아 <b>고마워</b>"
+    assert any(op == "output.marker_fallback" for op, _ in usage.events)
+
+
+@pytest.mark.asyncio
+async def test_aggressive_recleans_completed_repair():
+    repair, _, usage = make_repair(mode="aggressive", reply=r"안녕 [1]\n다음 줄")
+    assert await repair.apply("안녕 <b>히나</b>") == "안녕\n다음 줄"
+    assert len(usage.calls) == 1
+    assert usage.events[-1][0] == "output.escape_fallback"
 
 
 MARKER_REPLY = (
@@ -430,7 +465,7 @@ def test_marker_fallback_preserves_meaningful_numbers(text):
     ("incomplete", "좋아", None, "non_completed"),
     ("completed", "", None, "empty"),
 ])
-async def test_active_fallback_strips_markers_when_repair_fails(
+async def test_conservative_fallback_strips_markers_when_repair_fails(
     response_status, reply, error, event_status,
 ):
     repair, _, usage = make_repair(reply=reply)
@@ -441,36 +476,32 @@ async def test_active_fallback_strips_markers_when_repair_fails(
     assert statuses == [("output.repair", event_status), ("output.marker_fallback", "applied")]
     fallback = usage.events[-1][1]
     assert fallback == {
-        "status": "applied", "output_repair_mode": "active", "output_markers_removed": 1,
+        "status": "applied", "output_repair_mode": "conservative", "output_markers_removed": 1,
     }
     assert "1565771137684869141" not in str(usage.events)
-    await repair.close()
-
+    
 
 @pytest.mark.asyncio
-async def test_active_fallback_cleans_a_completed_repair_that_kept_the_marker():
+async def test_conservative_fallback_cleans_a_completed_repair_that_kept_the_marker():
     repair, _, usage = make_repair(reply=MARKER_REPLY)
     assert await repair.apply(MARKER_REPLY) == MARKER_CLEANED
     assert usage.events[0][1]["status"] == "unchanged"
     assert usage.events[-1][0] == "output.marker_fallback"
-    await repair.close()
-
+    
 
 @pytest.mark.asyncio
-async def test_active_fallback_is_silent_when_nothing_is_removed():
+async def test_conservative_fallback_is_silent_when_nothing_is_removed():
     repair, _, usage = make_repair(reply="좋아")
     assert await repair.apply("좋아 [1]") == "좋아"
     assert [operation for operation, _ in usage.events] == ["output.repair"]
-    await repair.close()
-
+    
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["off", "shadow"])
-async def test_off_and_shadow_keep_their_meaning(mode):
+@pytest.mark.parametrize("mode", ["off"])
+async def test_off_keep_their_meaning(mode):
     repair, _, usage = make_repair(mode=mode, reply=MARKER_CLEANED)
     assert await repair.apply(MARKER_REPLY) == MARKER_REPLY
-    await repair.close()
-    assert all(operation != "output.marker_fallback" for operation, _ in usage.events)
+        assert all(operation != "output.marker_fallback" for operation, _ in usage.events)
 
 
 @pytest.mark.asyncio
@@ -508,7 +539,7 @@ async def test_answer_pipeline_strips_markers_after_repair_deadline():
     settings = Settings(
         discord_token="token", openai_api_key="test", provider="openai",
         model="answer-model", fast_model="small-model",
-        output_repair_mode="active", output_repair_model="auto",
+        output_repair_mode="conservative", output_repair_model="auto",
         output_repair_timeout_seconds=0.25,
         usage_log_path="", db_path=":memory:", chat_web_search=False,
     )
