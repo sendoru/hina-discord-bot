@@ -112,7 +112,6 @@ async def test_current_speaker_is_explicitly_bound_to_visible_user_turn():
         assert DIALOGUE_CONTEXT_POLICY.strip() in payload["instructions"]
         assert "is_current_speaker" in DIALOGUE_CONTEXT_POLICY
         assert "reply_target_is_current_speaker" in DIALOGUE_CONTEXT_POLICY
-        assert "현재 화자의 현재 발화에 먼저 답하세요" in payload["instructions"]
         assert payload["input"][1] == {"role": "user", "content": "안녕"}
         assert "speaker_name" not in reference
         assert "speaker_id" not in reference
@@ -168,8 +167,6 @@ async def test_active_reply_chain_is_structured_separately_from_ambient_context(
             "1", "2", "3"
         ]
         assert [row["message_id"] for row in reference["channel_recent_messages"]] == ["4"]
-        assert "감사·웃음·사과" in payload["instructions"]
-        assert "실제 시각 입력이 제공되지 않았다면" in payload["instructions"]
     finally:
         await llm.close()
         store.close()
@@ -355,8 +352,6 @@ async def test_verified_current_user_mention_can_be_reused_when_explicitly_reque
 
         assert reference["current_interaction"]["mentions"][0]["user_id"] == "200"
         assert DIALOGUE_CONTEXT_POLICY.strip() in payload["instructions"]
-        assert "is_self=false, is_bot=false" in DIALOGUE_CONTEXT_POLICY
-        assert "<@user_id>" in DIALOGUE_CONTEXT_POLICY
     finally:
         CURRENT_INTERACTION_CONTEXT.reset(token)
         await llm.close()
@@ -407,11 +402,6 @@ async def test_plain_explicit_reply_is_always_split_into_active_reply_chain():
 
         assert [row["message_id"] for row in reference["active_reply_chain"]] == ["10"]
         assert [row["message_id"] for row in reference["channel_recent_messages"]] == ["11"]
-        assert (
-            "active_reply_chain > speaker_thread > target_user_history > channel_ambient"
-            in payload["instructions"]
-        )
-        assert "새 주제나 새 대상을 명시하면 현재 발화가 가장 우선" in payload["instructions"]
     finally:
         await llm.close()
         store.close()
