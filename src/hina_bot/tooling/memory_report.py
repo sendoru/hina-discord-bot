@@ -765,8 +765,13 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
                     "annotated_items", "reconfirmed_items", "reinforced_annotations",
                     "suppressed_relationship_items",
                     "directive_items", "verified_directives", "rejected_directives",
+                    "visual_images", "visual_bytes", "visual_grounded_items",
                 )
             },
+            # Photo-carrying requests that were repeated on the text alone (#472).
+            "visual_fallback_runs": sum(
+                1 for row in completed if row.get("visual_fallback") is True
+            ),
         },
         "shared_summary_result": dict(
             Counter(str(row.get("status") or "missing") for row in shared)

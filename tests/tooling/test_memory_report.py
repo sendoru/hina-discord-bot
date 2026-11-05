@@ -176,7 +176,8 @@ def usage_log(tmp_path):
          "context_public_chars": 2},
         {"at": "2026-10-29T00:00:01+00:00", "operation": "memory.shadow_extraction",
          "status": "completed", "batch_turns": 4, "accepted_items": 2, "stored_items": 1,
-         "duplicate_items": 1, "rejected_items": 0},
+         "duplicate_items": 1, "rejected_items": 0, "visual_images": 2, "visual_bytes": 3000,
+         "visual_grounded_items": 1, "visual_fallback": True},
         {"at": "2026-10-29T00:00:02+00:00", "operation": "memory.shadow_extraction",
          "status": "invalid"},
         {"at": "2026-10-29T00:00:03+00:00", "operation": "memory.selection",
@@ -325,6 +326,10 @@ def test_report_aggregates_rotated_usage_telemetry(database, usage_log):
     assert extraction["status"] == {"completed": 1, "invalid": 1}
     assert extraction["completed_totals"]["accepted_items"] == 2
     assert extraction["completed_totals"]["stored_items"] == 1
+    assert extraction["completed_totals"]["visual_images"] == 2
+    assert extraction["completed_totals"]["visual_bytes"] == 3000
+    assert extraction["completed_totals"]["visual_grounded_items"] == 1
+    assert extraction["visual_fallback_runs"] == 1
 
 
 def test_report_never_contains_content_names_or_discord_ids(database, usage_log):

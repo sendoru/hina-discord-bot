@@ -45,6 +45,11 @@ SQLite:
 - `failed_turns`
 - `conversation_debug_archive` (대화 초기화가 만든 디버깅 보관 기록, 테이블이 존재하면 삭제)
 
+File:
+
+- `DATABASE_PATH`와 같은 폴더의 `visual_pending/` (메모리 추출을 기다리던 임시 보관 사진). 삭제하는 `turns`에
+  속한 사진이므로 함께 지웁니다.
+
 Telemetry:
 
 - `USAGE_LOG_PATH`

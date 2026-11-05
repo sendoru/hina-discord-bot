@@ -8,10 +8,11 @@ from fastapi.testclient import TestClient
 from hina_bot.core.admin_commands import AdminCommand
 from hina_bot.core.config import Settings
 from hina_bot.core.db_schema import initialize_connection
-from hina_bot.core.runtime_config import RuntimeSettings
+from hina_bot.core.runtime_config import RUNTIME_SETTING_SPECS, RuntimeSettings
 from hina_bot.core.store import Store
 from hina_bot.dashboard.app import create_app
 from hina_bot.dashboard.config import DashboardSettings
+from hina_bot.dashboard.routes.admin_runtime import RUNTIME_CONFIG_SECTIONS, _runtime_sections
 from hina_bot.discord.admin_commands import execute_admin_command
 
 
@@ -55,6 +56,26 @@ async def test_runtime_admin_command_uses_runtime_settings_and_side_effects():
     assert recent.budget == 6000
     assert result["source"] == "startup"
     store.close()
+
+
+def test_runtime_config_sections_cover_all_current_settings_and_fallback():
+    classified = [
+        key
+        for _, _, _, keys in RUNTIME_CONFIG_SECTIONS
+        for key in keys
+    ]
+    assert len(classified) == len(set(classified))
+    assert set(classified).issubset(RUNTIME_SETTING_SPECS)
+
+    rows = [{"key": key} for key in RUNTIME_SETTING_SPECS]
+    rows.append({"key": "new_unclassified_setting"})
+    sections = _runtime_sections(rows)
+    assert [section["id"] for section in sections] == [
+        *(section_id for section_id, _, _, _ in RUNTIME_CONFIG_SECTIONS),
+        "other",
+    ]
+    assert sections[-1]["rows"] == [{"key": "new_unclassified_setting"}]
+    assert sum(len(section["rows"]) for section in sections) == len(rows)
 
 
 def test_runtime_dashboard_post_only_enqueues_command(tmp_path):
@@ -130,6 +151,13 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
 
     assert response.status_code == 200
     assert 'class="runtime-config-table"' in response.text
+    assert 'data-runtime-config-search-input' in response.text
+    assert 'data-runtime-config-no-results' in response.text
+    assert 'id="runtime-config-section-memory"' in response.text
+    assert 'id="runtime-config-section-logging"' in response.text
+    assert response.text.count('class="runtime-config-section"') == len(RUNTIME_CONFIG_SECTIONS)
+    assert response.text.count('data-runtime-config-setting-row') == len(RUNTIME_SETTING_SPECS)
+
     assert 'data-runtime-config-help-toggle="channel_context_chars"' in response.text
     assert 'id="runtime-config-help-channel_context_chars"' in response.text
     assert 'data-runtime-config-help-row="channel_context_chars"' in response.text

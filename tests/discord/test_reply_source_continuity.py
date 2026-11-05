@@ -188,13 +188,11 @@ def test_forget_and_ttl_remove_sources():
     assert recent.context(scope, 4) == []
 
 
-def test_clarification_policy_is_in_request_assembly():
+def test_reference_provenance_policy_mentions_structured_context_fields():
     from hina_bot.ai.request_assembly import (
-        REFERENCE_CONTINUITY_POLICY,
         REFERENCE_PROVENANCE_POLICY,
     )
 
-    assert "무엇을 가리키는지 짧게 되물으세요" in REFERENCE_CONTINUITY_POLICY
     assert "source_turn_message_id" in REFERENCE_PROVENANCE_POLICY
     assert "truncated" in REFERENCE_PROVENANCE_POLICY
     assert "reference_material" in REFERENCE_PROVENANCE_POLICY

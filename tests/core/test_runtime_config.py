@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -60,6 +61,9 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "ROUTING_CLASSIFIER_API_KEY",
         "ROUTING_CLASSIFIER_TIMEOUT_SECONDS",
         "ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS",
+        "OUTPUT_REPAIR_MODE",
+        "OUTPUT_REPAIR_MODEL",
+        "OUTPUT_REPAIR_TIMEOUT_SECONDS",
         "GEMINI_THINKING_LEVEL",
         "GEMINI_FAST_THINKING_LEVEL",
         "GEMINI_SMART_THINKING_LEVEL",
@@ -98,6 +102,9 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.routing_classifier_model == settings.fast_model
     assert settings.routing_classifier_timeout_seconds == pytest.approx(4.0)
     assert settings.routing_classifier_max_output_tokens == 256
+    assert settings.output_repair_mode == "off"
+    assert settings.output_repair_model == "auto"
+    assert settings.output_repair_timeout_seconds == pytest.approx(3.0)
     assert settings.channel_context_chars == 6000
     assert settings.history_max_chars == 12000
     assert settings.lore_max_items == 6
@@ -105,6 +112,83 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.runtime_default_location == ""
     assert settings.event_log_path == "data/logs/events.jsonl"
 
+
+
+
+def test_env_example_lists_all_runtime_setting_names():
+    template = (Path(__file__).resolve().parents[2] / ".env.example").read_text(
+        encoding="utf-8"
+    )
+    listed = set(re.findall(r"(?m)^\s*#?\s*([A-Z][A-Z0-9_]*)=", template))
+    missing = {spec.env_name for spec in RUNTIME_SETTING_SPECS.values()} - listed
+    assert not missing, f"Missing runtime environment variables in .env.example: {sorted(missing)}"
+
+
+def test_settings_loads_output_repair_from_dotenv_and_runtime_reset(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    for name in ("DISCORD_TOKEN", "OPENAI_API_KEY", "OUTPUT_REPAIR_MODE",
+                 "OUTPUT_REPAIR_MODEL", "OUTPUT_REPAIR_TIMEOUT_SECONDS"):
+        monkeypatch.delenv(name, raising=False)
+    (tmp_path / ".env").write_text(
+        "DISCORD_TOKEN=token\n"
+        "OPENAI_API_KEY=key\n"
+        "OUTPUT_REPAIR_MODE=shadow\n"
+        "OUTPUT_REPAIR_MODEL=repair-model\n"
+        "OUTPUT_REPAIR_TIMEOUT_SECONDS=2.5\n",
+        encoding="utf-8",
+    )
+
+    base = Settings.load()
+    assert base.output_repair_mode == "shadow"
+    assert base.output_repair_model == "repair-model"
+    assert base.output_repair_timeout_seconds == pytest.approx(2.5)
+
+    store = Store.create(":memory:")
+    try:
+        settings = RuntimeSettings(base, store)
+        assert settings.set_text("OUTPUT_REPAIR_MODE", "active") == "active"
+        assert settings.set_text("OUTPUT_REPAIR_MODEL", "db-model") == "db-model"
+        assert settings.set_text("OUTPUT_REPAIR_TIMEOUT_SECONDS", "0.5") == 0.5
+        assert settings.output_repair_mode == "active"
+        assert settings.output_repair_model == "db-model"
+        assert settings.output_repair_timeout_seconds == pytest.approx(0.5)
+        assert settings.reset("OUTPUT_REPAIR_MODE") == "shadow"
+        assert settings.reset("OUTPUT_REPAIR_MODEL") == "repair-model"
+        assert settings.reset("OUTPUT_REPAIR_TIMEOUT_SECONDS") == pytest.approx(2.5)
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(
+    ("name", "raw"),
+    [
+        ("OUTPUT_REPAIR_MODE", "invalid"),
+        ("OUTPUT_REPAIR_MODE", ""),
+        ("OUTPUT_REPAIR_MODEL", ""),
+        ("OUTPUT_REPAIR_MODEL", "x" * 201),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "invalid"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "nan"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "inf"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "0.24"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "30.01"),
+    ],
+)
+def test_settings_rejects_invalid_output_repair_env(monkeypatch, tmp_path: Path, name, raw):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv(name, raw)
+    with pytest.raises(ValueError, match=name):
+        Settings.load()
+
+
+@pytest.mark.parametrize("seconds", ["0.25", "30.0"])
+def test_settings_accepts_output_repair_timeout_bounds(monkeypatch, tmp_path: Path, seconds):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("OUTPUT_REPAIR_TIMEOUT_SECONDS", seconds)
+    assert Settings.load().output_repair_timeout_seconds == pytest.approx(float(seconds))
 
 
 def test_settings_rejects_invalid_gemini_search_api_mode(monkeypatch, tmp_path: Path):
@@ -376,6 +460,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
         smart_output_tokens=8192,
         memory_output_tokens=4096,
         routing_classifier_max_output_tokens=256,
+        output_repair_timeout_seconds=3.0,
         cooldown=5,
         summary_every=8,
         structured_memory_every=4,
@@ -394,6 +479,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
     assert settings.set_text("SMART_MAX_OUTPUT_TOKENS", "9000") == 9000
     assert settings.set_text("MEMORY_MAX_OUTPUT_TOKENS", "5000") == 5000
     assert settings.set_text("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "384") == 384
+    assert settings.set_text("OUTPUT_REPAIR_TIMEOUT_SECONDS", "6.5") == pytest.approx(6.5)
     assert settings.set_text("COOLDOWN_SECONDS", "1.5") == pytest.approx(1.5)
     assert settings.set_text("SUMMARY_EVERY", "6") == 6
     assert settings.set_text("STRUCTURED_MEMORY_EVERY", "3") == 3
@@ -413,6 +499,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
         assert reloaded.smart_output_tokens == 9000
         assert reloaded.memory_output_tokens == 5000
         assert reloaded.routing_classifier_max_output_tokens == 384
+        assert reloaded.output_repair_timeout_seconds == pytest.approx(6.5)
         assert reloaded.cooldown == pytest.approx(1.5)
         assert reloaded.summary_every == 6
         assert reloaded.structured_memory_every == 3
@@ -424,6 +511,7 @@ def test_expanded_runtime_settings_apply_immediately_and_survive_reload(tmp_path
         assert reloaded.empty_response_reply == "fallback"
         assert reloaded.source("FAST_MAX_OUTPUT_TOKENS") == "db"
         assert reloaded.source("RUNTIME_TIMEZONE") == "db"
+        assert reloaded.source("OUTPUT_REPAIR_TIMEOUT_SECONDS") == "db"
     finally:
         store.close()
 
@@ -520,6 +608,11 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
         ("MEMORY_MAX_OUTPUT_TOKENS", "127"),
         ("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "31"),
         ("ROUTING_CLASSIFIER_MAX_OUTPUT_TOKENS", "1025"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "0.24"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "30.01"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "nan"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "inf"),
+        ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "invalid"),
         ("COOLDOWN_SECONDS", "-1"),
         ("SUMMARY_EVERY", "1"),
         ("STRUCTURED_MEMORY_EVERY", "31"),
@@ -605,12 +698,13 @@ def test_runtime_scalar_specs_expose_editor_constraints():
     assert stale.minimum == 60
     assert stale.maximum == 7 * 24 * 60 * 60
 
-def test_rag_mode_defaults_to_full_with_only_off_v1_and_full():
+def test_rag_mode_defaults_to_full_and_accepts_tool_mode():
     store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(_base(), store)
         assert settings.rag_mode == "full"
-        assert set(RUNTIME_SETTING_SPECS["rag_mode"].choices) == {"off", "v1", "full"}
+        assert set(RUNTIME_SETTING_SPECS["rag_mode"].choices) == {"off", "v1", "full", "tool"}
+        assert settings.set_text("RAG_MODE", "tool") == "tool"
         assert settings.set_text("RAG_MODE", "v1") == "v1"
         for removed in ("shadow", "v2"):
             with pytest.raises(ValueError):
@@ -648,6 +742,8 @@ def test_settings_load_rag_mode_defaults_to_full_and_ignores_old_alias(
 
     monkeypatch.setenv("RAG_MODE", "v1")
     assert Settings.load().rag_mode == "v1"
+    monkeypatch.setenv("RAG_MODE", "tool")
+    assert Settings.load().rag_mode == "tool"
 
     for removed in ("shadow", "v2"):
         monkeypatch.setenv("RAG_MODE", removed)

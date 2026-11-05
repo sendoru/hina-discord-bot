@@ -18,7 +18,11 @@ from hina_bot.core.config import Settings
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-from hina_bot.discord.chat_history_tool import ChatHistoryLookup, register_chat_history_tool
+from hina_bot.discord.chat_history_tool import (
+    CHAT_HISTORY_TOOL,
+    ChatHistoryLookup,
+    register_chat_history_tool,
+)
 from hina_bot.discord.chatlog_capture import set_capture_mode_override
 from hina_bot.discord.member_directory import channel_member_tool_registry
 from hina_bot.discord.turn_provenance import CURRENT_TURN_PROVENANCE
@@ -81,6 +85,21 @@ def reset_cutoff(runtime, cutoff=100):
         )
 
 
+def test_history_tool_description_covers_conversation_resumption_and_opt_out():
+    """Prompt-only P0 guidance must preserve the expected model tool-choice contract."""
+    description = CHAT_HISTORY_TOOL.description
+    assert all(phrase in description for phrase in (
+        '몇 시간 전', '아까 그거', '전에 제안한 방법',
+        '추측하거나 다시 설명해 달라고 하기 전에 조회',
+        '현재 문맥만으로 충분', '독립적인 새 질문',
+        'query 없이', '부분/빈 결과', 'recall_memory',
+    ))
+    assert 'required' not in CHAT_HISTORY_TOOL.parameters
+    assert set(CHAT_HISTORY_TOOL.parameters['properties']) == {
+        'query', 'include_before_reset', 'before_message_id', 'cursor',
+    }
+
+
 @pytest.mark.asyncio
 async def test_schema_registration_does_not_read_history_and_coexists_with_members(runtime):
     registry = LocalToolRegistry()
@@ -92,6 +111,154 @@ async def test_schema_registration_does_not_read_history_and_coexists_with_membe
     assert runtime.calls == []
     result = await registry.execute(LocalToolCall('one', 'get_current_channel_members', {}))
     assert not result.is_error
+    assert runtime.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('channel_cls', 'has_guild', 'supported'), [
+    (discord.TextChannel, True, True),
+    (discord.Thread, True, True),
+    (discord.VoiceChannel, True, False),
+    (discord.DMChannel, False, True),
+    (discord.GroupChannel, False, False),
+])
+async def test_history_and_member_schemas_reach_model_regardless_of_channel_type(
+    runtime, channel_cls, has_guild, supported,
+):
+    channel = MagicMock(spec=channel_cls)
+    channel.id = 10
+    if channel_cls is discord.Thread:
+        channel.type = discord.ChannelType.public_thread
+    channel.permissions_for.return_value = NS(view_channel=True, read_message_history=True)
+    if hasattr(channel, 'history'):
+        channel.history.side_effect = runtime.channel.history.side_effect
+    if channel_cls is discord.DMChannel:
+        channel.recipient = runtime.message.author
+    runtime.message.channel = channel
+    if not has_guild:
+        runtime.message.guild = None
+
+    registry = LocalToolRegistry()
+    channel_member_tool_registry(runtime.message, 99, registry=registry)
+    register_chat_history_tool(registry, runtime.message, 99, runtime.store, runtime.settings)
+    assert {s['name'] for s in registry.schemas()} == {
+        'get_chat_history', 'get_current_channel_members',
+    }
+    assert runtime.calls == []
+
+    client = NS(provider_name='gemini', responses=NS(), close=AsyncMock())
+    llm = LLM(Settings(discord_token='test', provider='gemini',
+                       model='gemini-3-flash-preview', model_routing_mode='fixed',
+                       routing_classifier_mode='off', chat_web_search=False), client=client)
+    llm.usage.request = AsyncMock(return_value=NS(
+        status='completed', output_text='확인했어.', output=[],
+    ))
+    token = CURRENT_LOCAL_TOOLS.set(registry)
+    try:
+        scope = Scope(1 if has_guild else None, 10, 100)
+        result = await llm.answer(runtime.store, scope, 'caller',
+                                  '그냥 새로운 질문이야', use_memory=False)
+        assert result == '확인했어.'
+        sent = llm.usage.request.await_args.kwargs
+        assert sent['tool_choice'] == 'auto'
+        assert {tool['name'] for tool in sent['tools'] if tool['type'] == 'function'} >= {
+            'get_chat_history', 'get_current_channel_members',
+        }
+        assert runtime.calls == []
+    finally:
+        CURRENT_LOCAL_TOOLS.reset(token)
+        await llm.close()
+
+    result = await registry.execute(LocalToolCall('history', 'get_chat_history', {}))
+    if supported:
+        assert result.is_error is False
+    else:
+        assert result.is_error is True
+        assert result.output == {'error': 'unsupported_scope'}
+        assert runtime.calls == []
+
+
+def private_thread_runtime(runtime, *, member_ids=(99, 100, 200)):
+    thread = MagicMock(spec=discord.Thread)
+    thread.id = runtime.message.channel.id
+    thread.type = discord.ChannelType.private_thread
+    thread.member_count = len(member_ids)
+    thread.permissions_for.return_value = NS(
+        view_channel=True, read_message_history=True, manage_threads=False,
+    )
+    thread.fetch_members = AsyncMock(return_value=[NS(id=value) for value in member_ids])
+    thread.history.side_effect = runtime.channel.history.side_effect
+    runtime.message.channel = thread
+    return thread
+
+
+@pytest.mark.asyncio
+async def test_private_thread_history_reads_only_when_caller_and_bot_have_access(runtime):
+    thread = private_thread_runtime(runtime)
+    runtime.messages.append(old(10, 'private thread message'))
+    registry = LocalToolRegistry()
+    register_chat_history_tool(registry, runtime.message, 99, runtime.store, runtime.settings)
+    assert [schema['name'] for schema in registry.schemas()] == ['get_chat_history']
+    result = await registry.execute(LocalToolCall('private', 'get_chat_history', {}))
+    assert result.is_error is False
+    assert [row['content'] for row in result.output['messages']] == ['private thread message']
+    assert thread.fetch_members.await_count == 2
+    assert len(runtime.calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('member_ids', [(99, 200), (100, 200)])
+async def test_private_thread_history_rejects_missing_member_before_read(runtime, member_ids):
+    thread = private_thread_runtime(runtime, member_ids=member_ids)
+    runtime.messages.append(old(10, 'must not read'))
+    with pytest.raises(LocalToolError, match='permission_denied'):
+        await runtime.lookup()({})
+    thread.fetch_members.assert_awaited_once()
+    assert runtime.calls == []
+
+
+@pytest.mark.asyncio
+async def test_private_thread_history_rechecks_membership_after_history_io(runtime):
+    thread = private_thread_runtime(runtime)
+    snapshots = [
+        [NS(id=99), NS(id=100), NS(id=200)],
+        [NS(id=99), NS(id=200)],
+    ]
+
+    async def members_after_access_change():
+        snapshot = snapshots.pop(0)
+        thread.member_count = len(snapshot)
+        return snapshot
+
+    thread.fetch_members.side_effect = members_after_access_change
+    runtime.messages.append(old(10, 'must not return'))
+    with pytest.raises(LocalToolError, match='permission_denied'):
+        await runtime.lookup()({})
+    assert thread.fetch_members.await_count == 2
+    assert len(runtime.calls) == 1
+    assert CURRENT_CONTEXT_PROVENANCE.get() is None
+
+
+@pytest.mark.asyncio
+async def test_private_thread_history_allows_manage_threads_for_nonparticipant(runtime):
+    thread = private_thread_runtime(runtime, member_ids=(99, 200))
+    thread.permissions_for.side_effect = lambda person: NS(
+        view_channel=True, read_message_history=True,
+        manage_threads=person.id == 100,
+    )
+    runtime.messages.append(old(10, 'mod readable'))
+    result = await runtime.lookup()({})
+    assert [row['content'] for row in result['messages']] == ['mod readable']
+
+
+@pytest.mark.asyncio
+async def test_private_thread_history_fails_closed_if_member_list_unavailable(runtime):
+    thread = private_thread_runtime(runtime)
+    thread.fetch_members.side_effect = discord.Forbidden(
+        MagicMock(status=403, reason='forbidden'), 'forbidden',
+    )
+    with pytest.raises(LocalToolError, match='permission_denied'):
+        await runtime.lookup()({})
     assert runtime.calls == []
 
 

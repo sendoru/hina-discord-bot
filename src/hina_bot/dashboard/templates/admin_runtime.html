@@ -12,33 +12,7 @@
   {% endif %}
 </span>
 {%- endmacro %}
-{% block title %}Runtime Config · Hina Dashboard{% endblock %}
-{% block content %}
-<section class="page-heading">
-  <div>
-    <h1>Runtime Config</h1>
-    <p class="muted">DB override를 봇 프로세스의 RuntimeSettings를 통해 적용합니다. startup 값은 봇 시작 시 캡처한 설정을 함께 보여줍니다.</p>
-  </div>
-</section>
-
-{% if not dashboard_write_enabled %}
-<section class="notice warning">
-  Write mode is disabled. 로컬에서 <code>DASHBOARD_ENABLE_WRITES=true</code>로 명시적으로 켜야 수정할 수 있습니다.
-</section>
-{% endif %}
-{% if queued %}
-<section class="notice" data-admin-command-watch="{{ queued }}">
-  Admin command <strong>#{{ queued }}</strong>를 적용 중입니다…
-</section>
-{% endif %}
-
-<section class="panel">
-  <div class="panel-heading">
-    <div>
-      <h2>Settings</h2>
-      <p class="muted">현재 적용값과 source를 보여줍니다. DB override가 있으면 startup 기준값도 함께 표시합니다.</p>
-    </div>
-  </div>
+{% macro runtime_section_table(rows) -%}
   <div class="table-wrap runtime-config-table-wrap" tabindex="0">
     <table class="runtime-config-table">
       <thead>
@@ -52,7 +26,7 @@
       </thead>
       <tbody>
       {% for row in rows %}
-        <tr {% if not row.is_collection %}data-runtime-config-editor{% endif %}>
+        <tr data-runtime-config-setting-row data-runtime-config-search="{{ (row.env_name ~ ' ' ~ row.key ~ ' ' ~ row.kind ~ ' ' ~ row.help_description) | lower }}" {% if not row.is_collection %}data-runtime-config-editor{% endif %}>
           <td class="runtime-config-setting">
             <div class="runtime-config-setting-title">
               <strong>{{ row.env_name }}</strong>
@@ -307,6 +281,57 @@
       {% endfor %}
       </tbody>
     </table>
+  </div>
+{%- endmacro %}
+{% block title %}Runtime Config · Hina Dashboard{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <h1>Runtime Config</h1>
+    <p class="muted">DB override를 봇 프로세스의 RuntimeSettings를 통해 적용합니다. startup 값은 봇 시작 시 캡처한 설정을 함께 보여줍니다.</p>
+  </div>
+</section>
+
+{% if not dashboard_write_enabled %}
+<section class="notice warning">
+  Write mode is disabled. 로컬에서 <code>DASHBOARD_ENABLE_WRITES=true</code>로 명시적으로 켜야 수정할 수 있습니다.
+</section>
+{% endif %}
+{% if queued %}
+<section class="notice" data-admin-command-watch="{{ queued }}">
+  Admin command <strong>#{{ queued }}</strong>를 적용 중입니다…
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Settings</h2>
+      <p class="muted">현재 적용값과 source를 보여줍니다. DB override가 있으면 startup 기준값도 함께 표시합니다.</p>
+    </div>
+  </div>
+  <div class="runtime-config-toolbar">
+    <label class="sr-only" for="runtime-config-search">Search settings</label>
+    <input id="runtime-config-search" type="search" data-runtime-config-search-input
+           placeholder="Search by key, environment variable, or description"
+           autocomplete="off" aria-label="Search runtime settings">
+    <span class="muted" data-runtime-config-search-count aria-live="polite"></span>
+  </div>
+  <p class="muted runtime-config-no-results" data-runtime-config-no-results hidden>No matching settings found.</p>
+  <div class="runtime-config-sections">
+    {% for section in sections %}
+    <details class="runtime-config-section" data-runtime-config-section
+             id="runtime-config-section-{{ section.id }}" {% if loop.first %}open{% endif %}>
+      <summary class="runtime-config-section-summary">
+        <span class="runtime-config-section-label">
+          <strong>{{ section.title }}</strong>
+          <small>{{ section.description }}</small>
+        </span>
+        <span class="runtime-config-section-count" data-runtime-config-section-count>{{ section.rows | length }}</span>
+      </summary>
+      {{ runtime_section_table(section.rows) }}
+    </details>
+    {% endfor %}
   </div>
 </section>
 

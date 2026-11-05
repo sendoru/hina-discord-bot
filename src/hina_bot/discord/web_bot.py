@@ -20,6 +20,8 @@ from .bot import CURRENT_TYPING_ACTIVE, CURRENT_TYPING_STOP
 from .bot import HinaClient as BaseHinaClient
 from .chat_history_tool import register_chat_history_tool
 from .chatlog_capture import capture_mode
+from .embed_context import message_embed_text
+from .forward_context import message_context_text
 from .interaction_context import build_interaction_context
 from .member_directory import channel_member_tool_registry
 from .memory_recall_tool import register_memory_recall_tool
@@ -149,15 +151,66 @@ class HinaClient(BaseHinaClient):
         self.visual_cache = VisionFetchCache()
         install_slash_commands(self)
 
+    async def on_message_edit(self, before, after):
+        """Update only already-admitted recent rows when Discord resolves an embed.
+
+        Edits do not create conversation turns or regenerate a bot reply. Context
+        eligibility and capture mode were decided by the original on_message.
+        """
+        guild = getattr(after, "guild", None)
+        channel = getattr(after, "channel", None)
+        author = getattr(after, "author", None)
+        if guild is not None and channel is not None and author is not None:
+            scope = Scope(guild.id, channel.id, author.id)
+            rows = self.recent.buffers.get(self.recent._key(scope), ())
+            for row in rows:
+                if (
+                    str(row.get("message_id")) == str(getattr(after, "id", ""))
+                    and str(row.get("author_user_id")) == str(author.id)
+                ):
+                    row["content"] = message_context_text(after)[:4000]
+                    row["has_visual"] = message_has_visual(after)
+                    break
+        if channel is not None:
+            self.visual_cache.invalidate(channel.id, getattr(after, "id", None))
+
+    @staticmethod
+    async def _refresh_missing_embed(message):
+        """One bounded Discord-only reread; never wait/poll or visit the linked site."""
+        if getattr(message, "embeds", None) or not re.search(
+            r"https?://", str(getattr(message, "content", "") or "")
+        ):
+            return message
+        channel = getattr(message, "channel", None)
+        fetch = getattr(channel, "fetch_message", None)
+        if not callable(fetch):
+            return message
+        try:
+            refreshed = await fetch(message.id)
+        except (discord.HTTPException, ValueError, TypeError):
+            return message
+        if (
+            getattr(refreshed, "id", None) == getattr(message, "id", None)
+            and getattr(getattr(refreshed, "author", None), "id", None)
+                == getattr(getattr(message, "author", None), "id", None)
+        ):
+            return refreshed
+        return message
+
     async def on_raw_message_edit(self, payload):
         self.visual_cache.invalidate(payload.channel_id, payload.message_id)
 
     async def on_raw_message_delete(self, payload):
         self.visual_cache.invalidate(payload.channel_id, payload.message_id)
+        # A user who deletes a message also withdraws the photo still waiting for memory
+        # extraction. Edits are left alone: Discord also sends them when a link embed
+        # resolves, so they say nothing about the attachment.
+        self.store.discard_pending_visuals_for_message(payload.channel_id, payload.message_id)
 
     async def on_raw_bulk_message_delete(self, payload):
         for message_id in payload.message_ids:
             self.visual_cache.invalidate(payload.channel_id, message_id)
+            self.store.discard_pending_visuals_for_message(payload.channel_id, message_id)
 
     async def public_sources(self, user_id: int, guild_id: int | None = None):
         enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
@@ -250,7 +303,7 @@ class HinaClient(BaseHinaClient):
                 if policy == "direct" and not own_bot and historical_text is None:
                     continue
                 has_visual = message_has_visual(old)
-                if not old.content and not has_visual:
+                if not message_context_text(old) and not has_visual:
                     continue
                 historical_scope = Scope(
                     scope.guild_id,
@@ -262,7 +315,7 @@ class HinaClient(BaseHinaClient):
                     historical_scope,
                     old.id,
                     old.author.display_name,
-                    old.content,
+                    message_context_text(old),
                     role="assistant" if own_bot else ("bot" if other_bot else "user"),
                     unix_time=old.created_at.timestamp(),
                     author_user_id=old.author.id,
@@ -331,19 +384,19 @@ class HinaClient(BaseHinaClient):
                 scope.guild_id is not None
                 and self.store.chat_log_enabled(scope)
                 and capture_mode(self.store, scope) == "all"
-                and (message.content or message_has_visual(message))
+                and (message_context_text(message) or message_has_visual(message))
             ):
                 self.recent.add(
                     scope,
                     message.id,
                     message.author.display_name,
-                    message.content,
+                    message_context_text(message),
                     role="bot",
                     has_visual=message_has_visual(message),
                 )
             return
 
-        if text == "" and getattr(message, "reference", None) is None and not message_has_visual(message):
+        if text == "" and getattr(message, "reference", None) is None and not message_has_visual(message) and not message_embed_text(message):
             # A bare call without a current or explicit-reply visual always takes
             # the fixed-reply path. Do not fetch old visual context for it.
             token = CURRENT_TURN_ID.set(new_turn_id())
@@ -413,6 +466,8 @@ class HinaClient(BaseHinaClient):
         self, message, text, scope, preflight_started, typing_start_ms
     ):
         preflight_turn_id = new_turn_id() if text is not None else None
+        if text is not None:
+            message = await self._refresh_missing_embed(message)
         strict_egress = strict_policy(self.settings.external_context_policy)
         third_party_mention = any(
             getattr(user, "id", None) not in {self.user.id, scope.user_id}
