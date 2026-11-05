@@ -83,6 +83,49 @@ def test_detail_shows_annotation_state(tmp_path, name, state):
     assert f'action="/memory/{ids[name]}/annotation"' in response.text
 
 
+def test_detail_links_the_superseded_duplicates_that_carry_the_quote(tmp_path):
+    from hina_bot.ai.memory_extraction import (
+        ExtractedMemoryItem,
+        MemoryRelationProposal,
+        persist_reconciliation_proposals,
+        persist_shadow_items_detailed,
+    )
+    from hina_bot.core.memory_items import MemoryDisclosure
+
+    database = tmp_path / "hina.sqlite3"
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
+    target = store.add_memory_item(PUBLIC, "고양이를 키운다", kind="fact", disclosure="local",
+                                   confidence=0.9)
+    plain = store.add_memory_item(PUBLIC, "커피를 좋아한다", kind="fact", disclosure="local",
+                                  confidence=0.9)
+    for item_id in (target, plain):
+        base = parse_annotation({}, MemoryKind.FACT, [])
+        store.upsert_memory_annotation(replace(base, memory_item_id=item_id,
+                                               annotator=Annotator.BACKFILL))
+    annotation = parse_annotation(
+        {"evidence": "고양이 키워", "time_scope": "ongoing", "usage_mode": "ambient"},
+        MemoryKind.FACT, [{"user": "나 고양이 키워", "at": "2026-11-02 03:00:00"}],
+    )
+    item = ExtractedMemoryItem(
+        "고양이 보리를 키운다", MemoryKind.FACT, MemoryDisclosure.LOCAL, 0.9, ("501",),
+        relation=MemoryRelationProposal("duplicate", target, 0.99), annotation=annotation,
+    )
+    result = persist_shadow_items_detailed(store, PUBLIC, (item,))
+    assert persist_reconciliation_proposals(store, PUBLIC, (item,), result.item_ids).reinforced == 1
+    duplicate = result.item_ids[0]
+    store.close()
+
+    app = create_app(_settings(tmp_path, database))
+    with TestClient(app) as client:
+        reinforced = client.get(f"/memory/{target}")
+        untouched = client.get(f"/memory/{plain}")
+
+    assert "data-annotation-evidence-items" in reinforced.text
+    assert f'href="/memory/{duplicate}">#{duplicate}</a>' in reinforced.text
+    assert "data-annotation-evidence-items" not in untouched.text
+
+
 def test_relationship_detail_has_no_annotation_panel(tmp_path):
     database = tmp_path / "hina.sqlite3"
     ids = _database(database)

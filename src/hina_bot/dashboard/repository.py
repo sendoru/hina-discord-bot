@@ -673,6 +673,21 @@ class AdminRepository:
             ).fetchone()
         return dict(row) if row is not None else None
 
+    def memory_item_evidence_items(self, item_id: int, evidence: str) -> list[int]:
+        """Superseded duplicates whose annotation carries the same quote as this item's (#471)."""
+
+        if not evidence:
+            return []
+        with self._connection() as db:
+            rows = db.execute(
+                """SELECT i.id FROM memory_items i
+                   JOIN memory_item_annotations a ON a.memory_item_id=i.id
+                   WHERE i.superseded_by=? AND a.evidence=?
+                   ORDER BY i.id""",
+                (int(item_id), str(evidence)),
+            ).fetchall()
+        return [int(row["id"]) for row in rows]
+
     def memory_item_edit_history(
         self, item_id: int, *, limit: int = 50
     ) -> list[dict[str, object]]:

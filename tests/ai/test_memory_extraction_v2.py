@@ -334,6 +334,39 @@ async def test_same_space_remention_reconfirms_instead_of_storing_again():
 
 
 @pytest.mark.asyncio
+async def test_same_space_duplicate_reinforces_a_backfilled_target_end_to_end():
+    store = Store.create(":memory:", history_turns=12)
+    scope = Scope(None, 10, 100)
+    target = store.add_memory_item(scope, "사용자는 고양이를 키운다.", kind=MemoryKind.FACT,
+                                   disclosure=MemoryDisclosure.LOCAL, source_message_ids=("90",),
+                                   confidence=0.9)
+    backfilled = parse_annotation({"time_scope": "unknown"}, MemoryKind.FACT, [])
+    store.upsert_memory_annotation(replace(
+        backfilled, memory_item_id=target, annotator=Annotator.BACKFILL,
+        observed_at="2026-09-01 00:00:00", last_confirmed_at="2026-09-01 00:00:00",
+    ))
+    assert store.memory_annotation(target).evidence == ""
+    _turns(store, scope, 101, ["나 고양이 보리 키워", "b", "c", "d"])
+    harness = _harness(_response({"items": [_item(
+        "사용자는 고양이 보리를 키운다.", "101", evidence="고양이 보리 키워",
+        time_scope="ongoing", stability="long", usage_mode="ambient", importance=3,
+        keywords=["고양이", "보리"], relation={"type": "duplicate", "target_item_id": target,
+                                              "confidence": 0.97},
+    )]}))
+
+    assert await harness.extract_structured_memory(store, scope)
+
+    annotation = store.memory_annotation(target)
+    assert (annotation.usage_mode, annotation.importance) == (UsageMode.AMBIENT, 3)
+    assert annotation.evidence == "고양이 보리 키워"
+    assert annotation.annotator == Annotator.EXTRACTOR and annotation.confirmations == 2
+    assert [item.id for item in store.memory_items(100)] == [target]
+    completed = _completed(harness)
+    assert (completed["reinforced_annotations"], completed["reconfirmed_items"]) == (1, 1)
+    store.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(("slot", "applied"), [("pet_name", True), ("pet_breed", False)])
 async def test_same_slot_correction_uses_lower_threshold(slot, applied):
     store = Store.create(":memory:", history_turns=12)

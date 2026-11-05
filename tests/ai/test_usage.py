@@ -561,6 +561,26 @@ def test_context_provenance_routing_event_keeps_counts_but_not_unknown_content(t
     assert row["factual_recall_status"] == "authorized"
 
 
+def test_shadow_extraction_event_keeps_the_reinforcement_count_but_not_content(tmp_path):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    try:
+        logger.routing_event(
+            "memory.shadow_extraction",
+            status="completed",
+            reconfirmed_items=2,
+            reinforced_annotations=1,
+            content="must-not-log",
+        )
+    finally:
+        logger.close()
+
+    text = path.read_text()
+    assert "must-not-log" not in text
+    row = json.loads(text)
+    assert (row["reconfirmed_items"], row["reinforced_annotations"]) == (2, 1)
+
+
 def test_context_size_event_keeps_only_numeric_attribution(tmp_path):
     path = tmp_path / "usage.jsonl"
     logger = UsageLogger(str(path))

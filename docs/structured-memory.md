@@ -52,7 +52,9 @@ and lifecycle markers (`last_confirmed_at`, `confirmations`, `last_used_at`, `pr
 - Relationship items are not annotated; they keep the relationship projection path.
 - Every path that deletes a memory item (`/forget`, channel/realm/all purge, dashboard permanent
   deletion) deletes its annotation in the same transaction. `hina-reset-conversation` and
-  `hina-reset-analysis-data` preserve annotations together with the memory items.
+  `hina-reset-analysis-data` preserve annotations together with the memory items. A quote that
+  another item inherited from the deleted one is removed from that item too (see
+  [Reinforcing an annotation from a duplicate](#reinforcing-an-annotation-from-a-duplicate)).
 
 The table is created by `hina-prepare-db` (see [DB initialization](db-initialization.md)). In this
 stage the response path does not read it yet; extraction v2 and backfill populate it, and the response
@@ -118,6 +120,42 @@ is refused as `kind_mismatch` (#449 decision 15). Relationship observations are 
 same channel and visibility, created within 14 days of the batch, already shows every axis at least
 as high (#449 decision 18).
 
+### Reinforcing an annotation from a duplicate
+
+A backfilled memory has no quote to check (`source_unavailable`), so it stays `contextual` however
+often the user mentions it again. When an applied `duplicate` reconciliation merges a new item into
+such a target (#471, #449 principle 2), the target takes over the duplicate's judgment and quote in
+the same transaction as the extraction batch. Reinforcement happens only when all of these hold:
+
+- The target is in the extraction scope's own disclosure space: the same realm, and a public origin
+  or the same channel (the selector's rule). A DM duplicate of a server memory, or any target from
+  another realm, is only reconfirmed.
+- The target's annotation has no quote and is not an `admin` judgment. A target that already has a
+  quote keeps its judgment and is only reconfirmed, as is a duplicate below the 0.95 threshold.
+- The duplicate's annotation kept a verified quote (the parser's evidence, tense and audience checks).
+- No directive is demoted. A new directive reinforces only when the batch verifier kept it
+  (`verified`), a directive target is never replaced by a non-directive, and a `boundary` is never
+  replaced by a `style` directive, since style is not carried across spaces (§7.2).
+
+The replaced fields are `time_scope`, `stability`, `event_at`, `recurrence`, `usage_mode`,
+`directive_type`, `audience`, `importance`, `slot`, `keywords`, `explicit`, `evidence`, `verified`
+and the lint flags. The annotation becomes `annotator=extractor` at the target's current
+revision, and `audience` is narrowed again against the target's own origin. `observed_at`,
+`confirmations`, `last_confirmed_at`, `last_used_at` and the proactive markers stay with the
+target; the usual reconfirmation still applies. Re-extracting the exact same sentence creates no
+new row, so it is only reconfirmed.
+
+The duplicate remains a superseded row (`superseded_by` = the target) with its own annotation, which
+is where the quote can be traced from; the dashboard lists these rows as **Evidence items**. Because
+the quote is user text, deleting the evidence items takes it from the target as well (§4.6):
+dashboard permanent deletion and a channel purge clear the target's quote in the same transaction
+unless another superseded duplicate still carries the same quote. (`/forget` and realm or full purges
+delete both sides.) An automated judgment then falls back to what it can justify without a quote:
+`ambient` becomes `contextual`, `source_unavailable` is recorded, and a directive stays a directive
+but unverified. An `admin` judgment is kept and only the quote is removed. The link is the equality
+of the quotes, so a target whose own original quote happens to equal a deleted duplicate's quote
+loses it too; the deletion contract takes priority over keeping it.
+
 ### Annotation backfill
 
 `hina-backfill-annotations` annotates active non-relationship memories that have no annotation
@@ -143,6 +181,7 @@ model with the shared field rules.
   text.
 
 The `memory.shadow_extraction` completed event adds `annotated_items`, `reconfirmed_items`,
+`reinforced_annotations` (targets that took a duplicate's judgment, count only),
 `suppressed_relationship_items`, `directive_items`, `verified_directives` and `rejected_directives`.
 
 ## Tiered read path (memory v2 P2, #457)

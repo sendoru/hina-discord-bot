@@ -76,6 +76,12 @@
   {% if ann.lint_flags_decoded %}<p>Lint: {% for flag in ann.lint_flags_decoded %}<code>{{ flag }}</code>{% if not loop.last %} {% endif %}{% endfor %}</p>{% endif %}
   <h3>Evidence</h3>
   {% if ann.evidence %}<div class="message">{{ ann.evidence }}</div>{% else %}<p class="muted">검증된 인용이 없습니다.</p>{% endif %}
+  {% if data.annotation.evidence_items %}
+  <p data-annotation-evidence-items>Evidence items:
+    {% for evidence_id in data.annotation.evidence_items %}<a href="/memory/{{ evidence_id }}">#{{ evidence_id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+  </p>
+  <p class="muted">같은 인용을 가진 superseded duplicate입니다. 재언급된 기억이 이 판단과 인용을 넘겨준 경우이며, 이 항목들을 모두 영구 삭제하면 인용이 함께 지워지고 자동 판단은 ambient → contextual로 내려갑니다.</p>
+  {% endif %}
   {% endif %}
 
   {% if data.item.status == "active" %}
