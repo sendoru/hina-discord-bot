@@ -5,9 +5,9 @@ from importlib.resources import files
 
 
 @cache
-def load_prompt(name: str) -> str:
+def load_prompt(name: str, *, section: str = "integration") -> str:
     return (
         files("hina_bot")
-        .joinpath("prompts", "integration", name)
+        .joinpath("prompts", section, name)
         .read_text(encoding="utf-8")
     )
