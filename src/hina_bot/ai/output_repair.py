@@ -90,6 +90,9 @@ def strip_stray_id_markers(
     parts.append(cleaned)
     removed += count
     result = "".join(parts)
+    if aggressive and _AGGRESSIVE_MARKER.match(text.lstrip(" \t")):
+        # Consecutive leading markers must not leave a stray leading separator.
+        result = result.lstrip(" \t")
     if not removed or not result.strip():
         return text, 0
     return result, removed
