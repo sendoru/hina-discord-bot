@@ -10,6 +10,7 @@ from openai import AsyncOpenAI
 from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.memory_extraction import parse_annotation
 from hina_bot.ai.reference_context_blocks import read_reference_context
+from hina_bot.ai.request_assembly import STRUCTURED_MEMORY_POLICY, TIERED_MEMORY_POLICY
 from hina_bot.core.config import Settings
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_SELECTION
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
@@ -83,8 +84,8 @@ async def test_tiered_dm_sends_only_selected_memory_with_its_policy():
     raw = json.dumps(reference, ensure_ascii=False)
     assert "마이그레이션" not in raw and "가벼운 장난" not in raw
     assert "structured_owner_memory" not in reference
-    assert "[사용자 기억]" in payload["instructions"]
-    assert "[구조화 사용자 기억]" not in payload["instructions"]
+    assert TIERED_MEMORY_POLICY.strip() in payload["instructions"]
+    assert STRUCTURED_MEMORY_POLICY.strip() not in payload["instructions"]
     assert provenance["memory_selection"]["tiers"] == {"T0": 1, "T2": 1}
     assert {row["store"] for row in provenance["structured_memory"]} == {"personal"}
     assert selection.mode == "tiered" and selection.legacy_notes == ()
@@ -98,7 +99,7 @@ async def test_tiered_policy_stays_when_nothing_is_selected():
     # DM-local items stay hidden in the server; the DM boundary applies quietly.
     assert reference["user_memory"]["notes"] == []
     assert reference["user_memory"]["quiet_boundaries"] == ["가족 얘기는 먼저 꺼내지 말아 달라고 함"]
-    assert "[사용자 기억]" in payload["instructions"]
+    assert TIERED_MEMORY_POLICY.strip() in payload["instructions"]
     assert provenance["memory_selection"]["excluded"]["permission"] == 2
 
 
@@ -111,7 +112,7 @@ async def test_shadow_answers_with_legacy_memory_and_records_the_selection():
     assert {row["content"] for row in reference["structured_owner_memory"]} >= {
         "사내 결제 시스템 마이그레이션 담당", "매운 음식을 좋아함",
     }
-    assert "[구조화 사용자 기억]" in payload["instructions"]
+    assert STRUCTURED_MEMORY_POLICY.strip() in payload["instructions"]
     assert provenance["memory_selection"]["mode"] == "shadow"
     assert provenance["memory_selection"]["tiers"] == {"T0": 1, "T2": 1}
     # Nothing was injected from the selection: the run only carries the coverage reference
@@ -157,6 +158,5 @@ async def test_tiered_profile_and_carried_topic_reach_the_request():
     memory = read_reference_context(payload["input"][0]["content"])["user_memory"]
     assert memory["profile"] == ["고양이 보리를 키움"]
     assert [note["text"] for note in memory["notes"]] == ["사내 결제 시스템 마이그레이션 담당"]
-    assert "- profile:" in payload["instructions"]
     items = provenance["memory_selection"]["items"]
     assert {(row["tier"], row.get("via")) for row in items} >= {("Tp", None), ("T2", "carry")}
