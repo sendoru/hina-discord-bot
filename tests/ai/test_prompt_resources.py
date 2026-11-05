@@ -1,10 +1,10 @@
 from hina_bot.ai.llm import POLICY
+from hina_bot.ai.managed_tools import CODE_EXECUTION_POLICY
 from hina_bot.ai.memory_extraction import (
     ANNOTATION_FIELD_RULES,
     DIRECTIVE_VERIFICATION_POLICY,
     SHADOW_EXTRACTION_POLICY,
 )
-from hina_bot.ai.managed_tools import CODE_EXECUTION_POLICY
 from hina_bot.ai.prompts import load_prompt
 from hina_bot.ai.request_assembly import (
     CURRENT_CHANNEL_SCOPE_POLICY,
