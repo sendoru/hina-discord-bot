@@ -15,8 +15,8 @@ from hina_bot.tooling.db_migrations import inspect_connection
 @pytest.fixture
 def stores(tmp_path):
     path = tmp_path / "turns.sqlite3"
-    first = Store.create(path, history_turns=2)
-    second = Store.open_existing(path, history_turns=2)
+    first = Store.create(path, history_turns=2, raw_retention_turns=2)
+    second = Store.open_existing(path, history_turns=2, raw_retention_turns=2)
     scope = Scope(1, 10, 100, True)
     for message_id in (101, 102):
         first.add(scope, message_id, "source", "reply", name="name")
@@ -35,6 +35,9 @@ def stores(tmp_path):
 ])
 def test_each_statement_failure_rolls_back_inserts_pruning_and_sequences(stores, table, action):
     first, second, scope = stores
+    first.save_memory_extraction_cursor(scope, first.history(scope)[-1]["id"])
+    with first.db:
+        first._conversations.write_shared_summary(scope, "name", "old", 2)
     before = list(second.db.iterdump())
     first.db.execute(f"""CREATE TEMP TRIGGER reject_completed BEFORE {action} ON {table}
                          BEGIN SELECT RAISE(ABORT, 'injected failure'); END""")
@@ -45,7 +48,7 @@ def test_each_statement_failure_rolls_back_inserts_pruning_and_sequences(stores,
     assert not second.seen(103)
 
 
-def test_both_tables_become_visible_together_and_keep_the_existing_retention(stores):
+def test_both_tables_become_visible_together_and_keep_pending_inputs(stores):
     first, second, scope = stores
     observed = []
 
@@ -60,7 +63,7 @@ def test_both_tables_become_visible_together_and_keep_the_existing_retention(sto
     first.record_completed_turn(scope, 103, "new", "reply", name="name")
     assert observed == [(["101", "102"], ["101", "102"])]
     assert [row["message_id"] for row in second.history(scope)] == ["102", "103"]
-    assert [row["message_id"] for row in second.pending_shared(scope)] == ["102", "103"]
+    assert [row["message_id"] for row in second.pending_shared(scope)] == ["101", "102", "103"]
     assert inspect_connection(first.db, ("store", "settings")) == ()
 
 

@@ -295,7 +295,7 @@ class EvalRunnerTests(unittest.TestCase):
 class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_run_case_passes_channel_context_to_llm(self):
         class FakeLLM:
-            settings = SimpleNamespace(history_turns=12, provider="test", model="fake")
+            settings = SimpleNamespace(history_turns=12, raw_retention_turns=1000, provider="test", model="fake")
 
             def __init__(self):
                 self.contexts = []
@@ -330,6 +330,7 @@ class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
         class FakeLLM:
             settings = SimpleNamespace(
                 history_turns=12,
+                raw_retention_turns=1000,
                 history_max_chars=12000,
                 lore_max_chars=3200,
                 lore_max_items=6,
@@ -383,7 +384,7 @@ class EvalRunnerAsyncTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_run_case_exposes_sanitized_visual_fixture_to_llm(self):
         class FakeLLM:
-            settings = SimpleNamespace(history_turns=12, provider="test", model="fake")
+            settings = SimpleNamespace(history_turns=12, raw_retention_turns=1000, provider="test", model="fake")
 
             def __init__(self):
                 self.visuals = []
@@ -546,7 +547,7 @@ def test_invalid_speaker_turns_are_rejected(tmp_path):
 class SpeakerSwitchTests(unittest.IsolatedAsyncioTestCase):
     async def test_generated_channel_context_follows_speakers_and_keeps_memory_isolated(self):
         class FakeLLM:
-            settings = SimpleNamespace(history_turns=12, provider="test", model="fake")
+            settings = SimpleNamespace(history_turns=12, raw_retention_turns=1000, provider="test", model="fake")
 
             def __init__(self):
                 self.calls = []

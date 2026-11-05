@@ -22,7 +22,9 @@ def main():
         raise SystemExit(str(exc)) from None
     # A missing or unprepared database is an operator action, not a crash: say what to run.
     try:
-        store = Store.open_existing(base.db_path, base.history_turns)
+        store = Store.open_existing(
+            base.db_path, base.history_turns, raw_retention_turns=base.raw_retention_turns,
+        )
     except (FileNotFoundError, SchemaError) as exc:
         raise SystemExit(str(exc)) from None
     admin = None

@@ -47,10 +47,11 @@ def test_archive_is_optional_read_only_and_projects_only_safe_fields(store):
     assert store.db.total_changes == changes
 
 
-def test_pruned_and_failed_turns_are_not_invented_or_restored(store):
+def test_pruned_and_failed_turns_are_not_invented_or_restored():
+    store = Store.create(":memory:", history_turns=1, raw_retention_turns=1)
     scope = Scope(None, 10, 100)
-    store.history_turns = 1
     store.add(scope, 1, 'gone', 'gone')
+    store.save_memory_extraction_cursor(scope, 1)
     store.add(scope, 2, 'retained', 'retained')
     store.add_failed_turn(scope, 3, 'failed', status='failed', stage='answer',
                           reply_delivered=False)
@@ -58,6 +59,7 @@ def test_pruned_and_failed_turns_are_not_invented_or_restored(store):
         _archive_debug_rows(store.db, 1)
         store.db.execute('DELETE FROM turns')
     assert [r['message_id'] for r in store.chat_history_records(scope, [1, 2, 3])] == ['2']
+    store.close()
 
 
 @pytest.mark.parametrize('ids', [[0], [-1], ['1 OR 1'], ['１２'], [2**63], list(range(1, 102))])
