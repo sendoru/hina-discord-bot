@@ -1,5 +1,10 @@
 from hina_bot.ai.llm import POLICY
 from hina_bot.ai.managed_tools import CODE_EXECUTION_POLICY
+from hina_bot.ai.memory_extraction import (
+    ANNOTATION_FIELD_RULES,
+    DIRECTIVE_VERIFICATION_POLICY,
+    SHADOW_EXTRACTION_POLICY,
+)
 from hina_bot.ai.prompts import load_prompt
 from hina_bot.ai.request_assembly import (
     CURRENT_CHANNEL_SCOPE_POLICY,
@@ -52,3 +57,19 @@ def test_static_answer_policies_are_loaded_from_named_resources():
 
 def test_prompt_loader_caches_resource_text():
     assert load_prompt("base.md") is load_prompt("base.md")
+
+
+def test_memory_extraction_policies_are_loaded_from_named_resources():
+    annotation = load_prompt("annotation_fields.md", section="memory")
+    extraction = load_prompt("extraction.md", section="memory")
+    verification = load_prompt("directive_verification.md", section="memory")
+
+    assert ANNOTATION_FIELD_RULES == annotation
+    assert extraction.count("{{ANNOTATION_FIELD_RULES}}") == 1
+    assert SHADOW_EXTRACTION_POLICY == extraction.replace(
+        "{{ANNOTATION_FIELD_RULES}}", annotation
+    )
+    assert DIRECTIVE_VERIFICATION_POLICY == verification
+    assert all(text.endswith("\n") for text in (
+        ANNOTATION_FIELD_RULES, SHADOW_EXTRACTION_POLICY, DIRECTIVE_VERIFICATION_POLICY
+    ))
