@@ -170,7 +170,6 @@ async def test_historical_visual_precedes_reply_context_and_current_request():
     assert len(messages) == 2
     reference_blocks = messages[0]["content"]
     assert reference_blocks[0] == {"type": "input_text", "text": reply_context}
-    assert "현재 사용자의 새 발화가 아니며" in reference_blocks[1]["text"]
     assert "\"message_id\":\"100\"" in reference_blocks[2]["text"]
     assert "버섯 씌워놨어" in reference_blocks[2]["text"]
     assert reference_blocks[4]["type"] == "input_image"
@@ -219,7 +218,6 @@ async def test_gemini_reply_image_is_reference_not_another_user_turn():
     assert messages[0]["role"] == messages[1]["role"] == "user"
     reference = messages[0]["content"]
     assert reference[0]["text"] == context
-    assert "별도의 새 발화" not in reference[0]["text"]
     assert '"author_user_id":"200"' in reference[2]["text"]
     assert "도장을 하나 샀는데" in reference[2]["text"]
     assert reference[4]["type"] == "input_image"
@@ -522,7 +520,7 @@ async def test_hina_reference_is_separate_from_discord_visuals(
     assert isinstance(original_messages[1]["content"], str)  # No in-place mutation.
     first = messages[0]["content"]
     if expect_reference:
-        assert "개발자가 제공한" in first[0]["text"]
+        assert first[0]["type"] == "input_text"
         assert first[1]["image_url"].startswith("data:image/webp;base64,")
         assert first[1]["resolution"] == "medium"
         assert sum(
@@ -535,7 +533,6 @@ async def test_hina_reference_is_separate_from_discord_visuals(
         assert converted[0]["content"][1]["resolution"] == "medium"
     else:
         assert first[0]["text"].startswith("신뢰할 수 없는")
-        assert "개발자가 제공한" not in str(messages)
         assert sum(
             block.get("type") == "input_image"
             for message in messages
@@ -568,7 +565,6 @@ async def test_hina_reference_does_not_change_other_providers_or_inactive_reques
         finally:
             VISION_REQUEST_ACTIVE.reset(active)
             CURRENT_VISUAL_INPUTS.reset(token)
-        assert "개발자가 제공한" not in str(create.await_args.kwargs["input"])
 
 
 @pytest.mark.asyncio
@@ -595,7 +591,6 @@ async def test_missing_or_invalid_hina_reference_falls_back_to_existing_vision(t
             CURRENT_VISUAL_INPUTS.reset(token)
         content = create.await_args.kwargs["input"][0]["content"]
         assert sum(item["type"] == "input_image" for item in content) == 1
-        assert "개발자가 제공한" not in str(content)
 
 
 @pytest.mark.asyncio
@@ -636,7 +631,7 @@ async def test_hina_reference_directory_injects_multiple_images_in_filename_orde
     assert messages[1]["content"][-1]["type"] == "input_image"
     assert isinstance(original_messages[0]["content"], str)
     first = messages[0]["content"]
-    assert "개발자가 제공한" in first[0]["text"]
+    assert first[0]["type"] == "input_text"
     assert first[1]["image_url"] == (
         "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()
     )

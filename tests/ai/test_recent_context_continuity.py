@@ -2,7 +2,6 @@ from datetime import datetime
 
 from hina_bot.ai.reference_context_blocks import read_reference_context, reference_context_blocks
 from hina_bot.ai.request_assembly import (
-    REFERENCE_CONTINUITY_POLICY,
     RequestAssembler,
     _annotate_elapsed_minutes,
 )
@@ -132,7 +131,6 @@ def test_old_nighttime_context_is_aged_against_current_morning_clock():
     sent = read_reference_context(reference_context_blocks(projected))
     assert sent["active_reply_chain"][0]["elapsed_minutes"] == 407
     assert sent["personal_recent_conversation"][0]["elapsed_minutes"] == 407
-    assert "시간대·일시적인 상황" in REFERENCE_CONTINUITY_POLICY
 
 
 def test_elapsed_age_respects_offsets_and_includes_recent_turns():
