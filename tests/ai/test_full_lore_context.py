@@ -51,7 +51,6 @@ async def test_full_mode_includes_static_prefix_and_dynamic_refs_without_embeddi
         payload = calls[-1]
         instructions = payload["instructions"]
         assert "[검수된 정적 설정 자료" in instructions
-        # Audience-only material must not become Hina's supposed memory.
         context = read_reference_context(payload["input"][0]["content"])
         assert any("테스트 전용 동적 지식" in str(ref)
                    for ref in context["lore_reference"])
