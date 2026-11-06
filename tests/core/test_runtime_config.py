@@ -132,27 +132,27 @@ def test_settings_loads_output_repair_from_dotenv_and_runtime_reset(monkeypatch,
     (tmp_path / ".env").write_text(
         "DISCORD_TOKEN=token\n"
         "OPENAI_API_KEY=key\n"
-        "OUTPUT_REPAIR_MODE=shadow\n"
+        "OUTPUT_REPAIR_MODE=conservative\n"
         "OUTPUT_REPAIR_MODEL=repair-model\n"
         "OUTPUT_REPAIR_TIMEOUT_SECONDS=2.5\n",
         encoding="utf-8",
     )
 
     base = Settings.load()
-    assert base.output_repair_mode == "shadow"
+    assert base.output_repair_mode == "conservative"
     assert base.output_repair_model == "repair-model"
     assert base.output_repair_timeout_seconds == pytest.approx(2.5)
 
     store = Store.create(":memory:")
     try:
         settings = RuntimeSettings(base, store)
-        assert settings.set_text("OUTPUT_REPAIR_MODE", "active") == "active"
+        assert settings.set_text("OUTPUT_REPAIR_MODE", "aggressive") == "aggressive"
         assert settings.set_text("OUTPUT_REPAIR_MODEL", "db-model") == "db-model"
         assert settings.set_text("OUTPUT_REPAIR_TIMEOUT_SECONDS", "0.5") == 0.5
-        assert settings.output_repair_mode == "active"
+        assert settings.output_repair_mode == "aggressive"
         assert settings.output_repair_model == "db-model"
         assert settings.output_repair_timeout_seconds == pytest.approx(0.5)
-        assert settings.reset("OUTPUT_REPAIR_MODE") == "shadow"
+        assert settings.reset("OUTPUT_REPAIR_MODE") == "conservative"
         assert settings.reset("OUTPUT_REPAIR_MODEL") == "repair-model"
         assert settings.reset("OUTPUT_REPAIR_TIMEOUT_SECONDS") == pytest.approx(2.5)
     finally:
@@ -164,6 +164,8 @@ def test_settings_loads_output_repair_from_dotenv_and_runtime_reset(monkeypatch,
     [
         ("OUTPUT_REPAIR_MODE", "invalid"),
         ("OUTPUT_REPAIR_MODE", ""),
+        ("OUTPUT_REPAIR_MODE", "shadow"),
+        ("OUTPUT_REPAIR_MODE", "active"),
         ("OUTPUT_REPAIR_MODEL", ""),
         ("OUTPUT_REPAIR_MODEL", "x" * 201),
         ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "invalid"),
@@ -613,6 +615,8 @@ def test_runtime_location_can_explicitly_override_env_value_with_empty_string():
         ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "nan"),
         ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "inf"),
         ("OUTPUT_REPAIR_TIMEOUT_SECONDS", "invalid"),
+        ("OUTPUT_REPAIR_MODE", "shadow"),
+        ("OUTPUT_REPAIR_MODE", "active"),
         ("COOLDOWN_SECONDS", "-1"),
         ("SUMMARY_EVERY", "1"),
         ("STRUCTURED_MEMORY_EVERY", "31"),

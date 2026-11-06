@@ -61,7 +61,6 @@ class LLM:
 
     async def close(self):
         try:
-            await self.output_repair.close()
             await self.client.close()
         finally:
             self.usage.close()
