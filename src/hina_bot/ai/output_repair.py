@@ -1,8 +1,8 @@
 """Optional small-model, format-only repair for suspicious Discord answers.
 
 Never send conversation context to the repair model. Do not let repair failures
-replace a successfully generated original answer. In ``active`` mode a deterministic
-fallback still removes obvious ID markers and escaped whitespace when the repair call fails.
+replace a successfully generated answer. Conservative mode retains model-first
+repair; aggressive mode normalizes obvious artifacts before trying the model.
 """
 
 from __future__ import annotations
@@ -33,14 +33,14 @@ _HTML_TAG = re.compile(
 
 _CODE = re.compile(r"```[\s\S]*?```|`[^`\n]*`")
 
-# Deterministic fallback (#454): a bracketed snowflake-like number that ends a clause
-# is never dialogue. Generated markers are not real IDs and can exceed a snowflake's
-# 20 digits, so the upper bound follows the repair preflight (_SUSPECT_FORMAT, 32).
-# The last part needs 17+ digits, optionally behind an index ("[18:...]", "[a:b]"),
-# so short numbers such as "[1]" stay with the repair model. A marker followed by a
-# word, a link target or another bracket is treated as referenced text.
+# Conservative mode keeps the existing contextual snowflake-ID fallback.
+# Aggressive mode strips all standalone numeric citations (1..32 digits per part)
+# outside code/URLs, including short [1] and [1:2] markers. Markdown links survive.
 _ID_MARKER = re.compile(
     r"(?P<pre>[ \t]*)\[(?:\d{1,32}:)?\d{17,32}\](?![\w(\[])(?P<post>[ \t]*)"
+)
+_AGGRESSIVE_MARKER = re.compile(
+    r"(?P<pre>[ \t]*)\[\d{1,32}(?::\d{1,32})?\](?!\()(?P<post>[ \t]*)"
 )
 # Code and URLs are never edited; a nearby ID word means the number is being discussed.
 _PROTECTED = re.compile(r"```[\s\S]*?```|`[^`\n]*`|https?://\S+")
@@ -48,14 +48,14 @@ _ID_CONTEXT = re.compile(r"(?i)\bid\b|아이디|메시지|메세지|번호|식�
 _ID_CONTEXT_CHARS = 24
 
 
-def _strip_segment(segment: str) -> tuple[str, int]:
+def _strip_segment(segment: str, *, aggressive: bool = False) -> tuple[str, int]:
     removed = 0
 
     def drop(match: re.Match) -> str:
         nonlocal removed
         line_start = segment.rfind("\n", 0, match.start()) + 1
         context = segment[max(line_start, match.start() - _ID_CONTEXT_CHARS):match.start()]
-        if _ID_CONTEXT.search(context):
+        if not aggressive and _ID_CONTEXT.search(context):
             return match.group(0)
         removed += 1
         following = segment[match.end():match.end() + 1]
@@ -65,28 +65,34 @@ def _strip_segment(segment: str) -> tuple[str, int]:
             return " "
         return ""
 
-    return _ID_MARKER.sub(drop, segment), removed
+    pattern = _AGGRESSIVE_MARKER if aggressive else _ID_MARKER
+    return pattern.sub(drop, segment), removed
 
 
-def strip_stray_id_markers(text: str) -> tuple[str, int]:
-    """Remove snowflake-like bracketed IDs accidentally appended to prose.
+def strip_stray_id_markers(
+    text: str, *, aggressive: bool = False,
+) -> tuple[str, int]:
+    """Remove numeric markers, with optional aggressive handling of short citations.
 
-    Returns the cleaned text and how many markers were removed. Idempotent; if
-    nothing but markers would remain, the original text is returned unchanged.
+    Code, URLs, and Markdown links are protected. Avoid returning empty output
+    when the whole answer consists of markers.
     """
 
     parts: list[str] = []
     removed = 0
     last = 0
     for protected in _PROTECTED.finditer(text):
-        cleaned, count = _strip_segment(text[last:protected.start()])
+        cleaned, count = _strip_segment(text[last:protected.start()], aggressive=aggressive)
         parts += [cleaned, protected.group(0)]
         removed += count
         last = protected.end()
-    cleaned, count = _strip_segment(text[last:])
+    cleaned, count = _strip_segment(text[last:], aggressive=aggressive)
     parts.append(cleaned)
     removed += count
     result = "".join(parts)
+    if aggressive and _AGGRESSIVE_MARKER.match(text.lstrip(" \t")):
+        # Consecutive leading markers must not leave a stray leading separator.
+        result = result.lstrip(" \t")
     if not removed or not result.strip():
         return text, 0
     return result, removed
@@ -147,13 +153,22 @@ _REPAIR_INSTRUCTIONS = (
     "If no unambiguous formatting error exists, return the input unchanged."
 )
 _MAX_OUTPUT_TOKENS = 512
-_MAX_SHADOW_TASKS = 2
 
 
 def needs_output_repair(text: str) -> bool:
-    # Ignore fenced/inline code for the inexpensive preflight decision.
+    # Conservative mode retains the original, broad preflight.
     non_code = _CODE.sub("", text)
     return bool(_SUSPECT_FORMAT.search(non_code) or _HTML_TAG.search(non_code))
+
+
+def needs_model_repair_after_aggressive(text: str) -> bool:
+    """Avoid the model if only protected escapes/links or already-fixed markers remain."""
+    visible = _ESCAPE_PROTECTED.sub("", text)
+    return bool(
+        _AGGRESSIVE_MARKER.search(visible)
+        or _ESCAPED_WHITESPACE.search(visible)
+        or _HTML_TAG.search(visible)
+    )
 
 
 class OutputRepair:
@@ -162,7 +177,6 @@ class OutputRepair:
         # A VisionClient would attach original images to the second request.
         self.client = getattr(client, "_client", client)
         self.usage = usage
-        self._tasks: set[asyncio.Task] = set()
 
     def _emit(self, *, mode, status, original, candidate="", elapsed_ms=0):
         self.usage.routing_event(
@@ -224,49 +238,39 @@ class OutputRepair:
                 elapsed_ms=round((perf_counter() - started) * 1000),
             )
 
-    def _finish_shadow(self, task):
-        self._tasks.discard(task)
-        if not task.cancelled():
-            try:
-                task.result()
-            except Exception as exc:  # noqa: BLE001 - isolate shadow lifecycle
-                log.warning("Output repair shadow failed (%s)", type(exc).__name__)
+    def _deterministic(self, text: str, mode: str) -> str:
+        cleaned, removed = strip_stray_id_markers(
+            text, aggressive=(mode == "aggressive"),
+        )
+        if removed:
+            self.usage.routing_event(
+                "output.marker_fallback",
+                status="applied",
+                output_repair_mode=mode,
+                output_markers_removed=removed,
+            )
+        cleaned, normalized = normalize_stray_escapes(cleaned)
+        if normalized:
+            self.usage.routing_event(
+                "output.escape_fallback",
+                status="applied",
+                output_repair_mode=mode,
+                output_escapes_normalized=normalized,
+            )
+        return cleaned
 
     async def apply(self, text: str) -> str:
         mode = self.settings.output_repair_mode
-        if mode == "off" or not needs_output_repair(text):
+        if mode == "off":
             return text
-        if mode == "shadow":
-            if len(self._tasks) >= _MAX_SHADOW_TASKS:
-                self._emit(mode=mode, status="backpressure", original=text)
+        if mode == "conservative":
+            if not needs_output_repair(text):
                 return text
-            task = asyncio.create_task(self._repair_once(text, mode))
-            self._tasks.add(task)
-            task.add_done_callback(self._finish_shadow)
-            return text
-        if mode == "active":
-            repaired = await self._repair_once(text, mode)
-            # Even after a failed/empty repair, remove only obvious formatting artifacts.
-            # Also catch artifacts the repair model left behind in a completed response.
-            cleaned, removed = strip_stray_id_markers(repaired)
-            if removed:
-                self.usage.routing_event(
-                    "output.marker_fallback",
-                    status="applied",
-                    output_repair_mode=mode,
-                    output_markers_removed=removed,
-                )
-            cleaned, normalized = normalize_stray_escapes(cleaned)
-            if normalized:
-                self.usage.routing_event(
-                    "output.escape_fallback",
-                    status="applied",
-                    output_repair_mode=mode,
-                    output_escapes_normalized=normalized,
-                )
-            return cleaned
-        return text
-
-    async def close(self):
-        if self._tasks:
-            await asyncio.gather(*tuple(self._tasks), return_exceptions=True)
+            return self._deterministic(await self._repair_once(text, mode), mode)
+        if mode == "aggressive":
+            # Deterministic first: most numeric-marker/escape cases need no API call.
+            cleaned = self._deterministic(text, mode)
+            if not needs_model_repair_after_aggressive(cleaned):
+                return cleaned
+            return self._deterministic(await self._repair_once(cleaned, mode), mode)
+        raise ValueError(f"Unsupported output repair mode: {mode}")

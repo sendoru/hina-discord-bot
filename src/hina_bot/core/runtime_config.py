@@ -48,9 +48,9 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
     "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
-    "output_repair_mode": "최종 답변에 형식 오류가 의심될 때 소형 모델로 최소 교정합니다. off: 사용 안 함, shadow: 비동기 비교만, active: 정상 완료된 비어 있지 않은 교정 결과를 적용합니다.",
+    "output_repair_mode": "off: 비활성화, conservative: LLM 교정 우선·보수적 후처리, aggressive: 숫자형 인용 마커와 이스케이프 문자를 먼저 제거하고 필요할 때만 LLM을 호출합니다.",
     "output_repair_model": "교정에 사용할 모델입니다. auto는 현재 fast_model을 사용합니다. 기본 채팅 provider와 API 키를 공유합니다.",
-    "output_repair_timeout_seconds": "출력 교정 API 호출의 데드라인(초)입니다. 시간 초과 시 active 모드에서는 안전한 형식 오류만 규칙 기반으로 보정합니다.",
+    "output_repair_timeout_seconds": "출력 교정 API 호출의 데드라인(초)입니다. 시간 초과 시 각 모드의 deterministic 교정 결과를 사용합니다.",
     "fast_model": "adaptive routing의 fast tier에서 사용할 모델 이름입니다.",
     "smart_model": "adaptive routing의 smart tier에서 사용할 모델 이름입니다.",
     "output_tokens": "fixed routing에서 한 요청에 허용할 provider 공통 최대 출력 토큰 예산입니다.",
@@ -152,7 +152,7 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "model": _runtime_spec("model", "LLM_MODEL", "string", maximum=200),
     "output_repair_mode": _runtime_spec(
         "output_repair_mode", "OUTPUT_REPAIR_MODE", "string",
-        choices=("off", "shadow", "active"),
+        choices=("off", "conservative", "aggressive"),
     ),
     "output_repair_model": _runtime_spec(
         "output_repair_model", "OUTPUT_REPAIR_MODEL", "string", maximum=200,

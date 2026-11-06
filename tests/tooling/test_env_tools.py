@@ -135,7 +135,7 @@ def test_export_db_precedence_and_startup_only_env(tmp_path):
         )
         settings.capture_startup_snapshot()
         settings.set_text("LLM_MODEL", "db-model")
-        settings.set_text("OUTPUT_REPAIR_MODE", "active")
+        settings.set_text("OUTPUT_REPAIR_MODE", "conservative")
     finally:
         store.close()
 
@@ -145,7 +145,7 @@ def test_export_db_precedence_and_startup_only_env(tmp_path):
     assert exported["OPENAI_API_KEY"] == "secret-api-key"
     assert exported["DATABASE_PATH"] == "other-db.sqlite3"
     assert exported["LLM_MODEL"] == "db-model"
-    assert exported["OUTPUT_REPAIR_MODE"] == "active"
+    assert exported["OUTPUT_REPAIR_MODE"] == "conservative"
     assert exported["OUTPUT_REPAIR_TIMEOUT_SECONDS"] == "2.5"
     assert "GEMINI_STORE_ANSWER_INTERACTIONS" not in exported
     assert "# GEMINI_STORE_ANSWER_INTERACTIONS=false" in rendered
