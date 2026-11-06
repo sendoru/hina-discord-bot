@@ -14,11 +14,7 @@ VISION_INPUT_POLICY = load_prompt("vision_input.md")
 log = logging.getLogger(__name__)
 
 # A transport label, not another character-identification policy.
-HINA_VISUAL_REFERENCE_LABEL = (
-    "개발자가 제공한 소라사키 히나의 공식 외형 참조 이미지입니다. "
-    "사용자가 보낸 이미지나 Discord 대화 기록이 아니며, "
-    "사용자 이미지의 인물을 판별할 때 외형 비교 자료로만 사용하세요."
-)
+HINA_VISUAL_REFERENCE_LABEL = load_prompt("hina_visual_reference.md").strip()
 _MAX_HINA_REFERENCE_BYTES = 5 * 1024 * 1024
 _MAX_HINA_REFERENCE_TOTAL_BYTES = 12 * 1024 * 1024
 _MAX_HINA_REFERENCE_IMAGES = 4

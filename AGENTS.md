@@ -16,6 +16,14 @@
 - Report which tests were run and whether they passed.
 - Do not claim a CI result unless it was actually checked.
 
+## Prompt management
+
+- Do not hardcode LLM-facing prompts, natural-language instructions, or behavioral policies in application code.
+- Store prompt text under `src/hina_bot/prompts/` and load it using the existing `load_prompt()` helper.
+- Extend an existing prompt file when it serves the same purpose; avoid unnecessary file fragmentation.
+- Keep dynamic request assembly and structural metadata in code, while separating natural-language guidance from implementation.
+- Ensure new prompt files are included in package data and covered by relevant tests.
+
 ## Dashboard
 
 - Treat the dashboard as an operational/debugging UI, not just a presentation layer.
