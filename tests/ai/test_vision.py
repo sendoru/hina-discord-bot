@@ -4,10 +4,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from hina_bot.ai.prompts import load_prompt
 from hina_bot.ai.providers import _gemini_input
 from hina_bot.ai.reference_context_blocks import reference_context_blocks
 from hina_bot.ai.vision import (
     CURRENT_VISUAL_INPUTS,
+    HINA_VISUAL_REFERENCE_LABEL,
     VISION_INPUT_POLICY,
     VISION_REQUEST_ACTIVE,
     VisionClient,
@@ -520,7 +522,8 @@ async def test_hina_reference_is_separate_from_discord_visuals(
     assert isinstance(original_messages[1]["content"], str)  # No in-place mutation.
     first = messages[0]["content"]
     if expect_reference:
-        assert first[0]["type"] == "input_text"
+        assert HINA_VISUAL_REFERENCE_LABEL == load_prompt("hina_visual_reference.md").strip()
+        assert first[0] == {"type": "input_text", "text": HINA_VISUAL_REFERENCE_LABEL}
         assert first[1]["image_url"].startswith("data:image/webp;base64,")
         assert first[1]["resolution"] == "medium"
         assert sum(
