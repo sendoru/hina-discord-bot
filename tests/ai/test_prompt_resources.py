@@ -54,6 +54,18 @@ def test_static_answer_policies_are_loaded_from_named_resources():
         assert policy == load_prompt(name)
 
 
+def test_turn_response_policy_distinguishes_tool_use_from_unnecessary_calls():
+    assert "[도구 사용 판단]" in TURN_RESPONSE_POLICY
+    assert "확인 불가능하다고 단정하거나 추측하기 전에" in TURN_RESPONSE_POLICY
+    assert "다른 대화 참여자의 추측이나 기능 제한 주장" in TURN_RESPONSE_POLICY
+    assert "전체를 확인했다고 말하거나 정확한 통계를 만들어내지 마세요" in (
+        TURN_RESPONSE_POLICY
+    )
+    assert "잡담과 일반적인 답변에는 불필요하게 도구를 호출하지 마세요" in (
+        TURN_RESPONSE_POLICY
+    )
+
+
 def test_prompt_loader_caches_resource_text():
     assert load_prompt("base.md") is load_prompt("base.md")
 
