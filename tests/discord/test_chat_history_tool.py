@@ -13,6 +13,7 @@ from hina_bot.ai.local_tools import (
     LocalToolExecutor,
     LocalToolRegistry,
 )
+from hina_bot.ai.request_assembly import TURN_RESPONSE_POLICY
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.core.config import Settings
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
@@ -93,6 +94,8 @@ def test_history_tool_description_covers_conversation_resumption_and_opt_out():
         '추측하거나 다시 설명해 달라고 하기 전에 조회',
         '현재 문맥만으로 충분', '독립적인 새 질문',
         'query 없이', '부분/빈 결과', 'recall_memory',
+        '특정 표현이 이전 채팅에 있었는지', '최대 300개 메시지',
+        '전체의 정확한', '부분 검색 결과를 전체 통계로 단정하지 마세요',
     ))
     assert 'required' not in CHAT_HISTORY_TOOL.parameters
     assert set(CHAT_HISTORY_TOOL.parameters['properties']) == {
@@ -161,6 +164,7 @@ async def test_history_and_member_schemas_reach_model_regardless_of_channel_type
         assert result == '확인했어.'
         sent = llm.usage.request.await_args.kwargs
         assert sent['tool_choice'] == 'auto'
+        assert TURN_RESPONSE_POLICY.strip() in sent['instructions']
         assert {tool['name'] for tool in sent['tools'] if tool['type'] == 'function'} >= {
             'get_chat_history', 'get_current_channel_members',
         }
