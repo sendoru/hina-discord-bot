@@ -143,6 +143,7 @@ class Settings:
     usage_log_path: str = "data/logs/usage.jsonl"
     event_log_path: str = "data/logs/events.jsonl"
     channel_context_chars: int = 6000
+    recent_context_window_minutes: int = 60
     special_dm_user_id: int | None = None
     bot_admin_ids: frozenset[int] = frozenset()
     lore_path: str = ""
@@ -475,6 +476,7 @@ class Settings:
                 os.getenv("STRUCTURED_MEMORY_SWEEP_INTERVAL_SECONDS", str(60 * 60))
             ),
             channel_context_chars=int(os.getenv("CHANNEL_CONTEXT_CHARS", "6000")),
+            recent_context_window_minutes=int(os.getenv("RECENT_CONTEXT_WINDOW_MINUTES", "60")),
             history_turns=int(os.getenv("HISTORY_TURNS", "12")),
             raw_retention_turns=int(os.getenv("RAW_RETENTION_TURNS", "1000")),
             history_max_chars=int(os.getenv("HISTORY_MAX_CHARS", "12000")),
@@ -509,6 +511,7 @@ class Settings:
                 and 0.1 <= s.memory_routing_smart_threshold <= 10.0
                 and 0 <= s.history_max_chars <= 120000
                 and 0 <= s.channel_context_chars <= 12000
+                and 15 <= s.recent_context_window_minutes <= 180
                 and 2 <= s.structured_memory_every <= s.history_turns <= 30
                 and 2 <= s.summary_every <= s.history_turns
                 and 60 <= s.structured_memory_stale_after_seconds <= 7 * 24 * 60 * 60
@@ -525,6 +528,7 @@ class Settings:
                              "memory output tokens 128~65536, "
                              "routing classifier timeout 0.25~30초, output tokens 32~1024, "
                              "model/memory routing smart threshold 0.1~10.0, "
+                             "recent context window 15~180분, "
                              "structured_memory_every와 summary_every는 각각 2 <= cadence <= history_turns <= 30, "
                              "structured memory stale은 60초~7일, sweep interval은 0 또는 60초~24시간, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
