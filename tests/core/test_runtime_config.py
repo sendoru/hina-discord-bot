@@ -71,6 +71,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "GEMINI_STORE_CLASSIFIER_INTERACTIONS",
         "GEMINI_SEARCH_API_MODE",
         "CHANNEL_CONTEXT_CHARS",
+        "RECENT_CONTEXT_WINDOW_MINUTES",
         "HISTORY_MAX_CHARS",
         "LORE_MAX_ITEMS",
         "LORE_MAX_CHARS",
@@ -106,6 +107,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.output_repair_model == "auto"
     assert settings.output_repair_timeout_seconds == pytest.approx(3.0)
     assert settings.channel_context_chars == 6000
+    assert settings.recent_context_window_minutes == 60
     assert settings.history_max_chars == 12000
     assert settings.lore_max_items == 6
     assert settings.lore_max_chars == 3200
@@ -113,6 +115,39 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.event_log_path == "data/logs/events.jsonl"
 
 
+
+
+def test_recent_context_window_env_and_runtime_bounds(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("RECENT_CONTEXT_WINDOW_MINUTES", "90")
+    base = Settings.load()
+    assert base.recent_context_window_minutes == 90
+
+    store = Store.create(":memory:")
+    try:
+        runtime = RuntimeSettings(base, store)
+        assert runtime.set_text("RECENT_CONTEXT_WINDOW_MINUTES", "180") == 180
+        assert runtime.recent_context_window_minutes == 180
+        for invalid in ("14", "181", "nan", "90.5"):
+            with pytest.raises(ValueError):
+                runtime.set_text("recent_context_window_minutes", invalid)
+        assert runtime.recent_context_window_minutes == 180
+        assert runtime.reset("RECENT_CONTEXT_WINDOW_MINUTES") == 90
+        assert runtime.recent_context_window_minutes == 90
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("raw", ["14", "181", "not-a-number"])
+def test_recent_context_window_rejects_invalid_env(monkeypatch, tmp_path: Path, raw):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("RECENT_CONTEXT_WINDOW_MINUTES", raw)
+    with pytest.raises(ValueError):
+        Settings.load()
 
 
 def test_env_example_lists_all_runtime_setting_names():

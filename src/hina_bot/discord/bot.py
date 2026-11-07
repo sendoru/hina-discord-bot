@@ -207,7 +207,10 @@ class HinaClient(discord.Client):
         self.locks = weakref.WeakValueDictionary()
         self.cooldowns = {}
         self.bot_trigger_chains = {}
-        self.recent = RecentMessages(budget=settings.channel_context_chars)
+        self.recent = RecentMessages(
+            budget=settings.channel_context_chars,
+            ttl=settings.recent_context_window_minutes * 60,
+        )
         self.channel_locks = weakref.WeakValueDictionary()
         self.slots = asyncio.Semaphore(settings.concurrency)
         self.pending_count = 0
