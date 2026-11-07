@@ -20,6 +20,9 @@ if AVAILABLE:
 
 
 class RecentBufferTests(unittest.TestCase):
+    def test_default_ttl_is_one_hour(self):
+        self.assertEqual(RecentMessages().ttl, 3600)
+
     def test_historical_rows_keep_order_and_expire_by_original_time(self):
         recent = RecentMessages(ttl=900)
         scope = Scope(1, 10, 100)
@@ -88,6 +91,7 @@ class HistoryBackfillTests(unittest.IsolatedAsyncioTestCase):
         self.llm = NS(close=AsyncMock())
         self.bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=self.store, llm=self.llm)
         self.bot._connection.user = NS(id=99)
+        self.assertEqual(self.bot.recent.ttl, 3600)
 
     async def asyncTearDown(self):
         await self.bot.close()
@@ -107,8 +111,8 @@ class HistoryBackfillTests(unittest.IsolatedAsyncioTestCase):
     async def test_backfill_recovers_recent_off_period_without_old_messages(self):
         now = datetime.now(UTC)
         messages = [
-            self.old_message(1, "너무 오래된 대화", now - timedelta(minutes=20)),
-            self.old_message(2, "최근 일반 대화", now - timedelta(minutes=5)),
+            self.old_message(1, "너무 오래된 대화", now - timedelta(minutes=70)),
+            self.old_message(2, "최근 일반 대화", now - timedelta(minutes=20)),
             self.old_message(3, "히나야 /메모 숨길 내용", now - timedelta(minutes=4)),
             self.old_message(4, "다른 봇", now - timedelta(minutes=3), author_id=77, bot=True),
             self.old_message(5, "이전 히나 답변", now - timedelta(minutes=2), author_id=99, bot=True),
@@ -128,7 +132,7 @@ class HistoryBackfillTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.bot.recent.needs_hydration(scope))
         self.assertEqual(channel.kwargs["before"], current)
         self.assertEqual(channel.kwargs["limit"], self.bot.recent.limit)
-        self.assertGreater(channel.kwargs["after"], now - timedelta(minutes=16))
+        self.assertGreater(channel.kwargs["after"], now - timedelta(minutes=61))
 
 
 
@@ -143,6 +147,7 @@ class RecentHydrationParityTests(unittest.IsolatedAsyncioTestCase):
             llm=self.llm,
         )
         self.bot._connection.user = NS(id=99, display_name="히나")
+        self.assertEqual(self.bot.recent.ttl, 3600)
 
     async def asyncTearDown(self):
         await self.bot.close()
