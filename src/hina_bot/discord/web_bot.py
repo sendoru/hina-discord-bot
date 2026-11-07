@@ -144,6 +144,7 @@ class HinaClient(BaseHinaClient):
         super().__init__(settings, store=store, llm=llm)
         self.recent = TargetAwareRecentMessages(
             budget=settings.channel_context_chars,
+            ttl=settings.recent_context_window_minutes * 60,
             store=self.store,
             external_context_policy=settings.external_context_policy,
         )

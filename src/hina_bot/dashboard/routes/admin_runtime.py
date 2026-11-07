@@ -77,6 +77,7 @@ RUNTIME_CONFIG_SECTIONS = (
             "external_context_policy",
             "public_memory_in_dm",
             "channel_context_chars",
+            "recent_context_window_minutes",
             "history_max_chars",
         ),
     ),

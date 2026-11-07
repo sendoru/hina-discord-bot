@@ -29,7 +29,11 @@ _PRIVACY_CHOICES = [
 
 
 def apply_runtime_setting_side_effects(client, key: str) -> None:
-    if key == "channel_context_chars":
+    if key == "recent_context_window_minutes":
+        client.recent.ttl = client.settings.recent_context_window_minutes * 60
+        # Previously hydrated channels must be reloaded when the window expands.
+        client.recent.clear_all()
+    elif key == "channel_context_chars":
         client.recent.budget = client.settings.channel_context_chars
     elif key in {"external_context_policy", "always_reply_channel_ids"}:
         # Direct-trigger provenance changes when either the privacy policy or implicit guild

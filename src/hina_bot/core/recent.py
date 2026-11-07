@@ -4,7 +4,7 @@ from collections import OrderedDict, deque
 
 
 class RecentMessages:
-    def __init__(self, limit=30, ttl=900, channels=128, budget=6000):
+    def __init__(self, limit=30, ttl=60 * 60, channels=128, budget=6000):
         self.limit, self.ttl, self.channels = limit, ttl, channels
         self.budget = budget
         self.buffers = OrderedDict()

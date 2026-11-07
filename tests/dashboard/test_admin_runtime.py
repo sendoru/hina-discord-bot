@@ -58,6 +58,40 @@ async def test_runtime_admin_command_uses_runtime_settings_and_side_effects():
     store.close()
 
 
+@pytest.mark.asyncio
+async def test_recent_window_runtime_change_invalidates_hydration_state():
+    store = Store.create(":memory:")
+    settings = RuntimeSettings(Settings(discord_token="test"), store)
+    recent = NS(ttl=3600, clear_all=Mock())
+    client = NS(settings=settings, recent=recent)
+    try:
+        result = await execute_admin_command(
+            client,
+            AdminCommand(
+                id=3, request_id="e" * 32, actor="local-dashboard",
+                action="runtime.set", target="recent_context_window_minutes",
+                payload={"key": "recent_context_window_minutes", "value": "90"},
+            ),
+        )
+        assert result["source"] == "db"
+        assert recent.ttl == 5400
+        recent.clear_all.assert_called_once()
+
+        result = await execute_admin_command(
+            client,
+            AdminCommand(
+                id=4, request_id="f" * 32, actor="local-dashboard",
+                action="runtime.reset", target="recent_context_window_minutes",
+                payload={"key": "recent_context_window_minutes"},
+            ),
+        )
+        assert result["source"] == "startup"
+        assert recent.ttl == 3600
+        assert recent.clear_all.call_count == 2
+    finally:
+        store.close()
+
+
 def test_runtime_config_sections_cover_all_current_settings_and_fallback():
     classified = [
         key
@@ -187,6 +221,8 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert '<option value="minimal"' in response.text
     assert '<option value="high"' in response.text
     assert 'id="runtime-channel_context_chars"' in response.text
+    assert 'id="runtime-recent_context_window_minutes"' in response.text
+    assert 'aria-label="Override value for RECENT_CONTEXT_WINDOW_MINUTES"' in response.text
     assert 'type="number"' in response.text
     assert 'min="0"' in response.text
     assert 'max="12000"' in response.text

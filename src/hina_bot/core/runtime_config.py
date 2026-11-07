@@ -71,6 +71,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "model_routing_smart_threshold": "채팅 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
     "memory_routing_smart_threshold": "장기 기억 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
     "channel_context_chars": "최근 서버 채널 문맥에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다. 0이면 전달하지 않습니다.",
+    "recent_context_window_minutes": "최근 서버 채널 문맥 후보를 수집할 시간 범위(분)입니다. 변경하면 기존 버퍼를 비우고 Discord 히스토리를 다시 수집합니다. 메시지 수·문자 예산 및 privacy/reset 경계는 유지됩니다.",
     "history_max_chars": "DM 최근 대화에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다.",
     "cooldown": "같은 사용자의 연속 호출을 제한하는 cooldown 시간(초)입니다.",
     "summary_every": "기존 text summary를 갱신하기 전에 필요한 새 대화 턴 수입니다. HISTORY_TURNS 이하여야 합니다.",
@@ -244,6 +245,9 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     ),
     "channel_context_chars": _runtime_spec(
         "channel_context_chars", "CHANNEL_CONTEXT_CHARS", "int", minimum=0, maximum=12000
+    ),
+    "recent_context_window_minutes": _runtime_spec(
+        "recent_context_window_minutes", "RECENT_CONTEXT_WINDOW_MINUTES", "int", minimum=15, maximum=180
     ),
     "history_max_chars": _runtime_spec(
         "history_max_chars", "HISTORY_MAX_CHARS", "int", minimum=0, maximum=120000
