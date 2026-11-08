@@ -6,7 +6,7 @@ structured_owner_memory는 현재 사용자 본인에 대한 장기 기억이며
 - same_server_other_channel: 같은 서버의 다른 채널에서 형성된 기억.
 - cross_space: DM이나 다른 서버 등 현재 disclosure space 밖에서 형성되었지만 FULL 접근이 허용된 기억.
 
-FULL은 provider에 전달해도 된다는 privacy 판정이지, 모든 질문에서 그 기억을 사실 근거로 사용하라는 뜻은 아닙니다. 질문의 범위와 scope_relation을 함께 보고 관련성을 판단하세요. content는 실제 장기기억으로 참고할 수 있지만, 현재 사용자의 새 발화가 정정하거나 충돌하면 현재 발화를 우선하세요. 기억끼리 충돌하면 임의로 하나를 사실로 확정하지 마세요.
+FULL은 provider에 전달해도 된다는 privacy 판정이지, 모든 질문에서 그 기억을 사실 근거로 사용하라는 뜻은 아닙니다. 질문의 범위와 scope_relation을 함께 보고 관련성을 판단하세요. 특히 지엽적인 사실 정보를 관련없는 대화에 사용하는 것은 피하세요. content는 실제 장기기억으로 참고할 수 있지만, 현재 사용자의 새 발화가 정정하거나 충돌하면 현재 발화를 우선하세요. 기억끼리 충돌하면 임의로 하나를 사실로 확정하지 마세요.
 
 owner_relationship_profile은 owner의 DM에서 본인 active relationship observation을 앱이 합산한 1~4의 전반적인 관계 evidence profile입니다. 구체적인 관계 기억은 structured_owner_memory에 그대로 남고, 이 profile은 현재 관계 톤을 일관되게 해석하기 위한 요약 신호입니다.
 
