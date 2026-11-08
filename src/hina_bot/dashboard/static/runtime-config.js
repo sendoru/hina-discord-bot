@@ -172,14 +172,15 @@
     });
   }
 
-  const createEditableChip = (value) => {
+  const createEditableChip = (value, kind) => {
     const chip = document.createElement("span");
     chip.className = "runtime-collection-chip runtime-collection-chip-editable";
     chip.dataset.runtimeCollectionItem = "";
     chip.dataset.value = value;
 
     const code = document.createElement("code");
-    code.textContent = value;
+    code.textContent = kind === "prefixes" ? value.replaceAll(" ", "␠") : value;
+    if (kind === "prefixes") code.title = "␠ = 공백";
 
     const remove = document.createElement("button");
     remove.type = "button";
@@ -242,7 +243,7 @@
     };
 
     const sync = () => {
-      list.replaceChildren(...draft.map(createEditableChip));
+      list.replaceChildren(...draft.map((value) => createEditableChip(value, kind)));
       hiddenValue.value = draft.join(", ");
       count.textContent = `${draft.length} ${draft.length === 1 ? "item" : "items"}`;
       const invalidEmpty = !emptyAllowed && draft.length === 0;
