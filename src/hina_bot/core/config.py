@@ -35,8 +35,8 @@ MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})
 
 
 def parse_call_prefixes(value: str) -> tuple[str, ...]:
-    """Parse a comma-separated, ordered set of message prefixes."""
-    prefixes = tuple(dict.fromkeys(part.strip() for part in value.split(",") if part.strip()))
+    """Parse comma-separated call prefixes, preserving meaningful trailing whitespace."""
+    prefixes = tuple(dict.fromkeys(part.lstrip() for part in value.split(",") if part.strip()))
     if not prefixes or len(prefixes) > 20:
         raise ValueError("CALL_PREFIXES는 쉼표로 구분한 1~20개의 접두어여야 합니다.")
     if any(len(prefix) > 32 or any(char in prefix for char in "\r\n\0")

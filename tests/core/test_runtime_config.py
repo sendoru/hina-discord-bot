@@ -17,6 +17,14 @@ def _base(**overrides):
     return Settings(**values)
 
 
+def test_settings_load_preserves_trailing_space_in_call_prefix(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("CALL_PREFIXES", "히나 ")
+    assert Settings.load().call_prefixes == ("히나 ",)
+
+
 def test_settings_requires_keyword_only_construction():
     with pytest.raises(TypeError):
         Settings("key", "token")
@@ -417,6 +425,27 @@ def test_runtime_settings_refresh_startup_snapshot_on_restart(tmp_path: Path):
         assert value == '"second-startup"'
     finally:
         store.close()
+
+def test_runtime_call_prefix_preserves_trailing_space_after_reload(tmp_path: Path):
+    db = tmp_path / "runtime-prefix.sqlite3"
+    store = Store.create(str(db))
+    try:
+        runtime = RuntimeSettings(_base(), store)
+        assert runtime.set_text("CALL_PREFIXES", "히나 ") == ("히나 ",)
+        assert runtime.call_prefixes == ("히나 ",)
+        runtime.reload()
+        assert runtime.call_prefixes == ("히나 ",)
+    finally:
+        store.close()
+
+    store = Store.create(str(db))
+    try:
+        reloaded = RuntimeSettings(_base(), store)
+        assert reloaded.call_prefixes == ("히나 ",)
+        assert reloaded.source("CALL_PREFIXES") == "db"
+    finally:
+        store.close()
+
 
 def test_runtime_override_is_immediate_and_survives_reload(tmp_path: Path):
     db = tmp_path / "runtime.sqlite3"
