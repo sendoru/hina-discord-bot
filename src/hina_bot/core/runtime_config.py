@@ -319,6 +319,8 @@ def runtime_setting_attr(key: str) -> str:
 
 
 def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) -> Any:
+    if spec.kind == "prefixes":
+        return parse_call_prefixes(raw)
     text = raw.strip()
     if spec.kind in {"bool", "optional_bool"}:
         lowered = text.lower()
@@ -360,9 +362,6 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
             raise ValueError(f"{spec.env_name}은 {allowed} 중 하나여야 해요.")
         return level
-
-    if spec.kind == "prefixes":
-        return parse_call_prefixes(text)
 
     if spec.kind == "discord_ids":
         return parse_discord_id_set(text, spec.env_name)

@@ -170,7 +170,7 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     )
     settings.capture_startup_snapshot()
     settings.set_text("channel_context_chars", "4300")
-    settings.set_text("CALL_PREFIXES", "히나야, 히나, 선도부장")
+    settings.set_text("CALL_PREFIXES", "히나야, 히나 , 선도부장")
     store.close()
     app = create_app(
         DashboardSettings(
@@ -246,6 +246,7 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert 'data-max-items="100"' in response.text
     assert 'data-empty-allowed="true"' in response.text
     assert "선도부장" in response.text
+    assert 'data-value="히나 "' in response.text
     assert "1554321651473195059" in response.text
     assert "Startup baseline" in response.text
     assert "runtime-config.js" in response.text
@@ -281,7 +282,7 @@ def test_runtime_collection_dashboard_posts_full_desired_value(tmp_path):
                 "_csrf": app.state.admin_writer.csrf_token,
                 "_request_id": "d" * 32,
                 "key": "call_prefixes",
-                "value": "히나야, 히나, 선도부장",
+                "value": "히나야, 히나 , 선도부장 ",
             },
             follow_redirects=False,
         )
@@ -294,7 +295,7 @@ def test_runtime_collection_dashboard_posts_full_desired_value(tmp_path):
     assert row == (
         "runtime.set",
         "call_prefixes",
-        '{"key":"call_prefixes","value":"히나야, 히나, 선도부장"}',
+        '{"key":"call_prefixes","value":"히나야, 히나 , 선도부장 "}',
         "pending",
     )
     db.close()

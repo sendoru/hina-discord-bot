@@ -251,7 +251,7 @@
     };
 
     const normalizeNewItem = (raw) => {
-      const value = raw.trim();
+      const value = kind === "prefixes" ? raw.trimStart() : raw.trim();
       if (kind === "discord_ids" && /^\d+$/.test(value)) {
         try {
           return BigInt(value).toString();

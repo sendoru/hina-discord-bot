@@ -44,6 +44,18 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(trigger_text(message("히나야안녕"), 99, prefixes=prefixes), "히나야안녕")
         self.assertIsNone(trigger_text(message("안녕 히나쨩"), 99, prefixes=prefixes))
 
+    def test_prefix_trailing_space_is_significant(self):
+        self.assertEqual(parse_call_prefixes("히나 "), ("히나 ",))
+        prefixes = parse_call_prefixes(" 히나 , 히나야")
+        self.assertEqual(prefixes, ("히나 ", "히나야"))
+        self.assertEqual(
+            trigger_text(message("히나 오늘 뭐해?"), 99, prefixes=prefixes),
+            "히나 오늘 뭐해?",
+        )
+        self.assertIsNone(trigger_text(message("히나"), 99, prefixes=prefixes))
+        self.assertIsNone(trigger_text(message("히나는 선도부장이야"), 99, prefixes=prefixes))
+        self.assertEqual(trigger_text(message("히나야"), 99, prefixes=prefixes), "")
+
     def test_invalid_prefix_configuration(self):
         with self.assertRaises(ValueError):
             parse_call_prefixes(" , ")
