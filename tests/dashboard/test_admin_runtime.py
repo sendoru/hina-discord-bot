@@ -247,6 +247,8 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert 'data-empty-allowed="true"' in response.text
     assert "선도부장" in response.text
     assert 'data-value="히나 "' in response.text
+    assert '히나␠' in response.text
+    assert '공백은 ␠로 표시' in response.text
     assert "1554321651473195059" in response.text
     assert "Startup baseline" in response.text
     assert "runtime-config.js" in response.text

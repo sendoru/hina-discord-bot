@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "_status_ui.html" import status_badge %}
-{% macro collection_preview(items, extra=0) -%}
+{% macro collection_preview(items, extra=0, show_spaces=False) -%}
 <span class="runtime-collection-preview">
   {% for item in items %}
-    <code class="runtime-collection-chip">{{ item }}</code>
+    <code class="runtime-collection-chip" {% if show_spaces %}title="␠ = 공백"{% endif %}>{{ item | replace(" ", "␠") if show_spaces else item }}</code>
   {% endfor %}
   {% if extra %}
     <span class="runtime-collection-chip runtime-collection-more">+{{ extra }}</span>
@@ -47,13 +47,13 @@
                   {% if row.source == "startup" and not row.startup_available %}
                     <span class="muted">startup snapshot unavailable</span>
                   {% else %}
-                    {{ collection_preview(row.collection_preview, row.collection_extra) }}
+                    {{ collection_preview(row.collection_preview, row.collection_extra, row.kind == "prefixes") }}
                   {% endif %}
                   {% if row.override_error %}
                     <small class="runtime-config-value-note">invalid DB override · using startup</small>
                   {% elif row.source == "db" %}
                     <small class="runtime-config-value-note">
-                      startup {{ collection_preview(row.startup_preview, row.startup_extra) }}
+                      startup {{ collection_preview(row.startup_preview, row.startup_extra, row.kind == "prefixes") }}
                     </small>
                   {% elif row.startup_captured_at %}
                     <small class="runtime-config-value-note">captured {{ row.startup_captured_at | localtime }}</small>
@@ -202,7 +202,7 @@
                   <strong>{{ row.env_name }} override</strong>
                   <small>
                     {% if row.kind == "prefixes" %}
-                      순서를 유지하는 목록 · 최대 {{ row.max_items }}개
+                      순서를 유지하는 목록 · 최대 {{ row.max_items }}개 · 공백은 ␠로 표시
                     {% else %}
                       순서 없는 Discord ID 집합 · 최대 {{ row.max_items }}개
                     {% endif %}
@@ -216,7 +216,7 @@
                 <span class="runtime-collection-chip runtime-collection-chip-editable"
                       data-runtime-collection-item
                       data-value="{{ item }}">
-                  <code>{{ item }}</code>
+                  <code {% if row.kind == "prefixes" %}title="␠ = 공백"{% endif %}>{{ item | replace(" ", "␠") if row.kind == "prefixes" else item }}</code>
                   <button type="button"
                           class="runtime-collection-chip-remove"
                           data-runtime-collection-remove
@@ -254,7 +254,7 @@
                 <div class="runtime-collection-baseline-items">
                   {% if row.startup_available %}
                     {% for item in row.startup_items %}
-                      <code class="runtime-collection-chip">{{ item }}</code>
+                      <code class="runtime-collection-chip" {% if row.kind == "prefixes" %}title="␠ = 공백"{% endif %}>{{ item | replace(" ", "␠") if row.kind == "prefixes" else item }}</code>
                     {% else %}
                       <span class="muted">(비움)</span>
                     {% endfor %}
