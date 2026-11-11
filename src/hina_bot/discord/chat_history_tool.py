@@ -159,6 +159,9 @@ class ChatHistoryLookup:
         if (not isinstance(query, str) or len(query) > 200 or type(include) is not bool
                 or (cursor is not None and (not isinstance(cursor, str) or len(cursor) > 64))):
             raise LocalToolError('invalid_arguments')
+        if any(key in arguments and arguments[key] is None for key in (
+            'start_at', 'end_at', 'author_user_ids', 'channel_ids')):
+            raise LocalToolError('invalid_arguments')
         start = self._timestamp(arguments.get('start_at'))
         end = self._timestamp(arguments.get('end_at'))
         if start is not None and end is not None and start >= end:
@@ -312,9 +315,12 @@ class ChatHistoryLookup:
         records = {}
         for channel in channels:
             local = per_channel.get(channel.id, [])
-            source = self.store.chat_history_records(
-                self._scope(channel), [str(old.id) for old in local],
-            )
+            # Repository source lookup accepts at most 100 IDs per call.
+            source = []
+            for index in range(0, len(local), 100):
+                source.extend(self.store.chat_history_records(
+                    self._scope(channel), [old.id for old in local[index:index + 100]],
+                ))
             by_id = {row['message_id']: row for row in reversed(source)}
             direct_ids = {
                 str(old.id) for old in local
