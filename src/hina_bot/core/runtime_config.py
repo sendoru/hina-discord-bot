@@ -72,6 +72,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "memory_routing_smart_threshold": "장기 기억 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
     "channel_context_chars": "최근 서버 채널 문맥에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다. 0이면 전달하지 않습니다.",
     "recent_context_window_minutes": "최근 서버 채널 문맥 후보를 수집할 시간 범위(분)입니다. 변경하면 기존 버퍼를 비우고 Discord 히스토리를 다시 수집합니다. 메시지 수·문자 예산 및 privacy/reset 경계는 유지됩니다.",
+    "conversation_session_gap_minutes": "본인과 히나의 완료된 과거 대화를 응답에 자동 포함할 때 인접 턴 사이 허용하는 최대 공백(분)입니다. 기본 240분, 절대 상한 24시간. 서버/DM 및 이전 발화 routing에 공통 적용하며, 명시적 답장·검색·장기기억 저장에는 적용하지 않습니다. 실행 중 변경 즉시 다음 요청부터 적용됩니다.",
     "history_max_chars": "DM 최근 대화에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다.",
     "cooldown": "같은 사용자의 연속 호출을 제한하는 cooldown 시간(초)입니다.",
     "summary_every": "기존 text summary를 갱신하기 전에 필요한 새 대화 턴 수입니다. HISTORY_TURNS 이하여야 합니다.",
@@ -248,6 +249,9 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     ),
     "recent_context_window_minutes": _runtime_spec(
         "recent_context_window_minutes", "RECENT_CONTEXT_WINDOW_MINUTES", "int", minimum=15, maximum=180
+    ),
+    "conversation_session_gap_minutes": _runtime_spec(
+        "conversation_session_gap_minutes", "CONVERSATION_SESSION_GAP_MINUTES", "int", minimum=15, maximum=1440
     ),
     "history_max_chars": _runtime_spec(
         "history_max_chars", "HISTORY_MAX_CHARS", "int", minimum=0, maximum=120000
