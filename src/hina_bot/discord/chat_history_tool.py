@@ -285,6 +285,7 @@ class ChatHistoryLookup:
             async with asyncio.timeout(min(5, max(0.01, 10 - self.elapsed))):
                 for channel in channels:
                     local = []
+                    per_channel[channel.id] = local
                     upper = uppers[channel.id]
                     if upper > lower:
                         async for old in channel.history(
@@ -295,10 +296,9 @@ class ChatHistoryLookup:
                             self.scanned += 1
                             if lower < old.id < upper and old.id < self.message.id:
                                 local.append(old)
+                                fetched.append((channel.id, old))
                             if len(local) >= quota or self.scanned >= self.MAX_SCANNED:
                                 break
-                    per_channel[channel.id] = local
-                    fetched.extend((channel.id, old) for old in local)
         except discord.Forbidden:
             raise LocalToolError('permission_denied') from None
         except (discord.HTTPException, TimeoutError):
