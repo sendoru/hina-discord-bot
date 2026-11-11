@@ -227,16 +227,23 @@ def build_routing_plan(
     *,
     use_memory: bool = True,
     classifier_context_policy: str = BOT_INTERACTIONS_ONLY,
+    session_gap_minutes: int = 240,
 ) -> RoutingPlan:
     rows = channel_context or []
     followup = is_followup(content)
     anchor = (
-        find_anchor(store, scope, rows, use_memory=use_memory)
+        find_anchor(
+            store, scope, rows, use_memory=use_memory,
+            session_gap_minutes=session_gap_minutes,
+        )
         if followup
         else None
     )
     prior_user_request = (
-        find_prior_user_request(store, scope, rows, use_memory=use_memory)
+        find_prior_user_request(
+            store, scope, rows, use_memory=use_memory,
+            session_gap_minutes=session_gap_minutes,
+        )
         if followup
         else ""
     )

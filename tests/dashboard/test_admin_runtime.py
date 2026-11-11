@@ -222,6 +222,8 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert '<option value="high"' in response.text
     assert 'id="runtime-channel_context_chars"' in response.text
     assert 'id="runtime-recent_context_window_minutes"' in response.text
+    assert 'id="runtime-conversation_session_gap_minutes"' in response.text
+    assert 'aria-label="Override value for CONVERSATION_SESSION_GAP_MINUTES"' in response.text
     assert 'aria-label="Override value for RECENT_CONTEXT_WINDOW_MINUTES"' in response.text
     assert 'type="number"' in response.text
     assert 'min="0"' in response.text

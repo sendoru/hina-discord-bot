@@ -305,12 +305,16 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 store,
                 scope,
                 self.settings.history_max_chars,
+                gap_minutes=getattr(self.settings, "conversation_session_gap_minutes", 240),
             )
             if use_memory
             else ([], [])
         )
         server_recent = (
-            self._server_recent_conversation(store, scope, channel_rows)
+            self._server_recent_conversation(
+                store, scope, channel_rows,
+                gap_minutes=getattr(self.settings, "conversation_session_gap_minutes", 240),
+            )
             if use_memory
             else []
         )

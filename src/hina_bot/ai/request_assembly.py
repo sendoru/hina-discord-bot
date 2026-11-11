@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import httpx
 
 from hina_bot.core.config import gemini_store_enabled
+from hina_bot.core.conversation_session import active_session_turns
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_AUTHORIZED_MEMORY_IDS,
@@ -278,12 +279,13 @@ class RequestAssembler(BaseLLM):
         return bound
 
     @staticmethod
-    def _dm_conversation_history(store, scope, max_chars: int):
+    def _dm_conversation_history(store, scope, max_chars: int, *, gap_minutes=240, now=None):
         if scope.guild_id is not None:
             return [], []
         turns = []
         used = 0
-        for turn in reversed(store.history(scope)):
+        session = active_session_turns(store.history(scope), gap_minutes=gap_minutes, now=now)
+        for turn in reversed(session):
             size = len(turn["content"]) + len(turn["reply"])
             if used + size > max(0, int(max_chars)):
                 break
@@ -308,6 +310,9 @@ class RequestAssembler(BaseLLM):
         store,
         scope,
         channel_context: list[dict],
+        *,
+        gap_minutes=240,
+        now=None,
     ) -> list[dict]:
         """Keep a bounded exact tail independent of long-term summary advancement."""
         if scope.guild_id is None:
@@ -323,7 +328,8 @@ class RequestAssembler(BaseLLM):
         # topics just to refill the personal-recent quota.
         candidates = []
         used = 0
-        for turn in reversed(store.history(scope)):
+        session = active_session_turns(store.history(scope), gap_minutes=gap_minutes, now=now)
+        for turn in reversed(session):
             size = len(turn["content"]) + len(turn["reply"])
             if used + size > _SERVER_RECENT_CHARS:
                 break
@@ -387,12 +393,16 @@ class RequestAssembler(BaseLLM):
                 store,
                 scope,
                 self.settings.history_max_chars,
+                gap_minutes=getattr(self.settings, "conversation_session_gap_minutes", 240),
             )
             if use_memory
             else ([], [])
         )
         server_recent = (
-            self._server_recent_conversation(store, scope, channel_context)
+            self._server_recent_conversation(
+                store, scope, channel_context,
+                gap_minutes=getattr(self.settings, "conversation_session_gap_minutes", 240),
+            )
             if use_memory
             else []
         )
