@@ -6,8 +6,8 @@ on-demand history retrieval have separate retention/access policies.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
-from typing import Iterable
 
 # An active chat can continue across many short pauses, but its automatic context
 # should not carry an indefinitely old conversation along with it.
