@@ -140,7 +140,7 @@ class ChatHistoryLookup:
         if not isinstance(value, str) or len(value) > 40 or 'T' not in value:
             raise LocalToolError('invalid_arguments')
         try:
-            parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            parsed = datetime.fromisoformat(value)
         except ValueError:
             raise LocalToolError('invalid_arguments') from None
         if parsed.tzinfo is None or parsed.utcoffset() is None:
