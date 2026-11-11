@@ -2,7 +2,6 @@ from datetime import UTC, datetime, timedelta
 
 from hina_bot.core.conversation_session import active_session_turns
 
-
 NOW = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
 
 
