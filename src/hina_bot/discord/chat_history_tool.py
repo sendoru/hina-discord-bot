@@ -309,8 +309,6 @@ class ChatHistoryLookup:
         # Recheck every selected channel even when it produced no messages. A scope
         # disabled or made private during the Discord I/O may not be used as evidence.
         visibility = {channel.id: self._visibility(channel) for channel in channels}
-        for channel in channels:
-            await self._verify_private_thread_access(channel)
 
         records = {}
         for channel in channels:
