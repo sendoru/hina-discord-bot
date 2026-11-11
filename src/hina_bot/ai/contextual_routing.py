@@ -3,6 +3,8 @@
 import re
 from dataclasses import dataclass
 
+from hina_bot.core.conversation_session import active_session_turns
+
 from .rp_output_policy import FACTUAL_CHALLENGE_QUERY
 
 _FOLLOWUP = re.compile(
@@ -90,7 +92,9 @@ def needs_context_grounding(text: str, *, has_explicit_reply: bool = False) -> b
     )
 
 
-def find_anchor(store, scope, rows: list[dict], *, use_memory: bool) -> RoutingAnchor:
+def find_anchor(
+    store, scope, rows: list[dict], *, use_memory: bool, session_gap_minutes: int = 240
+) -> RoutingAnchor:
     for row in reversed(rows):
         if row.get("context_kind") == "replied_message":
             value = str(row.get("content", "")).strip()
@@ -116,7 +120,9 @@ def find_anchor(store, scope, rows: list[dict], *, use_memory: bool) -> RoutingA
                 )
 
     if use_memory:
-        turns = store.history(scope)
+        turns = active_session_turns(
+            store.history(scope), gap_minutes=session_gap_minutes
+        )
         if turns:
             value = str(turns[-1]["content"]).strip()
             if value:
@@ -132,6 +138,7 @@ def find_prior_user_request(
     rows: list[dict],
     *,
     use_memory: bool,
+    session_gap_minutes: int = 240,
 ) -> str:
     """Return the caller's latest request independently from an explicit topic anchor."""
     speaker = str(scope.user_id)
@@ -146,7 +153,9 @@ def find_prior_user_request(
             return value[:800]
 
     if use_memory:
-        turns = store.history(scope)
+        turns = active_session_turns(
+            store.history(scope), gap_minutes=session_gap_minutes
+        )
         if turns:
             return str(turns[-1]["content"]).strip()[:800]
     return ""
