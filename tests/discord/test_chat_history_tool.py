@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
 
@@ -94,12 +94,13 @@ def test_history_tool_description_covers_conversation_resumption_and_opt_out():
         '추측하거나 다시 설명해 달라고 하기 전에 조회',
         '현재 문맥만으로 충분', '독립적인 새 질문',
         'query 없이', '부분/빈 결과', 'recall_memory',
-        '특정 표현이 이전 채팅에 있었는지', '최대 300개 메시지',
+        '특정 표현이 이전 채팅에 있었는지', '최대 600개 메시지',
         '전체의 정확한', '부분 검색 결과를 전체 통계로 단정하지 마세요',
     ))
     assert 'required' not in CHAT_HISTORY_TOOL.parameters
     assert set(CHAT_HISTORY_TOOL.parameters['properties']) == {
         'query', 'include_before_reset', 'before_message_id', 'cursor',
+        'start_at', 'end_at', 'author_user_ids', 'channel_ids',
     }
 
 
@@ -415,7 +416,7 @@ async def test_dm_owner_and_recipient_are_bound(runtime):
 
 @pytest.mark.asyncio
 async def test_keyword_empty_pages_advance_and_cursors_are_request_bound(runtime):
-    runtime.messages.extend(old(i, 'needle' if i == 50 else 'hay') for i in range(1, 151))
+    runtime.messages.extend(old(i, 'needle' if i == 50 else 'hay') for i in range(1, 251))
     lookup = runtime.lookup()
     first = await lookup({'query': 'needle'})
     assert first['messages'] == [] and first['has_more']
@@ -553,3 +554,152 @@ async def test_gemini_answer_requests_history_only_after_model_function_call(run
     finally:
         CURRENT_LOCAL_TOOLS.reset(token)
         await llm.close()
+
+
+
+def another_channel(runtime, *, channel_id=20):
+    """Second channel with an independent API history and original scope."""
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.id = channel_id
+    channel.guild = runtime.message.guild
+    channel.permissions_for.return_value = NS(view_channel=True, read_message_history=True)
+    messages, calls = [], []
+
+    def history(**kwargs):
+        calls.append(kwargs)
+
+        async def rows():
+            before = kwargs['before'].id
+            after = kwargs['after'].id if kwargs.get('after') else 0
+            eligible = sorted((m for m in messages if after < m.id < before),
+                              key=lambda m: m.id, reverse=True)
+            for value in eligible[:kwargs['limit']]:
+                yield value
+
+        return rows()
+
+    channel.history.side_effect = history
+    runtime.message.guild.get_channel_or_thread = (
+        lambda value: channel if value == channel_id else None
+    )
+    return NS(channel=channel, messages=messages, calls=calls)
+
+
+@pytest.mark.asyncio
+async def test_time_window_jumps_directly_to_bounded_snowflakes(runtime):
+    now = datetime(2026, 11, 11, 12, tzinfo=UTC)
+    runtime.message.id = discord.utils.time_snowflake(now)
+    days = [now - timedelta(days=i) for i in range(1, 6)]
+    for stamp in days:
+        row = old(discord.utils.time_snowflake(stamp) + 1, f'message-{stamp.day}')
+        row.created_at = stamp
+        runtime.messages.append(row)
+    start = days[3]
+    end = days[1]
+    result = await runtime.lookup()({
+        'start_at': start.isoformat(), 'end_at': end.isoformat(),
+    })
+    assert [r['content'] for r in result['messages']] == [
+        f'message-{days[3].day}', f'message-{days[2].day}',
+    ]
+    assert runtime.calls[0]['after'].id >= discord.utils.time_snowflake(start) - 1
+    assert runtime.calls[0]['before'].id == discord.utils.time_snowflake(end)
+    assert result['range']['start_at'] == start.isoformat()
+    assert result['range']['end_at'] == end.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_author_filter_and_bad_iso_timestamps(runtime):
+    runtime.messages.extend([old(10, 'A', 100), old(11, 'B', 200), old(12, 'C', 200)])
+    result = await runtime.lookup()({'author_user_ids': ['200']})
+    assert [row['content'] for row in result['messages']] == ['B', 'C']
+    assert result['range']['author_user_ids'] == ['200']
+    for invalid in (
+        {'start_at': '2026-11-10T12:00:00'},
+        {'start_at': '2026-11-12T00:00:00Z', 'end_at': '2026-11-11T00:00:00Z'},
+        {'author_user_ids': ['200', '200']},
+        {'author_user_ids': [200]},
+        {'channel_ids': []},
+        {'start_at': None},
+    ):
+        with pytest.raises(LocalToolError, match='invalid_arguments'):
+            await runtime.lookup()(invalid)
+
+
+@pytest.mark.asyncio
+async def test_multi_channel_history_sorted_and_cursor_resumes_without_skips(runtime):
+    second = another_channel(runtime)
+    runtime.messages.extend(old(i, f'first-{i}') for i in (10, 30, 50, 70, 90, 110, 130, 150))
+    second.messages.extend(old(i, f'second-{i}', 200) for i in
+                           (20, 40, 60, 80, 100, 120, 140, 160))
+    lookup = runtime.lookup()
+    first = await lookup({'channel_ids': ['10', '20']})
+    assert len(first['messages']) == 12
+    assert first['has_more']
+    second_page = await lookup({'cursor': first['next_cursor']})
+    found = first['messages'] + second_page['messages']
+    assert len(found) == 16
+    assert sorted(int(row['message_id']) for row in found) == list(range(10, 161, 10))
+    assert len({row['message_id'] for row in found}) == 16
+    assert second_page['has_more'] is False
+    assert {row['channel_id'] for row in found} == {'10', '20'}
+    with pytest.raises(LocalToolError, match='invalid_cursor'):
+        await lookup({'cursor': first['next_cursor'], 'channel_ids': ['10']})
+
+
+@pytest.mark.asyncio
+async def test_multi_channel_permissions_and_guild_boundary_fail_closed(runtime):
+    second = another_channel(runtime)
+    second.messages.append(old(20, 'private', 200))
+    second.channel.permissions_for.side_effect = lambda member: NS(
+        view_channel=member.id != 100, read_message_history=True,
+    )
+    with pytest.raises(LocalToolError, match='permission_denied'):
+        await runtime.lookup()({'channel_ids': ['10', '20']})
+    assert runtime.calls == [] and second.calls == []
+
+    second.channel.permissions_for.side_effect = None
+    second.channel.guild = NS(id=2)
+    with pytest.raises(LocalToolError, match='permission_denied'):
+        await runtime.lookup()({'channel_ids': ['10', '20']})
+    assert second.calls == []
+
+
+@pytest.mark.asyncio
+async def test_multi_channel_rechecks_access_after_read(runtime):
+    second = another_channel(runtime)
+    second.messages.append(old(20, 'secret', 200))
+
+    def history(**kwargs):
+        async def changed():
+            yield second.messages[0]
+            second.channel.permissions_for.return_value.view_channel = False
+        return changed()
+
+    second.channel.history.side_effect = history
+    with pytest.raises(LocalToolError, match='permission_denied'):
+        await runtime.lookup()({'channel_ids': ['10', '20']})
+    assert CURRENT_CONTEXT_PROVENANCE.get() is None
+
+
+@pytest.mark.asyncio
+async def test_expanded_scan_batches_repository_ids_in_groups_of_100(runtime):
+    runtime.messages.extend(old(i, f'message-{i}') for i in range(1, 251))
+    result = await runtime.lookup()({'query': 'absent'})
+    assert result['messages'] == []
+    assert result['has_more'] is True
+    assert len(runtime.calls) == 1
+    assert runtime.calls[0]['limit'] == 200
+    assert result['range']['discord_messages_scanned'] == 200
+
+
+@pytest.mark.asyncio
+async def test_time_and_author_filters_are_cursor_bound(runtime):
+    runtime.messages.extend(old(i, 'match', author_id=200) for i in range(1, 21))
+    lookup = runtime.lookup()
+    first = await lookup({'author_user_ids': ['200'], 'query': 'MATCH'})
+    assert first['has_more']
+    page = await lookup({'cursor': first['next_cursor']})
+    assert len(first['messages'] + page['messages']) == 20
+    with pytest.raises(LocalToolError, match='invalid_cursor'):
+        await lookup({'cursor': first['next_cursor'], 'author_user_ids': ['100']})
