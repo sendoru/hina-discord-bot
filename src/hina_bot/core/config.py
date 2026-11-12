@@ -31,6 +31,8 @@ ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 RAG_MODES = frozenset({"off", "v1", "full", "tool"})
 # Memory v2 read path (#449 §11 P2): legacy prompt, shadow comparison, or tiered selection.
 PERSONAL_MEMORY_READ_MODES = frozenset({"legacy", "shadow", "tiered"})
+# Provider-facing conversation transport only; independent from memory read policy.
+CONTEXT_INPUT_MODES = frozenset({"legacy", "structured", "structured_with_replay"})
 MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})
 
 
@@ -144,6 +146,8 @@ class Settings:
     event_log_path: str = "data/logs/events.jsonl"
     channel_context_chars: int = 6000
     recent_context_window_minutes: int = 60
+    conversation_session_gap_minutes: int = 240
+    context_input_mode: str = "legacy"
     special_dm_user_id: int | None = None
     bot_admin_ids: frozenset[int] = frozenset()
     lore_path: str = ""
@@ -391,6 +395,13 @@ class Settings:
                 or any(c in runtime_default_location for c in "\r\n\0")):
             raise ValueError("RUNTIME_LOCALE은 32자, RUNTIME_DEFAULT_LOCATION은 100자 이하여야 합니다.")
 
+        context_input_mode = (
+            os.getenv("CONTEXT_INPUT_MODE", "legacy").strip().lower() or "legacy"
+        )
+        if context_input_mode not in CONTEXT_INPUT_MODES:
+            raise ValueError(
+                "CONTEXT_INPUT_MODE는 legacy, structured, structured_with_replay 중 하나여야 합니다."
+            )
         personal_memory_read_mode = (
             os.getenv("PERSONAL_MEMORY_READ_MODE", "legacy").strip().lower() or "legacy"
         )
@@ -477,6 +488,8 @@ class Settings:
             ),
             channel_context_chars=int(os.getenv("CHANNEL_CONTEXT_CHARS", "6000")),
             recent_context_window_minutes=int(os.getenv("RECENT_CONTEXT_WINDOW_MINUTES", "60")),
+            conversation_session_gap_minutes=int(os.getenv("CONVERSATION_SESSION_GAP_MINUTES", "240")),
+            context_input_mode=context_input_mode,
             history_turns=int(os.getenv("HISTORY_TURNS", "12")),
             raw_retention_turns=int(os.getenv("RAW_RETENTION_TURNS", "1000")),
             history_max_chars=int(os.getenv("HISTORY_MAX_CHARS", "12000")),
@@ -512,6 +525,7 @@ class Settings:
                 and 0 <= s.history_max_chars <= 120000
                 and 0 <= s.channel_context_chars <= 12000
                 and 15 <= s.recent_context_window_minutes <= 180
+                and 15 <= s.conversation_session_gap_minutes <= 1440
                 and 2 <= s.structured_memory_every <= s.history_turns <= 30
                 and 2 <= s.summary_every <= s.history_turns
                 and 60 <= s.structured_memory_stale_after_seconds <= 7 * 24 * 60 * 60
@@ -529,6 +543,7 @@ class Settings:
                              "routing classifier timeout 0.25~30초, output tokens 32~1024, "
                              "model/memory routing smart threshold 0.1~10.0, "
                              "recent context window 15~180분, "
+                             "conversation session gap 15~1440분, "
                              "structured_memory_every와 summary_every는 각각 2 <= cadence <= history_turns <= 30, "
                              "structured memory stale은 60초~7일, sweep interval은 0 또는 60초~24시간, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "

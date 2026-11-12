@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from hina_bot.ai.contextual_routing import (
     RoutingAnchor,
     build_query,
@@ -172,6 +174,64 @@ def test_external_explicit_reply_does_not_reuse_an_unrelated_complex_request():
     try:
         plan = build_routing_plan(store, scope, "왜?", rows)
         assert plan.anchor_source == "explicit_reply"
+        assert plan.prior_user_request == ""
+    finally:
+        store.close()
+
+
+def _age_turn(store, message_id, *, hours=0, minutes=0):
+    old_at = datetime.now(UTC) - timedelta(hours=hours, minutes=minutes)
+    store.db.execute(
+        "UPDATE turns SET created_at=? WHERE message_id=?",
+        (old_at.isoformat(), str(message_id)),
+    )
+    store.db.commit()
+
+
+def test_stale_sqlite_history_is_not_a_routing_anchor_or_previous_request():
+    store = Store.create(":memory:")
+    scope = Scope(None, 10, 100)
+    try:
+        store.add(scope, 1, "몇 시간 전 화제", "옛날 대답")
+        _age_turn(store, 1, hours=5)
+        plan = build_routing_plan(store, scope, "왜?", [])
+        assert plan.anchor == ""
+        assert plan.anchor_source == ""
+        assert plan.prior_user_request == ""
+    finally:
+        store.close()
+
+
+def test_session_gap_setting_is_respected_in_routing_fallback():
+    store = Store.create(":memory:")
+    scope = Scope(None, 10, 100)
+    try:
+        store.add(scope, 1, "특정 주제에 대해 얘기했어", "알겠어")
+        _age_turn(store, 1, minutes=90)
+        active = build_routing_plan(store, scope, "왜?", [], session_gap_minutes=240)
+        expired = build_routing_plan(store, scope, "왜?", [], session_gap_minutes=60)
+        assert active.anchor_source == "conversation_history"
+        assert active.prior_user_request == "특정 주제에 대해 얘기했어"
+        assert expired.anchor_source == ""
+        assert expired.prior_user_request == ""
+    finally:
+        store.close()
+
+
+def test_explicit_reply_stays_available_after_automatic_session_expiry():
+    store = Store.create(":memory:")
+    scope = Scope(1, 10, 100)
+    try:
+        store.add(scope, 1, "예전 대화", "오래된 답변")
+        _age_turn(store, 1, hours=6)
+        rows = [{
+            "role": "assistant", "context_kind": "replied_message",
+            "user_id": "999", "author_user_id": "999",
+            "content": "오래전 답변에 직접 답장",
+        }]
+        plan = build_routing_plan(store, scope, "왜?", rows)
+        assert plan.anchor_source == "explicit_reply"
+        assert plan.anchor == "오래전 답변에 직접 답장"
         assert plan.prior_user_request == ""
     finally:
         store.close()

@@ -78,7 +78,9 @@ RUNTIME_CONFIG_SECTIONS = (
             "public_memory_in_dm",
             "channel_context_chars",
             "recent_context_window_minutes",
+            "conversation_session_gap_minutes",
             "history_max_chars",
+            "context_input_mode",
         ),
     ),
     (

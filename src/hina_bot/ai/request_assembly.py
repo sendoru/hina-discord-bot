@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import httpx
 
 from hina_bot.core.config import gemini_store_enabled
+from hina_bot.core.conversation_session import active_session_turns
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
     CURRENT_AUTHORIZED_MEMORY_IDS,
@@ -17,8 +18,8 @@ from hina_bot.core.memory_context import (
 )
 from hina_bot.core.memory_selection import selection_provenance
 
+from .context_input import build_context_input
 from .context_provenance import build_context_provenance
-from .dialogue_context import project_dialogue_context
 from .discord_emoji_input import normalize_custom_emoji_text, normalized_message_context
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode
@@ -36,7 +37,6 @@ from .managed_tools import (
 from .model_routing import ModelPlan, fixed_model_plan
 from .prompts import load_prompt
 from .providers import ProviderAPIError
-from .reference_context_blocks import reference_context_blocks
 from .rp_output_policy import hide_web_citations, provenance_instruction
 from .runtime_context import build_runtime_context, runtime_instruction
 from .structured_memory_context import personal_memory_fields
@@ -278,12 +278,13 @@ class RequestAssembler(BaseLLM):
         return bound
 
     @staticmethod
-    def _dm_conversation_history(store, scope, max_chars: int):
+    def _dm_conversation_history(store, scope, max_chars: int, *, gap_minutes=240, now=None):
         if scope.guild_id is not None:
             return [], []
         turns = []
         used = 0
-        for turn in reversed(store.history(scope)):
+        session = active_session_turns(store.history(scope), gap_minutes=gap_minutes, now=now)
+        for turn in reversed(session):
             size = len(turn["content"]) + len(turn["reply"])
             if used + size > max(0, int(max_chars)):
                 break
@@ -308,6 +309,9 @@ class RequestAssembler(BaseLLM):
         store,
         scope,
         channel_context: list[dict],
+        *,
+        gap_minutes=240,
+        now=None,
     ) -> list[dict]:
         """Keep a bounded exact tail independent of long-term summary advancement."""
         if scope.guild_id is None:
@@ -323,7 +327,8 @@ class RequestAssembler(BaseLLM):
         # topics just to refill the personal-recent quota.
         candidates = []
         used = 0
-        for turn in reversed(store.history(scope)):
+        session = active_session_turns(store.history(scope), gap_minutes=gap_minutes, now=now)
+        for turn in reversed(session):
             size = len(turn["content"]) + len(turn["reply"])
             if used + size > _SERVER_RECENT_CHARS:
                 break
@@ -387,12 +392,16 @@ class RequestAssembler(BaseLLM):
                 store,
                 scope,
                 self.settings.history_max_chars,
+                gap_minutes=getattr(self.settings, "conversation_session_gap_minutes", 240),
             )
             if use_memory
             else ([], [])
         )
         server_recent = (
-            self._server_recent_conversation(store, scope, channel_context)
+            self._server_recent_conversation(
+                store, scope, channel_context,
+                gap_minutes=getattr(self.settings, "conversation_session_gap_minutes", 240),
+            )
             if use_memory
             else []
         )
@@ -636,13 +645,13 @@ class RequestAssembler(BaseLLM):
             "visible_input_chars": len(visible_content),
         }
 
-        messages = [{
-            "role": "user",
-            "content": reference_context_blocks(project_dialogue_context(context)),
-        }, {
-            "role": "user",
-            "content": visible_content,
-        }]
+        messages = build_context_input(
+            context,
+            visible_content,
+            mode=getattr(self.settings, "context_input_mode", "legacy"),
+            provider=self.settings.provider,
+            is_dm=scope.guild_id is None,
+        )
 
         local_tool_registry = CURRENT_LOCAL_TOOLS.get()
         lore_trace = None
