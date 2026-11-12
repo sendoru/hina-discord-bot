@@ -18,8 +18,8 @@ from hina_bot.core.memory_context import (
 )
 from hina_bot.core.memory_selection import selection_provenance
 
+from .context_input import build_context_input
 from .context_provenance import build_context_provenance
-from .dialogue_context import project_dialogue_context
 from .discord_emoji_input import normalize_custom_emoji_text, normalized_message_context
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode
@@ -37,7 +37,6 @@ from .managed_tools import (
 from .model_routing import ModelPlan, fixed_model_plan
 from .prompts import load_prompt
 from .providers import ProviderAPIError
-from .reference_context_blocks import reference_context_blocks
 from .rp_output_policy import hide_web_citations, provenance_instruction
 from .runtime_context import build_runtime_context, runtime_instruction
 from .structured_memory_context import personal_memory_fields
@@ -646,13 +645,13 @@ class RequestAssembler(BaseLLM):
             "visible_input_chars": len(visible_content),
         }
 
-        messages = [{
-            "role": "user",
-            "content": reference_context_blocks(project_dialogue_context(context)),
-        }, {
-            "role": "user",
-            "content": visible_content,
-        }]
+        messages = build_context_input(
+            context,
+            visible_content,
+            mode=getattr(self.settings, "context_input_mode", "legacy"),
+            provider=self.settings.provider,
+            is_dm=scope.guild_id is None,
+        )
 
         local_tool_registry = CURRENT_LOCAL_TOOLS.get()
         lore_trace = None
