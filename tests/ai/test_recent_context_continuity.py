@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from hina_bot.ai.reference_context_blocks import read_reference_context, reference_context_blocks
 from hina_bot.ai.request_assembly import (
@@ -24,6 +24,7 @@ def test_dm_recent_history_preserves_timestamp_on_both_sides():
             store,
             scope,
             12000,
+            now=datetime.fromisoformat("2026-09-21T06:30:00+00:00"),
         )
 
         assert message_ids == ["1"]
@@ -160,3 +161,66 @@ def test_elapsed_age_respects_offsets_and_includes_recent_turns():
         407, 407, 60
     ]
     assert all("elapsed_minutes" not in row for row in context["channel_recent_messages"])
+
+
+def _mark_ages(store, now, ages_by_message_id):
+    for message_id, hours in ages_by_message_id.items():
+        at = (now - timedelta(hours=hours)).isoformat()
+        store.db.execute(
+            "UPDATE turns SET created_at=? WHERE message_id=?",
+            (at, str(message_id)),
+        )
+    store.db.commit()
+
+
+def test_dm_auto_history_excludes_previous_session_without_deleting_records():
+    now = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+    scope = Scope(None, 10, 100)
+    store = Store.create(":memory:")
+    try:
+        for message_id in range(1, 5):
+            store.add(scope, message_id, f"user-{message_id}", f"hina-{message_id}")
+        # 4h gap from previous (8h -> 3h), so only last two belong to active session.
+        _mark_ages(store, now, {1: 9, 2: 8, 3: 3, 4: 1})
+        history, ids = RequestAssembler._dm_conversation_history(
+            store, scope, 12000, gap_minutes=240, now=now
+        )
+        assert ids == ["3", "4"]
+        assert [r["content"] for r in history] == [
+            "user-3", "hina-3", "user-4", "hina-4"
+        ]
+        assert len(store.history(scope)) == 4  # still persisted for later explicit lookup
+    finally:
+        store.close()
+
+
+def test_server_personal_recent_does_not_backfill_old_session_when_deduplicated():
+    now = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+    scope = Scope(1, 10, 100)
+    store = Store.create(":memory:")
+    try:
+        for message_id in range(1, 5):
+            store.add(scope, message_id, f"user-{message_id}", f"hina-{message_id}")
+        _mark_ages(store, now, {1: 8, 2: 7, 3: 2, 4: 1})
+        selected = RequestAssembler._server_recent_conversation(
+            store, scope, [{"message_id": "4"}], gap_minutes=240, now=now
+        )
+        assert [r["message_id"] for r in selected] == ["3"]
+        assert len(store.history(scope)) == 4
+    finally:
+        store.close()
+
+
+def test_server_auto_recent_keeps_four_turn_and_character_budgets_in_session():
+    now = datetime.now(UTC)
+    scope = Scope(1, 10, 100)
+    store = Store.create(":memory:")
+    try:
+        for message_id in range(1, 7):
+            store.add(scope, message_id, f"user-{message_id}", f"hina-{message_id}")
+        rows = RequestAssembler._server_recent_conversation(
+            store, scope, [], now=now + timedelta(seconds=3)
+        )
+        assert [row["message_id"] for row in rows] == ["3", "4", "5", "6"]
+    finally:
+        store.close()

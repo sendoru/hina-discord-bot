@@ -65,6 +65,7 @@ class LLM(InformationPipeline):
                 safe_channel_context,
                 use_memory=use_memory,
                 classifier_context_policy=policy,
+                session_gap_minutes=getattr(self.settings, "conversation_session_gap_minutes", 240),
             )
             return await super().answer(
                 store,
