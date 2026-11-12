@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from hina_bot.ai.context_input import build_context_input
-from hina_bot.ai.providers import _gemini_input, _gemini_generate_content_contents
+from hina_bot.ai.providers import _gemini_generate_content_contents, _gemini_input
 from hina_bot.ai.reference_context_blocks import read_reference_context
 
 
