@@ -32,15 +32,19 @@
 - `query`: 선택적인 원문 부분 문자열, 최대 200자. 대소문자를 구분하지 않으며 정규식·의미 검색이 아닙니다.
 - `include_before_reset`: 기본 false. true이면 reset cutoff 이전도 조회할 수 있습니다.
 - `before_message_id`: 선택적인 배타적 상한. 현재 요청 메시지보다 뒤로 범위를 확장할 수 없습니다.
-- `cursor`: 이전 호출이 반환한 요청 내부 커서. query·reset 범위를 유지합니다.
+- `start_at` / `end_at`: 타임존을 포함한 ISO 8601 시각(시작 포함, 끝 제외). Discord Snowflake 경계로 변환하여 요청한 기간으로 직접 이동합니다. "어제" 같은 자연어는 모델이 시각으로 변환해 전달해야 하며, 모호한 시간대는 임의로 확정하지 않습니다.
+- `author_user_ids`: 특정 작성자 Discord ID 목록(최대 5개). 표시 이름을 추측해 ID를 생성하지 않습니다.
+- `channel_ids`: 같은 서버 내 명시적 채널/스레드 ID 목록(최대 5개). 생략하면 현재 채널/DM만 조회합니다. 다른 DM이나 서버는 조회할 수 없습니다. 캐시에 없는 채널은 Discord API로 확인하며, 접근·권한 오류는 차단합니다.
+- `cursor`: 이전 호출이 반환한 요청 내부 커서. query·reset·기간·작성자·채널 범위를 유지합니다.
   커서와 `before_message_id`를 함께 쓰거나 다른 요청의 커서를 재사용할 수 없습니다.
 
-모델은 guild/channel/user ID, 조회 한도나 저장소를 지정할 수 없습니다. 조회 범위는
-현재 guild 텍스트 채널·공개/비공개 스레드 또는 1:1 DM에 고정됩니다.
+모델은 임의 guild ID, 저장소 또는 조회 한도를 지정할 수 없습니다. 다만 현재 서버에서 확인 가능한
+명시적 channel ID와 author ID를 최대 5개까지 필터로 지정할 수 있습니다. 기본 검색 범위는
+현재 guild 텍스트 채널·공개/비공개 스레드 또는 1:1 DM이며, 다른 서버와 다른 DM으로 확대할 수 없습니다.
 비공개 스레드에서는 요청자와 봇이 스레드에 참여했거나 `manage_threads` 권한을 가졌는지
 실제 참여자 목록을 확인해 검증합니다. group DM이나 기타 채널 유형에서도
 도구 스키마는 제공되지만, 지원하지 않는 범위에서 호출되면 `unsupported_scope`를 반환하며
-Discord 기록은 읽지 않습니다. 서버 전체 및 다른 채널 검색도 지원하지 않습니다.
+Discord 기록은 읽지 않습니다. 현재 서버의 명시적으로 선택한 복수 채널 검색만 지원하며 서버 전체 자동 탐색은 지원하지 않습니다.
 현재 요청 메시지와 이후 메시지는 반환하지 않습니다.
 
 ## Reset과 자료 출처
@@ -66,7 +70,7 @@ archive의 실패 기록, 내부 prompt, memory_context, 오류·디버깅 메�
 
 ## 접근과 외부 전달
 
-조회 전과 결과 반환 전에 chatlog 설정, 요청자와 봇의 현재 `view_channel` 및
+채널별 조회 전과 결과 반환 전에 chatlog 설정, 요청자와 봇의 현재 `view_channel` 및
 `read_message_history`를 검사합니다. off이면 모든 출처를 차단합니다. DM은 현재 recipient가
 요청자인지 검사합니다. guild member cache에서 현재 요청자의 권한을 확인하지 못해도 차단합니다.
 비공개 스레드는 부모 채널의 `permissions_for()`만으로 참여 여부를 알 수 없으므로,
@@ -85,7 +89,7 @@ Discord 오류를 archive로 우회하지 않습니다.
 
 ## 결과와 제한
 
-각 메시지는 role, 작성자 ID·표시 이름, 실제 Discord 메시지 ID·작성 시각, source,
+각 메시지는 role, 작성자 ID·표시 이름, 채널 ID, 실제 Discord 메시지 ID·작성 시각, source,
 source_turn_message_id, cutoff 이전 여부, content 및 truncated를 반환합니다. DB의 input ID를
 assistant ID로 사용하거나 DB 저장 시각을 답변 작성 시각으로 표시하지 않습니다. 분할 답변도 실제
 메시지 ID별로 구분합니다. 동일 요청에서 이미 반환한 ID는 다시 반환하지 않습니다.
@@ -93,12 +97,16 @@ assistant ID로 사용하거나 DB 저장 시각을 답변 작성 시각으로 �
 | 예산 | 한도 |
 | --- | --- |
 | history 함수 호출 | 요청당 3회, 같은 round의 여러 호출도 공유 |
-| Discord 검사 | 호출당 100개, 요청당 300개 |
+| Discord 검사 | 호출당 200개, 요청당 600개 (복수 채널에서는 호출당 검사 예산을 채널별로 균등 분할) |
 | 반환 메시지 | 호출당 최대 12개 |
 | 메시지 본문 | 메시지당 2,000자, 호출당 6,000자, 요청당 12,000자 |
 | Discord I/O 대기 | 호출당 최대 5초, 도구 실행 누적 최대 10초 |
 
 기존 전체 local-tool 4-round 제한도 유지합니다. 잘못된 호출도 호출 예산을 사용합니다.
+커서는 키워드 일치 여부와 관계없이 각 채널별로 실제 처리한 위치를 저장하며, 여러 채널의 메시지를 Discord ID 최신순으로 합쳐 보여줍니다. 한도에 먼저 도달해 처리하지 못한 다른 채널의 메시지는 커서로 이어받습니다. 기존과 같이 커서는 현재 요청 안에서만 유효합니다.
+
+기간 지정으로 과거 구간에 직접 진입할 수 있지만, Discord의 서버측 검색 인덱스를 사용하는 기능은 아닙니다. 내부에서 메시지 본문을 부분 문자열 비교하므로 긴 기간 전체를 빠짐없이 검색하거나 **정확한 출현 건수를 보장하지 않습니다.** 특히 여러 채널·접근 제한·호출 예산 때문에 결과가 일부일 수 있습니다.
+
 커서는 키워드에 일치한 마지막 결과가 아닌 실제 검사 진행 지점을 기준으로 합니다. 한 페이지가
 비어도 더 검사할 자료가 남아 있을 수 있습니다. `has_more`는 남은 탐색 가능성을 나타내며 추가
 일치 결과를 보장하지 않습니다. 예산을 다 쓰면 커서가 있어도 더 조회할 수 없습니다.
@@ -134,7 +142,7 @@ prune된 행의 출처를 복원하지 않습니다. #399의 [원본 보존 정�
 
 ## 검증
 
-`tests/discord/test_chat_history_tool.py`는 reset 이전 Discord 조회, scope·privacy·권한 변경,
+`tests/discord/test_chat_history_tool.py`는 날짜·작성자·복수 채널 조건, 채널별 커서, 확장 검사 예산, reset 이전 Discord 조회, scope·privacy·권한 변경,
 archive 선별, 페이지 경계, 출력·호출 예산, Gemini 답변의 on-demand 실행을 검증합니다.
 `tests/ai/test_history_lookup_provenance.py`는 재시작 후 표지 유지 및 기억 추출 분리를 검증합니다.
 기존 Gemini Interactions function output/replay, hydration, target history와 reply continuity
