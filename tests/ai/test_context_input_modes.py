@@ -44,7 +44,7 @@ def test_legacy_is_the_original_two_user_steps():
     payload = build_context_input(context(), "내 머리가 너무 크다구 너말고")
     assert [step["role"] for step in payload] == ["user", "user"]
     assert payload[-1]["content"] == "내 머리가 너무 크다구 너말고"
-    assert merged_references(payload)["conversation_history"][0]["content"] == "머리가 너무 커"
+    assert merged_references(payload)["conversation_history"][0]["user_message"]["content"] == "머리가 너무 커"
 
 
 def test_structured_moves_current_interaction_and_reply_next_to_current_text():
@@ -57,7 +57,7 @@ def test_structured_moves_current_interaction_and_reply_next_to_current_text():
     assert current["current_speaker"]["user_id"] == "100"
     assert current["active_reply_chain"][0]["content"] == "그건 네 얘기였어?"
     assert payload[-1]["content"][-1] == {"type": "input_text", "text": "정정할게"}
-    assert merged_references(payload)["conversation_history"][0]["content"] == "머리가 너무 커"
+    assert merged_references(payload)["conversation_history"][0]["user_message"]["content"] == "머리가 너무 커"
     # B repositions existing fields only, without duplicating or editing the source.
     original = context()
     assert set(merged_references(payload)) == set(original)
@@ -90,7 +90,7 @@ def test_replay_is_dm_and_gemini_only():
             mode="structured_with_replay", provider=provider, is_dm=is_dm,
         )
         assert [step["role"] for step in payload] == ["user", "user"]
-        assert merged_references(payload)["conversation_history"][0]["content"] == "머리가 너무 커"
+        assert merged_references(payload)["conversation_history"][0]["user_message"]["content"] == "머리가 너무 커"
 
 
 def test_history_lookup_or_incomplete_exchange_not_replayed():
