@@ -80,6 +80,7 @@ RUNTIME_CONFIG_SECTIONS = (
             "recent_context_window_minutes",
             "conversation_session_gap_minutes",
             "history_max_chars",
+            "context_input_mode",
         ),
     ),
     (
