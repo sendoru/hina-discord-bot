@@ -59,7 +59,8 @@ def test_v1_store_requires_offline_upgrade_and_keeps_every_row(tmp_path):
         assert [tuple(r) for r in db.execute(
             "SELECT component,version,name FROM schema_migrations ORDER BY component,version"
         )] == [("admin", 1, "admin-baseline-v1"), ("settings", 1, "settings-baseline-v1"),
-               ("store", 1, "store-baseline-v1"), ("store", 2, "store-memory-annotations-v2")]
+               ("store", 1, "store-baseline-v1"), ("store", 2, "store-memory-annotations-v2"),
+               ("store", 3, "store-server-memory-v3")]
     Store.open_existing(str(path)).close()
     current = signature(path)
     assert prepare_database.prepare_database(path, apply=True, offline_confirmed=True) == ((), None)
@@ -84,13 +85,16 @@ def test_failed_v2_step_rolls_back_to_v1(tmp_path, monkeypatch):
         assert db_schema.schema_versions(db)["store"] == 1
 
 
-def test_fresh_store_is_created_at_v2(tmp_path):
+def test_fresh_store_is_created_at_v3(tmp_path):
     store = Store.create(str(tmp_path / "fresh.sqlite3"))
     try:
         versions = db_schema.schema_versions(store.db)
-        assert versions["store"] == len(db_schema.HISTORY["store"]) == 2
+        assert versions["store"] == len(db_schema.HISTORY["store"]) == 3
         assert store.db.execute(
             "SELECT 1 FROM sqlite_master WHERE name='memory_item_annotations'"
+        ).fetchone()
+        assert store.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='server_memory_items'"
         ).fetchone()
     finally:
         store.close()
