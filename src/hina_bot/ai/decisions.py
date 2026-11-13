@@ -117,11 +117,12 @@ class DecisionsClient:
         if not api_key:
             return result("missing_api_key")
 
-        prompt = load_prompt(f"decisions_{domain}.md").strip()
+        question = load_prompt("decisions_question.md").strip()
         # Wire keys are positional and short. Stable source IDs stay in the local mapping,
         # including numeric memory IDs and lore IDs containing periods.
         ids = {f"c{index}": item_id for index, item_id in enumerate(sorted(candidates), 1)}
         shared = {
+            "selection_rules": load_prompt(f"decisions_{domain}.md").strip(),
             "turn": query,
             "candidates": {key: candidates[item_id] for key, item_id in ids.items()},
         }
@@ -129,7 +130,7 @@ class DecisionsClient:
             "model": MODEL,
             "input": json.dumps(shared, ensure_ascii=False, separators=(",", ":")),
             "questions": {
-                key: {"type": "noul", "instructions": prompt.format(candidate=key)}
+                key: {"type": "noul", "instructions": question.format(candidate=key)}
                 for key in ids
             },
         }

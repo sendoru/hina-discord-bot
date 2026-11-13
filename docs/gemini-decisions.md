@@ -13,8 +13,9 @@ behavior.
 
 ## Selection and fallback
 
-- The selector sends one shared text input and one `noul` question per eligible item. Lore and
-  memory requests run concurrently when both are enabled. The client uses
+- The selector sends the domain's relevance rules and all eligible candidates once in the
+  shared input. One short `noul` question per candidate references its ID and the shared rules.
+  Lore and memory requests run concurrently when both are enabled. The client uses
   `GEMINI_API_KEY` and `gemini-decision-1` on the Gemini Developer API. The answer provider is
   configured independently.
 - Lore uses every reviewed static entry allowed by the current community and awareness settings.

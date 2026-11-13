@@ -6,14 +6,15 @@ import pytest
 
 from hina_bot.ai import decisions
 from hina_bot.ai.decisions import DecisionsClient
+from hina_bot.ai.prompts import load_prompt
 from hina_bot.ai.retrieval_decisions import decision_query, pack_decision_lore
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate
 
 
-async def _evaluate(handler, *, candidates=None, key="test-key"):
+async def _evaluate(handler, *, candidates=None, key="test-key", domain="lore"):
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
         return await DecisionsClient(http).evaluate(
-            api_key=key, domain="lore", query={"current_message": "synthetic"},
+            api_key=key, domain=domain, query={"current_message": "synthetic"},
             candidates={"lore.a": {"content": "first"}, "lore.b": {"content": "second"}}
             if candidates is None else candidates,
         )
@@ -23,7 +24,8 @@ def _answer(probability):
     return {"type": "noul", "noul": probability, "confidence": 0.99}
 
 
-async def test_rest_contract_and_question_id_mapping():
+@pytest.mark.parametrize("domain", ["lore", "memory"])
+async def test_rest_contract_and_question_id_mapping(domain):
     def handler(request):
         assert str(request.url) == decisions.URL
         assert request.headers["x-goog-api-key"] == "test-key"
@@ -31,16 +33,22 @@ async def test_rest_contract_and_question_id_mapping():
         assert set(body) == {"input", "questions", "model"}
         assert body["model"] == decisions.MODEL
         shared = json.loads(body["input"])
+        rules = load_prompt(f"decisions_{domain}.md").strip()
+        assert shared["selection_rules"] == rules
+        assert request.content.count(rules.encode()) == 1
         assert shared["candidates"]["c1"]["content"] == "first"
         assert list(body["questions"]) == ["c1", "c2"]
         for key, question in body["questions"].items():
-            assert question["type"] == "noul" and key in question["instructions"]
+            assert question["type"] == "noul"
+            assert f"candidate {key}" in question["instructions"]
+            assert "selection_rules" in question["instructions"]
+            assert len(question["instructions"]) < 100
         return httpx.Response(200, json={
             "answers": {"c2": _answer(0.99), "c1": _answer(0.01)},
             "usage": {"total_input_tokens": 123},
         })
 
-    result = await _evaluate(handler)
+    result = await _evaluate(handler, domain=domain)
     assert result.scores == {"lore.b": 0.99, "lore.a": 0.01}
     assert result.metrics()["decision_score_bands"] == {
         "below_half": 1, "below_threshold": 0, "eligible": 1,
@@ -104,8 +112,7 @@ async def test_full_pool_never_truncated_on_limits():
     assert result.request_bytes > decisions.MAX_REQUEST_BYTES and result.question_count == 1
 
 
-async def test_question_limit_is_inclusive(monkeypatch):
-    monkeypatch.setattr(decisions, "MAX_REQUEST_BYTES", 1_000_000)
+async def test_question_limit_is_inclusive():
 
     def handler(request):
         questions = json.loads(request.content)["questions"]
