@@ -20,8 +20,8 @@ Python 모듈은 상수 이름과 조건부 조립 로직만 유지하고, `load
 ## 지침별 책임
 
 - `prompts/hina.md`: 히나의 성격, 감정 표현, 장난, 배려. 특정 과거 응답을 현재 감정으로 고정하지 않음
-- `integration/dialogue_context.md`: Discord의 현재 화자·멘션·답장 대상과 채널 참여자의 귀속 판단
-- `integration/continuity.md`: 과거 대화의 근거 순위, 시간 차이, 이전 답변의 표현을 그대로 반복하지 않기
+- `integration/dialogue_context.md`: Discord의 화자·수신자·지칭 대상·주장 출처 구분과 채널 참여자의 사실 귀속
+- `integration/continuity.md`: 최근 대화의 연결성 및 암묵적 지칭 해석, 문맥과 사실 근거의 구분, 시간 차이와 이전 답변의 표현 고착 방지
 - `integration/reply_continuity.md`: 명시적 답장 체인이 있을 때만 연결된 인과관계 보강
 - `integration/turn_response.md`: 이번 발화에 대한 실제 답변·내용 중심 설명·후속 제안 절제
 - `integration/final_output.md`: Discord 최종 출력 표현과 대본식 형식 억제
