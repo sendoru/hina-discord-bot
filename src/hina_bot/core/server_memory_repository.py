@@ -119,6 +119,7 @@ class ServerMemoryRepository:
             raise ValueError("Invalid guild or active transaction")
         content, evidence = str(content).strip(), str(evidence).strip()
         refs = tuple(sources)
+        proposed_usage_mode = usage_mode
         if not content or len(content) > 600 or not evidence or len(evidence) > 120:
             raise ValueError("Content and a short cited evidence span are required")
         if not 1 <= len(refs) <= 32 or len(set(refs)) != len(refs):
@@ -213,7 +214,7 @@ class ServerMemoryRepository:
                 )
                 aggregate_mode = (
                     "ambient" if aggregate_trust != "single"
-                    and (row["usage_mode"] == "ambient" or usage_mode == "ambient")
+                    and (row["usage_mode"] == "ambient" or proposed_usage_mode == "ambient")
                     else "contextual"
                 )
                 self.db.execute(
