@@ -87,3 +87,25 @@ def test_continuity_prioritizes_recent_same_speaker_dialogue_without_tone_lock_i
         REFERENCE_CONTINUITY_POLICY
     )
     assert "at_local/elapsed_minutes" in REFERENCE_CONTINUITY_POLICY
+
+
+def test_contextual_reference_resolution_prefers_natural_flow_without_guessing_facts():
+    assert "출처별 고정 순위로 기계적으로 정하지 말고" in REFERENCE_CONTINUITY_POLICY
+    assert "channel_ambient도 현재 화제의 중요한 단서" in REFERENCE_CONTINUITY_POLICY
+    assert "대명사·생략된 주어·목적어·암묵적 지칭" in REFERENCE_CONTINUITY_POLICY
+    assert "정확한 대상을 지정하지 않고도 자연스럽게 반응" in REFERENCE_CONTINUITY_POLICY
+    assert "실질적인 후보가 여럿이며 답변이 달라질 때만" in REFERENCE_CONTINUITY_POLICY
+    assert "불분명한 행동·관계·상태를 사실로 확정하지는 마세요" in REFERENCE_CONTINUITY_POLICY
+    assert "이전 히나 답변은 대화 흐름의 근거이지" in REFERENCE_CONTINUITY_POLICY
+
+
+def test_dialogue_attribution_keeps_topic_link_separate_from_factual_claims():
+    from hina_bot.ai.request_assembly import DIALOGUE_CONTEXT_POLICY
+
+    assert "channel_ambient라는 이유만으로 관련 없는 이야기" in DIALOGUE_CONTEXT_POLICY
+    assert "발화의 작성자, 발화가 향하는 상대, 내용에서 지칭하는 인물" in (
+        DIALOGUE_CONTEXT_POLICY
+    )
+    assert "각 주장의 출처" in DIALOGUE_CONTEXT_POLICY
+    assert "대화가 무엇을 이어받는지 문맥으로 해석하는 것과" in DIALOGUE_CONTEXT_POLICY
+    assert "사실 여부는 명시적 근거에 따라 판단" in DIALOGUE_CONTEXT_POLICY
