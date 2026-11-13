@@ -44,7 +44,8 @@ def test_operational_baseline_adds_only_ledger_and_annotations_and_restores_exac
     changed, backup = prepare_database.prepare_database(path, apply=True, offline_confirmed=True)
     assert changed == db_schema.COMPONENTS
     assert signature(backup.path) == before
-    added = {"schema_migrations", "memory_item_annotations"}
+    added = {"schema_migrations", "memory_item_annotations",
+             "server_memory_items", "server_memory_sources", "server_memory_opt_outs"}
     with closing(open_readonly(path)) as db, closing(open_readonly(backup.path)) as old:
         old_schema = list(old.execute("SELECT type,name,tbl_name,sql FROM sqlite_master"))
         new_schema = [row for row in db.execute("SELECT type,name,tbl_name,sql FROM sqlite_master")
@@ -54,7 +55,8 @@ def test_operational_baseline_adds_only_ledger_and_annotations_and_restores_exac
         assert db.execute("SELECT COUNT(*) FROM memory_item_annotations").fetchone()[0] == 0
         assert [tuple(row) for row in db.execute(
             "SELECT version,name FROM schema_migrations WHERE component='store' ORDER BY version"
-        )] == [(1, "store-baseline-v1"), (2, "store-memory-annotations-v2")]
+        )] == [(1, "store-baseline-v1"), (2, "store-memory-annotations-v2"),
+              (3, "store-server-memory-v3")]
         for table, in old.execute("SELECT name FROM sqlite_master WHERE type='table'"):
             assert [tuple(row) for row in db.execute(f'SELECT * FROM "{table}"')] == [
                 tuple(row) for row in old.execute(f'SELECT * FROM "{table}"')
