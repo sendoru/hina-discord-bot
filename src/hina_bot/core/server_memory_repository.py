@@ -20,9 +20,9 @@ class ServerSourceRef:
     role: str  # user | hina
 
 
-def _ids(values: Iterable[int | str]) -> tuple[str, ...]:
+def _ids(values: Iterable[int | str], *, maximum: int = 32) -> tuple[str, ...]:
     normalized = tuple(dict.fromkeys(str(x) for x in values))
-    if len(normalized) > 32 or any(
+    if len(normalized) > maximum or any(
         not x.isascii() or not x.isdecimal() or int(x) <= 0 for x in normalized
     ):
         raise ValueError("Invalid or excessive Discord user IDs")
@@ -78,6 +78,12 @@ class ServerMemoryRepository:
         scope = Scope(guild_id, channel_id, user_id, bool(row["exportable"]))
         if self.opted_out(guild_id, user_id) or not self.author_writable(scope):
             raise PermissionError("Source author has disabled shared-memory contributions")
+        try:
+            provenance = json.loads(row["context_provenance"] or "{}")
+        except (TypeError, ValueError):
+            provenance = {}
+        if not isinstance(provenance, dict) or provenance.get("source_trigger_kind") != "explicit":
+            raise ValueError("Only explicitly addressed bot interactions can ground P4")
         text = _source_text(row, ref.role)
         return row, channel_id, scope, text
 
@@ -324,8 +330,8 @@ class ServerMemoryRepository:
         """
         if scope.guild_id is None:
             return []
-        visible = set(_ids(readable_channel_ids))
-        members = set(_ids(member_user_ids))
+        visible = set(_ids(readable_channel_ids, maximum=10000))
+        members = set(_ids(member_user_ids, maximum=10000))
         related = set(_ids(related_user_ids))
         result = []
         for item in self.items(scope.guild_id, limit=limit):
