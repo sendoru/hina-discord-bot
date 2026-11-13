@@ -7,16 +7,20 @@ The offline preparer registers baselines and applies ordered version upgrades.
 import hashlib
 import json
 
-from .db_ddl import DDL, LEDGER_DDL, V1_SIGNATURES, V1_TABLES, V2_SIGNATURES, V2_TABLES
+from .db_ddl import (
+    DDL, LEDGER_DDL, SERVER_MEMORY_TABLES, V1_SIGNATURES, V1_TABLES,
+    V2_SIGNATURES, V2_TABLES, V3_STORE_EXTRA_SIGNATURES,
+)
 
 COMPONENTS = tuple(DDL)
 HISTORY = {component: (component + "-baseline-v1",) for component in COMPONENTS}
-HISTORY["store"] += ("store-memory-annotations-v2",)
+HISTORY["store"] += ("store-memory-annotations-v2", "store-server-memory-v3")
 SCHEMA_SIGNATURES = {component: {1: V1_SIGNATURES[component]} for component in COMPONENTS}
 SCHEMA_SIGNATURES["store"][2] = V2_SIGNATURES["store"]
 # Tables owned at the version that introduced them; later versions inherit.
 OWNED_TABLES = {component: {1: V1_TABLES[component]} for component in COMPONENTS}
 OWNED_TABLES["store"][2] = V2_TABLES["store"]
+OWNED_TABLES["store"][3] = V2_TABLES["store"] + SERVER_MEMORY_TABLES
 
 
 # The offline converter for pre-baseline databases was removed (#463). Older files must
@@ -81,7 +85,17 @@ def validate_schema(db, components=COMPONENTS, *, versions=None):
             raise ValueError("Unknown schema component")
         version = versions[component] if versions is not None else len(HISTORY[component])
         tables = owned_tables(component, version)
-        if schema_signature(db, tables) not in SCHEMA_SIGNATURES[component][version]:
+        if component == "store" and version == 3:
+            # New tables are inspected independently so known historical v2
+            # layouts remain valid without weakening exact schema validation.
+            valid = (
+                schema_signature(db, V2_TABLES["store"]) in V2_SIGNATURES["store"]
+                and schema_signature(db, SERVER_MEMORY_TABLES)
+                in V3_STORE_EXTRA_SIGNATURES
+            )
+        else:
+            valid = schema_signature(db, tables) in SCHEMA_SIGNATURES[component][version]
+        if not valid:
             raise SchemaError(f"Unsupported {component} schema; {LEGACY_CONVERSION_HINT}")
 
 
