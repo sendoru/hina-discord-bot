@@ -192,14 +192,17 @@ reaches a response:
 | Mode | Provider context | Recorded |
 |---|---|---|
 | `legacy` | the existing projection below (all FULL items in DM) | nothing new |
-| `shadow` | the existing projection | the tiered selection in context provenance and `memory.selection` telemetry, plus shadow coverage after the reply |
+| `tiered_shadow` | the existing projection | the tiered selection in context provenance and `memory.selection` telemetry, plus shadow coverage after the reply |
 | `tiered` | `user_memory` and `relationship_profile` only | the same, plus usage after the reply |
+| `decision_shadow` | the existing projection | Decisions selection, timing, usage and coverage |
+| `decision` | `user_memory` and `relationship_profile` | Decisions selection, timing, usage and post-reply bookkeeping |
 
-Run `hina-backfill-annotations` first, compare with `shadow`, check the replies with
+Run `hina-backfill-annotations` first, compare with `tiered_shadow`, check the replies with
 `hina-memory-response-eval` (below), then switch to `tiered`. `legacy` stays available as the
-rollback.
+rollback. See [Gemini Decisions](gemini-decisions.md) for the independent Decisions rollout and
+the transition from the old `shadow` spelling.
 
-The selector (`core/memory_selection.py`) makes no model calls. Permission comes first: an item is
+The tiered selector (`core/memory_selection.py`) makes no model calls. Permission comes first: an item is
 a candidate only when `memory_access` is FULL for the current scope, except for the cross-space
 boundaries below. Selecting nothing is normal.
 
@@ -257,7 +260,7 @@ boundaries below. Selecting nothing is normal.
 - Raw relationship memories are never sent (decision 5); `relationship_profile` is the numeric
   owner profile in DM and the FULL plus implicit profile in a server.
 
-**Usage after the reply** (tiered only): once the reply is delivered, each injected note or
+**Usage after the reply** (tiered and active Decisions): once the reply is delivered, each injected note or
 profile item whose keyword appears in the reply gets `last_used_at` (the 72-hour cooldown). Unannotated legacy items
 need two content words instead. A T1 follow-up candidate records `proactive_status` (its effective
 status) and `proactive_count`: 2 when the reply used it, otherwise one more attempt, so an unused
@@ -267,19 +270,19 @@ whenever memory was read, including `read_only`; a failure is logged as `memory.
 never affects the reply. `memory.usage` counts used items and follow-ups without content. Session
 gaps use the user's latest stored turn in any space.
 
-**Shadow coverage after the reply** (shadow only): shadow answers with the legacy projection, so
+**Tiered shadow coverage after the reply**: `tiered_shadow` answers with the legacy projection, so
 it measures what tiered would have missed instead of recording usage. The reference is every note
 legacy sent in this scope: owner, active, non-relationship, FULL here (plus this turn's authorized
 items), and not a directive, since tiered always places FULL directives in T0. A note counts as
 used when its keyword appears in the delivered reply (the same rule as usage above), and as missed
-when it was used but the shadow selection did not contain it.
+when it was used but the tiered shadow selection did not contain it.
 
 - `missed_unprompted`: missed notes whose keywords were not in the user's message, so the reply
   brought them up from memory alone. This is the regression tiered would introduce.
 - `missed_current`: missed notes still valid now (current, upcoming, just passed or a recent event).
 - `covered_profile`, `covered_carry`: used notes the selection had only through the core profile
   or a carried-over topic. Adding them to the misses approximates the miss rate without those two
-  rules, so one shadow run compares both (it ignores their small effect on the T2 cap).
+  rules, so one tiered shadow run compares both (it ignores their small effect on the T2 cap).
 - Turn flags: `visual_turn` (the user sent or replied to an attached image now; custom emoji and
   stickers do not count) and `recent_own_turn` (the user's own messages to Hina in this channel or
   DM within the last 30 minutes, at most 2; other members' messages and Hina's replies never
@@ -292,8 +295,7 @@ carries the counts and flags only, and `hina-memory-report` aggregates it under
 logged as `memory.shadow_coverage_failed` and never affects the reply.
 
 Known limits: keyword matching is approximate (a coincidental keyword counts as used, and a
-paraphrased mention does not), and because shadow never records `last_used_at`, the 72-hour
-cooldown never applies in shadow. Shadow therefore selects slightly more than tiered would.
+paraphrased mention does not), and tiered shadow runs do not write `last_used_at`. Cooldown still uses values already stored by active reads.
 
 **Response eval before switching** (#449 §10): shadow coverage shows what tiered would have left
 out, not how the model talks with what it gets. `hina-memory-response-eval` sends fictional cases

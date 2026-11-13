@@ -6,7 +6,8 @@ lookup) stays as the fallback when static lore grows too large for the full prom
 the mode through the Dashboard **`/admin/runtime`** or the `RAG_MODE` environment value
 (a DB override wins). Config changes are
 read for every turn; the **compiled document itself is loaded at bot startup**.
-Restart after changing `LORE_PATH` or packaged static lore.
+Restart after changing `LORE_PATH` or packaged static lore. The independent `decision_shadow` and
+`decision` modes are documented in [Gemini Decisions](gemini-decisions.md).
 
 ## Data and trust boundaries
 

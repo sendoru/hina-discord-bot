@@ -5,6 +5,7 @@ import logging
 import re
 from dataclasses import replace
 
+from hina_bot.core.config import DECISION_MODES
 from hina_bot.core.evidence_sufficiency import (
     assess_local_evidence,
     selected_evidence_bundle,
@@ -380,14 +381,16 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
     ) -> str:
         routing = routing_plan or RoutingPlan(content, content)
         rag_mode = getattr(self.settings, "rag_mode", "full")
+        full_lore = rag_mode == "full" or rag_mode in DECISION_MODES
         information = self.build_information_plan(
-            routing,
-            use_lore=rag_mode == "v1",
-            use_runtime_lore=rag_mode == "full",
+            routing, use_lore=rag_mode == "v1", use_runtime_lore=full_lore,
         )
-        if rag_mode == "full":
-            information = replace(information, full_lore=True)
-        selected_rag = rag_mode if rag_mode in {"v1", "full", "tool"} else "none"
+        information = replace(information, full_lore=full_lore)
+        if rag_mode not in DECISION_MODES:
+            self.usage.routing_event(
+                "rag.mode", rag_mode=rag_mode,
+                rag_selected_context=rag_mode if rag_mode in {"v1", "full", "tool"} else "none",
+            )
 
         assembly_store = store
         assembly_public_context = public_context
@@ -399,9 +402,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             assembly_use_memory = True
 
         channel_rows = channel_context or ()
-        self.usage.routing_event(
-            "rag.mode", rag_mode=rag_mode, rag_selected_context=selected_rag,
-        )
         CURRENT_MEMORY_CONTEXT.set(tuple(build_memory_context(channel_rows, scope.user_id)))
         factual_recall_plan = plan_reference_gated_recall(
             assembly_store,

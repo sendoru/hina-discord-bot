@@ -28,7 +28,14 @@ from .memory_annotations import (
     normalize_text,
     valid_recurrence,
 )
-from .memory_items import MemoryAccess, MemoryItem, MemoryKind, MemoryStatus, memory_access
+from .memory_items import (
+    MemoryAccess,
+    MemoryDisclosure,
+    MemoryItem,
+    MemoryKind,
+    MemoryStatus,
+    memory_access,
+)
 from .routing import Scope
 
 # Freshness windows for ongoing memories, measured from the last confirmation (§7 2).
@@ -403,12 +410,8 @@ def _confirmed_key(annotation: MemoryAnnotation) -> float:
     return moment.timestamp() if moment else 0.0
 
 
-def select_personal_memory(
-    items, annotations: dict[int, MemoryAnnotation], ctx: SelectionContext
-) -> MemorySelection:
-    """Choose T0 directives, T1 follow-ups, T2 relevant notes and T4 authorized items."""
-
-    selection = MemorySelection()
+def _eligible_memory(items, annotations, ctx, selection, *, decisions=False):
+    """Apply ownership, disclosure, annotation and boundary rules before ranking."""
     owner = str(ctx.scope.user_id)
     candidates: list[tuple[MemoryItem, MemoryAnnotation, str, StatusView]] = []
     quiet: list[tuple[MemoryItem, MemoryAnnotation]] = []
@@ -421,7 +424,15 @@ def select_personal_memory(
         if item.status != MemoryStatus.ACTIVE:
             selection.excluded["inactive"] += 1
             continue
-        annotation, state = effective_annotation(item, annotations.get(item.id))
+        previous = annotations.get(item.id)
+        annotation, state = effective_annotation(item, previous)
+        if (
+            decisions and state == "stale" and previous is not None
+            and previous.usage_mode == UsageMode.SENSITIVE
+        ):
+            # An edit without re-annotation must not relax a known sensitive classification.
+            selection.excluded["sensitive"] += 1
+            continue
         is_boundary = _cross_space_boundary(item, annotation, state)
         if is_boundary and annotation.slot == PROACTIVE_OPT_OUT_SLOT:
             followup_opt_out = True
@@ -435,13 +446,71 @@ def select_personal_memory(
                 selection.excluded["permission"] += 1
             continue
         status = effective_status(annotation, ctx.now)
+        if decisions and annotation.usage_mode != UsageMode.DIRECTIVE:
+            if annotation.usage_mode == UsageMode.SENSITIVE and not _direct_mention(
+                annotation, ctx.message
+            ):
+                selection.excluded["sensitive"] += 1
+                continue
+            if (
+                ctx.scope.guild_id is not None
+                and annotation.audience == Audience.OWNER
+                and not _same_space(item, ctx.scope)
+                and item.id not in ctx.authorized_item_ids
+                and (
+                    item.disclosure != MemoryDisclosure.GLOBAL
+                    or annotation.usage_mode == UsageMode.SENSITIVE
+                )
+            ):
+                selection.excluded["permission"] += 1
+                continue
         candidates.append((item, annotation, state, status))
+    return candidates, quiet, followup_opt_out
 
-    candidates = _cluster_representatives(candidates, selection)
+
+def decision_memory_candidates(items, annotations, ctx) -> list[SelectedMemory]:
+    """The full eligible T2 pool, before relevance, clustering or packing."""
+    candidates, _, _ = _eligible_memory(items, annotations, ctx, MemorySelection(), decisions=True)
+    return [
+        SelectedMemory(item, annotation, "T2", "notes", status, "if_relevant")
+        for item, annotation, _, status in candidates
+        if annotation.usage_mode != UsageMode.DIRECTIVE
+        and not status.expired
+        and (
+            item.id not in ctx.authorized_item_ids
+            or memory_access(item, ctx.scope) == MemoryAccess.FULL
+        )
+    ]
+
+
+def select_personal_memory(
+    items, annotations: dict[int, MemoryAnnotation], ctx: SelectionContext,
+    *, decision_scores: dict[str, float] | None = None, decision_fallback: bool = False,
+) -> MemorySelection:
+    """Choose fixed tiers and use lexical or Decision relevance for T2."""
+    selection = MemorySelection()
+    decisions = decision_scores is not None or decision_fallback
+    candidates, quiet, followup_opt_out = _eligible_memory(
+        items, annotations, ctx, selection, decisions=decisions,
+    )
+    if decisions:
+        # Keep T0 and T4 available even when a note has been marked as their cluster peer.
+        # T2 clustering happens after scoring the full pool.
+        fixed = [
+            entry for entry in candidates
+            if entry[1].usage_mode == UsageMode.DIRECTIVE
+            or entry[0].id in ctx.authorized_item_ids
+        ]
+        fixed_ids = {entry[0].id for entry in fixed}
+        fixed.extend(_cluster_representatives(
+            [entry for entry in candidates if entry[0].id not in fixed_ids], MemorySelection(),
+        ))
+    else:
+        fixed = _cluster_representatives(candidates, selection)
 
     # T0: directives that are FULL here, plus quiet cross-space boundaries.
     directives = [
-        (item, annotation, "directives") for item, annotation, _state, _status in candidates
+        (item, annotation, "directives") for item, annotation, _state, _status in fixed
         if annotation.usage_mode == UsageMode.DIRECTIVE
     ] + [(item, annotation, "quiet_boundaries") for item, annotation in quiet]
     directives.sort(key=lambda entry: (
@@ -462,7 +531,7 @@ def select_personal_memory(
         ))
 
     notes = [
-        (item, annotation, status) for item, annotation, _state, status in candidates
+        (item, annotation, status) for item, annotation, _state, status in fixed
         if annotation.usage_mode != UsageMode.DIRECTIVE
     ]
     chosen: set[int] = set()
@@ -473,14 +542,53 @@ def select_personal_memory(
             MemoryAccess.FULL
         ):
             chosen.add(item.id)
-            selection.selected.append(SelectedMemory(
-                item, annotation, "T4", "notes", status, "if_relevant",
-            ))
+            use = _decision_use(annotation) if decisions else "if_relevant"
+            if decisions and status.expired:
+                status = replace(status, status=EffectiveStatus.PAST, expired=False)
+            selection.selected.append(SelectedMemory(item, annotation, "T4", "notes", status, use))
 
     _select_followups(notes, ctx, selection, chosen, followup_opt_out)
-    _select_relevant(notes, ctx, selection, chosen)
-    _select_profile(notes, ctx, selection, chosen)
+    if decisions:
+        _select_profile(notes, ctx, selection, chosen)
+        if decision_scores is not None:
+            notes = [
+                (item, annotation, status) for item, annotation, _, status in candidates
+                if annotation.usage_mode != UsageMode.DIRECTIVE
+            ]
+        _select_decision_notes(notes, ctx, selection, chosen, decision_scores)
+    else:
+        _select_relevant(notes, ctx, selection, chosen)
+        _select_profile(notes, ctx, selection, chosen)
     return selection
+
+
+def _decision_use(annotation: MemoryAnnotation) -> str:
+    return "only_if_user_raises" if annotation.usage_mode == UsageMode.SENSITIVE else "if_relevant"
+
+
+def _select_decision_notes(notes, ctx, selection, chosen, scores) -> None:
+    """Pack eligible T2 notes. A missing score map uses the scope-safe full projection."""
+    ranked = []
+    for item, annotation, status in notes:
+        if item.id in chosen:
+            continue
+        if status.expired:
+            selection.excluded["expired"] += 1
+            continue
+        if scores is None:
+            ranked.append((0.0, 0.0, item, annotation, status, "fallback"))
+            continue
+        probability = scores.get(str(item.id))
+        if probability is None:
+            selection.excluded["threshold"] += 1
+            continue
+        if _cooling_down(annotation, ctx):
+            selection.excluded["cooldown"] += 1
+            continue
+        weight = probability * _FRESHNESS[status.status] * _IMPORTANCE.get(annotation.importance, 1.0)
+        ranked.append((weight, _confirmed_key(annotation), item, annotation, status, "decision"))
+    ranked.sort(key=lambda entry: (-entry[0], -entry[1], entry[2].id))
+    _pack_relevant(ranked, selection, chosen, decision=True, full=scores is None)
 
 
 def _cluster_representatives(candidates, selection):
@@ -667,21 +775,33 @@ def _select_relevant(notes, ctx, selection, chosen) -> None:
         weight = ranked * _FRESHNESS[status.status] * _IMPORTANCE.get(annotation.importance, 1.0)
         scored.append((weight, _confirmed_key(annotation), item, annotation, status, via))
     scored.sort(key=lambda entry: entry[:2], reverse=True)
+    _pack_relevant(scored, selection, chosen)
+
+
+def _pack_relevant(scored, selection, chosen, *, decision=False, full=False) -> None:
     picked: list[MemoryItem] = []
+    clusters = {
+        entry.annotation.cluster_id for entry in selection.selected
+        if entry.annotation.cluster_id is not None
+    } if decision else set()
     used_chars = 0
     for _weight, _key, item, annotation, status, via in scored:
-        if any(_similar(item, other) for other in picked):
+        if decision and annotation.cluster_id in clusters:
+            selection.excluded["cluster"] += 1
+            continue
+        if not full and any(_similar(item, other) for other in picked):
             selection.excluded["similarity"] += 1
             continue
-        if len(picked) >= T2_MAX_ITEMS or used_chars + len(item.content) > T2_MAX_CHARS:
+        if not full and (len(picked) >= T2_MAX_ITEMS or used_chars + len(item.content) > T2_MAX_CHARS):
             selection.excluded["t2_cap"] += 1
             continue
         picked.append(item)
+        if decision and annotation.cluster_id is not None:
+            clusters.add(annotation.cluster_id)
         used_chars += len(item.content)
         chosen.add(item.id)
-        selection.selected.append(SelectedMemory(
-            item, annotation, "T2", "notes", status, _use_hint("T2", annotation, status), via,
-        ))
+        use = _decision_use(annotation) if decision else _use_hint("T2", annotation, status)
+        selection.selected.append(SelectedMemory(item, annotation, "T2", "notes", status, use, via))
 
 
 _PROFILE_TIME_SCOPES = frozenset({TimeScope.ONGOING, TimeScope.RECURRING})
@@ -835,8 +955,8 @@ def memory_usage(selection: MemorySelection, answer: str, now: datetime) -> list
 class MemoryReadRun:
     """One turn's tiered selection, handed to the post-reply bookkeeping.
 
-    ``tiered`` records usage for the injected notes. ``shadow`` answered with the legacy
-    projection, so it only measures coverage against ``legacy_notes`` and writes nothing.
+    Active modes record usage for injected notes. Observation modes measure coverage
+    against the legacy projection.
     """
 
     mode: str
@@ -1007,6 +1127,7 @@ __all__ = [
     "SelectionContext",
     "ShadowCoverage",
     "StatusView",
+    "decision_memory_candidates",
     "effective_annotation",
     "effective_status",
     "is_light_chat",

@@ -304,7 +304,7 @@ def test_report_aggregates_rotated_usage_telemetry(database, usage_log):
     assert provenance["context_chars_total"]["max"] == 3000
     assert provenance["factual_recall_status"] == {"no_explicit_reference": 1, "owner_dm": 1}
     selection = telemetry["memory_selection"]
-    assert selection["turns_by_mode"] == {"shadow": 1, "tiered": 1}
+    assert selection["turns_by_mode"] == {"tiered_shadow": 1, "tiered": 1}
     assert selection["totals"]["memory_t2_items"] == 2
     assert selection["totals"]["memory_excluded_cooldown"] == 1
     assert selection["followup_attempted_turns"] == 1

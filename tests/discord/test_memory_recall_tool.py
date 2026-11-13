@@ -96,7 +96,7 @@ async def test_budget_arguments_and_disabled_memory_are_refused():
 
 @pytest.mark.parametrize(("mode", "memory_mode", "registered"), [
     ("tiered", "normal", True),
-    ("shadow", "normal", False),
+    ("tiered_shadow", "normal", False),
     ("legacy", "normal", False),
     ("tiered", "off", False),
 ])

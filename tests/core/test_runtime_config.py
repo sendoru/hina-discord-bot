@@ -806,7 +806,9 @@ def test_rag_mode_defaults_to_full_and_accepts_tool_mode():
     try:
         settings = RuntimeSettings(_base(), store)
         assert settings.rag_mode == "full"
-        assert set(RUNTIME_SETTING_SPECS["rag_mode"].choices) == {"off", "v1", "full", "tool"}
+        assert set(RUNTIME_SETTING_SPECS["rag_mode"].choices) == {
+            "off", "v1", "full", "tool", "decision", "decision_shadow",
+        }
         assert settings.set_text("RAG_MODE", "tool") == "tool"
         assert settings.set_text("RAG_MODE", "v1") == "v1"
         for removed in ("shadow", "v2"):
@@ -853,3 +855,38 @@ def test_settings_load_rag_mode_defaults_to_full_and_ignores_old_alias(
         with pytest.raises(ValueError, match="RAG_MODE"):
             Settings.load()
 
+
+
+def test_old_memory_shadow_config_is_read_and_migrated_without_changing_other_settings():
+    store = Store.create(":memory:")
+    try:
+        store.settings.set_runtime_value("personal_memory_read_mode", '"shadow"')
+        store.settings.set_runtime_value("output_repair_mode", '"shadow"')
+        store.settings.replace_startup_snapshot([("personal_memory_read_mode", '"shadow"')])
+        settings = RuntimeSettings(_base(), store)
+        assert settings.personal_memory_read_mode == "tiered_shadow"
+        assert settings.source("PERSONAL_MEMORY_READ_MODE") == "db"
+        with pytest.raises(ValueError, match="tiered_shadow"):
+            settings.set_text("PERSONAL_MEMORY_READ_MODE", "shadow")
+
+        for _ in range(2):
+            store.settings.migrate_memory_read_mode()
+        assert store.settings.runtime_values() == {
+            "personal_memory_read_mode": '"tiered_shadow"', "output_repair_mode": '"shadow"',
+        }
+        assert store.db.execute(
+            "SELECT value FROM runtime_config_startup WHERE key='personal_memory_read_mode'"
+        ).fetchone()[0] == '"tiered_shadow"'
+        for mode in ("decision_shadow", "decision"):
+            assert settings.set_text("PERSONAL_MEMORY_READ_MODE", mode) == mode
+            assert settings.set_text("RAG_MODE", mode) == mode
+    finally:
+        store.close()
+
+
+def test_legacy_memory_shadow_environment_value_is_canonical(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "test")
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    monkeypatch.setenv("PERSONAL_MEMORY_READ_MODE", "shadow")
+    assert Settings.load().personal_memory_read_mode == "tiered_shadow"

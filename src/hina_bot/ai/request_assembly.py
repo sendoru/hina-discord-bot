@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from hina_bot.core.config import gemini_store_enabled
+from hina_bot.core.config import DECISION_MODES, gemini_store_enabled
 from hina_bot.core.conversation_session import active_session_turns
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
@@ -37,9 +37,13 @@ from .managed_tools import (
 from .model_routing import ModelPlan, fixed_model_plan
 from .prompts import load_prompt
 from .providers import ProviderAPIError
+from .retrieval_decisions import select_with_decisions
 from .rp_output_policy import hide_web_citations, provenance_instruction
 from .runtime_context import build_runtime_context, runtime_instruction
-from .structured_memory_context import personal_memory_fields
+from .structured_memory_context import (
+    REPLY_CHAIN_KINDS,
+    personal_memory_fields,
+)
 from .usage import ModelResponseError
 from .vision import CURRENT_VISUAL_INPUTS
 from .web_search_runtime import tool_config
@@ -200,7 +204,7 @@ _SERVER_RECENT_CHARS = 4000
 
 
 _SELECTION_EXCLUSIONS = (
-    "permission", "threshold", "similarity", "cooldown", "cluster", "expired",
+    "permission", "threshold", "similarity", "cooldown", "cluster", "expired", "sensitive",
     "t0_cap", "t1_cap", "t2_cap", "t1_attempts", "tp_cap", "tp_space",
 )
 
@@ -369,6 +373,13 @@ class RequestAssembler(BaseLLM):
             raise ValueError("Request assembly requires an InformationPlan")
         model_plan = model_plan or fixed_model_plan(self.settings)
 
+        lore_mode = getattr(self.settings, "rag_mode", "full")
+        memory_read_mode = getattr(self.settings, "personal_memory_read_mode", "legacy")
+        has_decisions = lore_mode in DECISION_MODES or memory_read_mode in DECISION_MODES
+        memory_reader = getattr(store, "memory_mode", None)
+        if has_decisions and callable(memory_reader):
+            use_memory = use_memory and memory_reader(scope) not in {"off", "write_only"}
+
         routing = information_plan.routing
         # Normalize only the provider-facing text; routing and stored messages retain IDs.
         visible_content = normalize_custom_emoji_text(routing.visible_content)
@@ -426,7 +437,7 @@ class RequestAssembler(BaseLLM):
         structured_cross_space_memory = use_memory
         authorized_factual_items = (
             factual_recall_plan.selected
-            if factual_recall_plan is not None
+            if use_memory and factual_recall_plan is not None
             else ()
         )
         interaction = CURRENT_INTERACTION_CONTEXT.get() or {
@@ -440,19 +451,33 @@ class RequestAssembler(BaseLLM):
             "mentions": [],
             "reply_target": None,
         }
-        personal_memory = personal_memory_fields(
-            store,
-            scope,
-            settings=self.settings,
-            use_memory=use_memory,
-            allow_cross_space=structured_cross_space_memory,
-            authorized_factual_items=authorized_factual_items,
-            message=visible_content,
-            channel_context=channel_context,
+        memory_kwargs = {
+            "settings": self.settings,
+            "use_memory": use_memory,
+            "allow_cross_space": structured_cross_space_memory,
+            "authorized_factual_items": authorized_factual_items,
+            "message": visible_content,
+            "channel_context": channel_context,
             # In a server only a direct call may open a session follow-up (§7.1).
-            explicit_call=interaction.get("trigger_kind") != "implicit",
-            visual_turn=_visual_turn(CURRENT_VISUAL_INPUTS.get()),
-        )
+            "explicit_call": interaction.get("trigger_kind") != "implicit",
+            "visual_turn": _visual_turn(CURRENT_VISUAL_INPUTS.get()),
+            "read_mode": memory_read_mode,
+        }
+        compact_decision_lore = None
+        decision_trace = {}
+        if has_decisions:
+            memory_kwargs["now"] = datetime.fromisoformat(str(runtime["current_datetime"]))
+            personal_memory, compact_decision_lore, decision_trace, reads, approvals = (
+                await select_with_decisions(
+                    self, store, scope, channel_context, memory_kwargs, lore_mode=lore_mode,
+                )
+            )
+            authorized_factual_items = approvals
+            if not reads:
+                history, history_message_ids, server_recent = [], [], []
+                use_memory = cross_channel_memory = structured_cross_space_memory = False
+        else:
+            personal_memory = personal_memory_fields(store, scope, **memory_kwargs)
         structured_memory = personal_memory["fields"]
         # recall_memory may return this turn's T4 approvals, and nothing more (§7 T3).
         CURRENT_AUTHORIZED_MEMORY_IDS.set(frozenset(
@@ -509,20 +534,14 @@ class RequestAssembler(BaseLLM):
             "public_allowed": provider_public_allowed,
             "public_blocked": provider_public_input - provider_public_allowed,
         }
-        chain_kinds = {
-            "reply_reference_source",
-            "reply_origin_source",
-            "reply_origin_request",
-            "replied_message",
-        }
         channel_rows = list(context.get("channel_recent_messages", ()))
         context["active_reply_chain"] = [
             row for row in channel_rows
-            if row.get("context_kind") in chain_kinds
+            if row.get("context_kind") in REPLY_CHAIN_KINDS
         ]
         context["channel_recent_messages"] = [
             row for row in channel_rows
-            if row.get("context_kind") not in chain_kinds
+            if row.get("context_kind") not in REPLY_CHAIN_KINDS
         ]
         # Egress-only projection: keep metadata and Discord source records unchanged.
         context = normalized_message_context(context)
@@ -551,6 +570,8 @@ class RequestAssembler(BaseLLM):
             visuals=CURRENT_VISUAL_INPUTS.get(),
             conversation_history_message_ids=history_message_ids,
         )
+        if decision_trace:
+            context_provenance["retrieval_decisions"] = decision_trace
         memory_selection = personal_memory["selection"]
         if memory_selection is not None:
             context_provenance["memory_selection"] = {
@@ -655,7 +676,7 @@ class RequestAssembler(BaseLLM):
 
         local_tool_registry = CURRENT_LOCAL_TOOLS.get()
         lore_trace = None
-        if getattr(self.settings, "rag_mode", "full") == "tool":
+        if lore_mode == "tool":
             lore_trace = LoreToolTrace()
             local_tool_registry = attach_lore_search(
                 local_tool_registry,
@@ -685,8 +706,10 @@ class RequestAssembler(BaseLLM):
             self.compact_lore_with_community
             if self.settings.community_lore
             else self.compact_lore_without_community
-        ) if information_plan.full_lore else None
-        if compact_lore is not None:
+        ) if information_plan.full_lore or lore_mode in DECISION_MODES else None
+        if compact_decision_lore is not None:
+            compact_lore = compact_decision_lore
+        elif compact_lore is not None:
             self.usage.routing_event(
                 "rag.full", status="completed",
                 rag_full_items=compact_lore.items,
@@ -777,7 +800,7 @@ class RequestAssembler(BaseLLM):
             )
             instruction_parts.append(url_policy)
             instruction_group_chars["instruction_tools_chars"] += len(url_policy)
-        if getattr(self.settings, "rag_mode", "full") == "tool":
+        if lore_mode == "tool":
             instruction_parts.append(LORE_TOOL_POLICY)
             instruction_group_chars["instruction_tools_chars"] += len(LORE_TOOL_POLICY)
         if managed_tool_config(self.settings.provider):

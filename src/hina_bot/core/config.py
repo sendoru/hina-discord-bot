@@ -28,9 +28,9 @@ EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 # tool: model-controlled local keyword search; full/v1 remain rollback paths.
-RAG_MODES = frozenset({"off", "v1", "full", "tool"})
-# Memory v2 read path (#449 §11 P2): legacy prompt, shadow comparison, or tiered selection.
-PERSONAL_MEMORY_READ_MODES = frozenset({"legacy", "shadow", "tiered"})
+DECISION_MODES = frozenset({"decision_shadow", "decision"})
+RAG_MODES = frozenset({"off", "v1", "full", "tool"}) | DECISION_MODES
+PERSONAL_MEMORY_READ_MODES = frozenset({"legacy", "tiered_shadow", "tiered"}) | DECISION_MODES
 # Provider-facing conversation transport only; independent from memory read policy.
 CONTEXT_INPUT_MODES = frozenset({"legacy", "structured", "structured_with_replay"})
 MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})
@@ -75,6 +75,11 @@ def parse_external_context_policy(value: str) -> str:
         allowed = ", ".join(sorted(EXTERNAL_CONTEXT_POLICIES))
         raise ValueError(f"EXTERNAL_CONTEXT_POLICY는 {allowed} 중 하나여야 합니다.")
     return policy
+
+
+def canonical_memory_read_mode(value: str) -> str:
+    """Read the pre-#508 spelling from startup settings, stored config or historical traces."""
+    return "tiered_shadow" if value == "shadow" else value
 
 
 def _env_key(provider: str) -> str:
@@ -402,11 +407,12 @@ class Settings:
             raise ValueError(
                 "CONTEXT_INPUT_MODE는 legacy, structured, structured_with_replay 중 하나여야 합니다."
             )
-        personal_memory_read_mode = (
+        personal_memory_read_mode = canonical_memory_read_mode(
             os.getenv("PERSONAL_MEMORY_READ_MODE", "legacy").strip().lower() or "legacy"
         )
         if personal_memory_read_mode not in PERSONAL_MEMORY_READ_MODES:
-            raise ValueError("PERSONAL_MEMORY_READ_MODE는 legacy, shadow, tiered 중 하나여야 합니다.")
+            allowed = ", ".join(sorted(PERSONAL_MEMORY_READ_MODES))
+            raise ValueError(f"PERSONAL_MEMORY_READ_MODE는 {allowed} 중 하나여야 합니다.")
         memory_session_followup = (
             os.getenv("MEMORY_SESSION_FOLLOWUP", "dm").strip().lower() or "dm"
         )

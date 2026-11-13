@@ -18,6 +18,7 @@ from .config import (
     PERSONAL_MEMORY_READ_MODES,
     RAG_MODES,
     Settings,
+    canonical_memory_read_mode,
     parse_call_prefixes,
     parse_discord_id_set,
     parse_external_context_policy,
@@ -43,8 +44,8 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
-    "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. v1은 기존 어휘 검색, off는 지식 검색을 끕니다.",
-    "personal_memory_read_mode": "개인 장기기억을 응답에 넣는 방식입니다. legacy는 기존 전량 주입, shadow는 legacy로 답하면서 계층형 선택 결과만 trace에 기록, tiered는 관련 있는 기억만 계층별로 넣습니다.",
+    "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. decision_shadow는 full로 응답하면서 Gemini Decisions 선택을 관측하고, decision은 그 선택을 적용합니다. v1은 기존 어휘 검색, off는 지식 검색을 끕니다.",
+    "personal_memory_read_mode": "개인 장기기억을 응답에 넣는 방식입니다. legacy는 기존 전량 주입, tiered_shadow는 계층형 선택을 관측, tiered는 그 선택을 적용합니다. decision_shadow는 legacy로 응답하면서 Gemini Decisions를 관측, decision은 필수 기억 정책과 함께 그 선택을 적용합니다.",
     "memory_session_followup": "8시간 이상 공백 뒤 첫 인사에서 지난 일정 등을 먼저 물어볼 범위입니다. off는 끔, dm은 DM에서만, all은 서버에서도 같은 공간의 공개해도 되는 항목 1개까지 허용합니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
@@ -441,6 +442,8 @@ def decode_runtime_value(spec: RuntimeSettingSpec, encoded: str, *, settings=Non
     if spec.kind == "string":
         if not isinstance(value, str):
             raise ValueError("stored value is not string")
+        if spec.attr == "personal_memory_read_mode":
+            value = canonical_memory_read_mode(value)
         return parse_runtime_value(spec, value or "none", settings=settings)
     raise ValueError(f"unsupported runtime setting kind: {spec.kind}")
 

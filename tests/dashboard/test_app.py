@@ -58,6 +58,13 @@ def dashboard_client(tmp_path):
                         "recent_own_turn": False, "covered_profile": 1, "covered_carry": 0,
                     },
                 },
+                "retrieval_decisions": {"lore": {
+                    "decision_mode": "decision_shadow", "status": "completed",
+                    "decision_candidates": 180, "decision_questions": 180, "decision_selected": 1,
+                    "decision_selected_chars": 620, "decision_baseline_chars": 9000,
+                    "decision_input_tokens": 3500, "decision_request_ms": 270,
+                    "decision_elapsed_ms": 290, "selected_ids": ["test.lore"],
+                }},
                 "decisions": {
                     "use_memory": True,
                     "current_channel_only": False,
@@ -385,7 +392,9 @@ def test_dashboard_read_only_pages_render(tmp_path):
     assert 'id="web-search-routing"' in analytics.text
     assert 'id="usage-breakdown"' in analytics.text
     assert "hello dashboard" in detail.text
-    assert "Memory selection (shadow)" in detail.text
+    assert "Memory selection (tiered_shadow)" in detail.text
+    assert 'id="retrieval-decisions"' in detail.text
+    assert "test.lore" in detail.text and "3500" in detail.text
     assert "cooldown 2" in detail.text and "session follow-up attempted" in detail.text
     assert "used 2 of 4 legacy note(s); tiered had 1 (via profile 1, carry 0)" in detail.text
     assert '<a href="/memory/77">#77</a>' in detail.text and "photo turn" in detail.text

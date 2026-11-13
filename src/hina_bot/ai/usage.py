@@ -510,6 +510,33 @@ class UsageLogger:
                 self._accumulate(row)
             self._emit(self.handler, row)
 
+    def record_decision(self, domain: str, metrics: dict) -> None:
+        """Account for a Decisions API call once, including billed partial replies."""
+        operation = f"decision.{domain}"
+        if metrics["decision_request_ms"] is None:
+            self.routing_event(operation, **metrics)
+            return
+        from .decisions import MODEL
+
+        tokens = metrics["decision_input_tokens"]
+        row = {
+            **metrics,
+            "at": datetime.now(UTC).isoformat(),
+            "operation": operation,
+            "provider": "gemini",
+            "model": MODEL,
+            "elapsed_ms": metrics["decision_request_ms"],
+            "input_tokens": tokens,
+            "output_tokens": 0,
+            "total_tokens": tokens,
+            **self.build,
+        }
+        if turn_id := current_turn_id():
+            row["turn_id"] = turn_id
+        accounting = {**row, "status": "error"} if metrics["decision_reason"] else row
+        self._accumulate(accounting)
+        self._emit(self.handler, row)
+
     def routing_event(self, operation: str, **metadata):
         """Write a content-free routing/lifecycle event that is not a second API usage row."""
         allowed = {
@@ -535,7 +562,7 @@ class UsageLogger:
             "visual_images", "visual_bytes", "visual_fallback", "visual_grounded_items",
             "memory_read_mode", "memory_t0_items", "memory_t1_items", "memory_t2_items",
             "memory_t4_items", "memory_quiet_boundaries", "memory_followup_attempted",
-            "memory_excluded_permission", "memory_excluded_threshold",
+            "memory_excluded_permission", "memory_excluded_threshold", "memory_excluded_sensitive",
             "memory_excluded_similarity", "memory_excluded_cooldown",
             "memory_excluded_cluster", "memory_excluded_expired", "memory_excluded_t0_cap",
             "memory_excluded_t1_cap", "memory_excluded_t2_cap", "memory_excluded_t1_attempts",
@@ -543,6 +570,7 @@ class UsageLogger:
             "memory_excluded_tp_space", "memory_coverage_covered_profile",
             "memory_coverage_covered_carry",
             "memory_space", "memory_visual_turn", "memory_recent_own_turn",
+            "memory_used_items", "memory_followups", "memory_followups_used",
             "memory_coverage_notes", "memory_coverage_used", "memory_coverage_covered",
             "memory_coverage_missed", "memory_coverage_missed_unprompted",
             "memory_coverage_missed_current", "memory_coverage_missed_ambient",
@@ -575,6 +603,11 @@ class UsageLogger:
             "rag_tool_turn_queries", "rag_tool_turn_hits", "rag_tool_turn_empty",
             "rag_tool_turn_errors", "rag_tool_turn_result_items",
             "rag_tool_turn_result_chars",
+            "decision_mode", "decision_applied", "decision_reason", "decision_fallback",
+            "decision_candidates", "decision_questions", "decision_selected",
+            "decision_request_bytes", "decision_input_tokens", "decision_score_bands",
+            "decision_request_ms", "decision_elapsed_ms", "decision_http_status",
+            "decision_baseline_chars", "decision_selected_chars",
         }
         row = {
             "at": datetime.now(UTC).isoformat(),
