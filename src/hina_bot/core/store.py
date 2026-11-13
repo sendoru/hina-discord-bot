@@ -29,6 +29,7 @@ from .pending_visuals import (
     pending_visual_root,
 )
 from .routing import Scope
+from .server_memory_repository import ServerMemoryRepository, ServerSourceRef
 from .scope_overrides import memory_mode_capabilities, resolve_scope_chain
 from .settings_repository import SettingsRepository
 
@@ -70,6 +71,9 @@ class Store:
         self.settings = SettingsRepository(db)
         self._conversations = ConversationRepository(db, history_turns, raw_retention_turns)
         self._atomic_memory_batch_open = False
+        self._server_memories = ServerMemoryRepository(
+            db, author_writable=lambda scope: memory_mode_capabilities(self.memory_mode(scope))[1],
+        )
         self._memories = MemoryRepository(
             db, user_name=lambda scope: self.user_name(scope),
             write_context=lambda: self._memory_write(),
@@ -606,9 +610,48 @@ class Store:
             proposal_id, min_confidence=min_confidence,
         )
 
+    def add_server_memory(self, guild_id: int, **proposal) -> int:
+        """Persist one grounded community memory; NEVER pass unchecked model trust."""
+        return self._server_memories.add_verified(guild_id, **proposal)
+
+    def server_memory_candidates(
+        self, scope: Scope, *, readable_channel_ids, member_user_ids,
+        related_user_ids=(), limit: int = 100,
+    ) -> list[dict]:
+        """Server read is admin-scoped; the speaker's personal mode is irrelevant.
+
+        The caller must supply live Discord membership/permission results.
+        This API is not called by responses until the P4 reader is released.
+        """
+        if scope.guild_id is None:
+            return []
+        admin_mode = str(self.memory_mode_chain(scope)["effective"])
+        if not memory_mode_capabilities(admin_mode)[0]:
+            return []
+        return self._server_memories.visible_items(
+            scope, readable_channel_ids=readable_channel_ids,
+            member_user_ids=member_user_ids, related_user_ids=related_user_ids,
+            limit=limit,
+        )
+
+    def server_memory_opted_out(self, guild_id: int, user_id: int) -> bool:
+        return self._server_memories.opted_out(guild_id, user_id)
+
+    def set_server_memory_opt_out(self, guild_id: int, user_id: int, enabled: bool) -> int:
+        return self._server_memories.set_opt_out(guild_id, user_id, enabled)
+
+    def forget_server_memory_source(
+        self, guild_id: int, channel_id: int, message_id: int
+    ) -> int:
+        """Hard-delete any item depending on a deleted source message."""
+        with self.db:
+            return self._server_memories.delete_message(guild_id, channel_id, message_id)
+
     def forget(self, scope: Scope):
         """Delete this user's automatically accumulated memory in the current realm."""
         with self.db:
+            if scope.guild_id is not None:
+                self._server_memories.forget_contributor(scope.guild_id, scope.user_id)
             for table in (
                 "turns",
                 "shared_calls",
@@ -689,6 +732,8 @@ class Store:
         prefix = scope.channel + ":user:%"
         deleted = 0
         with self.db:
+            if scope.guild_id is not None:
+                deleted += self._server_memories.purge_channel(scope.guild_id, scope.channel_id)
             for table in (
                 "turns",
                 "shared_calls",
@@ -729,6 +774,8 @@ class Store:
         """Delete automatic persistent memory in a guild/realm, preserving manual notes."""
         deleted = 0
         with self.db:
+            if scope.guild_id is not None:
+                deleted += self._server_memories.purge_guild(scope.guild_id)
             for table in (
                 "turns",
                 "shared_calls",
@@ -762,6 +809,7 @@ class Store:
         """Delete all automatic persistent memory while preserving notes and configuration."""
         deleted = 0
         with self.db:
+            deleted += self._server_memories.purge_all()
             self.db.execute("DELETE FROM memory_item_edit_history")
             self.db.execute("DELETE FROM memory_item_annotations")
             for table in (
