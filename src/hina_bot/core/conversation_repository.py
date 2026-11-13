@@ -4,6 +4,7 @@ import json
 import logging
 import sqlite3
 
+from .interaction_context import CURRENT_INTERACTION_CONTEXT
 from .memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_CONTEXT
 from .observability import current_turn_id
 from .routing import Scope
@@ -215,6 +216,15 @@ class ConversationRepository:
         if context_provenance is None:
             context_provenance = CURRENT_CONTEXT_PROVENANCE.get()
             CURRENT_CONTEXT_PROVENANCE.set(None)
+        # P4's contribution consent depends on whether the user directly addressed
+        # Hina. Persist the routing decision; do not infer it from message text later.
+        interaction = CURRENT_INTERACTION_CONTEXT.get() or {}
+        trigger = interaction.get("trigger_kind") if isinstance(interaction, dict) else None
+        if trigger in ("explicit", "implicit"):
+            context_provenance = {
+                **(context_provenance if isinstance(context_provenance, dict) else {}),
+                "source_trigger_kind": trigger,
+            }
         encoded_provenance = (
             json.dumps(context_provenance, ensure_ascii=False, separators=(",", ":"))
             if context_provenance
