@@ -1,4 +1,5 @@
 from hina_bot.ai.request_assembly import (
+    DIALOGUE_CONTEXT_POLICY,
     REFERENCE_CONTINUITY_POLICY,
     REFERENCE_PROVENANCE_POLICY,
     REPLY_CONTINUITY_POLICY,
@@ -100,8 +101,6 @@ def test_contextual_reference_resolution_prefers_natural_flow_without_guessing_f
 
 
 def test_dialogue_attribution_keeps_topic_link_separate_from_factual_claims():
-    from hina_bot.ai.request_assembly import DIALOGUE_CONTEXT_POLICY
-
     assert "channel_ambient라는 이유만으로 관련 없는 이야기" in DIALOGUE_CONTEXT_POLICY
     assert "발화의 작성자, 발화가 향하는 상대, 내용에서 지칭하는 인물" in (
         DIALOGUE_CONTEXT_POLICY
