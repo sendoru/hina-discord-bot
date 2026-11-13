@@ -207,11 +207,19 @@ class HinaClient(BaseHinaClient):
         # extraction. Edits are left alone: Discord also sends them when a link embed
         # resolves, so they say nothing about the attachment.
         self.store.discard_pending_visuals_for_message(payload.channel_id, payload.message_id)
+        if getattr(payload, "guild_id", None) is not None:
+            self.store.forget_server_memory_source(
+                payload.guild_id, payload.channel_id, payload.message_id
+            )
 
     async def on_raw_bulk_message_delete(self, payload):
         for message_id in payload.message_ids:
             self.visual_cache.invalidate(payload.channel_id, message_id)
             self.store.discard_pending_visuals_for_message(payload.channel_id, message_id)
+            if getattr(payload, "guild_id", None) is not None:
+                self.store.forget_server_memory_source(
+                    payload.guild_id, payload.channel_id, message_id
+                )
 
     async def public_sources(self, user_id: int, guild_id: int | None = None):
         enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
