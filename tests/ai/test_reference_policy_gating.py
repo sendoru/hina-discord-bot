@@ -67,3 +67,23 @@ def test_reference_derived_reply_uses_both_conditional_policies():
         REPLY_CONTINUITY_POLICY,
         REFERENCE_PROVENANCE_POLICY,
     )
+
+
+def test_continuity_prioritizes_recent_same_speaker_dialogue_without_tone_lock_in():
+    # Static prompt contract, not a substitute for live Gemini quality checks.
+    assert "DM에서는 conversation_history의 최근 historical_exchange" in (
+        REFERENCE_CONTINUITY_POLICY
+    )
+    assert "서버에서는 speaker_thread와 personal_recent_conversation" in (
+        REFERENCE_CONTINUITY_POLICY
+    )
+    assert "관련 없는 장기기억의 화제를 대신 꺼내지 마세요" in (
+        REFERENCE_CONTINUITY_POLICY
+    )
+    assert "현재 발화가 새 주제나 새 대상을 명시하면" in (
+        REFERENCE_CONTINUITY_POLICY
+    )
+    assert "다른 사용자와의 대화로 인한 감정" in (
+        REFERENCE_CONTINUITY_POLICY
+    )
+    assert "at_local/elapsed_minutes" in REFERENCE_CONTINUITY_POLICY
