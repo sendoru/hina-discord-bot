@@ -47,12 +47,16 @@ _UNTIMED = {"프로필 상시 설정", "캐릭터 기본 프로필", "프로필�
 
 
 def compile_compact_lore(lore: LoreIndex, *, include_community: bool = True) -> CompactLore:
-    """Serialize reviewed static facts only, with awareness and uncertainty boundaries.
+    """Serialize reviewed static facts with their awareness and uncertainty labels."""
+    rows, excluded = compact_lore_rows(lore, include_community=include_community)
+    return render_compact_lore(list(rows.values()), excluded)
 
-    Audience-only items are excluded from in-character prompts by design. They remain
-    in the source corpus; the LLM must not mistake omniscient event notes for memories.
-    """
-    rows = []
+
+def compact_lore_rows(
+    lore: LoreIndex, *, include_community: bool,
+) -> tuple[dict[str, str], int]:
+    """Shared eligibility and labeled rendering for full and Decisions lore."""
+    rows = {}
     audience_skipped = 0
     for record in lore.records:
         if record.get("status") != "accepted":
@@ -67,7 +71,7 @@ def compile_compact_lore(lore: LoreIndex, *, include_community: bool = True) -> 
             content = record.get("reaction", "").strip()
             if not content:
                 continue
-            rows.append(f"- [팬덤 반응 가이드 / 사실 아님] {content}")
+            rows[record["id"]] = f"- [팬덤 반응 가이드 / 사실 아님] {content}"
             continue
         if lane != "canon":
             continue
@@ -83,8 +87,12 @@ def compile_compact_lore(lore: LoreIndex, *, include_community: bool = True) -> 
         timeline = str(record.get("timeline") or "").strip()
         if timeline and timeline not in _UNTIMED:
             labels.append(timeline)
-        rows.append(f"- [{'; '.join(labels)}] {record['summary'].strip()}")
+        rows[record["id"]] = f"- [{'; '.join(labels)}] {record['summary'].strip()}"
 
+    return rows, audience_skipped
+
+
+def render_compact_lore(rows: list[str], audience_skipped: int = 0) -> CompactLore:
     if not rows:
         return CompactLore("", 0, audience_skipped)
     return CompactLore(_HEADER + "\n" + "\n".join(rows), len(rows), audience_skipped)

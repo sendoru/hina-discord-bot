@@ -169,6 +169,7 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
         store,
     )
     settings.capture_startup_snapshot()
+    store.settings.set_runtime_value("personal_memory_read_mode", '"shadow"')
     settings.set_text("channel_context_chars", "4300")
     settings.set_text("CALL_PREFIXES", "히나야, 히나 , 선도부장")
     store.close()
@@ -215,6 +216,9 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert '<option value="off"' in response.text
     assert '<option value="on"' in response.text
     assert 'id="runtime-external_context_policy"' in response.text
+    assert '<option value="tiered_shadow" selected' in response.text
+    assert '<option value="decision_shadow"' in response.text
+    assert '<option value="shadow"' not in response.text
     assert '<option value="bot_interactions_only"' in response.text
     assert '<option value="full"' in response.text
     assert 'id="runtime-gemini_thinking_level"' in response.text

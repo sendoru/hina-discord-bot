@@ -390,14 +390,15 @@ clock (`current`, `unverified`, `upcoming`, `just_passed`, `past`, `recent_event
 with the date and whether an undated plan has expired), next to the last-used and proactive
 follow-up markers it records after replies (#457).
 
-Trace detail shows a **Memory selection** block when the turn ran in `shadow` or `tiered`
-`PERSONAL_MEMORY_READ_MODE`: tier counts, exclusion reasons and whether a session follow-up was
-attempted. In `shadow` it describes what `tiered` would have sent while the answer used the legacy
-projection, followed by **Shadow coverage**: how many legacy notes the answer used, how many of
+Trace detail shows a **Memory selection** block for tiered or Decisions memory modes. It lists tier
+counts, exclusions and session follow-up attempts. In `tiered_shadow` or `decision_shadow` the
+answer used legacy memory and **Selection coverage** shows how many legacy notes the answer used, how many of
 them the selection had (and how many only through the core profile or a carried-over topic), and
 links to the missed items, with photo-turn and recent-own-turn markers (see
 `docs/structured-memory.md`). Tier counts include `Tp` for the core profile. A `recall_memory` call is shown with its call and item
-counts.
+counts. The **Gemini Decisions** section shows each configured domain's mode, candidate and
+question counts, selection, input tokens, timing and fallback. Selected IDs are available in the
+stored trace. See [Gemini Decisions](gemini-decisions.md).
 
 The memory list's **Annotation** filter is the review queue, derived from the tables rather than
 stored separately: `missing` and `stale` (active items only, the backfill's work list),

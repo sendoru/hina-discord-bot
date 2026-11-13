@@ -32,6 +32,7 @@ def main():
     bot = None
     provider = None
     try:
+        store.settings.migrate_memory_read_mode()
         settings = RuntimeSettings(base, store)
         try:
             admin = AdminDatabase.open_existing(base.db_path)

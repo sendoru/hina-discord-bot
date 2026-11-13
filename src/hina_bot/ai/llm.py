@@ -4,13 +4,14 @@ from importlib.resources import files
 from pathlib import Path
 
 from hina_bot.core.admin_db import AdminDatabase
-from hina_bot.core.compact_lore import compile_compact_lore
+from hina_bot.core.compact_lore import compact_lore_rows, render_compact_lore
 from hina_bot.core.config import Settings
 from hina_bot.core.instructions import InstructionRegistry
 from hina_bot.core.lore import LoreIndex
 from hina_bot.core.lore_tool_search import LoreKeywordIndex
 from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
+from .decisions import DecisionsClient
 from .output_repair import OutputRepair
 from .prompts import load_prompt
 from .usage import UsageLogger
@@ -51,11 +52,19 @@ class LLM:
         self.runtime_lore = RuntimeKnowledgeRegistry(self.admin_db, kind="world_fact")
         self.story_context = RuntimeKnowledgeRegistry(self.admin_db, kind="interpretation")
         self.lore = LoreIndex.load(settings.lore_path)
-        self.lore_keyword_index = LoreKeywordIndex(self.lore.candidates())
-        self.compact_lore_with_community = compile_compact_lore(self.lore)
-        self.compact_lore_without_community = compile_compact_lore(
-            self.lore, include_community=False
+        self.static_lore_candidates = tuple(self.lore.candidates())
+        self.lore_keyword_index = LoreKeywordIndex(self.static_lore_candidates)
+        self.static_lore_rows, audience_excluded = compact_lore_rows(
+            self.lore, include_community=True,
         )
+        without_community, _ = compact_lore_rows(self.lore, include_community=False)
+        self.compact_lore_with_community = render_compact_lore(
+            list(self.static_lore_rows.values()), audience_excluded,
+        )
+        self.compact_lore_without_community = render_compact_lore(
+            list(without_community.values()), audience_excluded,
+        )
+        self.decisions_client = DecisionsClient()
         self.usage = UsageLogger(settings.usage_log_path)
         self.output_repair = OutputRepair(settings, client, self.usage)
 
@@ -63,9 +72,12 @@ class LLM:
         try:
             await self.client.close()
         finally:
-            self.usage.close()
-            if self.admin_db is not None:
-                self.admin_db.close()
+            try:
+                await self.decisions_client.close()
+            finally:
+                self.usage.close()
+                if self.admin_db is not None:
+                    self.admin_db.close()
 
     @staticmethod
     def authorized_context(scope, context):

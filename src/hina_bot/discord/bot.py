@@ -156,9 +156,9 @@ def _record_shadow_coverage(run, answer: str, scope_kind: str, *, events, usage)
     if not callable(routing_event):
         return
     routing_event(
-        "memory.shadow_coverage",
+        "memory.decision_coverage" if run.mode == "decision_shadow" else "memory.shadow_coverage",
         status="completed",
-        memory_read_mode="shadow",
+        memory_read_mode=run.mode,
         memory_space=scope_kind,
         memory_visual_turn=run.visual_turn,
         memory_recent_own_turn=run.recent_own_turn,
@@ -483,14 +483,14 @@ class HinaClient(discord.Client):
         CURRENT_MEMORY_SELECTION.set(None)
         if run is None:
             return
-        if run.mode == "shadow":
+        if run.mode in {"tiered_shadow", "decision_shadow"}:
             _record_shadow_coverage(
                 run, answer, scope_kind,
                 events=self.events, usage=getattr(getattr(self, "llm", None), "usage", None),
             )
             return
         recorder = getattr(self.store, "record_memory_usage", None)
-        if run.mode != "tiered" or not callable(recorder):
+        if run.mode not in {"tiered", "decision"} or not callable(recorder):
             return
         try:
             usages = memory_usage(run.selection, answer, datetime.now(UTC))
@@ -499,15 +499,21 @@ class HinaClient(discord.Client):
             error = safe_exception_fields(exc, "memory_usage")
             self.events.emit("memory.usage_failed", level="warning", scope=scope_kind, **error)
             return
-        self.events.emit(
-            "memory.usage",
-            scope=scope_kind,
-            memory_used_items=sum(usage.used for usage in usages),
-            memory_followups=sum(usage.proactive_status is not None for usage in usages),
-            memory_followups_used=sum(
+        counts = {
+            "memory_used_items": sum(usage.used for usage in usages),
+            "memory_followups": sum(usage.proactive_status is not None for usage in usages),
+            "memory_followups_used": sum(
                 usage.used and usage.proactive_status is not None for usage in usages
             ),
-        )
+        }
+        self.events.emit("memory.usage", scope=scope_kind, **counts)
+        if run.mode == "decision":
+            logger = getattr(getattr(self, "llm", None), "usage", None)
+            if logger is not None:
+                logger.routing_event(
+                    "memory.decision_usage", status="completed",
+                    memory_read_mode=run.mode, memory_space=scope_kind, **counts,
+                )
 
     async def send_text(self, channel, text):
         for part in chunks(neutralize_mentions(text)):
