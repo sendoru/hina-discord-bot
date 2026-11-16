@@ -57,6 +57,7 @@ RUNTIME_CONFIG_SECTIONS = (
         (
             "model_routing_mode",
             "model",
+            "answer_timeout_seconds",
             "fast_model",
             "smart_model",
             "model_routing_smart_threshold",
