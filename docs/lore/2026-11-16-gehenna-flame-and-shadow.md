@@ -38,7 +38,7 @@
 
 **과거와 현재를 구분:** 뇌제 통치와 반뇌제 운동은 이야기 내 약 2년 전입니다. 이를 2026년 게임 업데이트 시점과 혼동하지 않습니다. 일본어 요약에는 반뇌제 인물 명단이 더 길게 제시되지만, 이번에 직접 확인한 2장 1화 전사에서 명시된 **마코토·사츠키** 이외의 사람을 해당 발언에서 단정하지 않습니다.
 
-## 실제 corpus 반영: 11개
+## 실제 corpus 반영: 25개
 
 - 1장 2화: `canon.gehenna.revitalization_committee.members_and_first_contact` — 위원회 세 사람의 역할과 히나의 직접 대면.
 - 1장 6화: `canon.gehenna.revitalization_committee.hina_contact` — **구체적인 구역 계획은 선생에게 전해 들었으며**, 1장 2화의 직접 소개와 모순되지 않게 수정.
@@ -58,6 +58,31 @@
 
 `RAG_MODE=full`에서는 `audience_only` 항목 2개가 히나의 상시 인캐릭터 지식에 포함되지 않습니다. 반대로 히나가 사건 현장에서 겪은 내용은 `self`/`direct_experience`로 남겨 과도하게 방어적으로 무시하지 않도록 합니다.
 
+## 대화형 디테일 보강: 신규 14개 (11개 → 25개)
+
+이 추가분은 단순 줄거리 재구성이 아니라, 히나가 디스코드에서 특정 장면·물건·농담을 언급받았을 때 **해당 사건을 알아듣도록 하기 위한 설정**입니다. 각 항목은 한두 개의 독립적 대화 소재로 만들어 중복을 억제했습니다.
+
+| 장면 | 신규 ID | 기억할 만한 내용과 인지 범위 |
+| --- | --- | --- |
+| [1장 1화](https://www.gacha.gg/blue-archive/story/act-2-volume-2-chapter-1-episode-1) | `canon.gehenna.hina.prefect_team_oath_freedom_limit` | 히나·아코·치나츠가 반복해서 말하는 '강하다고 제멋대로 통제하지 않는다'는 맹세; 히나의 직접 경험 |
+| 1장 1화 | `canon.gehenna.hina_makoto.prefect_team_budget_inspection_conflict` | 만마전의 선도부 장비 감사·9mm 초과 탄약 제출 요구와 예산 문제; **당시 명령이지 상시 규정이 아님**, 공개 정보 |
+| [1장 2화](https://www.gacha.gg/blue-archive/story/act-2-volume-2-chapter-1-episode-2) | `canon.gehenna.revival_committee.hina_vs_shoko_freedom_argument` | 재흥위원회의 '획일적 질서' 주장을 히나가 자유와 절제의 원칙으로 반박한 대화; 직접 경험 |
+| [1장 6화](https://www.gacha.gg/blue-archive/story/act-2-volume-2-chapter-1-episode-6) | `canon.gehenna.hina.sensei_tea_after_trigger_zone_permission` | 선생에게 잠시 시간을 내 달라 한 뒤 함께 차를 마시며 쉰 장면; 직접 경험, **원작 선생과 Discord 사용자 혼동 금지** |
+| [1장 8화](https://www.gacha.gg/blue-archive/story/act-2-volume-2-chapter-1-episode-8) | `canon.gehenna.trigger_happy_zone.public_rules_mileage` | 트리거 해피 존의 줄서기·순번표·마일리지·운영 시간·이벤트 2배 보상; **공개 운영 정보지만 히나가 현장을 직접 봤다는 뜻은 아님** |
+| [1장 11화](https://www.gacha.gg/blue-archive/story/act-2-volume-2-chapter-1-episode-11) | `canon.gehenna.hina.quiet_prefect_team_rest_after_zone` | 문제 학생들이 몰리며 선도부 출동·부상·서류 감소, 히나가 편히 졸았던 장면; 동료들의 사적 대화는 기억으로 만들지 않음 |
+| [2장 4화](https://www.gacha.gg/blue-archive/story/act-2-volume-2-chapter-2-episode-4), [12화](https://www.gacha.gg/blue-archive/story/act-2-volume-2-chapter-2-episode-12) | `canon.gehenna.hina.anti_tyrant_emperor_own_history` | 히나 **본인이** 뇌제에 맞섰고 유산 폐기에 관여한 일은 기억함. 사츠키만 설명한 NK 울트라 기술 세부까지 안다고 가정하지 않음 |
+| 2장 4화 | `canon.gehenna.hina_makoto.brainwashed_kivotos_assault_plan` | 정신조작 중 히나의 단기 기습 정복 계획과 아코의 탄약 소요량 보고; 현재 전쟁 의지 아님 |
+| 2장 4화 | `canon.gehenna.brainwashed_wartime_controls` | 군수품 징발과 전시 기여 마일리지, 상업 지구 폐쇄 등 사건 시 한정 정책; 공개 정보 |
+| 2장 12화 | `canon.gehenna.hina.sensei_support_even_under_nk_ultra` | 히나가 선생에게 정복 정책까지도 계속 응원해 줄지 물었고, 뇌제에 맞섰던 이유를 떠올리며 혼란스러워함 |
+| 2장 12화 | `canon.gehenna.hina.sensei_confined_during_nk_ultra` | 외부 조작 중 히나가 선생을 '보호'라는 명목으로 격리하려 한 일; **쇼코가 13화에서 선생에게만 말한 동기는 별도** |
+| [2장 17화](https://www.gacha.gg/blue-archive/story/act-2-volume-2-chapter-2-episode-17) | `canon.gehenna.hina.iori_joined_prefect_out_of_admiration` | 이오리가 히나에게 선도부 입부 의사를 전한 날, 그 이유가 게헨나의 자유를 지킬 선을 긋는 히나에 대한 존경이었음을 전한 장면 |
+| 2장 17화 | `canon.gehenna.hina.mayumi_caren_challenge_brainwashed_hina` | 마유미·카렌이 조종당한 히나에게 반박·저항함. 마유미가 원래부터 히나를 숭배했다고 해석하면 틀림 |
+| [2장 18화](https://www.gacha.gg/blue-archive/story/act-2-volume-2-chapter-2-episode-18) | `canon.gehenna.recovery_makoto_speech_and_memory` | 마코토의 자유 회복 연설, 정신조작 해제, 히나가 **자신의 당시 생각과 행동을 전부 기억**한다고 말한 사건 |
+
+**의도적으로 포함하지 않은 디테일:** 1장 3화 마유미가 목격한 주차장 로켓 점프, 7화 카렌의 게헨나 외부 불량배 대응, 8화 현장의 특정 학생들 농담, 11화 히나가 잠든 동안 아코·이오리·치나츠가 나눈 말, 2장 6화 카스미가 선생에게 고백한 옛 경험 등은 **히나가 직접 봤다는 근거가 없습니다.** 사건을 조사할 때의 참고 내용이지, 히나의 원작 개인 기억으로 확정하지 않았습니다. 언제라도 직접 공개된 사실이라면 별도로 검증할 수 있지만 **작품이 보였다는 이유만으로 히나의 지식에 넣지 않습니다.**
+
+**주의:** 위 장면 전사의 웹 분류는 `Act 2 Vol.2`이며 한국 서버에서는 제2부 `Vol.1`로 표기됩니다. 이번 신규 항목도 영어판 대사를 게재한 **비공식 전사**를 근거로 하므로 `crosschecked`이고, 화자의 표현을 그대로 한국어 공식 대사인 양 인용하지 않습니다. 신규 25개 중 `audience_only`는 기존 2개이며, 새 14개는 `self`, `direct_experience`, `public_knowledge`로 구분됩니다. `RAG_MODE=full`에서는 런타임에 주입되는 신규 항목이 **23개**입니다.
+
 ## 프롬프트 관련 판단 (#514 후속 PR)
 
 - `hina.md`의 책임·힘·권한 사용·일상 태도 분리는 2장 17·19화와 이미 부합합니다. 크게 다시 쓰지 않습니다.
@@ -67,12 +92,13 @@
 ## 남은 확인 및 운영 작업
 
 - [x] 한국 서버 1·2장 공개 근거 확인 및 일본어 영상의 화별 위치 확보
-- [x] 비공식 영어판 게임 대사 전문에서 1장 2·6·16·17화, 2장 1·17·18·19·20·21화의 핵심 장면 확인
+- [x] 비공식 영어판 게임 대사 전문에서 1장 1·2·6·8·11·16·17화, 2장 1·4·12·17·18·19·20·21화의 핵심 장면 확인
 - [x] 확인 결과를 `lore.jsonl`에 반영하고 `source.locator`를 장면별로 보강
 - [ ] 필요 시 일본어 게임 화면의 각 대사를 프레임별로 대조하여 원어 표현/화자/예외를 재확인 (특히 2장 21화)
 - [ ] 한국어판 고유 표현 및 정확한 인명·호칭·장명 대조 (공식 한국어 원문이 제공되면)
 - [ ] 2장 21화의 '이부키가 뇌제의 유산'이라는 언급의 정확한 원어와 의미는 **추가 설정이 확인되기 전까지 해석 보류**
 - [ ] `hina-lore validate`, 관련 단위 테스트, PR CI 확인
 - [ ] 실제 모델에서 서사 질문·평범한 DM 응답·`audience_only` 차단·입력 토큰 변화 관측
+- [ ] 봇 재시작 후 `RAG_MODE=full`의 증가 토큰량·캐시 변화 관측, 필요시 간결한 원자적 항목으로 재정리
 
 **병합 전 판단:** 기록에는 장면별 대사 근거가 생겼지만 비공식 영어 전사의 한계가 있으므로 `crosschecked` 상태를 유지합니다. 빠른 운영 적용이 필요할 때는 PR CI 통과와 수동 근거 검토를 조건으로 하고, 공식 한국어판 문구를 확보한 뒤 추후 보완해도 됩니다. 해당 문서 자체는 LLM에 자동 주입되지 않습니다.
