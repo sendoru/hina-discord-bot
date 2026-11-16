@@ -101,6 +101,7 @@ class Settings:
     smart_model: str = "gpt-4.1-mini"
     fast_output_tokens: int = 4096
     smart_output_tokens: int = 8192
+    answer_timeout_seconds: float = 45.0
     memory_output_tokens: int = 4096
     # Runtime-editable output proofreader; .env supplies startup values.
     output_repair_mode: str = "off"
@@ -278,6 +279,13 @@ class Settings:
             ) from exc
 
         memory_output_tokens = int(os.getenv("MEMORY_MAX_OUTPUT_TOKENS", "4096"))
+        try:
+            answer_timeout_seconds = float(os.getenv("ANSWER_TIMEOUT_SECONDS", "45.0"))
+        except ValueError as exc:
+            raise ValueError("ANSWER_TIMEOUT_SECONDS는 숫자여야 합니다.") from exc
+        if not (math.isfinite(answer_timeout_seconds)
+                and 1.0 <= answer_timeout_seconds <= 300.0):
+            raise ValueError("ANSWER_TIMEOUT_SECONDS는 1~300 사이의 유한한 숫자여야 합니다.")
 
         output_repair_mode = os.getenv("OUTPUT_REPAIR_MODE", "off").strip().lower()
         if output_repair_mode not in {"off", "conservative", "aggressive"}:
@@ -437,6 +445,7 @@ class Settings:
             fast_model=fast_model, smart_model=smart_model,
             fast_output_tokens=fast_output_tokens,
             smart_output_tokens=smart_output_tokens,
+            answer_timeout_seconds=answer_timeout_seconds,
             output_repair_mode=output_repair_mode,
             output_repair_model=output_repair_model,
             output_repair_timeout_seconds=output_repair_timeout_seconds,

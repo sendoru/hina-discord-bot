@@ -886,6 +886,7 @@ class RequestAssembler(BaseLLM):
                 return await self.usage.request(
                     self.client,
                     "answer",
+                    deadline_seconds=self.settings.answer_timeout_seconds,
                     route_metadata=metadata,
                     **current_request,
                 )
@@ -916,6 +917,7 @@ class RequestAssembler(BaseLLM):
                 return await self.usage.request(
                     self.client,
                     "answer",
+                    deadline_seconds=self.settings.answer_timeout_seconds,
                     route_metadata=metadata,
                     **current_request,
                 )

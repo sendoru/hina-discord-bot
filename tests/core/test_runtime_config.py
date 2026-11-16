@@ -63,6 +63,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "LLM_SMART_MODEL",
         "FAST_MAX_OUTPUT_TOKENS",
         "SMART_MAX_OUTPUT_TOKENS",
+        "ANSWER_TIMEOUT_SECONDS",
         "ROUTING_CLASSIFIER_MODE",
         "ROUTING_CLASSIFIER_PROVIDER",
         "ROUTING_CLASSIFIER_MODEL",
@@ -104,6 +105,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.smart_model == settings.model
     assert settings.fast_output_tokens == 4096
     assert settings.smart_output_tokens == 8192
+    assert settings.answer_timeout_seconds == pytest.approx(45.0)
     assert settings.gemini_store_interactions is False
     assert settings.gemini_store_classifier_interactions is None
     assert settings.gemini_search_api_mode == "auto"
@@ -200,6 +202,49 @@ def test_env_example_lists_all_runtime_setting_names():
     listed = set(re.findall(r"(?m)^\s*#?\s*([A-Z][A-Z0-9_]*)=", template))
     missing = {spec.env_name for spec in RUNTIME_SETTING_SPECS.values()} - listed
     assert not missing, f"Missing runtime environment variables in .env.example: {sorted(missing)}"
+
+
+def test_answer_timeout_env_runtime_override_and_reset(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("ANSWER_TIMEOUT_SECONDS", "75.5")
+    base = Settings.load()
+    assert base.answer_timeout_seconds == pytest.approx(75.5)
+
+    store = Store.create(":memory:")
+    try:
+        settings = RuntimeSettings(base, store)
+        assert settings.set_text("ANSWER_TIMEOUT_SECONDS", "120.25") == pytest.approx(120.25)
+        assert settings.answer_timeout_seconds == pytest.approx(120.25)
+        assert settings.source("answer_timeout_seconds") == "db"
+        for invalid in ("0.99", "300.01", "nan", "inf", "bad"):
+            with pytest.raises(ValueError):
+                settings.set_text("ANSWER_TIMEOUT_SECONDS", invalid)
+        assert settings.answer_timeout_seconds == pytest.approx(120.25)
+        assert settings.reset("ANSWER_TIMEOUT_SECONDS") == pytest.approx(75.5)
+        assert settings.source("answer_timeout_seconds") == "startup"
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("raw", ["0", "0.99", "300.01", "nan", "inf", "invalid"])
+def test_settings_rejects_invalid_answer_timeout_env(monkeypatch, tmp_path: Path, raw):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("ANSWER_TIMEOUT_SECONDS", raw)
+    with pytest.raises(ValueError, match="ANSWER_TIMEOUT_SECONDS"):
+        Settings.load()
+
+
+@pytest.mark.parametrize("raw", ["1", "300"])
+def test_settings_accepts_answer_timeout_bounds(monkeypatch, tmp_path: Path, raw):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("ANSWER_TIMEOUT_SECONDS", raw)
+    assert Settings.load().answer_timeout_seconds == pytest.approx(float(raw))
 
 
 def test_settings_loads_output_repair_from_dotenv_and_runtime_reset(monkeypatch, tmp_path: Path):

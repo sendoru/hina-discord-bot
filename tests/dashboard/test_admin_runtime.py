@@ -238,6 +238,8 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert 'max="10.0"' in response.text
     assert 'step="any"' in response.text
     assert 'id="runtime-model"' in response.text
+    assert 'id="runtime-answer_timeout_seconds"' in response.text
+    assert 'aria-label="Override value for ANSWER_TIMEOUT_SECONDS"' in response.text
     assert 'maxlength="200"' in response.text
     assert "startup 6200" in response.text
     assert ">9876</code>" in response.text
