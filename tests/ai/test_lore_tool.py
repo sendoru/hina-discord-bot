@@ -15,10 +15,10 @@ from hina_bot.ai.local_tools import (
 from hina_bot.ai.lore_tool import attach_lore_search
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.core.config import Settings
-from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate
 from hina_bot.core.lore_tool_search import LoreKeywordIndex
 from hina_bot.core.routing import Scope
+from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
 
 
