@@ -935,3 +935,22 @@ def test_legacy_memory_shadow_environment_value_is_canonical(monkeypatch, tmp_pa
     monkeypatch.setenv("OPENAI_API_KEY", "test")
     monkeypatch.setenv("PERSONAL_MEMORY_READ_MODE", "shadow")
     assert Settings.load().personal_memory_read_mode == "tiered_shadow"
+
+
+def test_manual_full_mode_persists_and_reads_legacy_overrides(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "test")
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    monkeypatch.setenv("PERSONAL_MEMORY_READ_MODE", "legacy")
+    assert Settings.load().personal_memory_read_mode == "full"
+
+    store = Store.create(":memory:")
+    try:
+        store.settings.set_runtime_value("personal_memory_read_mode", '"legacy"')
+        settings = RuntimeSettings(_base(), store)
+        assert settings.personal_memory_read_mode == "full"
+        for mode in ("decision", "full"):
+            assert settings.set_text("PERSONAL_MEMORY_READ_MODE", mode) == mode
+        assert RuntimeSettings(_base(), store).personal_memory_read_mode == "full"
+    finally:
+        store.close()
