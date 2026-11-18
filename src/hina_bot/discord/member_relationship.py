@@ -63,6 +63,7 @@ def register_member_relationship(registry, client, message, scope, confirmed_ids
             return empty
         guild, channel, store = message.guild, message.channel, client.store
         target = Scope(scope.guild_id, scope.channel_id, int(uid))
+
         def enabled():
             return (client.settings.server_memory_read == "on"
                     and memory_mode_capabilities(store.memory_mode_chain(scope)["effective"])[0]
@@ -76,7 +77,8 @@ def register_member_relationship(registry, client, message, scope, confirmed_ids
         try:
             async with asyncio.timeout(8):
                 member = await guild.fetch_member(int(uid))
-                if member.bot or guild.unavailable or not channel.permissions_for(member).view_channel:
+                if (member.bot or guild.unavailable or guild.me is None
+                        or not all(channel.permissions_for(person).view_channel for person in (member, guild.me))):
                     return empty
                 if isinstance(channel, discord.Thread) and channel.is_private():
                     ids = await private_thread_member_ids(channel)

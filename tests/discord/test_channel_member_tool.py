@@ -237,3 +237,74 @@ async def test_private_text_channel_rejects_roster_after_bot_loses_visibility():
     )
     assert result.is_error is True
     assert result.output == {"error": "member_directory_incomplete"}
+
+
+@pytest.mark.asyncio
+async def test_natural_name_to_relationship_only_projects_authorized_axes():
+    import json
+
+    from hina_bot.ai.local_tools import LocalToolExecutor, LocalToolRegistry
+    from hina_bot.core.routing import Scope
+    from hina_bot.core.store import Store
+    from hina_bot.discord.member_relationship import register_member_relationship
+
+    message = runtime()
+    guild = message.guild
+    target = guild.members[0]
+    for person in (target, message.author):
+        person.display_name = person.nick
+    guild.fetch_member = AsyncMock(side_effect=lambda uid: {200: target, 100: message.author}[uid])
+    guild.fetch_channel = AsyncMock(return_value=message.channel)
+    guild.default_role = object()
+    message.channel.permissions_for.side_effect = lambda _: NS(view_channel=True, read_message_history=True)
+    store = Store.create(":memory:")
+    settings = NS(server_memory_read="on", personal_memory_cross_scope="off")
+    client = NS(store=store, settings=settings, user=guild.me)
+    registry = LocalToolRegistry()
+    confirmed = set()
+    channel_member_tool_registry(message, 99, registry=registry, confirmed_ids=confirmed)
+    register_member_relationship(registry, client, message, Scope(1, 10, 100), confirmed)
+    dm = Scope(None, 50, 200)
+    store.record_completed_turn(dm, 123, "private source", "reply",
+                                context_provenance={"source_trigger_kind": "explicit"})
+    store.add_memory_item(dm, "private observation", kind="relationship", disclosure="implicit",
+                          source_message_ids=["123"], relationship_evidence={"comfort": 3})
+    call = LocalToolCall("lookup", "get_member_relationship", {"user_id": "200"})
+
+    async def profile():
+        result = await registry.execute(call)
+        assert not result.is_error
+        return result.output["profile"]
+
+    assert await profile() == {}
+    store.set_cross_scope_opt_in(100, True)
+    rounds = []
+
+    async def model(request):
+        rounds.append(request)
+        if len(rounds) == 1:
+            name, arguments = "get_current_channel_members", {}
+        elif len(rounds) == 2:
+            directory = json.loads(request["input"][-1]["output"])["result"]
+            person = next(row for row in directory["members"] if row["global_name"] == "Uhe")
+            name, arguments = call.name, {"user_id": person["user_id"]}
+        else:
+            result = json.loads(request["input"][-1]["output"])
+            assert result == {"ok": True, "result": {"user_id": "200", "profile": {}}}
+            return NS(output=[], output_text="확실히 말하기 어려워.")
+        return NS(output=[NS(type="function_call", call_id=str(len(rounds)), name=name,
+                             arguments=json.dumps(arguments))])
+
+    await LocalToolExecutor(registry).run(model, {"input": "너 Uhe랑 어떤 사이야?"})
+    assert len(rounds) == 3
+    store.set_cross_scope_opt_in(200, True)
+    assert await profile() == {"comfort": 3}
+    store.set_cross_scope_opt_in(200, False)
+    settings.personal_memory_cross_scope = "on"
+    assert await profile() == {"comfort": 3}
+    store.set_user_memory_mode(200, "off")
+    assert await profile() == {}
+    store.set_user_memory_mode(200, "normal")
+    store.forget_server_memory_source(None, 50, 123)
+    assert await profile() == {}
+    store.close()

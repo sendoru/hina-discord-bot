@@ -60,3 +60,15 @@ relationship profile이나 cross-channel public memory를 허용하는 것과는
 `<@user_id>` 형태로 사용할 수 있습니다. 일반 사용자 mention의 실제 활성화 여부는
 `ALLOW_USER_MENTIONS`를 따르며, @everyone/@here/role mention은 기존 output safety 경계에서 계속
 비활성화됩니다.
+
+## 언급된 멤버와 히나의 관계
+
+서버에서 “너 센돌이랑 어떤 사이야?”처럼 관계가 답변에 필요한 경우, 히나는 확인된
+사용자 ID로 `get_member_relationship`를 호출할 수 있습니다. 멘션·대화 작성자 ID가
+없으면 위 멤버 도구로 이름을 확인합니다. 조회 결과는 히나가 그 사람에게 직접 말할
+때와 다른 사람에게 그 사람을 언급할 때 모두 사용할 수 있습니다. 조회로 핑이 전송되지는 않습니다.
+
+현재 서버에서 읽을 수 있는 공개 관찰을 집계하며, 전체 cross-scope 설정이 ON이거나
+**관계 대상자**가 opt-in하면 다른 공간의 유효한 implicit 관찰도 수치에 반영합니다.
+응답에는 관찰된 축의 점수만 담기며, 서버 읽기 OFF 또는 대상자의 읽기 OFF·서버 옵트아웃은
+조회를 차단합니다.
