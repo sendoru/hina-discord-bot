@@ -230,7 +230,7 @@ uv run hina-memory-extraction-eval --id extract_relative_date_resolved --repeat 
 
 ```bash
 uv run hina-memory-response-eval --provider gemini --model <answer-model> --judge-model <judge-model>  # judge는 같은 provider, 기본값은 smart 모델
-uv run hina-memory-response-eval --modes tiered --id dm_greeting_just_passed_exam --repeat 3
+uv run hina-memory-response-eval --modes decision --id dm_greeting_just_passed_exam --repeat 3
 uv run hina-memory-response-eval --no-judge   # 답변만 만들고 사람이 검토
 ```
 
@@ -250,13 +250,7 @@ judge와 별도로 `keyword_proxy_rate`(사용자가 말하지 않은 기억 key
 
 - 기억 날짜는 실행 시각 기준 상대값입니다(`observed_days_ago`, `confirmed_days_ago`, `event_in_days`).
   content의 `{event}`는 일정의 월·일로 바뀌므로, 상태 정보가 없는 legacy도 같은 날짜를 봅니다.
-- `tiered`에서는 봇처럼 답변 뒤 사용 기록을 남겨서, 여러 턴 사례에도 cooldown과 안부 횟수 제한이
-  적용됩니다. `recall_memory`도 봇처럼 tiered에서만 등록됩니다. 웹 검색은 끕니다.
-- 사례의 `tiered_expect`는 첫 턴에서 tiered가 각 기억을 어디에 두는지(`profile`, `notes:T1`,
-  `quiet_boundaries` 등)입니다. `tests/tooling/test_memory_response_eval.py`가 모델 호출 없이 이 배치와
-  `status`를 확인하므로, 선택 규칙이 바뀌어 사례가 의도한 상황을 만들지 못하면 CI에서 실패합니다.
-
-결과는 `data/evals/memory-response-*.json`과 같은 이름의 Markdown(모드별 지표 표, 사례·턴별 답변, tiered
+결과는 `data/evals/memory-response-*.json`과 같은 이름의 Markdown(모드별 지표 표, 사례·턴별 답변, Decision
 선택과 사용 항목, `recall_memory` 호출 수, 판정 근거)에 저장됩니다. 사례마다 모드별 답변 요청과 턴마다
 judge 요청 1회가 나가는 유료 호출이며 일반 테스트에는 포함되지 않습니다. judge 판정은 확률적이므로
 비율만 보지 말고 Markdown의 실제 답변을 함께 확인합니다. 운영 공개 기록에는 비율만 남깁니다.

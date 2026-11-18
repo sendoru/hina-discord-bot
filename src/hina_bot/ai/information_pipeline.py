@@ -493,7 +493,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 use_memory=assembly_use_memory,
                 information_plan=information,
                 model_plan=model_plan,
-                )
+            )
         finally:
             CURRENT_AMBIENT_WEATHER.reset(token)
 

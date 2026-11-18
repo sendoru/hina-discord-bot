@@ -184,160 +184,11 @@ The `memory.shadow_extraction` completed event adds `annotated_items`, `reconfir
 `reinforced_annotations` (targets that took a duplicate's judgment, count only),
 `suppressed_relationship_items`, `directive_items`, `verified_directives` and `rejected_directives`.
 
-## Tiered read path (memory v2 P2, #457)
+## Personal memory read modes
 
-`PERSONAL_MEMORY_READ_MODE` (runtime setting, startup default `full`) chooses how owner memory
-reaches a response:
+The first filter checks active ownership and disclosure. In the owner's DM, records from every origin are eligible, including sensitive records. In a guild, a sensitive annotation excludes the record even when the current message repeats its keywords. The filter uses no conversation history. Eligible duplicate records (normalized text or an existing cluster) contribute once, preferring the current channel. Original records are retained.
 
-| Mode | Provider context | Recorded |
-|---|---|---|
-| `full` (formerly `legacy`, accepted as an alias) | the existing projection below (all FULL items in DM) | nothing new |
-| `tiered_shadow` | the existing projection | the tiered selection in context provenance and `memory.selection` telemetry, plus shadow coverage after the reply |
-| `tiered` | `user_memory` and `relationship_profile` only | the same, plus usage after the reply |
-| `decision_shadow` | the existing projection | Decisions selection, timing, usage and coverage |
-| `decision` | `user_memory` and `relationship_profile` | Decisions selection, timing, usage and post-reply bookkeeping |
-
-Run `hina-backfill-annotations` first, compare with `tiered_shadow`, check the replies with
-`hina-memory-response-eval` (below), then switch to `tiered`. `legacy` stays available as the
-rollback. See [Gemini Decisions](gemini-decisions.md) for the independent Decisions rollout and
-the transition from the old `shadow` spelling.
-
-The tiered selector (`core/memory_selection.py`) makes no model calls. Permission comes first: an item is
-a candidate only when `memory_access` is FULL for the current scope, except for the cross-space
-boundaries below. Selecting nothing is normal.
-
-- **Effective status** is computed from the annotation and the current time: ongoing items are
-  `current` until their stability window passes since the last confirmation (short 30 days,
-  medium 120, long 365, permanent never), then `unverified`; plans are `upcoming`, `just_passed`
-  for 14 days after the date, then `past`; dated events are `recent_event` for 14 days, then
-  `past_event`; recurring items are `upcoming` with their next date. Undated plans and events
-  expire 30 days after observation.
-- **Missing or stale annotations** use the quiet reading (#449 principle 6): facts become
-  `contextual`, a `boundary` kind stays a boundary directive, and a stale directive stays a
-  directive until it is re-annotated.
-- **T0 directives**: FULL directives plus cross-space boundaries, at most 6 items / 600 characters,
-  ordered explicit > boundary > most recently confirmed.
-- **Cross-space boundaries** (decision 16): a verified boundary, or an unannotated legacy
-  `boundary` item, applies in every space where its owner speaks. Outside its FULL spaces it is
-  rendered under `quiet_boundaries`, which may only stop Hina from raising the topic. `style`
-  directives are not carried across spaces.
-- **T1 session follow-up** (§7.1): only on the first turn after an 8-hour gap across all spaces,
-  when that turn is a greeting, small talk or a bare call. Candidates are plans that just passed,
-  plans within 3 days, and recent importance-3 ambient items; at most 2 in DM. Each item may be
-  attempted twice per effective status (`proactive_count`), and any `proactive_followup_off`
-  boundary disables it. `MEMORY_SESSION_FOLLOWUP=off|dm|all` (default `dm`); with `all`, a server
-  follow-up needs a direct call and an ambient, `audience=server` item from the same space, and
-  uses at most one.
-- **T2 relevant notes**: lexical matching of keywords and content words against the current
-  message (and, at half weight, the explicit reply chain). Ambient items need one keyword hit or
-  two content-word hits; contextual items need a keyword hit; sensitive items need a keyword in
-  the current message itself. Items used in the last 72 hours are skipped unless the message
-  (or a carried-over turn, below) names one of their keywords (decision 19). Admitted items are ranked by their hits weighted by
-  the inverse document frequency of the matching query word over the owner's candidates, so a
-  word that matches most memories ("보리" for a cat owner) counts less than a rare one ("사료");
-  the thresholds above stay unweighted. Near-duplicate contents are skipped (character bigram
-  similarity), and at most 4 items / 900 characters are kept.
-- **Topic carry-over (T2)**: the user's own recent messages to Hina in this channel or DM (at most
-  2, within 30 minutes; `store.history(scope)` holds only this user's turns here, so other members
-  and Hina's replies never count) can admit a note the current message does not name, such as "걔
-  요즘 밥을 잘 안 먹어" right after "어제 고양이 병원 다녀왔어". Each earlier turn is judged on its
-  own against the same thresholds, never summed with the current message: half-weight hits would
-  never reach the threshold. Ambient notes may follow either turn, contextual notes only the
-  immediately previous one, and sensitive notes never carry over. A carried note ranks at half
-  weight, and the selection records `via` (`current`, `chain` or `carry`) for each T2 note.
-- **Tp core profile**: the few daily-life facts Hina always knows, so a photo with "ㅋㅋㅋ 이거 봐",
-  "우리 애" or a paraphrase still makes sense without a keyword. Eligibility uses judgment fields
-  only: ambient, importance 3, ongoing or recurring, and valid now (`current`, or `upcoming` for a
-  recurring item). In a server it also needs the session follow-up's audience rule: same space and
-  `audience=server`. At most 5 items / 400 characters, explicit first, then most recently
-  confirmed. Profile items render under `user_memory.profile` as plain text, and the policy limits
-  them to understanding: they never justify raising the topic. A note that T1 or T2 already chose
-  renders there instead; a note T2 skipped for cooldown stays in the profile, since cooldown limits
-  raising a memory, not understanding the user.
-- **T4**: reference-gated items the owner explicitly brought up this turn.
-- **Clusters**: one member per cluster among the members visible here (the canonical one when
-  visible, otherwise the most recently confirmed).
-- Raw relationship memories are never sent (decision 5); `relationship_profile` is the numeric
-  owner profile in DM and the FULL plus implicit profile in a server.
-
-**Usage after the reply** (tiered and active Decisions): once the reply is delivered, each injected note or
-profile item whose keyword appears in the reply gets `last_used_at` (the 72-hour cooldown). Unannotated legacy items
-need two content words instead. A T1 follow-up candidate records `proactive_status` (its effective
-status) and `proactive_count`: 2 when the reply used it, otherwise one more attempt, so an unused
-follow-up is retried once in the next session. Only these usage columns are written, never the
-annotation's judgments, and items without an annotation row are skipped. This metadata is kept
-whenever memory was read, including `read_only`; a failure is logged as `memory.usage_failed` and
-never affects the reply. `memory.usage` counts used items and follow-ups without content. Session
-gaps use the user's latest stored turn in any space.
-
-**Tiered shadow coverage after the reply**: `tiered_shadow` answers with the legacy projection, so
-it measures what tiered would have missed instead of recording usage. The reference is every note
-legacy sent in this scope: owner, active, non-relationship, FULL here (plus this turn's authorized
-items), and not a directive, since tiered always places FULL directives in T0. A note counts as
-used when its keyword appears in the delivered reply (the same rule as usage above), and as missed
-when it was used but the tiered shadow selection did not contain it.
-
-- `missed_unprompted`: missed notes whose keywords were not in the user's message, so the reply
-  brought them up from memory alone. This is the regression tiered would introduce.
-- `missed_current`: missed notes still valid now (current, upcoming, just passed or a recent event).
-- `covered_profile`, `covered_carry`: used notes the selection had only through the core profile
-  or a carried-over topic. Adding them to the misses approximates the miss rate without those two
-  rules, so one tiered shadow run compares both (it ignores their small effect on the T2 cap).
-- Turn flags: `visual_turn` (the user sent or replied to an attached image now; custom emoji and
-  stickers do not count) and `recent_own_turn` (the user's own messages to Hina in this channel or
-  DM within the last 30 minutes, at most 2; other members' messages and Hina's replies never
-  count).
-
-The counts and the missed item ids are added to the turn's provenance under
-`memory_selection.coverage`, shown in the dashboard trace. The `memory.shadow_coverage` usage event
-carries the counts and flags only, and `hina-memory-report` aggregates it under
-`telemetry.memory_shadow_coverage`. Nothing is written to memory or annotations. A failure is
-logged as `memory.shadow_coverage_failed` and never affects the reply.
-
-Known limits: keyword matching is approximate (a coincidental keyword counts as used, and a
-paraphrased mention does not), and tiered shadow runs do not write `last_used_at`. Cooldown still uses values already stored by active reads.
-
-**Response eval before switching** (#449 §10): shadow coverage shows what tiered would have left
-out, not how the model talks with what it gets. `hina-memory-response-eval` sends fictional cases
-through the runtime answer path in `legacy` and `tiered` and has a judge model grade each reply:
-unprompted mentions of profile or notes on unrelated turns, boundary topics raised or hinted
-(`directives` and `quiet_boundaries`), status framing (`just_passed`, `unverified`, `past`), and a
-recall control so a quiet path cannot score well by never using memory. The tiered run records
-usage after each reply like the bot, so multi-turn cases see the cooldown. These are paid calls;
-cases, metrics and options are described in `evals/README.md`.
-
-### recall_memory tool
-
-With `tiered`, memory that was not selected is no longer in the prompt, so the model can look it
-up with `recall_memory(query)` (#449 §7 T3, decisions 7 and 22). It is registered only on the
-tiered path while the owner's memory reads are allowed, and the read mode is checked again when it
-runs.
-
-- The tool description and the tiered policy mention photos: when the user sends a photo or a
-  short reaction and the subject (a pet, food, a place) seems tied to their life but no memory was
-  selected, the model may look it up by the subject's name. The model sees the image itself, so
-  no description call is needed.
-- It returns at most 6 active non-relationship memories of the current owner that match the query
-  lexically, ranked with the same inverse document frequency weighting as T2, with the same `status`, `date`/`noted` and `use` as `user_memory`. `past` and
-  `unverified` items are returned with their dates; superseded and retracted items never are.
-- It never widens access: only items FULL in the current scope, plus reference-gated items this
-  turn's T4 recall already authorized. Being called by the model is not an owner reference.
-- At most 2 calls per answer. The description separates it from `get_chat_history`, which reads the
-  current channel's original messages.
-- Its results stay in this request's function output. The answer is marked in context provenance
-  as `memory_lookup` (call count and `{store, item_id}` only), and extraction drops such replies
-  just like `history_lookup` ones (principle 10). `memory.recall` telemetry records status, count and
-  time, never the query or content.
-
-Search is lexical over the owner's items in Python rather than SQLite FTS5, so it needs no schema
-change; P5 replaces it with embeddings.
-
-The rendered `user_memory` holds `directives`, `quiet_boundaries` and `notes` (`text`, `status`,
-`date` or `noted`, `use`, and `scope_relation` when the item came from elsewhere); it carries no
-ids, kinds or confidence values. The tiered policy (`prompts/integration/structured_memory_tiered.md`)
-is attached whenever the owner has any memory, even when nothing was selected, so the instruction
-prefix stays stable. Context provenance lists each admitted item as `{store: personal, item_id,
-tier, status}` and `memory_selection` counts tiers and exclusion reasons without content.
+`full` sends all eligible factual content. `decision` scores that pool and sends the selected records. An empty selection stays empty. On a request error the same full projection is used for that turn. Implicit relationship evidence can contribute to a numeric profile without exposing its text. `decision_shadow` serves full and observes Decisions. Server lookup through `recall_memory` uses its independent P4 permissions.
 
 ## Disclosure semantics
 
@@ -360,14 +211,8 @@ another user's memory to enter the DM.
 | --- | --- | --- | --- | --- |
 | `local` | full | hidden | hidden | full |
 | `implicit` | full | implicit | implicit | full |
-| `reference_gated` | full | full only after owner reference | full only after owner reference | full |
+| `reference_gated` | full | hidden | hidden | full |
 | `global` | full | full | full | full |
-
-Outside the owner's DM, a private guild-channel `reference_gated` item remains gated in every other
-channel or server until the owner explicitly references it.
-
-`reference_gated` does not mean that any person can unlock a memory by mentioning it. The current
-speaker must be the same `user_id` that owns the item. This is checked before every other rule.
 
 `PUBLIC_SERVER_MEMORY_IN_DM` remains relevant to the legacy summary path while migration is in
 progress, but it no longer controls structured-memory access: the owner's DM aggregates all of that
@@ -516,48 +361,12 @@ remain active until a later policy can resolve them safely. New same-evidence
 relationship duplicates are automatically superseded, preserving the profile
 projection because only the existing observation contributes.
 
-## Phase 4: reference-gated factual recall
-
-Shared-space factual recall is now a separate one-turn authorization path rather than an always-injected
-projection.
-
-The gate is deliberately conservative:
-
-- the current speaker must own the memory item,
-- only active, non-`relationship`, `reference_gated` items are candidates,
-- items already FULL in the current disclosure space are not treated as cross-space recall candidates,
-- current-channel-only classification does not disable this path by itself; an explicit owner reference
-  may still authorize the item, and the response model receives its `scope_relation` for relevance,
-- a strong explicit self-reference must be present in the current user turn,
-- topical overlap without an explicit self-reference does not open the gate,
-- candidate retrieval is bounded to the 24 newest eligible items,
-- relevance selection is lexical in v1 and authorizes at most two best-matching items,
-- if the current message supplies only one topic anchor and several memories match it, recall is rejected
-  as ambiguous rather than choosing the newest memory,
-- a bare recall cue such as `기억나?` can open the detector but does not expose any item without a usable
-  topic anchor.
-
-Examples accepted by the detector include forms such as `전에 말했던 ...`, `저번에 얘기했던 ...`,
-`DM에서 말한 ...`, `내가 말했던 그 ...`, and a standalone `그거 기억나?`. Third-party forms
-such as `철수가 전에 말했던 ...` are not treated as the current speaker referencing their own memory.
-
-Selected rows enter the request only through `authorized_factual_memory`, tagged with
-`authorization=owner_explicit_reference`. The response model is told that these rows were already
-authorized by Python for the current turn; it does not decide whether hidden factual memory should be
-opened.
-
-The same decision is visible in trace provenance without copying memory text into telemetry:
-`detector_reason`, candidate/relevant counts, selected item ids, authorization reason, and terminal
-status are persisted with the bounded context provenance snapshot. Failed turns still emit only the
-content-free counts/status through the `context.provenance` lifecycle row.
-
 ## Still out of scope
 
 Shadow extraction still does not:
 
 - replace `summaries` or `shared_summaries`,
 - make structured memory the primary replacement for legacy summaries,
-- replace the conservative lexical reference matcher with embedding/vector retrieval,
 - automatically resolve `conflicts` or relationship-memory reconciliation proposals.
 
 Those steps should be enabled incrementally after shadow classifications have been inspected against
