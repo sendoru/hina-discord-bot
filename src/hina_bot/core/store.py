@@ -418,7 +418,7 @@ class Store:
             yield
             return
         state = {"user": scope.user_id, "keys": [key],
-                 "withdrawn": self.server_memory_opted_out(scope.guild_id, scope.user_id)}
+                 "withdrawn": scope.guild_id is not None and self.server_memory_opted_out(scope.guild_id, scope.user_id)}
         self._pending_server_sources[key] = state
         try:
             yield
@@ -674,13 +674,25 @@ class Store:
         return removed
 
     def forget_server_memory_source(
-        self, guild_id: int, channel_id: int, message_id: int
+        self, guild_id: int | None, channel_id: int, message_id: int
     ) -> int:
         """Hard-delete any item depending on a deleted source message."""
         state = self._pending_server_sources.get((guild_id, channel_id, message_id))
         if state is not None:
             state["withdrawn"] = True
         with self.db:
+            if guild_id is None:
+                self.db.execute(
+                    """UPDATE turns SET context_provenance=json_set(
+                           CASE WHEN json_valid(context_provenance) THEN context_provenance ELSE '{}' END,
+                           '$.source_trigger_kind','withdrawn')
+                       WHERE realm='dm:' || user_id AND scope=realm || ':channel:' || ? || ':user:' || user_id
+                       AND (message_id=? OR EXISTS (
+                           SELECT 1 FROM json_each(CASE WHEN json_valid(context_provenance)
+                           THEN json_extract(context_provenance,'$.assistant_message_ids') END) WHERE value=?))""",
+                    (str(channel_id), str(message_id), str(message_id)),
+                )
+                return 0
             return self._server_memories.delete_message(guild_id, channel_id, message_id)
 
     def forget(self, scope: Scope):
