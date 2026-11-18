@@ -96,6 +96,7 @@ def current_channel_members(
 
 def channel_member_tool_registry(
     message, bot_id: int, *, registry: LocalToolRegistry | None = None,
+    confirmed_ids: set[str] | None = None,
 ) -> LocalToolRegistry | None:
     if registry is None:
         registry = LocalToolRegistry()
@@ -117,6 +118,8 @@ def channel_member_tool_registry(
         directory = current_channel_members(message, bot_id, private_thread_ids=private_ids)
         if not directory.complete:
             raise LocalToolError("member_directory_incomplete")
+        if confirmed_ids is not None:
+            confirmed_ids.update(row["user_id"] for row in directory.members)
         return {
             "count": len(directory.members),
             "members": list(directory.members),

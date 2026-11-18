@@ -204,20 +204,21 @@ def test_a_delete_lookup_failure_is_swallowed(store, monkeypatch, caplog):
 async def test_message_delete_events_clear_the_cache_and_pending_photos():
     client = NS(
         visual_cache=NS(invalidate=Mock()),
-        store=NS(discard_pending_visuals_for_message=Mock()),
+        store=NS(discard_pending_visuals_for_message=Mock(), forget_server_memory_source=Mock()),
     )
 
     await HinaClient.on_raw_message_delete(client, NS(channel_id=10, message_id=555))
 
     client.visual_cache.invalidate.assert_called_once_with(10, 555)
     client.store.discard_pending_visuals_for_message.assert_called_once_with(10, 555)
+    client.store.forget_server_memory_source.assert_called_once_with(None, 10, 555)
 
 
 @pytest.mark.asyncio
 async def test_bulk_delete_clears_each_message():
     client = NS(
         visual_cache=NS(invalidate=Mock()),
-        store=NS(discard_pending_visuals_for_message=Mock()),
+        store=NS(discard_pending_visuals_for_message=Mock(), forget_server_memory_source=Mock()),
     )
 
     await HinaClient.on_raw_bulk_message_delete(
@@ -226,6 +227,9 @@ async def test_bulk_delete_clears_each_message():
 
     cleared = sorted(call.args for call in client.store.discard_pending_visuals_for_message.call_args_list)
     assert cleared == [(10, 1), (10, 2), (10, 3)]
+    assert sorted(c.args for c in client.store.forget_server_memory_source.call_args_list) == [
+        (None, 10, mid) for mid in (1, 2, 3)
+    ]
 
 
 @pytest.mark.asyncio
