@@ -81,94 +81,14 @@ async def _answer(mode, scope, message):
         store.close()
 
 
-@pytest.mark.asyncio
-async def test_tiered_dm_sends_only_selected_memory_with_its_policy():
-    payload, provenance, selection = await _answer("tiered", DM, "아 배고프다")
-
-    reference = read_reference_context(payload["input"][0]["content"])
-    memory = reference["user_memory"]
-    assert memory["directives"] == ["가족 얘기는 먼저 꺼내지 말아 달라고 함"]
-    assert [note["text"] for note in memory["notes"]] == ["매운 음식을 좋아함"]
-    assert reference["relationship_profile"] == {"comfort": 2}
-    raw = json.dumps(reference, ensure_ascii=False)
-    assert "마이그레이션" not in raw and "가벼운 장난" not in raw
-    assert "structured_owner_memory" not in reference
-    assert TIERED_MEMORY_POLICY.strip() in payload["instructions"]
-    assert STRUCTURED_MEMORY_POLICY.strip() not in payload["instructions"]
-    assert provenance["memory_selection"]["tiers"] == {"T0": 1, "T2": 1}
-    assert {row["store"] for row in provenance["structured_memory"]} == {"personal"}
-    assert selection.mode == "tiered" and selection.legacy_notes == ()
-
-
-@pytest.mark.asyncio
-async def test_tiered_policy_stays_when_nothing_is_selected():
-    payload, provenance, _ = await _answer("tiered", SERVER, "오늘 날씨 좋다")
-
-    reference = read_reference_context(payload["input"][0]["content"])
-    # DM-local items stay hidden in the server; the DM boundary applies quietly.
-    assert reference["user_memory"]["notes"] == []
-    assert reference["user_memory"]["quiet_boundaries"] == ["가족 얘기는 먼저 꺼내지 말아 달라고 함"]
-    assert TIERED_MEMORY_POLICY.strip() in payload["instructions"]
-    assert provenance["memory_selection"]["excluded"]["permission"] == 2
-
-
-@pytest.mark.asyncio
-async def test_shadow_answers_with_legacy_memory_and_records_the_selection():
-    payload, provenance, selection = await _answer("tiered_shadow", DM, "아 배고프다")
-
-    reference = read_reference_context(payload["input"][0]["content"])
-    assert "user_memory" not in reference
-    assert {row["content"] for row in reference["structured_owner_memory"]} >= {
-        "사내 결제 시스템 마이그레이션 담당", "매운 음식을 좋아함",
-    }
-    assert STRUCTURED_MEMORY_POLICY.strip() in payload["instructions"]
-    assert provenance["memory_selection"]["mode"] == "tiered_shadow"
-    assert provenance["memory_selection"]["tiers"] == {"T0": 1, "T2": 1}
-    # Nothing was injected from the selection: the run only carries the coverage reference
-    # (every FULL non-directive note legacy sent), never usage to record.
-    assert selection.mode == "tiered_shadow"
-    assert {item.content for item, _annotation in selection.legacy_notes} == {
-        "사내 결제 시스템 마이그레이션 담당", "매운 음식을 좋아함",
-    }
-
-
-@pytest.mark.asyncio
-async def test_legacy_mode_is_unchanged_and_records_no_selection():
-    payload, provenance, selection = await _answer("legacy", DM, "아 배고프다")
+@pytest.mark.parametrize("mode", ["full", "legacy", "tiered", "tiered_shadow", "shadow"])
+async def test_legacy_mode_is_unchanged_and_records_no_selection(mode):
+    payload, provenance, selection = await _answer(mode, DM, "아 배고프다")
 
     reference = read_reference_context(payload["input"][0]["content"])
     assert "structured_owner_memory" in reference and "user_memory" not in reference
     assert "memory_selection" not in provenance
     assert selection is None
-
-
-@pytest.mark.asyncio
-async def test_tiered_profile_and_carried_topic_reach_the_request():
-    calls = []
-    llm = LLM(Settings(discord_token="test", openai_api_key="test",
-                       external_context_policy="full", personal_memory_read_mode="tiered"),
-              client=_client(calls))
-    store = Store.create(":memory:")
-    try:
-        _seed(store)
-        cat = store.add_memory_item(DM, "고양이 보리를 키움", kind=MemoryKind.FACT,
-                                    disclosure=MemoryDisclosure.LOCAL)
-        _annotate(store, cat, quote="고양이 보리 키워", evidence="고양이 보리 키워",
-                  time_scope="ongoing", stability="long", usage_mode="ambient", importance=3,
-                  keywords=["고양이", "보리"])
-        # The user's previous message here carries the work topic into "이거 언제 끝나냐".
-        store.record_completed_turn(DM, 1, "회사 결제 건 때문에 야근 중", "고생 많네", name="사용자")
-        await llm.answer(store, DM, "사용자", "이거 언제 끝나냐", channel_context=[])
-        payload, provenance = calls[-1], CURRENT_CONTEXT_PROVENANCE.get()
-    finally:
-        await llm.close()
-        store.close()
-
-    memory = read_reference_context(payload["input"][0]["content"])["user_memory"]
-    assert memory["profile"] == ["고양이 보리를 키움"]
-    assert [note["text"] for note in memory["notes"]] == ["사내 결제 시스템 마이그레이션 담당"]
-    items = provenance["memory_selection"]["items"]
-    assert {(row["tier"], row.get("via")) for row in items} >= {("Tp", None), ("T2", "carry")}
 
 
 async def _decision_answer(

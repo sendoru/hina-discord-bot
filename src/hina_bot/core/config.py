@@ -30,7 +30,7 @@ ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 # tool: model-controlled local keyword search; full/v1 remain rollback paths.
 DECISION_MODES = frozenset({"decision_shadow", "decision"})
 RAG_MODES = frozenset({"off", "v1", "full", "tool"}) | DECISION_MODES
-PERSONAL_MEMORY_READ_MODES = frozenset({"full", "tiered_shadow", "tiered"}) | DECISION_MODES
+PERSONAL_MEMORY_READ_MODES = frozenset({"full"}) | DECISION_MODES
 # Provider-facing conversation transport only; independent from memory read policy.
 CONTEXT_INPUT_MODES = frozenset({"legacy", "structured", "structured_with_replay"})
 MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})
@@ -79,7 +79,7 @@ def parse_external_context_policy(value: str) -> str:
 
 def canonical_memory_read_mode(value: str) -> str:
     """Read the pre-#508 spelling from startup settings, stored config or historical traces."""
-    return {"shadow": "tiered_shadow", "legacy": "full"}.get(value, value)
+    return "full" if value in {"legacy", "shadow", "tiered_shadow", "tiered"} else value
 
 
 def _env_key(provider: str) -> str:

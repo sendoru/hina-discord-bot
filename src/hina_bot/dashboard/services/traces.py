@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 
-from hina_bot.core.config import canonical_memory_read_mode
 
 from ..analytics import (
     PREFLIGHT_LATENCY_STAGES,
@@ -604,7 +603,7 @@ class TraceService(ReadService):
         ]
         memory_selection = dict(raw.get("memory_selection") or {})
         if "mode" in memory_selection:
-            memory_selection["mode"] = canonical_memory_read_mode(memory_selection["mode"])
+            memory_selection["mode"] = {"shadow": "tiered_shadow"}.get(memory_selection["mode"], memory_selection["mode"])
         return {
             "version": raw.get("version"),
             "scope": raw.get("scope"),

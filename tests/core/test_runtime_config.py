@@ -909,19 +909,19 @@ def test_old_memory_shadow_config_is_read_and_migrated_without_changing_other_se
         store.settings.set_runtime_value("output_repair_mode", '"shadow"')
         store.settings.replace_startup_snapshot([("personal_memory_read_mode", '"shadow"')])
         settings = RuntimeSettings(_base(), store)
-        assert settings.personal_memory_read_mode == "tiered_shadow"
+        assert settings.personal_memory_read_mode == "full"
         assert settings.source("PERSONAL_MEMORY_READ_MODE") == "db"
-        with pytest.raises(ValueError, match="tiered_shadow"):
+        with pytest.raises(ValueError, match="full"):
             settings.set_text("PERSONAL_MEMORY_READ_MODE", "shadow")
 
         for _ in range(2):
             store.settings.migrate_memory_read_mode()
         assert store.settings.runtime_values() == {
-            "personal_memory_read_mode": '"tiered_shadow"', "output_repair_mode": '"shadow"',
+            "personal_memory_read_mode": '"full"', "output_repair_mode": '"shadow"',
         }
         assert store.db.execute(
             "SELECT value FROM runtime_config_startup WHERE key='personal_memory_read_mode'"
-        ).fetchone()[0] == '"tiered_shadow"'
+        ).fetchone()[0] == '"full"'
         for mode in ("decision_shadow", "decision"):
             assert settings.set_text("PERSONAL_MEMORY_READ_MODE", mode) == mode
             assert settings.set_text("RAG_MODE", mode) == mode
@@ -934,7 +934,7 @@ def test_legacy_memory_shadow_environment_value_is_canonical(monkeypatch, tmp_pa
     monkeypatch.setenv("DISCORD_TOKEN", "test")
     monkeypatch.setenv("OPENAI_API_KEY", "test")
     monkeypatch.setenv("PERSONAL_MEMORY_READ_MODE", "shadow")
-    assert Settings.load().personal_memory_read_mode == "tiered_shadow"
+    assert Settings.load().personal_memory_read_mode == "full"
 
 
 def test_manual_full_mode_persists_and_reads_legacy_overrides(monkeypatch, tmp_path):
