@@ -82,3 +82,22 @@ async def test_answer_uses_exactly_one_space_prompt_without_changing_relationshi
     finally:
         await llm.close()
         store.close()
+
+
+def test_relationship_prompts_use_cross_space_history_without_role_leakage():
+    ordinary = files("hina_bot").joinpath(
+        "prompts/ordinary_relationship.md"
+    ).read_text(encoding="utf-8")
+    special = files("hina_bot").joinpath(
+        "prompts/special_dm.md"
+    ).read_text(encoding="utf-8")
+
+    for prompt in (ordinary, special):
+        assert "같은 사용자임이 확인되는" in prompt
+        assert "자연스럽게 참고" in prompt
+        assert "숨기" in prompt
+
+    assert "현재 공간의 관계 모드를 바꾸는 근거로 삼지 마세요" in ordinary
+    assert "사적인 관계를 불필요하게 공개하거나 암시하지 마세요" in ordinary
+    assert "현재 DM의 관계와 모순되지 않습니다" in special
+    assert "그 공간의 호칭이나 태도를 현재 DM에 그대로 적용하지 마세요" in special
