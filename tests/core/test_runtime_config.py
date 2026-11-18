@@ -106,6 +106,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.fast_output_tokens == 4096
     assert settings.smart_output_tokens == 8192
     assert settings.answer_timeout_seconds == pytest.approx(45.0)
+    assert settings.decision_timeout_seconds == pytest.approx(1.5)
     assert settings.gemini_store_interactions is False
     assert settings.gemini_store_classifier_interactions is None
     assert settings.gemini_search_api_mode == "auto"
@@ -245,6 +246,50 @@ def test_settings_accepts_answer_timeout_bounds(monkeypatch, tmp_path: Path, raw
     monkeypatch.setenv("OPENAI_API_KEY", "key")
     monkeypatch.setenv("ANSWER_TIMEOUT_SECONDS", raw)
     assert Settings.load().answer_timeout_seconds == pytest.approx(float(raw))
+
+
+def test_decision_timeout_env_runtime_override_and_reset(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("DECISION_TIMEOUT_SECONDS", "2.5")
+    base = Settings.load()
+    assert base.decision_timeout_seconds == pytest.approx(2.5)
+
+    store = Store.create(":memory:")
+    try:
+        settings = RuntimeSettings(base, store)
+        assert settings.set_text("DECISION_TIMEOUT_SECONDS", "0.75") == pytest.approx(0.75)
+        assert settings.decision_timeout_seconds == pytest.approx(0.75)
+        assert settings.source("decision_timeout_seconds") == "db"
+        for invalid in ("0", "0.24", "30.01", "nan", "inf", "bad"):
+            with pytest.raises(ValueError):
+                settings.set_text("DECISION_TIMEOUT_SECONDS", invalid)
+        settings.reload()
+        assert settings.decision_timeout_seconds == pytest.approx(0.75)
+        assert settings.reset("DECISION_TIMEOUT_SECONDS") == pytest.approx(2.5)
+        assert settings.source("decision_timeout_seconds") == "startup"
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("raw", ["0", "0.24", "30.01", "nan", "inf", "invalid"])
+def test_settings_rejects_invalid_decision_timeout_env(monkeypatch, tmp_path: Path, raw):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("DECISION_TIMEOUT_SECONDS", raw)
+    with pytest.raises(ValueError, match="DECISION_TIMEOUT_SECONDS"):
+        Settings.load()
+
+
+@pytest.mark.parametrize("raw", ["0.25", "30"])
+def test_settings_accepts_decision_timeout_bounds(monkeypatch, tmp_path: Path, raw):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("DECISION_TIMEOUT_SECONDS", raw)
+    assert Settings.load().decision_timeout_seconds == pytest.approx(float(raw))
 
 
 def test_settings_loads_output_repair_from_dotenv_and_runtime_reset(monkeypatch, tmp_path: Path):
