@@ -657,12 +657,7 @@ class HinaClient(BaseHinaClient):
         )
         reader = server_reader(self, message, scope) if message.guild and not message.author.bot else None
         reader_token = CURRENT_SERVER_READER.set(reader)
-        register_memory_recall_tool(
-            registry, self.store,
-            Scope(message.guild.id if message.guild else None, message.channel.id,
-                  message.author.id),
-            self.settings, events=self.events,
-        )
+        register_memory_recall_tool(registry, events=self.events)
         local_tools_token = CURRENT_LOCAL_TOOLS.set(registry if registry else None)
         try:
             return await super().on_message(message)

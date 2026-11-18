@@ -456,7 +456,7 @@ async def run_case(llm, case: dict, *, judge_model: str | None, attempt: int = 1
             events = _Events()
             registry = LocalToolRegistry()
             # The same tool exposure as the bot: recall_memory only on the tiered path.
-            register_memory_recall_tool(registry, store, scope, llm.settings, events=events)
+            register_memory_recall_tool(registry, events=events)
             tools_token = CURRENT_LOCAL_TOOLS.set(registry if registry else None)
             selection_token = CURRENT_MEMORY_SELECTION.set(None)
             turn_token = CURRENT_TURN_ID.set(new_turn_id())
