@@ -308,3 +308,35 @@ async def test_natural_name_to_relationship_only_projects_authorized_axes():
     store.forget_server_memory_source(None, 50, 123)
     assert await profile() == {}
     store.close()
+
+
+def test_relationship_observations_respect_origin_and_withdrawal():
+    from hina_bot.core.routing import Scope
+    from hina_bot.core.store import Store
+    from hina_bot.discord.member_relationship import _observations
+
+    store = Store.create(":memory:")
+    target = Scope(1, 10, 200)
+    public = Scope(1, 20, 200, True)
+    restricted = Scope(1, 30, 200, False)
+    remote = Scope(2, 40, 200, True)
+    for mid, origin, disclosure in (
+        (121, public, "local"), (122, restricted, "local"),
+        (123, remote, "implicit"), (124, remote, "local"),
+    ):
+        store.record_completed_turn(origin, mid, "source", "reply",
+                                    context_provenance={"source_trigger_kind": "explicit"})
+        store.add_memory_item(origin, str(mid), kind="relationship", disclosure=disclosure,
+                              source_message_ids=[str(mid)], relationship_evidence={"comfort": 1})
+
+    def admitted(shared, channels):
+        return {item.content for item in _observations(store, target, shared, channels)}
+
+    assert admitted(False, {"20"}) == {"121"}
+    assert admitted(True, set()) == {"123"}
+    assert admitted(True, {"20"}) == {"121", "123"}
+    store.set_server_memory_opt_out(2, 200, True)
+    assert admitted(True, {"20"}) == {"121"}
+    store.forget_server_memory_source(1, 20, 121)
+    assert admitted(True, {"20"}) == set()
+    store.close()
