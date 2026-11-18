@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from hina_bot.core.config import PERSONAL_MEMORY_READ_MODES
+from hina_bot.core.config import PERSONAL_MEMORY_READ_MODES, canonical_memory_read_mode
 from hina_bot.core.memory_annotations import MemoryAnnotation
 from hina_bot.core.memory_items import (
     MemoryAccess,
@@ -462,7 +462,8 @@ def personal_memory_fields(
     """
 
     mode = read_mode or getattr(settings, "personal_memory_read_mode", "legacy")
-    mode = mode if mode in PERSONAL_MEMORY_READ_MODES else "legacy"
+    mode = canonical_memory_read_mode(mode)
+    mode = mode if mode in PERSONAL_MEMORY_READ_MODES else "full"
     authorized = tuple(authorized_factual_items)
     result = {"mode": mode, "selection": None, "policy": None, "run": None}
     run = (
