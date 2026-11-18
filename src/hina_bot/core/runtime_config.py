@@ -45,6 +45,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
     "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. decision_shadow는 full로 응답하면서 Gemini Decisions 선택을 관측하고, decision은 그 선택을 적용합니다. v1은 기존 어휘 검색, off는 지식 검색을 끕니다.",
+    "personal_memory_cross_scope": "서버에서 본인의 다른 공간 기억을 읽는 기본값입니다. off이면 직접 동의한 사용자만 허용합니다.",
     "server_memory_read": "서버 공유 기억의 응답 주입과 조회를 제어합니다.",
     "personal_memory_read_mode": "full은 허용된 개인 기억 전체, decision은 그중 선택된 기억을 사용합니다. decision_shadow는 full로 답하면서 선택 품질을 관측합니다.",
     "memory_session_followup": "이전 배포와 호환되는 설정입니다. 현재 개인 기억 읽기에는 사용하지 않습니다.",
@@ -136,6 +137,9 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "RAG_MODE",
         "string",
         choices=tuple(sorted(RAG_MODES)),
+    ),
+    "personal_memory_cross_scope": _runtime_spec(
+        "personal_memory_cross_scope", "PERSONAL_MEMORY_CROSS_SCOPE", "string", choices=("on", "off"),
     ),
     "server_memory_read": _runtime_spec("server_memory_read", "SERVER_MEMORY_READ", "string", choices=("on", "off")),
     "personal_memory_read_mode": _runtime_spec(

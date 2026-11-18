@@ -157,3 +157,15 @@ def test_user_preference_persists_without_schema_changes(tmp_path):
             reopened.set_user_memory_mode(200, "write_only")
     finally:
         reopened.close()
+
+
+async def test_cross_scope_command_records_only_callers_explicit_choice(bot):
+    command = bot.tree.get_command("memory").get_command("cross-scope")
+    interaction = _interaction()
+    await command.callback(interaction, True)
+    assert bot.store.cross_scope_opt_in(200)
+    assert not bot.store.cross_scope_opt_in(300)
+    await command.callback(interaction, False)
+    assert not bot.store.cross_scope_opt_in(200)
+    assert "허용" in interaction.response.send_message.call_args.args[0]
+    assert interaction.response.send_message.call_args.kwargs["ephemeral"]

@@ -943,6 +943,14 @@ class Store:
             raise ValueError("Invalid Discord user id")
         return f"user:{user}"
 
+    def cross_scope_opt_in(self, user_id: int | str) -> bool:
+        key = "config:personal_memory_cross_scope:" + self._user_memory_key(user_id)
+        return self.settings.note(key) == "on"
+
+    def set_cross_scope_opt_in(self, user_id: int | str, enabled: bool) -> None:
+        key = "config:personal_memory_cross_scope:" + self._user_memory_key(user_id)
+        self.settings.set_note(key, "on" if enabled else "")
+
     def user_memory_mode(self, user_id: int | str) -> str:
         """The owner's global read/write preference, independent of admin scope rules."""
         return self.memory_mode_override(self._user_memory_key(user_id)) or "normal"

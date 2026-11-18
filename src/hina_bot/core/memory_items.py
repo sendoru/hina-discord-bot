@@ -164,7 +164,7 @@ class MemoryItem:
     superseded_by: int | None = None
 
 
-def _same_disclosure_space(item: MemoryItem, current_scope: Scope) -> bool:
+def same_disclosure_space(item: MemoryItem, current_scope: Scope) -> bool:
     if item.origin_realm != current_scope.realm:
         return False
     if not item.origin_realm.startswith("guild:"):
@@ -195,7 +195,7 @@ def memory_access(
     if current_scope.guild_id is None:
         return MemoryAccess.FULL
 
-    if _same_disclosure_space(item, current_scope):
+    if same_disclosure_space(item, current_scope):
         return MemoryAccess.FULL
 
     if item.disclosure == MemoryDisclosure.GLOBAL:

@@ -91,6 +91,7 @@ RUNTIME_CONFIG_SECTIONS = (
         (
             "rag_mode",
             "server_memory_read",
+            "personal_memory_cross_scope",
             "personal_memory_read_mode",
             "memory_session_followup",
             "community_lore",

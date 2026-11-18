@@ -335,3 +335,43 @@ async def test_retracted_candidate_during_http_request_cannot_reach_answer():
         assert trace["retrieval_decisions"]["memory"]["selected_ids"] == []
     finally:
         store.close()
+
+
+@pytest.mark.parametrize(("default", "opted_in"), [
+    ("on", False), ("on", True), ("off", False), ("off", True),
+])
+async def test_cross_scope_policy_precedes_full_decision_and_fallback(default, opted_in):
+    store = Store.create(":memory:")
+    store.set_cross_scope_opt_in(DM.user_id, opted_in)
+    try:
+        for origin, content, disclosure in [
+            (SERVER, "현재 공간", MemoryDisclosure.LOCAL),
+            (DM, "공간 간 취향", MemoryDisclosure.GLOBAL),
+            (DM, "비공개 사실", MemoryDisclosure.LOCAL),
+        ]:
+            store.add_memory_item(origin, content, kind=MemoryKind.FACT, disclosure=disclosure)
+        expected = {"현재 공간"}
+        if default == "on" or opted_in:
+            expected.add("공간 간 취향")
+
+        for mode, fail in [("full", False), ("decision", False), ("decision", True)]:
+            def handler(request, mode=mode, fail=fail):
+                assert mode == "decision"
+                body = json.loads(request.content)
+                rows = json.loads(body["input"])["candidates"]
+                assert {row["content"] for row in rows.values()} == expected
+                return httpx.Response(503) if fail else _decisions_reply(body, lambda row: True)
+
+            _, reference, _, _ = await _decision_answer(
+                store, SERVER, "뭐 할까?", lore="full", memory=mode, handler=handler,
+                personal_memory_cross_scope=default,
+            )
+            assert {row["content"] for row in reference["structured_full_memory"]} == expected
+        _, reference, _, _ = await _decision_answer(
+            store, DM, "뭐 할까?", lore="full", memory="full",
+            handler=lambda _: pytest.fail("manual full called Decisions"), personal_memory_cross_scope=default,
+        )
+        assert len(reference["structured_owner_memory"]) == 3
+        assert store.cross_scope_opt_in(DM.user_id) is opted_in
+    finally:
+        store.close()

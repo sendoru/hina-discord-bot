@@ -14,6 +14,7 @@ from hina_bot.core.memory_items import (
     MemoryItem,
     MemoryKind,
     memory_access,
+    same_disclosure_space,
 )
 from hina_bot.core.memory_selection import (
     MemoryReadRun,
@@ -304,6 +305,10 @@ def personal_memory_selection(
     if not callable(reader):
         return None
     items = _owned(reader(scope.user_id), scope)
+    if scope.guild_id is not None and getattr(settings, "personal_memory_cross_scope", "on") == "off":
+        opt_in = getattr(store, "cross_scope_opt_in", None)
+        if not callable(opt_in) or not opt_in(scope.user_id):
+            items = [item for item in items if same_disclosure_space(item, scope)]
     annotation_reader = getattr(store, "memory_annotations", None)
     annotations = (
         annotation_reader([item.id for item in items])

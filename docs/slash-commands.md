@@ -21,6 +21,7 @@ production entrypoint에서 더 이상 해석하지 않습니다. 일반 대화 
 | `/memory show area:current page:1` | 현재 서버/DM에서 생성한 내 활성 기억을 ID와 함께 페이지별 조회 |
 | `/memory show area:all page:1` | 내 모든 서버 및 DM에서 생성한 활성 기억 조회 (나에게만 표시) |
 | `/memory remove item_id:<ID> confirm:true` | 내 활성 기억 하나를 `retracted`로 철회 (원본 및 감사 이력은 유지) |
+| `/memory cross-scope enabled:true\|false` | 서버에서 다른 공간의 내 개인 기억을 사용하는 데 동의하거나 철회. 전체 기본값이 on이면 철회 후에도 사용 가능 |
 | `/memory preference value:normal\|read_only\|off` | 사용자별 전역 기억 읽기·쓰기 동의 설정 |
 | `/memory status` | 개인 설정과 관리자 정책의 교집합인 실제 읽기·쓰기 상태 확인 |
 | `/memory clear confirm:true` | 해당 서버 또는 DM에서 자동으로 쌓인 내 대화 기록·기억과, 추출을 기다리던 임시 보관 사진 삭제 |
