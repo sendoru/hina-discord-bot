@@ -30,7 +30,9 @@ behavior.
   proactive-use hint or modify disclosure or annotation judgments. Raw relationships stay out of
   the selection; the answer receives the numeric relationship profile.
 - The initial score threshold is 0.65. Empty selection is a valid result. A 1,000-question cap,
-  conservative 240,000-byte body cap and 1.5-second request deadline bound each call. An
+  conservative 240,000-byte body cap and configurable `DECISION_TIMEOUT_SECONDS` deadline
+  (default 1.5 seconds, range 0.25–30) bound each call. Change it in Dashboard Runtime Config
+  or with `/config set DECISION_TIMEOUT_SECONDS <seconds>` without restarting the bot. An
   oversized pool is skipped in full. Missing or invalid answers, timeouts and HTTP errors
   fall back without a retry. Active lore falls back to `full`. Active memory uses the same eligible full projection as manual `full` for that
   request only. A successful empty selection still uses the Decision path. A changed memory snapshot is rechecked before injection.
