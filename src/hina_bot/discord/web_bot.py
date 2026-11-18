@@ -22,7 +22,7 @@ from .bot import HinaClient as BaseHinaClient
 from .chat_history_tool import register_chat_history_tool
 from .chatlog_capture import capture_mode
 from .embed_context import message_embed_text
-from .forward_context import message_context_text
+from .forward_context import message_context_text, message_turn_text
 from .interaction_context import build_interaction_context
 from .member_directory import channel_member_tool_registry
 from .memory_recall_tool import register_memory_recall_tool
@@ -355,6 +355,8 @@ class HinaClient(BaseHinaClient):
             self.settings.call_prefixes,
             self.settings.always_reply_channel_ids,
         )
+        if text is not None:
+            text = message_turn_text(message, text)
         scope = Scope(
             message.guild.id if message.guild else None,
             message.channel.id,

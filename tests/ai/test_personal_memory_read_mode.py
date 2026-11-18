@@ -22,6 +22,7 @@ from hina_bot.core.config import Settings
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_SELECTION
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
 from hina_bot.core.routing import Scope
+from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
 
 DM = Scope(None, 10, 100)
@@ -168,6 +169,41 @@ async def test_decisions_evaluate_both_full_pools_concurrently_and_keep_core():
     assert lore["decision_applied"] and lore["decision_input_tokens"] == 8000
     assert trace["retrieval_decisions"]["memory"]["decision_selected"] == 1
     assert run.mode == "decision"
+
+
+async def test_decisions_runtime_timeout_change_affects_both_requests_without_restart():
+    store = Store.create(":memory:")
+    _seed(store)
+    settings = RuntimeSettings(Settings(
+        discord_token="test", openai_api_key="test", gemini_api_key="decision-test",
+        rag_mode="decision", personal_memory_read_mode="decision", community_lore=False,
+    ), store)
+    calls = []
+    llm = LLM(settings, client=_client(calls))
+    await llm.decisions_client.close()
+
+    async def delayed(request):
+        await asyncio.sleep(0.35)
+        return _decisions_reply(json.loads(request.content), lambda row: True)
+
+    llm.decisions_client = DecisionsClient(
+        httpx.AsyncClient(transport=httpx.MockTransport(delayed)),
+    )
+    try:
+        settings.set_text("DECISION_TIMEOUT_SECONDS", "0.25")
+        await llm.answer(store, DM, "사용자", "마이그레이션 계획 알려줘")
+        trace = CURRENT_CONTEXT_PROVENANCE.get()["retrieval_decisions"]
+        assert {trace[domain]["decision_reason"] for domain in ("lore", "memory")} == {"timeout"}
+        assert {trace[domain]["decision_fallback"] for domain in ("lore", "memory")} == {"full"}
+
+        settings.set_text("DECISION_TIMEOUT_SECONDS", "1.0")
+        await llm.answer(store, DM, "사용자", "마이그레이션 계획 알려줘")
+        trace = CURRENT_CONTEXT_PROVENANCE.get()["retrieval_decisions"]
+        assert all(trace[domain]["decision_applied"] for domain in ("lore", "memory"))
+        assert all(trace[domain]["decision_reason"] == "" for domain in ("lore", "memory"))
+    finally:
+        await llm.close()
+        store.close()
 
 
 async def test_decision_shadow_matches_legacy_answer_and_keeps_metrics_private(

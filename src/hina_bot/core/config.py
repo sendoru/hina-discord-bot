@@ -102,6 +102,7 @@ class Settings:
     fast_output_tokens: int = 4096
     smart_output_tokens: int = 8192
     answer_timeout_seconds: float = 45.0
+    decision_timeout_seconds: float = 1.5
     memory_output_tokens: int = 4096
     # Runtime-editable output proofreader; .env supplies startup values.
     output_repair_mode: str = "off"
@@ -289,6 +290,14 @@ class Settings:
                 and 1.0 <= answer_timeout_seconds <= 300.0):
             raise ValueError("ANSWER_TIMEOUT_SECONDS는 1~300 사이의 유한한 숫자여야 합니다.")
 
+        try:
+            decision_timeout_seconds = float(os.getenv("DECISION_TIMEOUT_SECONDS", "1.5"))
+        except ValueError as exc:
+            raise ValueError("DECISION_TIMEOUT_SECONDS는 숫자여야 합니다.") from exc
+        if not (math.isfinite(decision_timeout_seconds)
+                and 0.25 <= decision_timeout_seconds <= 30.0):
+            raise ValueError("DECISION_TIMEOUT_SECONDS는 0.25~30.0 사이의 유한한 숫자여야 합니다.")
+
         output_repair_mode = os.getenv("OUTPUT_REPAIR_MODE", "off").strip().lower()
         if output_repair_mode not in {"off", "conservative", "aggressive"}:
             raise ValueError(
@@ -454,6 +463,7 @@ class Settings:
             fast_output_tokens=fast_output_tokens,
             smart_output_tokens=smart_output_tokens,
             answer_timeout_seconds=answer_timeout_seconds,
+            decision_timeout_seconds=decision_timeout_seconds,
             output_repair_mode=output_repair_mode,
             output_repair_model=output_repair_model,
             output_repair_timeout_seconds=output_repair_timeout_seconds,

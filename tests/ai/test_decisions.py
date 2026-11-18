@@ -11,10 +11,11 @@ from hina_bot.ai.retrieval_decisions import decision_query, pack_decision_lore
 from hina_bot.core.knowledge_retrieval import KnowledgeCandidate
 
 
-async def _evaluate(handler, *, candidates=None, key="test-key", domain="lore"):
+async def _evaluate(handler, *, candidates=None, key="test-key", domain="lore", timeout_seconds=None):
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
         return await DecisionsClient(http).evaluate(
             api_key=key, domain=domain, query={"current_message": "synthetic"},
+            timeout_seconds=timeout_seconds,
             candidates={"lore.a": {"content": "first"}, "lore.b": {"content": "second"}}
             if candidates is None else candidates,
         )
@@ -94,6 +95,21 @@ async def test_timeout_and_transport_fail_once(monkeypatch):
         raise httpx.ConnectError("sensitive provider text", request=request)
 
     assert (await _evaluate(offline)).reason == "transport_error"
+
+
+@pytest.mark.parametrize("domain", ["lore", "memory"])
+async def test_configurable_decision_timeout_applies_to_each_request(domain):
+    async def delayed(_request):
+        await asyncio.sleep(0.05)
+        return httpx.Response(200, json={
+            "answers": {"c1": _answer(0.9), "c2": _answer(0.2)},
+        })
+
+    expired = await _evaluate(delayed, domain=domain, timeout_seconds=0.01)
+    assert expired.reason == "timeout"
+    succeeded = await _evaluate(delayed, domain=domain, timeout_seconds=0.5)
+    assert succeeded.reason == ""
+    assert succeeded.scores == {"lore.a": 0.9, "lore.b": 0.2}
 
 
 async def test_full_pool_never_truncated_on_limits():

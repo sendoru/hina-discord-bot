@@ -221,6 +221,8 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert '<option value="shadow"' not in response.text
     assert '<option value="bot_interactions_only"' in response.text
     assert '<option value="full"' in response.text
+    assert 'id="runtime-decision_timeout_seconds"' in response.text
+    assert 'aria-label="Override value for DECISION_TIMEOUT_SECONDS"' in response.text
     assert 'id="runtime-gemini_thinking_level"' in response.text
     assert '<option value="minimal"' in response.text
     assert '<option value="high"' in response.text
