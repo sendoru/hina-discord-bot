@@ -27,6 +27,7 @@ from .interaction_context import build_interaction_context
 from .member_directory import channel_member_tool_registry
 from .memory_recall_tool import register_memory_recall_tool
 from .reply_context import REPLY_CONTEXT, collect_reply_context
+from .member_relationship import register_member_relationship
 from .server_memory import server_reader
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect, retrieval_mode
@@ -209,19 +210,17 @@ class HinaClient(BaseHinaClient):
         # extraction. Edits are left alone: Discord also sends them when a link embed
         # resolves, so they say nothing about the attachment.
         self.store.discard_pending_visuals_for_message(payload.channel_id, payload.message_id)
-        if getattr(payload, "guild_id", None) is not None:
-            self.store.forget_server_memory_source(
-                payload.guild_id, payload.channel_id, payload.message_id
-            )
+        self.store.forget_server_memory_source(
+            getattr(payload, "guild_id", None), payload.channel_id, payload.message_id
+        )
 
     async def on_raw_bulk_message_delete(self, payload):
         for message_id in payload.message_ids:
             self.visual_cache.invalidate(payload.channel_id, message_id)
             self.store.discard_pending_visuals_for_message(payload.channel_id, message_id)
-            if getattr(payload, "guild_id", None) is not None:
-                self.store.forget_server_memory_source(
-                    payload.guild_id, payload.channel_id, message_id
-                )
+            self.store.forget_server_memory_source(
+                getattr(payload, "guild_id", None), payload.channel_id, message_id
+            )
 
     async def public_sources(self, user_id: int, guild_id: int | None = None):
         enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
@@ -460,7 +459,7 @@ class HinaClient(BaseHinaClient):
             stop_token = CURRENT_TYPING_STOP.set(session.stop) if use_typing else None
             try:
                 capture = (self.store.track_server_turn(scope, message.id)
-                           if text is not None and scope.guild_id and not message.author.bot else nullcontext())
+                           if text is not None and not message.author.bot else nullcontext())
                 with capture:
                     return await self._preflight_on_message(
                         message, text, scope, preflight_started, typing_start_ms
@@ -653,7 +652,12 @@ class HinaClient(BaseHinaClient):
             else None
         )
         registry = LocalToolRegistry()
-        channel_member_tool_registry(message, self.user.id, registry=registry)
+        confirmed_ids = {str(member.id) for member in getattr(message, "mentions", ())}
+        confirmed_ids.update(str(row.get("author_user_id") or row.get("user_id"))
+                             for row in (*selected_context, *replied, *sampled))
+        channel_member_tool_registry(message, self.user.id, registry=registry, confirmed_ids=confirmed_ids)
+        if message.guild and not message.author.bot:
+            register_member_relationship(registry, self, message, scope, confirmed_ids)
         register_chat_history_tool(
             registry, message, self.user.id, self.store, self.settings, events=self.events,
         )
