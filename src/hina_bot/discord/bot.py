@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 import discord
 
+from hina_bot.ai.server_memory_extraction import extract_server_batch, pending_spaces
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
@@ -350,6 +351,9 @@ class HinaClient(discord.Client):
             self._sweep_pending_visuals()
             try:
                 await self._sweep_stale_structured_memory()
+                for guild_id, channel_id in pending_spaces(self.store):
+                    await extract_server_batch(self.llm, self.store, guild_id, channel_id, stale=True,
+                                               admin_verifier=self._server_memory_admin)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - isolate background maintenance failures
@@ -364,6 +368,23 @@ class HinaClient(discord.Client):
                     type(exc).__name__,
                     error["error_fingerprint"],
                 )
+
+    async def _extract_server_memory(self, scope):
+        try:
+            await extract_server_batch(self.llm, self.store, scope.guild_id, scope.channel_id,
+                                       admin_verifier=self._server_memory_admin)
+        except Exception as exc:  # noqa: BLE001 - background work is retried by the sweep
+            self.events.emit("memory.server_extraction_failed", error_type=type(exc).__name__)
+
+    async def _server_memory_admin(self, guild_id, user_id):
+        guild = self.get_guild(guild_id)
+        if guild is None:
+            return False
+        try:
+            member = await guild.fetch_member(user_id)
+        except discord.HTTPException:
+            return False
+        return member.guild_permissions.manage_guild
 
     def _pending_visual_ttl_seconds(self) -> float:
         """Long enough for the stale sweep to extract a tail before its photo expires."""
@@ -479,6 +500,12 @@ class HinaClient(discord.Client):
         A failure here must never affect the delivered reply.
         """
 
+        server_refs = (CURRENT_CONTEXT_PROVENANCE.get() or {}).get("server_memory") or []
+        if server_refs:
+            try:
+                self.store._server_memories.record_usage(server_refs, answer)
+            except Exception as exc:  # noqa: BLE001 - optional post-delivery bookkeeping
+                self.events.emit("memory.server_usage_failed", error_type=type(exc).__name__)
         run = CURRENT_MEMORY_SELECTION.get()
         CURRENT_MEMORY_SELECTION.set(None)
         if run is None:
@@ -954,12 +981,14 @@ class HinaClient(discord.Client):
                                     parts[0],
                                     allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
                                 )
+                                self.store.track_server_delivery(scope, message.id, sent.id)
                                 delivery_ids = [str(sent.id)]
                                 for part in parts[1:]:
                                     extra_sent = await message.channel.send(
                                         part,
                                         allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
                                     )
+                                    self.store.track_server_delivery(scope, message.id, extra_sent.id)
                                     delivery_ids.append(str(extra_sent.id))
                                 provenance = dict(CURRENT_CONTEXT_PROVENANCE.get() or {})
                                 provenance['assistant_message_ids'] = delivery_ids
@@ -1011,6 +1040,16 @@ class HinaClient(discord.Client):
                         save_memory = False
                     if save_memory:
                         stage = "memory_persist"
+                        if isinstance(message.channel, discord.Thread):
+                            thread = message.channel
+                            parent = thread.parent
+                            public_thread = False
+                            if not thread.is_private() and isinstance(parent, (discord.TextChannel, discord.ForumChannel)):
+                                perms = parent.permissions_for(message.guild.default_role)
+                                public_thread = perms.view_channel and perms.read_message_history
+                            provenance = dict(CURRENT_CONTEXT_PROVENANCE.get() or {})
+                            provenance["server_thread_public_at_capture"] = public_thread
+                            CURRENT_CONTEXT_PROVENANCE.set(provenance)
                         self.store.record_completed_turn(
                             scope,
                             message.id,
@@ -1023,6 +1062,11 @@ class HinaClient(discord.Client):
                         self._keep_pending_visuals(scope, message.id, text, scope_kind)
 
                 memory_failures = 0
+                if save_memory and scope.guild_id is not None and not self.stopping:
+                    extraction = asyncio.create_task(self._extract_server_memory(scope))
+                    self.active_tasks.add(extraction)
+                    extraction.add_done_callback(self.active_tasks.discard)
+
                 if save_memory:
                     stage = "memory"
                     memory_started = time.perf_counter()

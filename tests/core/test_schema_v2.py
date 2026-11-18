@@ -59,7 +59,8 @@ def test_v1_store_requires_offline_upgrade_and_keeps_every_row(tmp_path):
         assert [tuple(r) for r in db.execute(
             "SELECT component,version,name FROM schema_migrations ORDER BY component,version"
         )] == [("admin", 1, "admin-baseline-v1"), ("settings", 1, "settings-baseline-v1"),
-               ("store", 1, "store-baseline-v1"), ("store", 2, "store-memory-annotations-v2")]
+               ("store", 1, "store-baseline-v1"), ("store", 2, "store-memory-annotations-v2"),
+               ("store", 3, "store-server-memory-v3")]
     Store.open_existing(str(path)).close()
     current = signature(path)
     assert prepare_database.prepare_database(path, apply=True, offline_confirmed=True) == ((), None)
@@ -84,13 +85,16 @@ def test_failed_v2_step_rolls_back_to_v1(tmp_path, monkeypatch):
         assert db_schema.schema_versions(db)["store"] == 1
 
 
-def test_fresh_store_is_created_at_v2(tmp_path):
+def test_fresh_store_is_created_at_v3(tmp_path):
     store = Store.create(str(tmp_path / "fresh.sqlite3"))
     try:
         versions = db_schema.schema_versions(store.db)
-        assert versions["store"] == len(db_schema.HISTORY["store"]) == 2
+        assert versions["store"] == len(db_schema.HISTORY["store"]) == 3
         assert store.db.execute(
             "SELECT 1 FROM sqlite_master WHERE name='memory_item_annotations'"
+        ).fetchone()
+        assert store.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='server_memory_items'"
         ).fetchone()
     finally:
         store.close()
@@ -147,3 +151,21 @@ def test_annotation_constraints_accept_consistent_rows():
         assert store.db.execute("SELECT COUNT(*) FROM memory_item_annotations").fetchone()[0] == 3
     finally:
         store.close()
+
+
+def test_deployed_v2_migrates_to_v3_without_changing_annotations(tmp_path):
+    path = tmp_path / "deployed-v2.sqlite3"
+    v1_database(path)
+    with closing(open_existing(path)) as db, db:
+        db_migrations.add_memory_item_annotations(db)
+        db.execute("INSERT INTO schema_migrations(component,version,name) VALUES ('store',2,?)",
+                   (db_schema.HISTORY["store"][1],))
+        _insert(db, memory_item_id=41)
+    before = signature(path)
+    changed, backup = prepare_database.prepare_database(path, apply=True, offline_confirmed=True)
+    assert changed == ("store",)
+    assert signature(backup.path) == before
+    with closing(open_readonly(path)) as db:
+        db_schema.require_current(db)
+        assert db.execute("SELECT memory_item_id FROM memory_item_annotations").fetchone()[0] == 41
+        assert not db.execute("SELECT 1 FROM server_memory_items").fetchone()

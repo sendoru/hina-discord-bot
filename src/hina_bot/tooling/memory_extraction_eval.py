@@ -50,6 +50,7 @@ from hina_bot.core.memory_annotations import (
     normalize_text,
 )
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
+from hina_bot.tooling.server_extraction_eval import run_server_case
 
 DEFAULT_CASES = Path("evals/memory_extraction_cases.jsonl")
 DEFAULT_RESULTS = Path("data/evals")
@@ -63,13 +64,13 @@ GUILD_ID = "930001"
 SERVER_ONLY_KEYS = frozenset({"trust", "subject_users", "subject_users_include"})
 
 
-def load_cases(path: Path, *, ids: tuple[str, ...] = ()) -> list[dict]:
+def load_cases(path: Path, *, ids: tuple[str, ...] = (), target: str = "personal") -> list[dict]:
     cases = [
         json.loads(line)
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    cases = [case for case in cases if case.get("target") == "personal"]
+    cases = [case for case in cases if case.get("target") == target]
     if ids:
         cases = [case for case in cases if case["id"] in ids]
     return cases
@@ -358,7 +359,7 @@ def _settings(args) -> Settings:
 
 
 async def run(args, worker=None) -> tuple[list[dict], dict]:
-    cases = load_cases(args.cases, ids=tuple(args.id or ()))
+    cases = load_cases(args.cases, ids=tuple(args.id or ()), target=getattr(args, "target", "personal"))
     if args.limit:
         cases = cases[:args.limit]
     owned = worker is None
@@ -369,7 +370,8 @@ async def run(args, worker=None) -> tuple[list[dict], dict]:
         for _ in range(args.repeat):
             for case in cases:
                 try:
-                    row = await run_case(worker, case, image_dir)
+                    row = (await run_server_case(worker, case) if case["target"] == "server"
+                           else await run_case(worker, case, image_dir))
                 except Exception as exc:  # noqa: BLE001 - one case must not stop the run
                     row = {"id": case["id"], "status": "error", "failures": [type(exc).__name__]}
                 results.append(row)
@@ -386,6 +388,7 @@ async def run(args, worker=None) -> tuple[list[dict], dict]:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Live personal memory extraction eval (#451)")
+    parser.add_argument("--target", choices=("personal", "server"), default="personal")
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument(
         "--image-dir", type=Path, default=DEFAULT_IMAGES,

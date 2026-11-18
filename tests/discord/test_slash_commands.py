@@ -82,10 +82,10 @@ def test_production_composition_registers_only_expected_commands_and_contexts():
     try:
         commands = {command.name for command in bot.tree.get_commands()}
         assert commands == {
-            "memory", "note", "chatlog", "state", "emoji", "knowledge", "help", "config",
+            "server-memory", "memory", "note", "chatlog", "state", "emoji", "knowledge", "help", "config",
         }
         assert {c.name for c in bot.tree.get_command("memory").commands} == {
-            "mode", "purge", "show", "remove", "preference", "status", "clear",
+            "mode", "purge", "show", "remove", "preference", "status", "clear", "sharing",
         }
         assert {c.name for c in bot.tree.get_command("chatlog").commands} == {"mode", "clear"}
         assert {c.name for c in bot.tree.get_command("state").commands} == {"show"}

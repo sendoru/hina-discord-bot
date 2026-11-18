@@ -562,3 +562,39 @@ Shadow extraction still does not:
 
 Those steps should be enabled incrementally after shadow classifications have been inspected against
 real conversation data.
+
+## Server community memory (P4)
+
+The guild path runs independently of personal memory mode, including `legacy`.
+Only completed explicitly addressed interactions enter channel-local extraction batches.
+Sixteen new eligible turns trigger extraction after delivery. The stale sweep also
+processes two or more turns when the oldest is at least eight hours old. Public
+and private capture are processed separately. A proposal must quote original
+turn text and pass source, author and consent checks again before storage.
+An empty extraction is normal.
+
+`SERVER_MEMORY_READ=off` disables server selection, member profiles and server
+recall. Extraction, withdrawal, personal memory and administrator notes continue.
+S0 carries verified administrator directives. S1 permits one ambient item at a
+casual greeting and has a 72-hour cooldown. S2 and S3 return at most three
+matched items and 800 content characters. Discord membership and source-channel
+visibility are checked for each read. Thread sources use live parent-channel permissions. Public threads and forum posts can be shared when captured as public and still public. Private threads remain local and require live thread membership or Manage Threads in addition to parent read access.
+
+Use `/memory sharing enabled:false` to withdraw contributions in the current
+guild. Existing memories citing the contributor are deleted in full. Opting in
+again allows future contributions. Message deletion removes dependent memories,
+including those citing a delivered reply. The bot must receive the deletion event.
+Guild managers can use `/server-memory show` and `remove`. The operator dashboard
+links to server memory from Structured Memory and supports retraction and deletion.
+
+The existing live evaluation CLI accepts `--target server` to run the six
+guild extraction fixtures through the production parser and an isolated
+in-memory database. It requires the selected provider's credentials:
+`hina-memory-extraction-eval --target server --provider gemini --model MODEL`.
+
+A correction or conflict between community claims holds both rows for operator
+review. The dashboard shows the proposed relation and supports approval,
+retraction and deletion. Server extraction operations are audited without
+copying the claim text. A confirmed personal correction can suppress a related
+claim about that same subject when the old sources or content match. The
+correction text is never copied into the community memory.

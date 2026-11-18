@@ -17,6 +17,7 @@ from hina_bot.core.memory_context import (
     history_lookup_provenance,
 )
 from hina_bot.core.memory_selection import selection_provenance
+from hina_bot.core.server_memory_selection import CURRENT_SERVER_READER
 
 from .context_input import build_context_input
 from .context_provenance import build_context_provenance
@@ -514,6 +515,13 @@ class RequestAssembler(BaseLLM):
             ],
             "lore_reference": references,
         }
+        server_reader = CURRENT_SERVER_READER.get()
+        if server_reader and scope.guild_id is not None:
+            rows = await server_reader(visible_content)
+            if rows:
+                context["server_memory"] = rows
+            admin_mode = store.memory_mode_chain(scope)["effective"]
+            context["server_note"] = store.note(scope.realm)[:800] if admin_mode in ("normal", "read_only") else ""
         # This is the authoritative external-data boundary. Earlier capture/routing filters improve
         # behavior and data minimization, but a row that slips through them still cannot reach the
         # provider unless the active egress policy admits it here.
@@ -581,6 +589,10 @@ class RequestAssembler(BaseLLM):
             self._emit_memory_selection(personal_memory["mode"], memory_selection)
         # Tiered records usage for what it injected; shadow only measures coverage.
         CURRENT_MEMORY_SELECTION.set(personal_memory["run"])
+        if context.get("server_memory"):
+            context_provenance["server_memory"] = [
+                {"store": row["store"], "id": row["id"], "tier": row["tier"]} for row in context["server_memory"]
+            ]
         CURRENT_CONTEXT_PROVENANCE.set(context_provenance)
         section_counts = {
             str(row.get("name")): int(row.get("count") or 0)

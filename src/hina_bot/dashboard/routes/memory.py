@@ -24,6 +24,22 @@ def build_router(
 ) -> APIRouter:
     router = APIRouter()
 
+    @router.get("/server-memory", response_class=HTMLResponse)
+    def server_memories(request: Request, guild_id: str = "", queued: int | None = None):
+        return templates.TemplateResponse(request=request, name="server_memory.html",
+            context={**service.repository.server_memories(guild_id), "queued": queued, "admin_writes_enabled": writer.enabled})
+
+    @router.post("/server-memory/{guild_id}/{item_id}")
+    async def manage_server_memory(request: Request, guild_id: int, item_id: int):
+        form = await writer.form(request)
+        operation = form.get("operation")
+        if operation not in {"delete", "retract", "approve"} or form.get("confirm") != "yes":
+            raise HTTPException(status_code=422, detail="confirmed server memory operation required")
+        command_id, _ = writer.enqueue(request_id=form.get("_request_id", ""),
+            action="memory.server." + operation, target=f"{guild_id}:{item_id}",
+            payload={"guild_id": guild_id, "item_id": item_id})
+        return RedirectResponse(f"/server-memory?guild_id={guild_id}&queued={command_id}", status_code=303)
+
     @router.get("/memory", response_class=HTMLResponse)
     def memory_items(
         request: Request,

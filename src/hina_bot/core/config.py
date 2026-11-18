@@ -163,6 +163,7 @@ class Settings:
     chat_web_search: bool = True
     rag_mode: str = "full"
     runtime_timezone: str = "Asia/Seoul"
+    server_memory_read: str = "on"
     personal_memory_read_mode: str = "legacy"
     memory_session_followup: str = "dm"
     runtime_locale: str = "ko-KR"
@@ -415,6 +416,9 @@ class Settings:
             raise ValueError(
                 "CONTEXT_INPUT_MODE는 legacy, structured, structured_with_replay 중 하나여야 합니다."
             )
+        server_memory_read = os.getenv("SERVER_MEMORY_READ", "on").strip().lower()
+        if server_memory_read not in {"on", "off"}:
+            raise ValueError("SERVER_MEMORY_READ must be on or off")
         personal_memory_read_mode = canonical_memory_read_mode(
             os.getenv("PERSONAL_MEMORY_READ_MODE", "legacy").strip().lower() or "legacy"
         )
@@ -486,6 +490,7 @@ class Settings:
             ),
             public_memory_in_dm=public_memory == "true",
             external_context_policy=external_context_policy,
+            server_memory_read=server_memory_read,
             personal_memory_read_mode=personal_memory_read_mode,
             memory_session_followup=memory_session_followup,
             allowed_guild_ids=frozenset(int(x.strip()) for x in

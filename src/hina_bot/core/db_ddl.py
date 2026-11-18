@@ -288,9 +288,85 @@ MEMORY_ANNOTATION_DDL = (
        ON memory_item_annotations(cluster_id)""",
 )
 
+# P4: independently owned server community memory and contributor consent.
+# No response-path change until the permissions/read and extraction stages are wired.
+SERVER_MEMORY_DDL = (
+    """CREATE TABLE IF NOT EXISTS server_memory_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id TEXT NOT NULL,
+            space_key TEXT NOT NULL,
+            origin_channel_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            subject_user_ids TEXT NOT NULL DEFAULT '[]',
+            trust TEXT NOT NULL CHECK(trust IN ('admin','corroborated','observed','single')),
+            evidence TEXT NOT NULL DEFAULT '',
+            time_scope TEXT NOT NULL CHECK(time_scope IN (
+                'ongoing','past','planned','episodic','recurring','unknown'
+            )),
+            stability TEXT CHECK(stability IN ('permanent','long','medium','short')),
+            observed_at TEXT NOT NULL,
+            event_at TEXT,
+            recurrence TEXT,
+            usage_mode TEXT NOT NULL CHECK(usage_mode IN ('directive','ambient','contextual')),
+            importance INTEGER NOT NULL DEFAULT 2 CHECK(importance BETWEEN 1 AND 3),
+            keywords TEXT NOT NULL DEFAULT '[]',
+            cluster_id INTEGER,
+            last_confirmed_at TEXT NOT NULL,
+            confirmations INTEGER NOT NULL DEFAULT 1 CHECK(confirmations >= 1),
+            last_used_at TEXT,
+            status TEXT NOT NULL DEFAULT 'active'
+                CHECK(status IN ('active','pending','superseded','retracted')),
+            superseded_by INTEGER,
+            relation TEXT CHECK(relation IN ('duplicate','corrects','conflicts')),
+            relation_target INTEGER,
+            revision INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CHECK(stability IS NULL OR time_scope = 'ongoing'),
+            CHECK(space_key = 'guild' OR substr(space_key, 1, 8) = 'channel:'),
+            CHECK(superseded_by IS NULL OR superseded_by != id)
+        )""",
+    """CREATE TABLE IF NOT EXISTS server_memory_sources (
+            item_id INTEGER NOT NULL REFERENCES server_memory_items(id) ON DELETE CASCADE,
+            message_id TEXT NOT NULL,
+            source_channel_id TEXT NOT NULL,
+            author_user_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('user','hina')),
+            observed_at TEXT NOT NULL,
+            assistant_message_ids TEXT NOT NULL DEFAULT '[]',
+            PRIMARY KEY(item_id,message_id,role)
+        )""",
+    """CREATE TABLE IF NOT EXISTS server_memory_opt_outs (
+            guild_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(guild_id,user_id)
+        )""",
+    """CREATE TABLE IF NOT EXISTS memory_consolidation_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, owner_key TEXT NOT NULL, mode TEXT NOT NULL,
+        model_tier TEXT, apply_mode TEXT NOT NULL, status TEXT NOT NULL,
+        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, finished_at TEXT, reverted_at TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS memory_consolidation_ops (
+        run_id INTEGER NOT NULL REFERENCES memory_consolidation_runs(id),
+        op TEXT NOT NULL, store TEXT NOT NULL, item_id INTEGER NOT NULL, target_id INTEGER NOT NULL,
+        reason_code TEXT NOT NULL, confidence REAL, outcome TEXT NOT NULL
+    )""",
+    """CREATE INDEX IF NOT EXISTS server_memory_items_scope
+       ON server_memory_items(guild_id,space_key,status,id)""",
+    """CREATE INDEX IF NOT EXISTS server_memory_sources_message
+       ON server_memory_sources(message_id,source_channel_id)""",
+    """CREATE INDEX IF NOT EXISTS server_memory_sources_author
+       ON server_memory_sources(author_user_id,item_id)""",
+)
+
+SERVER_MEMORY_TABLES = ('server_memory_items', 'server_memory_sources', 'server_memory_opt_outs',
+                        'memory_consolidation_runs', 'memory_consolidation_ops')
+
+
 # Current DDL for fresh creation: v1 plus every later version's additions.
 DDL = {
-    "store": V1_DDL["store"] + MEMORY_ANNOTATION_DDL,
+    "store": V1_DDL["store"] + MEMORY_ANNOTATION_DDL + SERVER_MEMORY_DDL,
     "settings": V1_DDL["settings"],
     "admin": V1_DDL["admin"],
 }
@@ -355,4 +431,10 @@ V2_SIGNATURES = {
         'a40e1b4e82c58dcb43f88fec6139ddffa1bd9764a6085b0c5ff109883aa1e033',
         'a4733d2dc9e96bb1069e4310cf116cfe76e40033165bc4fdb32539138ca9d542',
     },
+}
+
+# Exact full store layouts for fresh and historically migrated installations.
+V3_STORE_SIGNATURES = {
+    "684a93a88361745d659602ea2ab55c6aeb89350b137863e33075b1b7e61a6fec",
+    "d314f8a1041e8cad1288198e94a80dbf7446f9e054e916d8707a29b2b60110ce",
 }

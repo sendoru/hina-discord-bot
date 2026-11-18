@@ -7,16 +7,27 @@ The offline preparer registers baselines and applies ordered version upgrades.
 import hashlib
 import json
 
-from .db_ddl import DDL, LEDGER_DDL, V1_SIGNATURES, V1_TABLES, V2_SIGNATURES, V2_TABLES
+from .db_ddl import (
+    DDL,
+    LEDGER_DDL,
+    SERVER_MEMORY_TABLES,
+    V1_SIGNATURES,
+    V1_TABLES,
+    V2_SIGNATURES,
+    V2_TABLES,
+    V3_STORE_SIGNATURES,
+)
 
 COMPONENTS = tuple(DDL)
 HISTORY = {component: (component + "-baseline-v1",) for component in COMPONENTS}
-HISTORY["store"] += ("store-memory-annotations-v2",)
+HISTORY["store"] += ("store-memory-annotations-v2", "store-server-memory-v3")
 SCHEMA_SIGNATURES = {component: {1: V1_SIGNATURES[component]} for component in COMPONENTS}
 SCHEMA_SIGNATURES["store"][2] = V2_SIGNATURES["store"]
+SCHEMA_SIGNATURES["store"][3] = V3_STORE_SIGNATURES
 # Tables owned at the version that introduced them; later versions inherit.
 OWNED_TABLES = {component: {1: V1_TABLES[component]} for component in COMPONENTS}
 OWNED_TABLES["store"][2] = V2_TABLES["store"]
+OWNED_TABLES["store"][3] = V2_TABLES["store"] + SERVER_MEMORY_TABLES
 
 
 # The offline converter for pre-baseline databases was removed (#463). Older files must

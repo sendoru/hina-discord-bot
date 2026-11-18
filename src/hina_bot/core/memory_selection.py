@@ -352,7 +352,11 @@ def _bigrams(text: str) -> set[str]:
 
 
 def _similar(left: MemoryItem, right: MemoryItem) -> bool:
-    a, b = _bigrams(left.content), _bigrams(right.content)
+    return similar_memory_text(left.content, right.content)
+
+
+def similar_memory_text(left: str, right: str) -> bool:
+    a, b = _bigrams(left), _bigrams(right)
     return bool(a and b) and len(a & b) / len(a | b) >= DUPLICATE_SIMILARITY
 
 
@@ -909,13 +913,17 @@ class MemoryUsage:
 def _mentions(item: MemoryItem, annotation: MemoryAnnotation, text: str) -> bool:
     """Decision 19: a memory counts as used when the text contains one of its keywords."""
 
+    return mentions_memory_content(item.content, annotation.keywords, text)
+
+
+def mentions_memory_content(content, keywords, text):
     text = normalize_text(text)
-    keywords = [normalize_text(word) for word in annotation.keywords]
+    keywords = [normalize_text(word) for word in keywords]
     keywords = [word for word in keywords if len(word) >= 2]
     if keywords:
         return any(word in text for word in keywords)
     # Unannotated legacy items have no keywords: require two content words instead.
-    return sum(term in text for term in _tokens(item.content)) >= 2
+    return sum(term in text for term in _tokens(content)) >= 2
 
 
 def _used_in(entry: SelectedMemory, answer: str) -> bool:

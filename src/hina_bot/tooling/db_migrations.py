@@ -5,7 +5,7 @@ entry/current DDL/metadata signature. No schema repair or legacy format
 inference is performed by this path.
 """
 
-from hina_bot.core.db_ddl import LEDGER_DDL, MEMORY_ANNOTATION_DDL, V1_TABLES
+from hina_bot.core.db_ddl import LEDGER_DDL, MEMORY_ANNOTATION_DDL, SERVER_MEMORY_DDL, V1_TABLES
 from hina_bot.core.db_schema import (
     COMPONENTS,
     HISTORY,
@@ -28,9 +28,16 @@ def add_memory_item_annotations(db):
         db.execute(statement)
 
 
+def add_server_memory(db):
+    """Store v3 (#449 P4): empty, source-owned community memory tables."""
+    for statement in SERVER_MEMORY_DDL:
+        db.execute(statement)
+
+
 # Explicit (component, next_version, function) steps.
 UPGRADES = (
     ("store", 2, add_memory_item_annotations),
+    ("store", 3, add_server_memory),
 )
 
 

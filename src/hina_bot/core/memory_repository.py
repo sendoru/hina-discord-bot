@@ -27,6 +27,7 @@ from .memory_items import (
     RelationshipEvidence,
     validate_memory_item_fields,
 )
+from .memory_selection import similar_memory_text
 from .routing import Scope
 
 _ANNOTATION_COLUMNS = (
@@ -841,6 +842,7 @@ class MemoryRepository:
                       n.superseded_by AS new_superseded_by,
                       n.origin_realm AS new_origin_realm,
                       n.origin_channel_id AS new_origin_channel_id,
+                      t.content AS target_content,t.source_message_ids AS target_sources,
                       t.kind AS target_kind,t.status AS target_status,
                       t.disclosure AS target_disclosure,
                       t.relationship_evidence AS target_evidence,
@@ -939,6 +941,18 @@ class MemoryRepository:
                        WHERE id=? AND user_id=? AND status='active'""",
                     (new_id, target_id, str(row["user_id"])),
                 )
+                if cursor.rowcount:
+                    # A subject's correction only suppresses the old community claim.
+                    # Never copy the correcting content or its origin across spaces.
+                    old_sources = set(json.loads(row["target_sources"] or "[]"))
+                    for item in self.db.execute("""SELECT id,content FROM server_memory_items
+                            WHERE status='active' AND EXISTS (
+                              SELECT 1 FROM json_each(subject_user_ids) WHERE value=?)""",
+                            (str(row["user_id"]),)).fetchall():
+                        same_source = any(s[0] in old_sources for s in self.db.execute(
+                            "SELECT message_id FROM server_memory_sources WHERE item_id=?", (item["id"],)))
+                        if same_source or similar_memory_text(row["target_content"], item["content"]):
+                            self.db.execute("UPDATE server_memory_items SET status='pending' WHERE id=?", (item["id"],))
             return "applied" if cursor.rowcount else "stale_items"
 
         return "unsupported_relation"

@@ -151,3 +151,10 @@ docker compose up -d
 
 Repeat with `--limit` until `Remaining` shows `missing=0 stale=0`. See
 [structured memory](structured-memory.md#annotation-backfill) for what it writes.
+
+## Store v3 — server community memory
+
+Run offline preparation before starting the bot or dashboard. The v2 → v3 step
+adds empty community item, source and per-guild opt-out tables and their indexes.
+Existing personal memory rows and annotations are preserved. The preparer accepts
+the frozen fresh and historical store layouts and backs up the original file.
