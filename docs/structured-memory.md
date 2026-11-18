@@ -186,12 +186,12 @@ The `memory.shadow_extraction` completed event adds `annotated_items`, `reconfir
 
 ## Tiered read path (memory v2 P2, #457)
 
-`PERSONAL_MEMORY_READ_MODE` (runtime setting, startup default `legacy`) chooses how owner memory
+`PERSONAL_MEMORY_READ_MODE` (runtime setting, startup default `full`) chooses how owner memory
 reaches a response:
 
 | Mode | Provider context | Recorded |
 |---|---|---|
-| `legacy` | the existing projection below (all FULL items in DM) | nothing new |
+| `full` (formerly `legacy`, accepted as an alias) | the existing projection below (all FULL items in DM) | nothing new |
 | `tiered_shadow` | the existing projection | the tiered selection in context provenance and `memory.selection` telemetry, plus shadow coverage after the reply |
 | `tiered` | `user_memory` and `relationship_profile` only | the same, plus usage after the reply |
 | `decision_shadow` | the existing projection | Decisions selection, timing, usage and coverage |

@@ -472,6 +472,17 @@ def _eligible_memory(items, annotations, ctx, selection, *, decisions=False):
     return candidates, quiet, followup_opt_out
 
 
+def full_memory_items(items, annotations, ctx):
+    """Use the Decision eligibility rules without ranking, clustering or size caps."""
+    candidates, _, _ = _eligible_memory(items, annotations, ctx, MemorySelection(), decisions=True)
+    allowed = {
+        item.id for item, annotation, _, status in candidates
+        if not status.expired or annotation.usage_mode == UsageMode.DIRECTIVE
+        or item.id in ctx.authorized_item_ids
+    }
+    return [item for item in items if item.id in allowed or item.kind == MemoryKind.RELATIONSHIP]
+
+
 def decision_memory_candidates(items, annotations, ctx) -> list[SelectedMemory]:
     """The full eligible T2 pool, before relevance, clustering or packing."""
     candidates, _, _ = _eligible_memory(items, annotations, ctx, MemorySelection(), decisions=True)

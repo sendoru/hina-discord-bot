@@ -30,7 +30,7 @@ ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 # tool: model-controlled local keyword search; full/v1 remain rollback paths.
 DECISION_MODES = frozenset({"decision_shadow", "decision"})
 RAG_MODES = frozenset({"off", "v1", "full", "tool"}) | DECISION_MODES
-PERSONAL_MEMORY_READ_MODES = frozenset({"legacy", "tiered_shadow", "tiered"}) | DECISION_MODES
+PERSONAL_MEMORY_READ_MODES = frozenset({"full", "tiered_shadow", "tiered"}) | DECISION_MODES
 # Provider-facing conversation transport only; independent from memory read policy.
 CONTEXT_INPUT_MODES = frozenset({"legacy", "structured", "structured_with_replay"})
 MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})
@@ -79,7 +79,7 @@ def parse_external_context_policy(value: str) -> str:
 
 def canonical_memory_read_mode(value: str) -> str:
     """Read the pre-#508 spelling from startup settings, stored config or historical traces."""
-    return "tiered_shadow" if value == "shadow" else value
+    return {"shadow": "tiered_shadow", "legacy": "full"}.get(value, value)
 
 
 def _env_key(provider: str) -> str:
@@ -164,7 +164,7 @@ class Settings:
     rag_mode: str = "full"
     runtime_timezone: str = "Asia/Seoul"
     server_memory_read: str = "on"
-    personal_memory_read_mode: str = "legacy"
+    personal_memory_read_mode: str = "full"
     memory_session_followup: str = "dm"
     runtime_locale: str = "ko-KR"
     runtime_default_location: str = ""
@@ -420,7 +420,7 @@ class Settings:
         if server_memory_read not in {"on", "off"}:
             raise ValueError("SERVER_MEMORY_READ must be on or off")
         personal_memory_read_mode = canonical_memory_read_mode(
-            os.getenv("PERSONAL_MEMORY_READ_MODE", "legacy").strip().lower() or "legacy"
+            os.getenv("PERSONAL_MEMORY_READ_MODE", "full").strip().lower() or "full"
         )
         if personal_memory_read_mode not in PERSONAL_MEMORY_READ_MODES:
             allowed = ", ".join(sorted(PERSONAL_MEMORY_READ_MODES))

@@ -303,6 +303,10 @@ async def test_decision_error_fallback_and_successful_empty_are_distinct():
         def all_no(request):
             return _decisions_reply(json.loads(request.content), lambda row: False)
 
+        _, manual_full, _, _ = await _decision_answer(
+            store, DM, "어떻게 생각해?", memory="full", lore="full",
+            handler=lambda _: pytest.fail("manual full called Decisions"),
+        )
         failure, ref_failed, trace_failed, _ = await _decision_answer(
             store, DM, "어떻게 생각해?", handler=unavailable,
         )
@@ -315,11 +319,11 @@ async def test_decision_error_fallback_and_successful_empty_are_distinct():
     assert "[검수된 정적 설정 자료" in failure["instructions"]
     assert "[검수된 정적 설정 자료" not in empty["instructions"]
     assert ref_empty["user_memory"]["notes"] == []
-    assert len(ref_failed["user_memory"]["notes"]) == 2
-    for reference in (ref_failed, ref_empty):
-        assert reference["user_memory"]["directives"]
+    assert ref_failed["structured_owner_memory"] == manual_full["structured_owner_memory"]
+    assert len(ref_failed["structured_owner_memory"]) == 4
+    assert ref_empty["user_memory"]["directives"]
     assert trace_failed["retrieval_decisions"]["lore"]["decision_fallback"] == "full"
-    assert trace_failed["retrieval_decisions"]["memory"]["decision_fallback"] == "scope_safe_legacy"
+    assert trace_failed["retrieval_decisions"]["memory"]["decision_fallback"] == "full"
     assert trace_empty["retrieval_decisions"]["lore"]["decision_applied"]
     assert trace_empty["retrieval_decisions"]["memory"]["decision_applied"]
 
