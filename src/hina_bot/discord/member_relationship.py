@@ -14,7 +14,6 @@ from hina_bot.core.server_memory_repository import ServerSourceRef
 from .private_thread_access import check_private_thread_access, private_thread_member_ids
 from .server_memory import _authority
 
-
 MEMBER_RELATIONSHIP = LocalToolSpec(
     name="get_member_relationship",
     description=load_prompt("member_relationship.md", section="memory").strip(),

@@ -25,9 +25,9 @@ from .embed_context import message_embed_text
 from .forward_context import message_context_text, message_turn_text
 from .interaction_context import build_interaction_context
 from .member_directory import channel_member_tool_registry
+from .member_relationship import register_member_relationship
 from .memory_recall_tool import register_memory_recall_tool
 from .reply_context import REPLY_CONTEXT, collect_reply_context
-from .member_relationship import register_member_relationship
 from .server_memory import server_reader
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect, retrieval_mode
