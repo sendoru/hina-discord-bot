@@ -69,6 +69,10 @@ class MemoryRecall:
                 reader = CURRENT_SERVER_READER.get()
                 rows = await reader(query, lookup=True) if reader else []
                 self._record([])
+                provenance = dict(CURRENT_CONTEXT_PROVENANCE.get() or {})
+                provenance["server_memory"] = [*provenance.get("server_memory", []),
+                    *({"id": r["id"], "store": r["store"], "tier": "S3"} for r in rows)]
+                CURRENT_CONTEXT_PROVENANCE.set(provenance)
                 self._emit('ok' if rows else 'empty', len(rows), started, target='server')
                 return {'status': 'ok' if rows else 'empty', 'memories': rows}
             if target != 'personal' or getattr(self.settings, 'personal_memory_read_mode', 'tiered') != 'tiered':

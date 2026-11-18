@@ -500,6 +500,12 @@ class HinaClient(discord.Client):
         A failure here must never affect the delivered reply.
         """
 
+        server_refs = (CURRENT_CONTEXT_PROVENANCE.get() or {}).get("server_memory") or []
+        if server_refs:
+            try:
+                self.store._server_memories.record_usage(server_refs, answer)
+            except Exception as exc:  # noqa: BLE001 - optional post-delivery bookkeeping
+                self.events.emit("memory.server_usage_failed", error_type=type(exc).__name__)
         run = CURRENT_MEMORY_SELECTION.get()
         CURRENT_MEMORY_SELECTION.set(None)
         if run is None:
@@ -975,12 +981,14 @@ class HinaClient(discord.Client):
                                     parts[0],
                                     allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
                                 )
+                                self.store.track_server_delivery(scope, message.id, sent.id)
                                 delivery_ids = [str(sent.id)]
                                 for part in parts[1:]:
                                     extra_sent = await message.channel.send(
                                         part,
                                         allowed_mentions=USER_ONLY_ALLOWED_MENTIONS,
                                     )
+                                    self.store.track_server_delivery(scope, message.id, extra_sent.id)
                                     delivery_ids.append(str(extra_sent.id))
                                 provenance = dict(CURRENT_CONTEXT_PROVENANCE.get() or {})
                                 provenance['assistant_message_ids'] = delivery_ids

@@ -366,3 +366,29 @@ async def test_consent_changed_between_partitions_blocks_next_provider_input(sto
     worker = SimpleNamespace(settings=Settings(discord_token="test"), _memory_request=request)
     await extract_server_batch(worker, store, 1, 10)
     assert calls == [{"100"}]
+
+
+def test_server_cooldown_only_records_use_in_delivered_text(store):
+    source(store)
+    item = remember(store, keywords=["모임"])
+    refs = [{"id": item, "store": "server", "tier": "S1"}]
+    store._server_memories.record_usage(refs, "반가워요.")
+    assert visible(store)[0]["last_used_at"] is None
+    store._server_memories.record_usage(refs, "다음 모임에서 만나요.")
+    assert visible(store)[0]["last_used_at"] is not None
+
+
+@pytest.mark.parametrize("action", ["source_deleted", "reply_deleted", "opt_out_then_in"])
+def test_withdrawal_before_turn_commit_cannot_create_evidence(store, action):
+    scope = Scope(1, 10, 100, True)
+    with store.track_server_turn(scope, 1001):
+        store.track_server_delivery(scope, 1001, 2001)
+        if action == "opt_out_then_in":
+            store.set_server_memory_opt_out(1, 100, True)
+            store.set_server_memory_opt_out(1, 100, False)
+        else:
+            store.forget_server_memory_source(1, 10, 1001 if action == "source_deleted" else 2001)
+        store.record_completed_turn(scope, 1001, "매주 모임", "응",
+            context_provenance={"source_trigger_kind": "explicit", "assistant_message_ids": ["2001"]})
+    with pytest.raises(ValueError, match="explicitly"):
+        remember(store)

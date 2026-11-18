@@ -115,9 +115,6 @@ def server_reader(client, message, scope):
         result = select_server_rows(rows, query, lookup=lookup)
         for row in result:
             row["subjects"] = [{"user_id": uid, "name": members[uid]} for uid in row.pop("subject_user_ids")]
-        with repo.db:
-            repo.db.executemany("UPDATE server_memory_items SET last_used_at=CURRENT_TIMESTAMP WHERE id=?",
-                                [(r["id"],) for r in result if r["tier"] == "S1"])
         client.events.emit("memory.server_selection", selected=[(r["store"], r["id"], r["tier"]) for r in result])
         return result
     return read

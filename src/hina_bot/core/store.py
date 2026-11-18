@@ -72,6 +72,7 @@ class Store:
         self._conversations = ConversationRepository(db, history_turns, raw_retention_turns)
         self._atomic_memory_batch_open = False
         self._server_extractions = set()
+        self._pending_server_sources = {}
         self._server_memories = ServerMemoryRepository(
             db, subject_readable=lambda uid: memory_mode_capabilities(self.user_memory_mode(uid))[0],
             author_writable=lambda scope: memory_mode_capabilities(self.memory_mode(scope))[1],
@@ -409,6 +410,29 @@ class Store:
             context_provenance=context_provenance,
         )
 
+    @contextmanager
+    def track_server_turn(self, scope, message_id):
+        """Track withdrawal during preflight, generation and multipart delivery."""
+        key = (scope.guild_id, scope.channel_id, message_id)
+        if key in self._pending_server_sources:
+            yield
+            return
+        state = {"user": scope.user_id, "keys": [key],
+                 "withdrawn": self.server_memory_opted_out(scope.guild_id, scope.user_id)}
+        self._pending_server_sources[key] = state
+        try:
+            yield
+        finally:
+            for source_key in state["keys"]:
+                self._pending_server_sources.pop(source_key, None)
+
+    def track_server_delivery(self, scope, message_id, reply_id):
+        state = self._pending_server_sources.get((scope.guild_id, scope.channel_id, message_id))
+        if state is not None:
+            key = (scope.guild_id, scope.channel_id, reply_id)
+            self._pending_server_sources[key] = state
+            state["keys"].append(key)
+
     def record_completed_turn(
         self, scope: Scope, message_id: int, content: str, reply: str, *, name: str = "",
         memory_context=None, context_provenance=None,
@@ -422,6 +446,11 @@ class Store:
         )
         self.db.execute("BEGIN IMMEDIATE")
         try:
+            state = self._pending_server_sources.get((scope.guild_id, scope.channel_id, message_id))
+            if state and state["withdrawn"]:
+                provenance = json.loads(values[-1] or "{}")
+                provenance["source_trigger_kind"] = "withdrawn"
+                values = (*values[:-1], json.dumps(provenance, ensure_ascii=False))
             self._conversations.write_turn(scope, values)
             self._conversations.write_shared_call(scope, message_id, name, content)
             self.db.commit()
@@ -640,12 +669,20 @@ class Store:
         return self._server_memories.opted_out(guild_id, user_id)
 
     def set_server_memory_opt_out(self, guild_id: int, user_id: int, enabled: bool) -> int:
-        return self._server_memories.set_opt_out(guild_id, user_id, enabled)
+        removed = self._server_memories.set_opt_out(guild_id, user_id, enabled)
+        if enabled:
+            for (guild, _, _), state in self._pending_server_sources.items():
+                if guild == guild_id and state["user"] == user_id:
+                    state["withdrawn"] = True
+        return removed
 
     def forget_server_memory_source(
         self, guild_id: int, channel_id: int, message_id: int
     ) -> int:
         """Hard-delete any item depending on a deleted source message."""
+        state = self._pending_server_sources.get((guild_id, channel_id, message_id))
+        if state is not None:
+            state["withdrawn"] = True
         with self.db:
             return self._server_memories.delete_message(guild_id, channel_id, message_id)
 

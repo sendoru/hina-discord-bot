@@ -119,6 +119,6 @@ async def extract_server_batch(llm, store, guild, channel, *, stale=False, admin
             store.db.executemany("""UPDATE turns SET context_provenance=json_set(
                 context_provenance,'$.server_memory_processed',1) WHERE realm=? AND message_id=?""",
                 [(f"guild:{guild}", mid) for mid in ids])
-        llm.usage.routing_event("memory.server_extraction", input_turns=len(turns), accepted=accepted)
+        llm.usage.routing_event("memory.server_extraction", batch_turns=len(turns), accepted_items=accepted)
     finally:
         running.remove(key)

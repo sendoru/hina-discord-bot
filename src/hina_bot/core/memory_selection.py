@@ -913,13 +913,17 @@ class MemoryUsage:
 def _mentions(item: MemoryItem, annotation: MemoryAnnotation, text: str) -> bool:
     """Decision 19: a memory counts as used when the text contains one of its keywords."""
 
+    return mentions_memory_content(item.content, annotation.keywords, text)
+
+
+def mentions_memory_content(content, keywords, text):
     text = normalize_text(text)
-    keywords = [normalize_text(word) for word in annotation.keywords]
+    keywords = [normalize_text(word) for word in keywords]
     keywords = [word for word in keywords if len(word) >= 2]
     if keywords:
         return any(word in text for word in keywords)
     # Unannotated legacy items have no keywords: require two content words instead.
-    return sum(term in text for term in _tokens(item.content)) >= 2
+    return sum(term in text for term in _tokens(content)) >= 2
 
 
 def _used_in(entry: SelectedMemory, answer: str) -> bool:

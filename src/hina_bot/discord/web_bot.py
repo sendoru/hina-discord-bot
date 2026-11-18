@@ -457,9 +457,12 @@ class HinaClient(BaseHinaClient):
             token = CURRENT_TYPING_ACTIVE.set(True) if use_typing else None
             stop_token = CURRENT_TYPING_STOP.set(session.stop) if use_typing else None
             try:
-                return await self._preflight_on_message(
-                    message, text, scope, preflight_started, typing_start_ms
-                )
+                capture = (self.store.track_server_turn(scope, message.id)
+                           if text is not None and scope.guild_id and not message.author.bot else nullcontext())
+                with capture:
+                    return await self._preflight_on_message(
+                        message, text, scope, preflight_started, typing_start_ms
+                    )
             finally:
                 if stop_token is not None:
                     CURRENT_TYPING_STOP.reset(stop_token)
@@ -652,7 +655,7 @@ class HinaClient(BaseHinaClient):
         register_chat_history_tool(
             registry, message, self.user.id, self.store, self.settings, events=self.events,
         )
-        reader = server_reader(self, message, scope) if message.guild else None
+        reader = server_reader(self, message, scope) if message.guild and not message.author.bot else None
         reader_token = CURRENT_SERVER_READER.set(reader)
         register_memory_recall_tool(
             registry, self.store,

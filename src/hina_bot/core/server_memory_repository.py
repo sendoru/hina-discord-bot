@@ -11,6 +11,7 @@ import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
+from .memory_selection import mentions_memory_content
 from .routing import Scope
 
 
@@ -167,7 +168,9 @@ class ServerMemoryRepository:
             ):
                 raise ValueError("Evidence does not match its cited original turn")
             authors = {str(row["user_id"]) for row, _, _, _ in verified}
-            if not set(subjects).issubset(authors):
+            self_disclosures = {str(row["user_id"]) for ref, (row, _, _, _) in zip(refs, verified, strict=True)
+                                if ref.role == "user"}
+            if not set(subjects).issubset(self_disclosures):
                 raise ValueError("Every named subject must have personally contributed")
             observed = any(
                 ref.role == "hina" and evidence in text
@@ -284,6 +287,15 @@ class ServerMemoryRepository:
         except BaseException:
             self.db.rollback()
             raise
+
+    def record_usage(self, refs, answer):
+        with self.db:
+            for item_id in {ref["id"] for ref in refs if ref.get("store") == "server"}:
+                row = self.db.execute("""SELECT content,keywords FROM server_memory_items
+                    WHERE id=? AND status='active'""", (item_id,)).fetchone()
+                if row and mentions_memory_content(row["content"], json.loads(row["keywords"]), answer):
+                    self.db.execute("UPDATE server_memory_items SET last_used_at=CURRENT_TIMESTAMP WHERE id=?",
+                                    (item_id,))
 
     def sources(self, item_id: int) -> list[dict]:
         return [dict(row) for row in self.db.execute(
