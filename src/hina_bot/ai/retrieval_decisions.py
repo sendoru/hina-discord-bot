@@ -315,7 +315,7 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
         )
         fallback = invalidated
         if memory_mode == "decision" and memory_run is not None and memory_scores is None:
-            fallback = fallback or "scope_safe_legacy"
+            fallback = fallback or "full"
         observations["memory"] = decision_observation(
             memory_result, mode=memory_mode, applied=memory_mode == "decision"
             and memory_scores is not None, selected_ids=ids,

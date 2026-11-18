@@ -19,6 +19,7 @@ from hina_bot.core.memory_selection import (
     MemoryReadRun,
     MemorySelection,
     SelectionContext,
+    full_memory_items,
     legacy_notes,
     render_user_memory,
     select_personal_memory,
@@ -125,16 +126,18 @@ def structured_memory_provenance(
     use_memory: bool,
     allow_cross_space: bool,
     authorized_factual_items: Iterable[MemoryItem] = (),
+    items: Iterable[MemoryItem] | None = None,
 ) -> dict:
     """Return content-free provenance for the structured memory admitted to a response."""
 
     if not use_memory:
         return {"items": [], "relationship_axes": []}
-    reader = getattr(store, "memory_items", None)
-    if not callable(reader):
-        return {"items": [], "relationship_axes": []}
+    if items is None:
+        reader = getattr(store, "memory_items", None)
+        if not callable(reader):
+            return {"items": [], "relationship_axes": []}
 
-    items = _owned(reader(scope.user_id), scope)
+        items = _owned(reader(scope.user_id), scope)
     authorized_ids = {
         item.id
         for item in authorized_factual_items
@@ -223,6 +226,7 @@ def structured_memory_context(
     use_memory: bool,
     allow_cross_space: bool,
     authorized_factual_items: Iterable[MemoryItem] = (),
+    items: Iterable[MemoryItem] | None = None,
 ) -> dict:
     """Build structured fields safe to serialize into the response request."""
 
@@ -237,11 +241,12 @@ def structured_memory_context(
     if not use_memory:
         return empty
 
-    reader = getattr(store, "memory_items", None)
-    if not callable(reader):
-        return empty
+    if items is None:
+        reader = getattr(store, "memory_items", None)
+        if not callable(reader):
+            return empty
 
-    items = reader(scope.user_id)
+        items = reader(scope.user_id)
     authorized_ids = {
         item.id
         for item in authorized_factual_items
@@ -475,11 +480,10 @@ def personal_memory_fields(
         if use_memory and mode in {"tiered", "tiered_shadow"}
         else None
     )
-    if decision_run is not None and (mode == "decision" or decision_scores is not None):
+    if decision_run is not None and decision_scores is not None:
         run = decision_run
         selection = select_personal_memory(
             run.items, run.annotations, run.ctx, decision_scores=decision_scores,
-            decision_fallback=decision_scores is None,
         )
         run = PersonalMemorySelection(
             selection, run.items, run.annotations, run.ctx, run.recent_own_texts,
@@ -508,9 +512,16 @@ def personal_memory_fields(
             trace=tiered_memory_provenance(selection, fields.get("relationship_profile", {})),
         )
         return result
+    snapshot = decision_run or run
+    if use_memory and snapshot is None:
+        snapshot = personal_memory_selection(
+            store, scope, message=message, settings=settings, now=now,
+            authorized_factual_items=authorized, explicit_call=explicit_call, select_tiered=False,
+        )
+    items = full_memory_items(snapshot.items, snapshot.annotations, snapshot.ctx) if snapshot else ()
     fields = structured_memory_context(
         store, scope, use_memory=use_memory, allow_cross_space=allow_cross_space,
-        authorized_factual_items=authorized,
+        authorized_factual_items=authorized, items=items,
     )
     result.update(
         fields=fields,
@@ -518,7 +529,7 @@ def personal_memory_fields(
         selection=run.selection if run is not None else None,
         trace=structured_memory_provenance(
             store, scope, use_memory=use_memory, allow_cross_space=allow_cross_space,
-            authorized_factual_items=authorized,
+            authorized_factual_items=authorized, items=items,
         ),
     )
     return result

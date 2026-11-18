@@ -32,9 +32,8 @@ behavior.
 - The initial score threshold is 0.65. Empty selection is a valid result. A 1,000-question cap,
   conservative 240,000-byte body cap and 1.5-second request deadline bound each call. An
   oversized pool is skipped in full. Missing or invalid answers, timeouts and HTTP errors
-  fall back without a retry. Active lore falls back to `full`. Active memory falls back to a
-  scope-filtered full projection of eligible notes with the deterministic tiers and use hints
-  applied. A changed memory snapshot is rechecked before injection.
+  fall back without a retry. Active lore falls back to `full`. Active memory uses the same eligible full projection as manual `full` for that
+  request only. A successful empty selection still uses the Decision path. A changed memory snapshot is rechecked before injection.
 - The turn sent to Decisions is bounded text: the visible message, egress-approved reply context
   and short same-speaker continuity. Memory uses only the owner's user messages and the bot's
   permitted causal replies. Memory text is sent only to the memory endpoint request.

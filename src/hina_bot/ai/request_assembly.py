@@ -378,7 +378,7 @@ class RequestAssembler(BaseLLM):
         memory_read_mode = getattr(self.settings, "personal_memory_read_mode", "legacy")
         has_decisions = lore_mode in DECISION_MODES or memory_read_mode in DECISION_MODES
         memory_reader = getattr(store, "memory_mode", None)
-        if has_decisions and callable(memory_reader):
+        if callable(memory_reader):
             use_memory = use_memory and memory_reader(scope) not in {"off", "write_only"}
 
         routing = information_plan.routing
