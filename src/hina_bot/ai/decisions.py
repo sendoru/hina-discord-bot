@@ -100,6 +100,7 @@ class DecisionsClient:
 
     async def evaluate(
         self, *, api_key: str, domain: str, query: dict, candidates: dict[str, dict],
+        timeout_seconds: float | None = None,
     ) -> DecisionResult:
         started = perf_counter()
         count = len(candidates)
@@ -142,8 +143,9 @@ class DecisionsClient:
         if self.http is None:
             self.http = httpx.AsyncClient()
         request_started = perf_counter()
+        deadline = TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
         try:
-            async with asyncio.timeout(TIMEOUT_SECONDS):
+            async with asyncio.timeout(deadline):
                 response = await self.http.post(
                     URL, content=body,
                     headers={"x-goog-api-key": api_key, "content-type": "application/json"},
