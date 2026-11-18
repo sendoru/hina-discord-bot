@@ -152,14 +152,19 @@ def test_forward_snapshot_is_used_only_after_call_routing():
     forward = forwarded_message()
     # Forwarded text (including its own possible bot mentions) is not a trigger.
     assert trigger_text(forward, 99) is None
+    forward.guild = None  # DM_ALWAYS_REPLY does not apply to guild messages.
     assert trigger_text(forward, 99, dm_always_reply=True) == ""
     assert message_turn_text(forward, "") == message_context_text(forward)
     assert FORWARD_TEXT in message_turn_text(forward, "")
     assert forward.content == ""
 
-    forward.content = "히나야"
+    forward.content = "히나야"  # A bare prefix is intentionally omitted from LLM text.
+    assert message_turn_text(forward, trigger_text(forward, 99)) == message_context_text(
+        forwarded_message()
+    )
+    forward.content = "히나야 이거 봐"
     assert message_turn_text(forward, trigger_text(forward, 99)).startswith(
-        "히나야\n\n[Discord 전달 메시지"
+        "히나야 이거 봐\n\n[Discord 전달 메시지"
     )
     plain = NS(content="", message_snapshots=[])
     assert message_turn_text(plain, "") == ""
@@ -169,7 +174,7 @@ def test_forward_snapshot_is_used_only_after_call_routing():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("content", "dm_always_reply"),
-    [("", True), ("히나야", False)],
+    [("", True), ("히나야", False), ("히나야 이거 봐", False)],
 )
 async def test_forward_in_current_turn_reaches_llm_instead_of_fixed_reply(
     content, dm_always_reply,
@@ -212,8 +217,10 @@ async def test_forward_in_current_turn_reaches_llm_instead_of_fixed_reply(
         assert FORWARD_TEXT in model_text
         assert "[Discord 전달 메시지 (Forward; 원 작성자 확인 불가)]" in model_text
         assert model_text.count(FORWARD_TEXT) == 1
-        if content:
+        if content == "히나야 이거 봐":
             assert model_text.startswith(content + "\n\n")
+        else:
+            assert model_text.startswith("[Discord 전달 메시지")
         channel.send.assert_awaited()
         assert channel.send.await_args.args[0] == "전달된 내용 확인했어."
         assert message.content == content
