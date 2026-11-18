@@ -198,6 +198,7 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
         ]
         requests["lore"] = evaluate(
             api_key=key, domain="lore",
+            timeout_seconds=llm.settings.decision_timeout_seconds,
             query=decision_query(
                 message, rows, user_id=scope.user_id, policy=policy,
                 recent_own=recent_own_texts(store, scope, now) if use_memory else (),
@@ -215,6 +216,7 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
             )
             requests["memory"] = evaluate(
                 api_key=key, domain="memory",
+                timeout_seconds=llm.settings.decision_timeout_seconds,
                 query=decision_query(
                     message, rows, user_id=scope.user_id, policy=policy,
                     recent_own=memory_run.recent_own_texts, owner_only=True,
