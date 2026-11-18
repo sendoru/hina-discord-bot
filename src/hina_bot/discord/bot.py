@@ -30,7 +30,7 @@ from hina_bot.core.store import Store
 from .admin_commands import initialize_admin_commands, run_admin_command_once
 from .embed_context import message_embed_text
 from .emoji_commands import EmojiRegistry
-from .forward_context import message_context_text
+from .forward_context import message_context_text, message_turn_text
 from .output_safety import neutralize_mentions
 from .target_recent import CURRENT_CHANNEL_CONTEXT
 from .vision import memory_visuals_for_turn, message_has_visual
@@ -658,6 +658,8 @@ class HinaClient(discord.Client):
             self.settings.call_prefixes,
             self.settings.always_reply_channel_ids,
         )
+        if text is not None:
+            text = message_turn_text(message, text)
         public_at_capture = False
         if guild_id is not None and isinstance(message.channel, discord.TextChannel):
             permissions = message.channel.permissions_for(message.guild.default_role)

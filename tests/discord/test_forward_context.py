@@ -6,16 +6,16 @@ use the forwarded text as attributed reference material, never as a live DM exch
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace as NS
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from hina_bot.ai.egress_policy import filter_channel_context
 from hina_bot.core.config import Settings
-from hina_bot.core.routing import Scope
+from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.store import Store
 from hina_bot.discord.chatlog_capture import set_capture_mode_override
-from hina_bot.discord.forward_context import message_context_text
+from hina_bot.discord.forward_context import message_context_text, message_turn_text
 from hina_bot.discord.reply_context import collect_reply_context
 from hina_bot.discord.web_bot import HinaClient
 
@@ -146,3 +146,83 @@ async def test_explicit_reply_to_forward_uses_snapshot_instead_of_empty_content(
     assert rows[0]["context_kind"] == "replied_message"
     assert rows[0]["author_user_id"] == "100"
     assert FORWARD_TEXT in rows[0]["content"]
+
+
+def test_forward_snapshot_is_used_only_after_call_routing():
+    forward = forwarded_message()
+    # Forwarded text (including its own possible bot mentions) is not a trigger.
+    assert trigger_text(forward, 99) is None
+    forward.guild = None  # DM_ALWAYS_REPLY does not apply to guild messages.
+    assert trigger_text(forward, 99, dm_always_reply=True) == ""
+    assert message_turn_text(forward, "") == message_context_text(forward)
+    assert FORWARD_TEXT in message_turn_text(forward, "")
+    assert forward.content == ""
+
+    forward.content = "히나야"  # A bare prefix is intentionally omitted from LLM text.
+    assert message_turn_text(forward, trigger_text(forward, 99)) == message_context_text(
+        forwarded_message()
+    )
+    forward.content = "히나야 이거 봐"
+    assert message_turn_text(forward, trigger_text(forward, 99)).startswith(
+        "히나야 이거 봐\n\n[Discord 전달 메시지"
+    )
+    plain = NS(content="", message_snapshots=[])
+    assert message_turn_text(plain, "") == ""
+    assert message_turn_text(plain, "히나야") == "히나야"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "dm_always_reply"),
+    [("", True), ("히나야", False), ("히나야 이거 봐", False)],
+)
+async def test_forward_in_current_turn_reaches_llm_instead_of_fixed_reply(
+    content, dm_always_reply,
+):
+    llm = NS(
+        answer=AsyncMock(return_value="전달된 내용 확인했어."),
+        summarize=AsyncMock(),
+        extract_structured_memory=AsyncMock(),
+        summarize_shared=AsyncMock(),
+        close=AsyncMock(),
+    )
+    store = Store.create(":memory:")
+    store.set_memory_mode_override("global", "off")
+    bot = HinaClient(
+        Settings(
+            discord_token="test",
+            openai_api_key="test",
+            dm_always_reply=dm_always_reply,
+            cooldown=0,
+        ),
+        store=store,
+        llm=llm,
+    )
+    bot._connection.user = NS(id=99, display_name="히나")
+    bot.emoji_registry.catalog = AsyncMock(return_value=[])
+    channel = MagicMock()
+    channel.id = 10
+    channel.send = AsyncMock(return_value=NS(id=1000, created_at=None))
+    channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
+    channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
+    message = forwarded_message(content=content)
+    message.guild = None
+    message.channel = channel
+    message.author.guild_permissions = NS(manage_guild=False)
+
+    try:
+        await bot.on_message(message)
+        llm.answer.assert_awaited_once()
+        model_text = llm.answer.await_args.args[3]
+        assert FORWARD_TEXT in model_text
+        assert "[Discord 전달 메시지 (Forward; 원 작성자 확인 불가)]" in model_text
+        assert model_text.count(FORWARD_TEXT) == 1
+        if content == "히나야 이거 봐":
+            assert model_text.startswith(content + "\n\n")
+        else:
+            assert model_text.startswith("[Discord 전달 메시지")
+        channel.send.assert_awaited()
+        assert channel.send.await_args.args[0] == "전달된 내용 확인했어."
+        assert message.content == content
+    finally:
+        await bot.close()
