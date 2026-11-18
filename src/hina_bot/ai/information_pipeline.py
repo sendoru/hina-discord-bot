@@ -294,7 +294,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         public_context,
         channel_context,
         use_memory: bool,
-        factual_recall_plan=None,
     ) -> tuple[int, int]:
         """Measure strong and ambient dynamic text admitted by the answer egress policy."""
         channel_rows = self._bind_current_speaker(channel_context or [], scope.user_id)
@@ -325,13 +324,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             settings=self.settings,
             use_memory=use_memory,
             allow_cross_space=use_memory,
-            authorized_factual_items=(
-                factual_recall_plan.selected
-                if factual_recall_plan is not None
-                else ()
-            ),
             message=routing_content,
-            channel_context=channel_rows,
         )["fields"]
         context = {
             "server_note": (

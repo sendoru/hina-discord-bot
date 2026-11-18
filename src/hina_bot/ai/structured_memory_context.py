@@ -123,7 +123,6 @@ def structured_memory_provenance(
     *,
     use_memory: bool,
     allow_cross_space: bool,
-    authorized_factual_items: Iterable[MemoryItem] = (),
     items: Iterable[MemoryItem] | None = None,
 ) -> dict:
     """Return content-free provenance for the structured memory admitted to a response."""
@@ -136,11 +135,6 @@ def structured_memory_provenance(
             return {"items": [], "relationship_axes": []}
 
         items = _owned(reader(scope.user_id), scope)
-    authorized_ids = {
-        item.id
-        for item in authorized_factual_items
-        if item.user_id == str(scope.user_id)
-    }
     selected: list[dict] = []
     if scope.guild_id is None:
         for item in items:
@@ -196,20 +190,6 @@ def structured_memory_provenance(
             "access": MemoryAccess.IMPLICIT.value,
         })
 
-    for item in items:
-        if item.id not in authorized_ids:
-            continue
-        selected.append({
-            "item_id": item.id,
-            "projection": "authorized_factual_recall",
-            "kind": item.kind.value,
-            "disclosure": item.disclosure.value,
-            "origin_realm": item.origin_realm,
-            "origin_channel_id": item.origin_channel_id,
-            "access": MemoryAccess.FULL.value,
-            "authorization_reason": "owner_explicit_reference",
-        })
-
     profile = aggregate_relationship_evidence(items, scope)
     return {
         "items": selected,
@@ -223,7 +203,6 @@ def structured_memory_context(
     *,
     use_memory: bool,
     allow_cross_space: bool,
-    authorized_factual_items: Iterable[MemoryItem] = (),
     items: Iterable[MemoryItem] | None = None,
 ) -> dict:
     """Build structured fields safe to serialize into the response request."""
@@ -234,7 +213,6 @@ def structured_memory_context(
         "structured_relationship_memory": [],
         "owner_relationship_profile": {},
         "cross_space_relationship": {},
-        "authorized_factual_memory": [],
     }
     if not use_memory:
         return empty
@@ -245,19 +223,6 @@ def structured_memory_context(
             return empty
 
         items = reader(scope.user_id)
-    authorized_ids = {
-        item.id
-        for item in authorized_factual_items
-        if item.user_id == str(scope.user_id)
-    }
-    authorized = [
-        {
-            **_serialize_memory_item(item, scope),
-            "authorization": "owner_explicit_reference",
-        }
-        for item in items
-        if item.id in authorized_ids
-    ]
     return {
         "structured_owner_memory": owner_dm_memory(items, scope),
         "structured_full_memory": full_shared_memory(items, scope),
@@ -272,7 +237,6 @@ def structured_memory_context(
             if allow_cross_space
             else {}
         ),
-        "authorized_factual_memory": authorized,
     }
 
 
@@ -331,9 +295,6 @@ def personal_memory_selection(
     *,
     message: str,
     settings,
-    reply_texts: Iterable[str] = (),
-    authorized_factual_items: Iterable[MemoryItem] = (),
-    explicit_call: bool = True,
     now: datetime | None = None,
     include_recent: bool = False,
 ) -> PersonalMemorySelection | None:
@@ -368,10 +329,7 @@ def personal_memory_fields(
     settings,
     use_memory: bool,
     allow_cross_space: bool,
-    authorized_factual_items: Iterable[MemoryItem] = (),
     message: str = "",
-    channel_context=(),
-    explicit_call: bool = True,
     visual_turn: bool = False,
     now: datetime | None = None,
     read_mode: str | None = None,
@@ -387,7 +345,6 @@ def personal_memory_fields(
     mode = read_mode or getattr(settings, "personal_memory_read_mode", "legacy")
     mode = canonical_memory_read_mode(mode)
     mode = mode if mode in PERSONAL_MEMORY_READ_MODES else "full"
-    authorized = tuple(authorized_factual_items)
     result = {"mode": mode, "selection": None, "policy": None, "run": None}
     run = None
     if decision_run is not None and decision_scores is not None:
@@ -412,11 +369,10 @@ def personal_memory_fields(
             visual_turn=visual_turn,
             recent_own_turn=bool(run.recent_own_texts),
         )
-    snapshot = decision_run or run
+    snapshot = decision_run
     if use_memory and snapshot is None:
         snapshot = personal_memory_selection(
             store, scope, message=message, settings=settings, now=now,
-            authorized_factual_items=authorized, explicit_call=explicit_call,
         )
     items = full_memory_items(snapshot.items, snapshot.annotations, snapshot.ctx) if snapshot else ()
     if mode == "decision" and decision_scores is not None:
@@ -424,7 +380,7 @@ def personal_memory_fields(
                  or memory_access(item, scope) == MemoryAccess.IMPLICIT]
     fields = structured_memory_context(
         store, scope, use_memory=use_memory, allow_cross_space=allow_cross_space,
-        authorized_factual_items=authorized, items=items,
+        items=items,
     )
     result.update(
         fields=fields,
@@ -432,7 +388,7 @@ def personal_memory_fields(
         selection=run.selection if run is not None else None,
         trace=structured_memory_provenance(
             store, scope, use_memory=use_memory, allow_cross_space=allow_cross_space,
-            authorized_factual_items=authorized, items=items,
+            items=items,
         ),
     )
     return result

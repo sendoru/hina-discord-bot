@@ -279,12 +279,13 @@ def full_memory_items(items, annotations, ctx):
     for item in items:
         if item.user_id != str(scope.user_id) or item.status != MemoryStatus.ACTIVE:
             continue
-        if memory_access(item, scope) == MemoryAccess.HIDDEN:
+        access = memory_access(item, scope)
+        if access == MemoryAccess.HIDDEN:
             continue
         annotation = annotations.get(item.id)
         if scope.guild_id is not None and annotation and annotation.usage_mode == UsageMode.SENSITIVE:
             continue
-        if memory_access(item, scope) == MemoryAccess.IMPLICIT and item.kind != MemoryKind.RELATIONSHIP:
+        if access == MemoryAccess.IMPLICIT and item.kind != MemoryKind.RELATIONSHIP:
             continue
         visible.append(item)
 
@@ -297,12 +298,18 @@ def full_memory_items(items, annotations, ctx):
             item.id,
         )
 
-    representatives = {}
-    for item in visible:
-        key = normalize_text(item.content)
-        if key not in representatives or priority(item) > priority(representatives[key]):
-            representatives[key] = item
-    ids = {item.id for item in representatives.values()}
+    seen_content = set()
+    seen_clusters = set()
+    ids = set()
+    for item in sorted(visible, key=priority, reverse=True):
+        content = normalize_text(item.content)
+        annotation = annotations.get(item.id)
+        cluster = annotation.cluster_id if annotation and not annotation.is_stale(item.revision) else None
+        if content not in seen_content and (cluster is None or cluster not in seen_clusters):
+            ids.add(item.id)
+        seen_content.add(content)
+        if cluster is not None:
+            seen_clusters.add(cluster)
     return [item for item in visible if item.id in ids]
 
 

@@ -1,3 +1,4 @@
+from hina_bot.ai.decisions import DecisionResult
 """Memory response eval (#457): case setup, scoring and the runner without paid calls."""
 
 import json
@@ -168,9 +169,15 @@ def _args(path, **overrides):
 
 def _factory(calls, **client_options):
     def make_llm(mode):
-        return LLM(Settings(discord_token="test", openai_api_key="test",
-                            personal_memory_read_mode=mode, chat_web_search=False),
-                   client=_client(calls, **client_options))
+        llm = LLM(Settings(discord_token="test", openai_api_key="test",
+                           personal_memory_read_mode=mode, chat_web_search=False),
+                  client=_client(calls, **client_options))
+
+        async def select_all(*, candidates, **kwargs):
+            return DecisionResult(candidate_count=len(candidates), scores={k: 1.0 for k in candidates})
+
+        llm.decisions_client.evaluate = select_all
+        return llm
 
     return make_llm
 
@@ -239,7 +246,7 @@ async def test_checks_follow_their_turn_and_status_na_is_not_judged(tmp_path):
     assert [[check["type"] for check in turn["checks"]] for turn in row["turns"]] == [
         ["status"], ["not_raised"],
     ]
-    assert row["turns"][0]["selection"][0]["tier"] == "T1"
+    assert row["turns"][0]["selection"][0]["tier"] == "T2"
     status = summary["modes"]["decision"]["status_misstatement"]
     assert (status["judged"], status["na"], status["rate"], status["referenced_rate"]) == (
         0, 1, None, 0.0,
