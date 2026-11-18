@@ -19,6 +19,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from hina_bot.core.config import canonical_memory_read_mode
 from hina_bot.core.memory_items import RELATIONSHIP_EVIDENCE_AXES
 from hina_bot.dashboard.telemetry import TelemetryReader
 
@@ -778,8 +779,10 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
         ),
         # Tiered read path (#457): per-turn tier counts and exclusion reasons, no content.
         "memory_selection": {
-            "turns_by_mode": dict(Counter(str(row.get("memory_read_mode") or "missing")
-                                          for row in selection)),
+            "turns_by_mode": dict(Counter(
+                canonical_memory_read_mode(str(row.get("memory_read_mode") or "missing"))
+                for row in selection
+            )),
             "totals": {
                 key: _sum(selection, key)
                 for key in (
@@ -800,6 +803,9 @@ def telemetry_report(usage_rows: Iterable[dict]) -> dict:
         },
         "memory_shadow_coverage": _shadow_coverage(
             [row for row in rows if row.get("operation") == "memory.shadow_coverage"]
+        ),
+        "memory_decision_coverage": _shadow_coverage(
+            [row for row in rows if row.get("operation") == "memory.decision_coverage"]
         ),
     }
 

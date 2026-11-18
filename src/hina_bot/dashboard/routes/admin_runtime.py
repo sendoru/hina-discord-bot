@@ -57,6 +57,7 @@ RUNTIME_CONFIG_SECTIONS = (
         (
             "model_routing_mode",
             "model",
+            "answer_timeout_seconds",
             "fast_model",
             "smart_model",
             "model_routing_smart_threshold",
@@ -89,6 +90,7 @@ RUNTIME_CONFIG_SECTIONS = (
         "Memory access, extraction, lore, and retrieval settings",
         (
             "rag_mode",
+            "server_memory_read",
             "personal_memory_read_mode",
             "memory_session_followup",
             "community_lore",

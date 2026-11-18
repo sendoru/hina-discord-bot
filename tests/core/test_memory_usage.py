@@ -44,10 +44,10 @@ def _store():
     return store, food, exam
 
 
-def _select(store, message, *, now=NOW, hours=1):
+def _select(store, message, *, now=NOW, hours=1, **mode):
     items = store.memory_items(100)
     ctx = SelectionContext(scope=DM, message=message, now=now, hours_since_last_turn=hours)
-    return select_personal_memory(items, store.memory_annotations([i.id for i in items]), ctx)
+    return select_personal_memory(items, store.memory_annotations([i.id for i in items]), ctx, **mode)
 
 
 def test_used_note_starts_cooldown_and_direct_mention_still_works():
@@ -77,17 +77,18 @@ def test_unused_note_is_not_marked():
     ("안녕! 오늘은 뭐 했어?", 1, True),  # unused: one retry next session
     ("안녕! 시험은 잘 봤어?", 2, False),  # used: this status is exhausted
 ])
-def test_followup_attempts_follow_the_reply(answer, count, next_session_selects):
+@pytest.mark.parametrize("mode", [{}, {"decision_scores": {}}, {"decision_fallback": True}])
+def test_followup_attempts_follow_the_reply(answer, count, next_session_selects, mode):
     store, _food, exam = _store()
-    selection = _select(store, "히나야 안녕", hours=10)
-    assert [(e.item.id, e.tier) for e in selection.selected] == [(exam, "T1")]
+    selection = _select(store, "히나야 안녕", hours=10, **mode)
+    assert [(e.item.id, e.tier) for e in selection.selected if e.tier == "T1"] == [(exam, "T1")]
 
     store.record_memory_usage(memory_usage(selection, answer, NOW))
 
     annotation = store.memory_annotation(exam)
     assert (annotation.proactive_status, annotation.proactive_count) == ("just_passed", count)
-    following = _select(store, "히나야 안녕", now=NOW + timedelta(days=1), hours=20)
-    assert bool(following.selected) is next_session_selects
+    following = _select(store, "히나야 안녕", now=NOW + timedelta(days=1), hours=20, **mode)
+    assert any(entry.tier == "T1" for entry in following.selected) is next_session_selects
     store.close()
 
 

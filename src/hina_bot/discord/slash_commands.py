@@ -16,6 +16,7 @@ from .config_commands import ConfigCommands
 from .knowledge_commands import KnowledgeCommands
 from .memory_commands import MemoryCommands
 from .note_commands import NoteCommands
+from .server_memory import server_reader
 from .state_commands import StateCommands
 
 log = logging.getLogger("hina")
@@ -291,7 +292,18 @@ def upgrade_memory_group(client):
             ephemeral=True,
         )
 
-    for command in (show, remove, preference, status, clear):
+    @app_commands.command(name="sharing", description="이 서버에서 내 대화의 공유 기억 기여 여부 설정")
+    async def sharing(interaction: discord.Interaction, enabled: bool):
+        if interaction.guild_id is None:
+            await interaction.response.send_message("서버에서 설정해 주세요.", ephemeral=True)
+            return
+        removed = client.store.set_server_memory_opt_out(
+            interaction.guild_id, interaction.user.id, not enabled,
+        )
+        result = "앞으로의 기여를 허용했어요." if enabled else f"기여를 중단하고 관련 기억 {removed}개를 삭제했어요."
+        await interaction.response.send_message(result, ephemeral=True)
+
+    for command in (show, remove, preference, status, clear, sharing):
         group.add_command(command)
 
     return group
@@ -432,10 +444,43 @@ class EmojiSlashCommands(app_commands.Group):
             "사용 목록에서 제외했어요. 원본 이모지는 삭제하지 않아요.", ephemeral=True)
 
 
+@app_commands.guild_only()
+@app_commands.default_permissions(manage_guild=True)
+class ServerMemoryCommands(app_commands.Group, name="server-memory", description="서버 공유 기억 관리"):
+    def __init__(self, client):
+        super().__init__()
+        self.client = client
+
+    async def interaction_check(self, interaction):
+        if interaction.guild and interaction.permissions.manage_guild:
+            return True
+        await interaction.response.send_message("서버 관리 권한이 필요해요.", ephemeral=True)
+        return False
+
+    @app_commands.command(description="현재 열람 가능한 서버 기억 조회")
+    async def show(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        rows = await server_reader(self.client, interaction, _scope(interaction))("", manage=True)
+        lines = [f"#{r['id']} [{r['trust']}] {r['content']}" for r in rows]
+        for page in _text_pages(lines or ["조회할 기억이 없어요."]):
+            await interaction.followup.send(page, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+    @app_commands.command(description="서버 기억 철회")
+    async def remove(self, interaction: discord.Interaction, item_id: int):
+        await interaction.response.defer(ephemeral=True)
+        rows = await server_reader(self.client, interaction, _scope(interaction))("", manage=True)
+        if not any(r["id"] == item_id for r in rows):
+            await interaction.followup.send("조회 가능한 기억에서 해당 ID를 찾지 못했어요.", ephemeral=True)
+            return
+        self.client.store._server_memories.manage_item(interaction.guild_id, item_id, "retract")
+        await interaction.followup.send(f"서버 기억 #{item_id}을 철회했어요.", ephemeral=True)
+
+
 def install_slash_commands(client):
     """Install the slash-only user/admin command surface on a production client."""
     client.tree.add_command(MemoryCommands(client))
     upgrade_memory_group(client)
+    client.tree.add_command(ServerMemoryCommands(client))
     client.tree.add_command(KnowledgeCommands(client))
     client.tree.add_command(NoteCommands(client))
     client.tree.add_command(ChatLogCommands(client))

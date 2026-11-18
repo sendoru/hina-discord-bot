@@ -112,6 +112,20 @@ class SettingsRepository:
                 rows,
             )
 
+    def migrate_memory_read_mode(self) -> None:
+        """Canonicalize existing overrides and startup snapshots at bot startup."""
+        with self.db:
+            self.db.execute(
+                """UPDATE runtime_config SET value=?
+                   WHERE key='personal_memory_read_mode' AND trim(value)=?""",
+                ('"tiered_shadow"', '"shadow"'),
+            )
+            self.db.execute(
+                """UPDATE runtime_config_startup SET value=?
+                   WHERE key='personal_memory_read_mode' AND trim(value)=?""",
+                ('"tiered_shadow"', '"shadow"'),
+            )
+
     def runtime_values(self) -> dict[str, str]:
         rows = self.db.execute(
             "SELECT key,value FROM runtime_config ORDER BY key"

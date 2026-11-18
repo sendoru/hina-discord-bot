@@ -15,6 +15,7 @@ from hina_bot.core.config import Settings
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope, trigger_text
+from hina_bot.core.server_memory_selection import CURRENT_SERVER_READER
 
 from .bot import CURRENT_TYPING_ACTIVE, CURRENT_TYPING_STOP
 from .bot import HinaClient as BaseHinaClient
@@ -26,6 +27,7 @@ from .interaction_context import build_interaction_context
 from .member_directory import channel_member_tool_registry
 from .memory_recall_tool import register_memory_recall_tool
 from .reply_context import REPLY_CONTEXT, collect_reply_context
+from .server_memory import server_reader
 from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect, retrieval_mode
 from .target_recent import CURRENT_CHANNEL_CONTEXT, TargetAwareRecentMessages
@@ -650,6 +652,8 @@ class HinaClient(BaseHinaClient):
         register_chat_history_tool(
             registry, message, self.user.id, self.store, self.settings, events=self.events,
         )
+        reader = server_reader(self, message, scope) if message.guild else None
+        reader_token = CURRENT_SERVER_READER.set(reader)
         register_memory_recall_tool(
             registry, self.store,
             Scope(message.guild.id if message.guild else None, message.channel.id,
@@ -662,6 +666,7 @@ class HinaClient(BaseHinaClient):
         finally:
             if correlation_token is not None:
                 CURRENT_TURN_ID.reset(correlation_token)
+            CURRENT_SERVER_READER.reset(reader_token)
             CURRENT_LOCAL_TOOLS.reset(local_tools_token)
             CURRENT_PUBLIC_CONTEXT_REQUEST.reset(public_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)

@@ -315,8 +315,10 @@ SERVER_MEMORY_DDL = (
             confirmations INTEGER NOT NULL DEFAULT 1 CHECK(confirmations >= 1),
             last_used_at TEXT,
             status TEXT NOT NULL DEFAULT 'active'
-                CHECK(status IN ('active','superseded','retracted')),
+                CHECK(status IN ('active','pending','superseded','retracted')),
             superseded_by INTEGER,
+            relation TEXT CHECK(relation IN ('duplicate','corrects','conflicts')),
+            relation_target INTEGER,
             revision INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -331,6 +333,7 @@ SERVER_MEMORY_DDL = (
             author_user_id TEXT NOT NULL,
             role TEXT NOT NULL CHECK(role IN ('user','hina')),
             observed_at TEXT NOT NULL,
+            assistant_message_ids TEXT NOT NULL DEFAULT '[]',
             PRIMARY KEY(item_id,message_id,role)
         )""",
     """CREATE TABLE IF NOT EXISTS server_memory_opt_outs (
@@ -419,8 +422,8 @@ V2_SIGNATURES = {
     },
 }
 
-# V3 frozen extra-area signature (checked separately alongside the v2 baseline).
-# This preserves the exact v1/v2 schema baselines without rewriting their hashes.
-V3_STORE_EXTRA_SIGNATURES = {
-    "2efb9ebda1797f55b8fb0614e511909a075068199894c0021eab8ff8bba50b80",
+# Exact full store layouts for fresh and historically migrated installations.
+V3_STORE_SIGNATURES = {
+    "07fe1795002f352a62783783713094d77d4d83eed778e3c2f3927c3a89649c31",
+    "1eef5e634cf61631d6583c99c2afb1b33f65c8e01bab855010982fae32be4a7b",
 }

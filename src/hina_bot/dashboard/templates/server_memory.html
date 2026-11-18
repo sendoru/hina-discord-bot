@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Server memory · Hina Dashboard{% endblock %}
+{% block content %}
+<h1>서버 공유 기억</h1>
+<form><label>서버 <select name="guild_id">{% for guild in guilds %}<option {% if selected == guild %}selected{% endif %}>{{ guild }}</option>{% endfor %}</select></label><button>조회</button></form>
+{% if queued %}<p data-admin-command-watch="{{ queued }}">관리 작업 #{{ queued }} 대기 중</p>{% endif %}
+{% for item in rows %}
+<article><h2>#{{ item.id }} · {{ item.status }}</h2><p>{{ item.content }}</p>
+{% if item.relation %}<p>{{ item.relation }} · #{{ item.relation_target }}</p>{% endif %}
+<p>{{ item.space_key }} · {{ item.trust }} · {{ item.usage_mode }}</p><blockquote>{{ item.evidence }}</blockquote>
+<ul>{% for source in item.sources %}<li>{{ source.author_user_id }} · {{ source.role }} · 채널 {{ source.source_channel_id }} · 메시지 {{ source.message_id }}</li>{% endfor %}</ul>
+{% if admin_writes_enabled %}<form method="post" action="/server-memory/{{ selected }}/{{ item.id }}">
+<input type="hidden" name="_csrf" value="{{ admin_csrf_token }}"><input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
+<label><input type="checkbox" required name="confirm" value="yes">선택한 작업을 확인했어요</label>
+{% if item.status == "pending" %}<button name="operation" value="approve">검토 승인</button>{% endif %}<button name="operation" value="retract">철회</button><button name="operation" value="delete">영구 삭제</button></form>{% endif %}</article>
+{% else %}<p>저장된 서버 공유 기억이 없어요.</p>{% endfor %}
+{% endblock %}

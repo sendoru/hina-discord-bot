@@ -309,6 +309,7 @@ Discord에서 계속 제공합니다.
 
 관련 문서:
 
+- [Gemini Decisions](docs/gemini-decisions.md)
 - [`docs/lore/README.md`](docs/lore/README.md)
 - [`docs/lore-fact-types.md`](docs/lore-fact-types.md)
 - [`docs/lore-bulk-approval.md`](docs/lore-bulk-approval.md)

@@ -28,9 +28,9 @@ EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 # tool: model-controlled local keyword search; full/v1 remain rollback paths.
-RAG_MODES = frozenset({"off", "v1", "full", "tool"})
-# Memory v2 read path (#449 §11 P2): legacy prompt, shadow comparison, or tiered selection.
-PERSONAL_MEMORY_READ_MODES = frozenset({"legacy", "shadow", "tiered"})
+DECISION_MODES = frozenset({"decision_shadow", "decision"})
+RAG_MODES = frozenset({"off", "v1", "full", "tool"}) | DECISION_MODES
+PERSONAL_MEMORY_READ_MODES = frozenset({"legacy", "tiered_shadow", "tiered"}) | DECISION_MODES
 # Provider-facing conversation transport only; independent from memory read policy.
 CONTEXT_INPUT_MODES = frozenset({"legacy", "structured", "structured_with_replay"})
 MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})
@@ -77,6 +77,11 @@ def parse_external_context_policy(value: str) -> str:
     return policy
 
 
+def canonical_memory_read_mode(value: str) -> str:
+    """Read the pre-#508 spelling from startup settings, stored config or historical traces."""
+    return "tiered_shadow" if value == "shadow" else value
+
+
 def _env_key(provider: str) -> str:
     return {
         "openai": "OPENAI_API_KEY",
@@ -96,6 +101,7 @@ class Settings:
     smart_model: str = "gpt-4.1-mini"
     fast_output_tokens: int = 4096
     smart_output_tokens: int = 8192
+    answer_timeout_seconds: float = 45.0
     memory_output_tokens: int = 4096
     # Runtime-editable output proofreader; .env supplies startup values.
     output_repair_mode: str = "off"
@@ -157,6 +163,7 @@ class Settings:
     chat_web_search: bool = True
     rag_mode: str = "full"
     runtime_timezone: str = "Asia/Seoul"
+    server_memory_read: str = "on"
     personal_memory_read_mode: str = "legacy"
     memory_session_followup: str = "dm"
     runtime_locale: str = "ko-KR"
@@ -273,6 +280,13 @@ class Settings:
             ) from exc
 
         memory_output_tokens = int(os.getenv("MEMORY_MAX_OUTPUT_TOKENS", "4096"))
+        try:
+            answer_timeout_seconds = float(os.getenv("ANSWER_TIMEOUT_SECONDS", "45.0"))
+        except ValueError as exc:
+            raise ValueError("ANSWER_TIMEOUT_SECONDS는 숫자여야 합니다.") from exc
+        if not (math.isfinite(answer_timeout_seconds)
+                and 1.0 <= answer_timeout_seconds <= 300.0):
+            raise ValueError("ANSWER_TIMEOUT_SECONDS는 1~300 사이의 유한한 숫자여야 합니다.")
 
         output_repair_mode = os.getenv("OUTPUT_REPAIR_MODE", "off").strip().lower()
         if output_repair_mode not in {"off", "conservative", "aggressive"}:
@@ -402,11 +416,15 @@ class Settings:
             raise ValueError(
                 "CONTEXT_INPUT_MODE는 legacy, structured, structured_with_replay 중 하나여야 합니다."
             )
-        personal_memory_read_mode = (
+        server_memory_read = os.getenv("SERVER_MEMORY_READ", "on").strip().lower()
+        if server_memory_read not in {"on", "off"}:
+            raise ValueError("SERVER_MEMORY_READ must be on or off")
+        personal_memory_read_mode = canonical_memory_read_mode(
             os.getenv("PERSONAL_MEMORY_READ_MODE", "legacy").strip().lower() or "legacy"
         )
         if personal_memory_read_mode not in PERSONAL_MEMORY_READ_MODES:
-            raise ValueError("PERSONAL_MEMORY_READ_MODE는 legacy, shadow, tiered 중 하나여야 합니다.")
+            allowed = ", ".join(sorted(PERSONAL_MEMORY_READ_MODES))
+            raise ValueError(f"PERSONAL_MEMORY_READ_MODE는 {allowed} 중 하나여야 합니다.")
         memory_session_followup = (
             os.getenv("MEMORY_SESSION_FOLLOWUP", "dm").strip().lower() or "dm"
         )
@@ -431,6 +449,7 @@ class Settings:
             fast_model=fast_model, smart_model=smart_model,
             fast_output_tokens=fast_output_tokens,
             smart_output_tokens=smart_output_tokens,
+            answer_timeout_seconds=answer_timeout_seconds,
             output_repair_mode=output_repair_mode,
             output_repair_model=output_repair_model,
             output_repair_timeout_seconds=output_repair_timeout_seconds,
@@ -471,6 +490,7 @@ class Settings:
             ),
             public_memory_in_dm=public_memory == "true",
             external_context_policy=external_context_policy,
+            server_memory_read=server_memory_read,
             personal_memory_read_mode=personal_memory_read_mode,
             memory_session_followup=memory_session_followup,
             allowed_guild_ids=frozenset(int(x.strip()) for x in

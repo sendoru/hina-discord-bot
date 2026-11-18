@@ -151,3 +151,21 @@ def test_annotation_constraints_accept_consistent_rows():
         assert store.db.execute("SELECT COUNT(*) FROM memory_item_annotations").fetchone()[0] == 3
     finally:
         store.close()
+
+
+def test_deployed_v2_migrates_to_v3_without_changing_annotations(tmp_path):
+    path = tmp_path / "deployed-v2.sqlite3"
+    v1_database(path)
+    with closing(open_existing(path)) as db, db:
+        db_migrations.add_memory_item_annotations(db)
+        db.execute("INSERT INTO schema_migrations(component,version,name) VALUES ('store',2,?)",
+                   (db_schema.HISTORY["store"][1],))
+        _insert(db, memory_item_id=41)
+    before = signature(path)
+    changed, backup = prepare_database.prepare_database(path, apply=True, offline_confirmed=True)
+    assert changed == ("store",)
+    assert signature(backup.path) == before
+    with closing(open_readonly(path)) as db:
+        db_schema.require_current(db)
+        assert db.execute("SELECT memory_item_id FROM memory_item_annotations").fetchone()[0] == 41
+        assert not db.execute("SELECT 1 FROM server_memory_items").fetchone()

@@ -97,6 +97,12 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
             "audience": annotation.audience.value,
         }
 
+    if command.action in {"memory.server.retract", "memory.server.delete", "memory.server.approve"}:
+        changed = client.store._server_memories.manage_item(
+            int(command.payload["guild_id"]), int(command.payload["item_id"]), command.action.split(".")[-1]
+        )
+        return {"changed": changed}
+
     if command.action == "memory.item.retract":
         payload = command.payload
         try:

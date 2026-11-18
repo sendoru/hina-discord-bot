@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from hina_bot.core.config import PERSONAL_MEMORY_READ_MODES
 from hina_bot.core.memory_annotations import MemoryAnnotation
 from hina_bot.core.memory_items import (
     MemoryAccess,
@@ -314,7 +315,7 @@ def recent_own_texts(store, scope: Scope, now: datetime) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class PersonalMemorySelection:
-    selection: MemorySelection
+    selection: MemorySelection | None
     items: list[MemoryItem]
     annotations: dict[int, MemoryAnnotation]
     ctx: SelectionContext
@@ -331,6 +332,7 @@ def personal_memory_selection(
     authorized_factual_items: Iterable[MemoryItem] = (),
     explicit_call: bool = True,
     now: datetime | None = None,
+    select_tiered: bool = True,
 ) -> PersonalMemorySelection | None:
     """Run the tiered selector for the current owner; None when memory is unreadable."""
 
@@ -363,7 +365,8 @@ def personal_memory_selection(
         recent_own_texts=own_texts,
     )
     return PersonalMemorySelection(
-        select_personal_memory(items, annotations, ctx), items, annotations, ctx, own_texts,
+        select_personal_memory(items, annotations, ctx) if select_tiered else None,
+        items, annotations, ctx, own_texts,
     )
 
 
@@ -420,8 +423,7 @@ def tiered_memory_provenance(selection: MemorySelection, relationship_profile: d
     return {"items": items, "relationship_axes": sorted(relationship_profile)}
 
 
-_READ_MODES = frozenset({"legacy", "shadow", "tiered"})
-_REPLY_CHAIN_KINDS = frozenset({
+REPLY_CHAIN_KINDS = frozenset({
     "reply_reference_source", "reply_origin_source", "reply_origin_request", "replied_message",
 })
 
@@ -432,7 +434,7 @@ def reply_chain_texts(channel_context) -> list[str]:
     return [
         str(row.get("content") or "")
         for row in channel_context or ()
-        if isinstance(row, dict) and row.get("context_kind") in _REPLY_CHAIN_KINDS
+        if isinstance(row, dict) and row.get("context_kind") in REPLY_CHAIN_KINDS
     ]
 
 
@@ -449,16 +451,18 @@ def personal_memory_fields(
     explicit_call: bool = True,
     visual_turn: bool = False,
     now: datetime | None = None,
+    read_mode: str | None = None,
+    decision_run: PersonalMemorySelection | None = None,
+    decision_scores: dict[str, float] | None = None,
 ) -> dict:
     """Provider fields, policy choice, selection and trace for PERSONAL_MEMORY_READ_MODE.
 
-    ``legacy`` keeps the existing projection, ``shadow`` answers with it but also
-    records the tiered selection, and ``tiered`` sends only the selected memory.
+    Observation modes answer with the legacy projection and keep a separate selection.
     ``run`` carries the selection to the post-reply bookkeeping (usage or coverage).
     """
 
-    mode = getattr(settings, "personal_memory_read_mode", "legacy")
-    mode = mode if mode in _READ_MODES else "legacy"
+    mode = read_mode or getattr(settings, "personal_memory_read_mode", "legacy")
+    mode = mode if mode in PERSONAL_MEMORY_READ_MODES else "legacy"
     authorized = tuple(authorized_factual_items)
     result = {"mode": mode, "selection": None, "policy": None, "run": None}
     run = (
@@ -467,22 +471,31 @@ def personal_memory_fields(
             reply_texts=reply_chain_texts(channel_context),
             authorized_factual_items=authorized, explicit_call=explicit_call, now=now,
         )
-        if use_memory and mode != "legacy"
+        if use_memory and mode in {"tiered", "tiered_shadow"}
         else None
     )
-    if run is not None:
+    if decision_run is not None and (mode == "decision" or decision_scores is not None):
+        run = decision_run
+        selection = select_personal_memory(
+            run.items, run.annotations, run.ctx, decision_scores=decision_scores,
+            decision_fallback=decision_scores is None,
+        )
+        run = PersonalMemorySelection(
+            selection, run.items, run.annotations, run.ctx, run.recent_own_texts,
+        )
+    if run is not None and run.selection is not None:
         result["run"] = MemoryReadRun(
             mode=mode,
             selection=run.selection,
             message=message,
             now=run.ctx.now,
             legacy_notes=(
-                legacy_notes(run.items, run.annotations, run.ctx) if mode == "shadow" else ()
+                legacy_notes(run.items, run.annotations, run.ctx) if mode in {"tiered_shadow", "decision_shadow"} else ()
             ),
             visual_turn=visual_turn,
             recent_own_turn=bool(run.recent_own_texts),
         )
-    if mode == "tiered" and run is not None:
+    if mode in {"tiered", "decision"} and run is not None and run.selection is not None:
         selection = run.selection
         fields, has_memory = tiered_memory_context(
             scope, selection, run.items, allow_cross_space=allow_cross_space

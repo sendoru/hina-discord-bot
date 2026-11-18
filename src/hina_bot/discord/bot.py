@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 import discord
 
+from hina_bot.ai.server_memory_extraction import extract_server_batch, pending_spaces
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
@@ -156,9 +157,9 @@ def _record_shadow_coverage(run, answer: str, scope_kind: str, *, events, usage)
     if not callable(routing_event):
         return
     routing_event(
-        "memory.shadow_coverage",
+        "memory.decision_coverage" if run.mode == "decision_shadow" else "memory.shadow_coverage",
         status="completed",
-        memory_read_mode="shadow",
+        memory_read_mode=run.mode,
         memory_space=scope_kind,
         memory_visual_turn=run.visual_turn,
         memory_recent_own_turn=run.recent_own_turn,
@@ -350,6 +351,9 @@ class HinaClient(discord.Client):
             self._sweep_pending_visuals()
             try:
                 await self._sweep_stale_structured_memory()
+                for guild_id, channel_id in pending_spaces(self.store):
+                    await extract_server_batch(self.llm, self.store, guild_id, channel_id, stale=True,
+                                               admin_verifier=self._server_memory_admin)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - isolate background maintenance failures
@@ -364,6 +368,16 @@ class HinaClient(discord.Client):
                     type(exc).__name__,
                     error["error_fingerprint"],
                 )
+
+    async def _server_memory_admin(self, guild_id, user_id):
+        guild = self.get_guild(guild_id)
+        if guild is None:
+            return False
+        try:
+            member = await guild.fetch_member(user_id)
+        except discord.HTTPException:
+            return False
+        return member.guild_permissions.manage_guild
 
     def _pending_visual_ttl_seconds(self) -> float:
         """Long enough for the stale sweep to extract a tail before its photo expires."""
@@ -483,14 +497,14 @@ class HinaClient(discord.Client):
         CURRENT_MEMORY_SELECTION.set(None)
         if run is None:
             return
-        if run.mode == "shadow":
+        if run.mode in {"tiered_shadow", "decision_shadow"}:
             _record_shadow_coverage(
                 run, answer, scope_kind,
                 events=self.events, usage=getattr(getattr(self, "llm", None), "usage", None),
             )
             return
         recorder = getattr(self.store, "record_memory_usage", None)
-        if run.mode != "tiered" or not callable(recorder):
+        if run.mode not in {"tiered", "decision"} or not callable(recorder):
             return
         try:
             usages = memory_usage(run.selection, answer, datetime.now(UTC))
@@ -499,15 +513,21 @@ class HinaClient(discord.Client):
             error = safe_exception_fields(exc, "memory_usage")
             self.events.emit("memory.usage_failed", level="warning", scope=scope_kind, **error)
             return
-        self.events.emit(
-            "memory.usage",
-            scope=scope_kind,
-            memory_used_items=sum(usage.used for usage in usages),
-            memory_followups=sum(usage.proactive_status is not None for usage in usages),
-            memory_followups_used=sum(
+        counts = {
+            "memory_used_items": sum(usage.used for usage in usages),
+            "memory_followups": sum(usage.proactive_status is not None for usage in usages),
+            "memory_followups_used": sum(
                 usage.used and usage.proactive_status is not None for usage in usages
             ),
-        )
+        }
+        self.events.emit("memory.usage", scope=scope_kind, **counts)
+        if run.mode == "decision":
+            logger = getattr(getattr(self, "llm", None), "usage", None)
+            if logger is not None:
+                logger.routing_event(
+                    "memory.decision_usage", status="completed",
+                    memory_read_mode=run.mode, memory_space=scope_kind, **counts,
+                )
 
     async def send_text(self, channel, text):
         for part in chunks(neutralize_mentions(text)):
@@ -1017,6 +1037,13 @@ class HinaClient(discord.Client):
                         self._keep_pending_visuals(scope, message.id, text, scope_kind)
 
                 memory_failures = 0
+                if save_memory and scope.guild_id is not None:
+                    try:
+                        await extract_server_batch(self.llm, self.store, scope.guild_id, scope.channel_id,
+                                                   admin_verifier=self._server_memory_admin)
+                    except Exception as exc:  # noqa: BLE001 - isolate server extraction
+                        self.events.emit("memory.server_extraction_failed", error_type=type(exc).__name__)
+
                 if save_memory:
                     stage = "memory"
                     memory_started = time.perf_counter()

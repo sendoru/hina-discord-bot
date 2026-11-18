@@ -17,6 +17,7 @@ from hina_bot.core.memory_context import (
 from hina_bot.core.memory_selection import SelectionContext, recall_personal_memory
 from hina_bot.core.routing import Scope
 from hina_bot.core.scope_overrides import MemoryMode
+from hina_bot.core.server_memory_selection import CURRENT_SERVER_READER
 
 from .turn_provenance import CURRENT_TURN_PROVENANCE
 
@@ -37,7 +38,8 @@ MEMORY_RECALL_TOOL = LocalToolSpec(
     ),
     parameters={
         'type': 'object',
-        'properties': {'query': {'type': 'string', 'minLength': 1, 'maxLength': 100}},
+        'properties': {'query': {'type': 'string', 'minLength': 1, 'maxLength': 100},
+                       'scope': {'type': 'string', 'enum': ['personal', 'server']}},
         'required': ['query'],
         'additionalProperties': False,
     },
@@ -57,11 +59,20 @@ class MemoryRecall:
         try:
             if self.calls > RECALL_CALLS_PER_ANSWER:
                 raise LocalToolError('budget_exhausted')
-            if set(arguments) - {'query'}:
+            if set(arguments) - {'query', 'scope'}:
                 raise LocalToolError('invalid_arguments')
             query = str(arguments.get('query') or '').strip()[:100]
             if not query:
                 raise LocalToolError('invalid_arguments')
+            target = arguments.get('scope', 'personal')
+            if target == 'server':
+                reader = CURRENT_SERVER_READER.get()
+                rows = await reader(query, lookup=True) if reader else []
+                self._record([])
+                self._emit('ok' if rows else 'empty', len(rows), started, target='server')
+                return {'status': 'ok' if rows else 'empty', 'memories': rows}
+            if target != 'personal' or getattr(self.settings, 'personal_memory_read_mode', 'tiered') != 'tiered':
+                raise LocalToolError('memory_disabled')
             # The owner's preference may change mid-answer; check it at call time.
             if not MemoryMode(self.store.memory_mode(self.scope)).reads:
                 raise LocalToolError('memory_disabled')
@@ -136,6 +147,9 @@ def _merge_items(existing, item_ids) -> list[dict]:
 def register_memory_recall_tool(registry, store, scope: Scope, settings, *, events=None) -> None:
     """Offer the tool only on the tiered read path, where memory is no longer dumped."""
 
+    if CURRENT_SERVER_READER.get() is not None:
+        registry.register(MEMORY_RECALL_TOOL, MemoryRecall(store, scope, settings, events=events))
+        return
     if getattr(settings, 'personal_memory_read_mode', 'legacy') != 'tiered':
         return
     if not MemoryMode(store.memory_mode(scope)).reads:

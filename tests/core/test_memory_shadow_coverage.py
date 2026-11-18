@@ -67,7 +67,7 @@ def _run(store, scope, message):
     annotations = store.memory_annotations([item.id for item in items])
     ctx = SelectionContext(scope=scope, message=message, now=NOW, hours_since_last_turn=1)
     return MemoryReadRun(
-        "shadow", select_personal_memory(items, annotations, ctx), message=message, now=NOW,
+        "tiered_shadow", select_personal_memory(items, annotations, ctx), message=message, now=NOW,
         legacy_notes=legacy_notes(items, annotations, ctx),
     )
 
@@ -111,7 +111,7 @@ def test_coverage_counts_notes_covered_by_a_carried_topic():
     annotations = store.memory_annotations([item.id for item in items])
     ctx = SelectionContext(scope=DM, message="이거 언제 끝나냐", now=NOW, hours_since_last_turn=1,
                            recent_own_texts=("회사 결제 건 때문에 야근 중",))
-    run = MemoryReadRun("shadow", select_personal_memory(items, annotations, ctx),
+    run = MemoryReadRun("tiered_shadow", select_personal_memory(items, annotations, ctx),
                         message=ctx.message, now=NOW,
                         legacy_notes=legacy_notes(items, annotations, ctx))
 
@@ -151,7 +151,7 @@ def test_bot_records_shadow_coverage_without_touching_memory():
     rows = []
     run = replace(_run(store, DM, "아 배고프다"), visual_turn=True)
     CURRENT_MEMORY_SELECTION.set(run)
-    CURRENT_CONTEXT_PROVENANCE.set({"memory_selection": {"mode": "shadow", "tiers": {"T2": 1}}})
+    CURRENT_CONTEXT_PROVENANCE.set({"memory_selection": {"mode": "tiered_shadow", "tiers": {"T2": 1}}})
 
     HinaClient._record_memory_usage(
         _client(store, rows), "매운 거 먹자. 보리는 잘 있어? 회사 결제 건은?", "dm",
@@ -179,7 +179,7 @@ def test_bot_records_shadow_coverage_without_touching_memory():
 def test_bot_shadow_coverage_failure_never_raises():
     store, _ids = _store()
     rows = []
-    CURRENT_MEMORY_SELECTION.set(MemoryReadRun("shadow", selection=None, legacy_notes=()))
+    CURRENT_MEMORY_SELECTION.set(MemoryReadRun("tiered_shadow", selection=None, legacy_notes=()))
 
     HinaClient._record_memory_usage(_client(store, rows), "응", "dm")
 

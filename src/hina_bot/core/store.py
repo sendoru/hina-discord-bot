@@ -29,8 +29,8 @@ from .pending_visuals import (
     pending_visual_root,
 )
 from .routing import Scope
-from .server_memory_repository import ServerMemoryRepository, ServerSourceRef
 from .scope_overrides import memory_mode_capabilities, resolve_scope_chain
+from .server_memory_repository import ServerMemoryRepository
 from .settings_repository import SettingsRepository
 
 log = logging.getLogger("hina")
@@ -71,8 +71,10 @@ class Store:
         self.settings = SettingsRepository(db)
         self._conversations = ConversationRepository(db, history_turns, raw_retention_turns)
         self._atomic_memory_batch_open = False
+        self._server_extractions = set()
         self._server_memories = ServerMemoryRepository(
-            db, author_writable=lambda scope: memory_mode_capabilities(self.memory_mode(scope))[1],
+            db, subject_readable=lambda uid: memory_mode_capabilities(self.user_memory_mode(uid))[0],
+            author_writable=lambda scope: memory_mode_capabilities(self.memory_mode(scope))[1],
         )
         self._memories = MemoryRepository(
             db, user_name=lambda scope: self.user_name(scope),

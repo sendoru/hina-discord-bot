@@ -37,6 +37,17 @@ class AdminRepository:
     def _dicts(rows) -> list[dict[str, object]]:
         return [dict(row) for row in rows]
 
+    def server_memories(self, guild_id: str):
+        with self._connection() as db:
+            guilds = [r[0] for r in db.execute("SELECT DISTINCT guild_id FROM server_memory_items ORDER BY guild_id")]
+            selected = guild_id or next(iter(guilds), "")
+            rows = self._dicts(db.execute("""SELECT * FROM server_memory_items WHERE guild_id=?
+                ORDER BY id DESC LIMIT 200""", (selected,)))
+            for row in rows:
+                row["sources"] = self._dicts(db.execute("""SELECT author_user_id,message_id,source_channel_id,role
+                    FROM server_memory_sources WHERE item_id=? ORDER BY message_id""", (row["id"],)))
+        return {"guilds": guilds, "selected": selected, "rows": rows}
+
     def ping(self) -> None:
         with self._connection() as db:
             db.execute("SELECT 1").fetchone()

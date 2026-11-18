@@ -1,6 +1,5 @@
 """P4 pre-release storage/consent contracts (no LLM or Discord access)."""
 
-import sqlite3
 
 import pytest
 
@@ -227,3 +226,97 @@ def test_live_permission_matrix_does_not_fall_back_to_old_channel_metadata(store
     assert visible(store, channels=(10, 11))[0]["id"] == item
     assert store._server_memories.purge_channel(1, 11) == 1
     assert visible(store, channels=(10, 11)) == []
+
+
+def test_replaying_sources_neither_confirms_nor_resurrects(store):
+    source(store)
+    remember(store)
+    remember(store)
+    assert visible(store)[0]["confirmations"] == 1
+    assert store.forget_server_memory_source(1, 10, 1001) == 1
+    with pytest.raises(ValueError, match="explicitly"):
+        remember(store)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("withdraw", [None, "delete", "optout"])
+async def test_multi_author_extraction_rechecks_consent_and_selects_by_tier(store, withdraw):
+    from types import SimpleNamespace
+
+    from hina_bot.ai.server_memory_extraction import extract_server_batch
+    from hina_bot.core.config import Settings
+    from hina_bot.core.server_memory_selection import select_server_rows
+
+    for index in range(16):
+        source(store, user=100 + index % 2, message=1001 + index)
+    source(store, message=5000, direct=False, content="주변 대화")
+    source(store, message=5001, channel=11, public=False, content="비공개")
+    async def provider(operation, policy, payload, plan):
+        assert operation == "extract_server_memory"
+        assert len(payload["turns"]) == 16
+        assert all(t["content"] == "이 서버는 매주 모임을 해요" for t in payload["turns"])
+        if withdraw == "delete":
+            store.forget_server_memory_source(1, 10, 1001)
+        elif withdraw == "optout":
+            store.set_server_memory_opt_out(1, 100, True)
+        return SimpleNamespace(status="completed", output_text='[{"content":"매주 모임",'
+            '"evidence":"매주 모임","sources":[{"role":"user","message_id":"1001"},'
+            '{"role":"user","message_id":"1002"}],"keywords":["모임"],"usage_mode":"ambient",'
+            '"time_scope":"recurring"}]')
+    settings = Settings(discord_token="test", model="test", server_memory_read="off")
+    llm = SimpleNamespace(settings=settings, _memory_request=provider,
+                          usage=SimpleNamespace(routing_event=lambda *args, **kwargs: None))
+    await extract_server_batch(llm, store, 1, 10)
+    rows = visible(store)
+    if withdraw:
+        assert not rows
+    else:
+        assert len(rows) == 1 and rows[0]["trust"] == "corroborated"
+        assert select_server_rows(rows, "안녕")[0]["tier"] == "S1"
+        assert select_server_rows(rows, "모임")[0]["tier"] == "S2"
+        assert select_server_rows(rows, "모임", lookup=True)[0]["tier"] == "S3"
+        assert select_server_rows(rows, "전혀 다른 질문") == []
+
+
+@pytest.mark.asyncio
+async def test_server_recall_revalidates_discord_and_toggle_per_call(store):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    import discord
+
+    from hina_bot.discord.server_memory import server_reader
+
+    source(store)
+    remember(store, keywords=["모임"])
+    perms = SimpleNamespace(view_channel=True, read_message_history=True)
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.permissions_for.return_value = perms
+    guild = SimpleNamespace(default_role=object(), fetch_channel=AsyncMock(return_value=channel))
+    guild.fetch_member = AsyncMock(side_effect=lambda uid: SimpleNamespace(id=uid, display_name=str(uid)))
+    settings = SimpleNamespace(personal_memory_read_mode="legacy", server_memory_read="on")
+    client = SimpleNamespace(store=store, settings=settings, events=MagicMock())
+    read = server_reader(client, SimpleNamespace(guild=guild), Scope(1, 12, 200, True))
+    store.set_user_memory_mode(200, "off")
+    assert (await read("모임", lookup=True))[0]["tier"] == "S3"
+    perms.view_channel = False
+    assert not await read("모임", lookup=True)
+    assert guild.fetch_channel.await_count == 2
+    settings.server_memory_read = "off"
+    perms.view_channel = True
+    assert not await read("모임", lookup=True)
+    assert guild.fetch_channel.await_count == 2
+
+
+def test_disputed_memory_is_hidden_pending_operator_review(store):
+    source(store)
+    original = remember(store)
+    source(store, message=1002, content="모임이 취소됐어요")
+    replacement = store.add_server_memory(1, content="모임 취소", evidence="취소",
+        sources=[ServerSourceRef("1002", "user")], relation="corrects", relation_target=original)
+    assert not visible(store)
+    with pytest.raises(ValueError):
+        store._server_memories.manage_item(2, replacement, "approve")
+    store._server_memories.manage_item(1, original, "retract")
+    store._server_memories.manage_item(1, replacement, "approve")
+    assert [r["id"] for r in visible(store)] == [replacement]

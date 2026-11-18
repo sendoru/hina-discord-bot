@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 
+from hina_bot.core.config import canonical_memory_read_mode
+
 from ..analytics import (
     PREFLIGHT_LATENCY_STAGES,
     TURN_LATENCY_STAGES,
@@ -600,6 +602,9 @@ class TraceService(ReadService):
             for row in raw.get("sections", ()) or ()
             if isinstance(row, dict)
         ]
+        memory_selection = dict(raw.get("memory_selection") or {})
+        if "mode" in memory_selection:
+            memory_selection["mode"] = canonical_memory_read_mode(memory_selection["mode"])
         return {
             "version": raw.get("version"),
             "scope": raw.get("scope"),
@@ -614,7 +619,8 @@ class TraceService(ReadService):
                 str(value) for value in raw.get("relationship_axes", ()) or ()
             ),
             "factual_recall": dict(raw.get("factual_recall") or {}),
-            "memory_selection": dict(raw.get("memory_selection") or {}),
+            "memory_selection": memory_selection,
+            "retrieval_decisions": dict(raw.get("retrieval_decisions") or {}),
             "memory_lookup": dict(raw.get("memory_lookup") or {}),
             "truncated": dict(raw.get("truncated") or {}),
         }
@@ -672,6 +678,19 @@ class TraceService(ReadService):
             None,
         )
 
+        retrieval_decisions = {
+            row["operation"].removeprefix("decision."): row
+            for row in telemetry.usage
+            if row.get("operation") in {"decision.lore", "decision.memory"}
+        }
+        if context_provenance:
+            retrieval_decisions.update(context_provenance["retrieval_decisions"])
+        answer_usage = {}
+        if retrieval_decisions:
+            answer_rows = [row for row in telemetry.usage if row.get("operation") == "answer"]
+            for field in ("input_tokens", "cached_tokens", "output_tokens"):
+                values = [row[field] for row in answer_rows if type(row.get(field)) is int]
+                answer_usage[field] = sum(values) if values else None
         snapshot = TelemetrySnapshot(
             usage=telemetry.usage,
             exchanges=telemetry.exchanges,
@@ -688,6 +707,8 @@ class TraceService(ReadService):
             "memory_context": memory_context,
             "context_provenance": context_provenance,
             "context_telemetry": context_telemetry,
+            "retrieval_decisions": retrieval_decisions,
+            "decision_answer_usage": answer_usage,
             "raw_turn_availability": _raw_turn_availability(
                 stored,
                 telemetry.events,
