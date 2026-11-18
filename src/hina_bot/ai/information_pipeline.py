@@ -26,7 +26,6 @@ from .information_routing import (
 from .memory_summary import MemorySummaryMixin
 from .model_routing import baseline_route_state, build_model_plan
 from .note_context import NoteContextStore
-from .reference_gated_recall import plan_reference_gated_recall
 from .request_assembly import RequestAssembler
 from .retrieval_request import build_resolved_retrieval_request
 from .routing_plan import RoutingPlan
@@ -403,13 +402,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
 
         channel_rows = channel_context or ()
         CURRENT_MEMORY_CONTEXT.set(tuple(build_memory_context(channel_rows, scope.user_id)))
-        factual_recall_plan = plan_reference_gated_recall(
-            assembly_store,
-            scope,
-            routing.visible_content,
-            use_memory=use_memory,
-            allow_cross_space=use_memory,
-        )
         visual_inputs = CURRENT_VISUAL_INPUTS.get()
         context_chars, ambient_context_chars = self._routing_context_chars(
             assembly_store,
@@ -418,7 +410,6 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
             public_context=assembly_public_context,
             channel_context=channel_rows,
             use_memory=assembly_use_memory,
-            factual_recall_plan=factual_recall_plan,
         )
         # With no semantic classifier, let the answer model choose whether to search.
         if self.settings.routing_classifier_mode == "off" and self.settings.chat_web_search:
@@ -509,8 +500,7 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
                 use_memory=assembly_use_memory,
                 information_plan=information,
                 model_plan=model_plan,
-                factual_recall_plan=factual_recall_plan,
-            )
+                )
         finally:
             CURRENT_AMBIENT_WEATHER.reset(token)
 

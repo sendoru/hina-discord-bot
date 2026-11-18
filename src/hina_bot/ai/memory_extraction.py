@@ -280,7 +280,7 @@ def _legacy_item_fields(raw: dict) -> tuple[MemoryKind | None, MemoryDisclosure,
         kind = MemoryKind.FACT
         flags.append(LINT_KIND_DEFAULTED)
     disclosure = _enum_or_none(MemoryDisclosure, raw.get("disclosure"))
-    if disclosure is None:
+    if disclosure is None or disclosure == MemoryDisclosure.REFERENCE_GATED:
         disclosure = MemoryDisclosure.LOCAL
         flags.append(LINT_DISCLOSURE_DEFAULTED)
     return kind, disclosure, tuple(flags)
