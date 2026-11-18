@@ -473,29 +473,50 @@ def _eligible_memory(items, annotations, ctx, selection, *, decisions=False):
 
 
 def full_memory_items(items, annotations, ctx):
-    """Use the Decision eligibility rules without ranking, clustering or size caps."""
-    candidates, _, _ = _eligible_memory(items, annotations, ctx, MemorySelection(), decisions=True)
-    allowed = {
-        item.id for item, annotation, _, status in candidates
-        if not status.expired or annotation.usage_mode == UsageMode.DIRECTIVE
-        or item.id in ctx.authorized_item_ids
-    }
-    return [item for item in items if item.id in allowed or item.kind == MemoryKind.RELATIONSHIP]
+    """Filter the owner's records before choosing a representative for each duplicate."""
+    scope = ctx.scope
+    visible = []
+    for item in items:
+        if item.user_id != str(scope.user_id) or item.status != MemoryStatus.ACTIVE:
+            continue
+        if memory_access(item, scope) == MemoryAccess.HIDDEN:
+            continue
+        annotation = annotations.get(item.id)
+        if scope.guild_id is not None and annotation and annotation.usage_mode == UsageMode.SENSITIVE:
+            continue
+        if memory_access(item, scope) == MemoryAccess.IMPLICIT and item.kind != MemoryKind.RELATIONSHIP:
+            continue
+        visible.append(item)
+
+    def priority(item):
+        return (
+            memory_access(item, scope) == MemoryAccess.FULL,
+            item.origin_realm == scope.realm and item.origin_channel_id == str(scope.channel_id),
+            item.origin_realm == scope.realm,
+            item.updated_at,
+            item.id,
+        )
+
+    representatives = {}
+    for item in visible:
+        key = normalize_text(item.content)
+        if key not in representatives or priority(item) > priority(representatives[key]):
+            representatives[key] = item
+    ids = {item.id for item in representatives.values()}
+    return [item for item in visible if item.id in ids]
 
 
 def decision_memory_candidates(items, annotations, ctx) -> list[SelectedMemory]:
-    """The full eligible T2 pool, before relevance, clustering or packing."""
-    candidates, _, _ = _eligible_memory(items, annotations, ctx, MemorySelection(), decisions=True)
-    return [
-        SelectedMemory(item, annotation, "T2", "notes", status, "if_relevant")
-        for item, annotation, _, status in candidates
-        if annotation.usage_mode != UsageMode.DIRECTIVE
-        and not status.expired
-        and (
-            item.id not in ctx.authorized_item_ids
-            or memory_access(item, ctx.scope) == MemoryAccess.FULL
-        )
-    ]
+    """Expose only full-access records; implicit relationship text stays private."""
+    candidates = []
+    for item in full_memory_items(items, annotations, ctx):
+        if memory_access(item, ctx.scope) != MemoryAccess.FULL:
+            continue
+        annotation, _ = effective_annotation(item, annotations.get(item.id))
+        candidates.append(SelectedMemory(
+            item, annotation, "T2", "notes", effective_status(annotation, ctx.now), "if_relevant",
+        ))
+    return candidates
 
 
 def select_personal_memory(

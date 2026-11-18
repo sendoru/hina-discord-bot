@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -19,6 +19,7 @@ from hina_bot.core.memory_selection import (
     MemoryReadRun,
     MemorySelection,
     SelectionContext,
+    decision_memory_candidates,
     full_memory_items,
     legacy_notes,
     render_user_memory,
@@ -482,9 +483,11 @@ def personal_memory_fields(
     )
     if decision_run is not None and decision_scores is not None:
         run = decision_run
-        selection = select_personal_memory(
-            run.items, run.annotations, run.ctx, decision_scores=decision_scores,
-        )
+        selection = MemorySelection(selected=[
+            replace(entry, via="decision")
+            for entry in decision_memory_candidates(run.items, run.annotations, run.ctx)
+            if str(entry.item.id) in decision_scores
+        ])
         run = PersonalMemorySelection(
             selection, run.items, run.annotations, run.ctx, run.recent_own_texts,
         )
@@ -500,7 +503,7 @@ def personal_memory_fields(
             visual_turn=visual_turn,
             recent_own_turn=bool(run.recent_own_texts),
         )
-    if mode in {"tiered", "decision"} and run is not None and run.selection is not None:
+    if mode == "tiered" and run is not None and run.selection is not None:
         selection = run.selection
         fields, has_memory = tiered_memory_context(
             scope, selection, run.items, allow_cross_space=allow_cross_space
@@ -519,6 +522,9 @@ def personal_memory_fields(
             authorized_factual_items=authorized, explicit_call=explicit_call, select_tiered=False,
         )
     items = full_memory_items(snapshot.items, snapshot.annotations, snapshot.ctx) if snapshot else ()
+    if mode == "decision" and decision_scores is not None:
+        items = [item for item in items if str(item.id) in decision_scores
+                 or memory_access(item, scope) == MemoryAccess.IMPLICIT]
     fields = structured_memory_context(
         store, scope, use_memory=use_memory, allow_cross_space=allow_cross_space,
         authorized_factual_items=authorized, items=items,

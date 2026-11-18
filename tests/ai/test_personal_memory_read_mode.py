@@ -238,13 +238,12 @@ async def test_decisions_evaluate_both_full_pools_concurrently_and_keep_core():
     assert all(row["kind"] != "fandom" for row in bodies["lore"].values())
     assert {row["content"] for row in bodies["memory"].values()} == {
         "사내 결제 시스템 마이그레이션 담당", "매운 음식을 좋아함",
+        "가족 얘기는 먼저 꺼내지 말아 달라고 함", "가벼운 장난을 주고받음",
     }
-    assert reference["user_memory"]["notes"][0]["text"] == "사내 결제 시스템 마이그레이션 담당"
-    assert reference["user_memory"]["notes"][0]["use"] == "if_relevant"
-    assert reference["user_memory"]["directives"] == ["가족 얘기는 먼저 꺼내지 말아 달라고 함"]
-    assert reference["relationship_profile"] == {"comfort": 2}
+    assert [row["content"] for row in reference["structured_owner_memory"]] == [
+        "사내 결제 시스템 마이그레이션 담당",
+    ]
     assert WORLD_CORE_POLICY.strip() in payload["instructions"]
-    assert TIERED_MEMORY_POLICY.strip() in payload["instructions"]
     lore = trace["retrieval_decisions"]["lore"]
     assert lore["decision_candidates"] == len(bodies["lore"])
     assert lore["decision_selected"] < len(bodies["lore"])
@@ -318,10 +317,9 @@ async def test_decision_error_fallback_and_successful_empty_are_distinct():
 
     assert "[검수된 정적 설정 자료" in failure["instructions"]
     assert "[검수된 정적 설정 자료" not in empty["instructions"]
-    assert ref_empty["user_memory"]["notes"] == []
+    assert not ref_empty.get("structured_owner_memory")
     assert ref_failed["structured_owner_memory"] == manual_full["structured_owner_memory"]
     assert len(ref_failed["structured_owner_memory"]) == 4
-    assert ref_empty["user_memory"]["directives"]
     assert trace_failed["retrieval_decisions"]["lore"]["decision_fallback"] == "full"
     assert trace_failed["retrieval_decisions"]["memory"]["decision_fallback"] == "full"
     assert trace_empty["retrieval_decisions"]["lore"]["decision_applied"]
@@ -368,18 +366,17 @@ async def test_decision_memory_scope_sensitive_reference_and_opt_out():
             store, SERVER, "내가 DM에서 말한 오로라 엔진 기억나?", lore="full", handler=handler,
         )
         assert {row["content"] for row in bodies[-1].values()} == {"이 서버 공개 사실"}
-        assert reference["user_memory"]["quiet_boundaries"] == [
-            "가족 얘기는 먼저 꺼내지 말아 달라고 함",
-        ]
-        assert any(
-            row["item_id"] == gated and row["tier"] == "T4"
-            for row in trace["memory_selection"]["items"]
-        )
+        assert all(row["item_id"] != gated for row in trace["memory_selection"]["items"])
+        assert "오로라 엔진" not in json.dumps(reference, ensure_ascii=False)
 
         _, reference, _, _ = await _decision_answer(
             store, SERVER, "진료 일정이 어땠지?", lore="full", handler=handler,
         )
-        assert any(note["use"] == "only_if_user_raises" for note in reference["user_memory"]["notes"])
+        assert "민감한 진료 일정" not in json.dumps(reference, ensure_ascii=False)
+        _, reference, _, _ = await _decision_answer(
+            store, DM, "안녕", lore="full", handler=handler,
+        )
+        assert "민감한 진료 일정" in {row["content"] for row in reference["structured_owner_memory"]}
 
         store.set_user_memory_mode(SERVER.user_id, "off")
         _, reference, trace, run = await _decision_answer(
