@@ -64,6 +64,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "FAST_MAX_OUTPUT_TOKENS",
         "SMART_MAX_OUTPUT_TOKENS",
         "ANSWER_TIMEOUT_SECONDS",
+        "DECISION_TIMEOUT_SECONDS",
         "ROUTING_CLASSIFIER_MODE",
         "ROUTING_CLASSIFIER_PROVIDER",
         "ROUTING_CLASSIFIER_MODEL",
