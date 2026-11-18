@@ -527,6 +527,18 @@ def test_recurrence_time_is_optional(value, valid):
     assert (LINT_INVALID_RECURRENCE in annotation.lint_flags) is not valid
 
 
+def test_retired_disclosure_cannot_create_a_public_member_profile():
+    raw = {"items": [_item(
+        "보리를 키움", "101", disclosure="reference_gated", audience="server",
+        evidence="보리를 키워", time_scope="ongoing", usage_mode="ambient",
+    )]}
+    turns = {"101": {"user": "보리를 키워", "at": AT, "public_at_capture": True}}
+    result = parse_shadow_extraction(json.dumps(raw), allowed_source_ids={"101"}, source_turns=turns)
+    item, = result.items
+    assert item.disclosure == MemoryDisclosure.LOCAL
+    assert item.annotation.audience == "owner"
+
+
 def test_invalid_disclosure_copied_from_usage_is_kept_as_local():
     """Live eval: "disclosure":"sensitive" used to drop the whole (valid) item."""
     raw = {"items": [_item(

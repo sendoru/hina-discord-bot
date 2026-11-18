@@ -489,6 +489,8 @@ def parse_shadow_extraction(
         if source_turns is not None and kind != MemoryKind.RELATIONSHIP:
             cited = [source_turns[value] for value in source_ids if value in source_turns]
             annotation = parse_annotation(raw, kind, cited)
+            if LINT_DISCLOSURE_DEFAULTED in defaulted_flags:
+                annotation = replace(annotation, audience=Audience.OWNER)
             if defaulted_flags:
                 annotation = replace(annotation, lint_flags=tuple(
                     dict.fromkeys((*annotation.lint_flags, *defaulted_flags))
