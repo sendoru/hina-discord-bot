@@ -47,7 +47,7 @@ def _candidates(repo, guild, channel, space_key):
             and all(s["source_channel_id"] == str(channel) for s in refs)}
 
 
-async def extract_server_batch(llm, store, guild, channel, *, stale=False, admin_verifier=None):
+async def extract_server_batch(llm, store, guild, channel, *, stale=False, admin_verifier=None, batch_size=16):
     key = (guild, channel)
     running = store._server_extractions
     if key in running:
@@ -55,7 +55,7 @@ async def extract_server_batch(llm, store, guild, channel, *, stale=False, admin
     running.add(key)
     try:
         turns = batch(store, guild, channel)
-        if len(turns) < 16 and not (stale and len(turns) >= 2 and turns[0]["stale"]):
+        if len(turns) < batch_size and not (stale and len(turns) >= 2 and turns[0]["stale"]):
             return
         ids = {r["message_id"] for r in turns}
         accepted = 0
@@ -66,7 +66,8 @@ async def extract_server_batch(llm, store, guild, channel, *, stale=False, admin
             space_key = "guild" if public else f"channel:{channel}"
             repo = store._server_memories
             existing = _candidates(repo, guild, channel, space_key)
-            payload = {"turns": list(eligible.values()), "existing": existing}
+            payload = {"turns": list(eligible.values()), "existing": existing,
+                       "timezone": getattr(llm.settings, "runtime_timezone", "Asia/Seoul")}
             plan = build_memory_model_plan(llm.settings, "", payload, shared=True)
             response = await llm._memory_request("extract_server_memory", POLICY, payload, plan)
             if response.status != "completed":

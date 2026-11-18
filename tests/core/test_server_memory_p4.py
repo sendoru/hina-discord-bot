@@ -320,3 +320,30 @@ def test_disputed_memory_is_hidden_pending_operator_review(store):
     store._server_memories.manage_item(1, original, "retract")
     store._server_memories.manage_item(1, replacement, "approve")
     assert [r["id"] for r in visible(store)] == [replacement]
+
+
+@pytest.mark.asyncio
+async def test_server_eval_scores_existing_corroboration_fixture():
+    import json
+    from types import SimpleNamespace
+
+    from hina_bot.core.config import Settings
+    from hina_bot.tooling.memory_extraction_eval import DEFAULT_CASES, load_cases
+    from hina_bot.tooling.server_extraction_eval import run_server_case
+
+    case, = load_cases(DEFAULT_CASES, ids=("server_extract_group_event_corroborated",), target="server")
+
+    async def request(operation, instructions, payload, plan):
+        rows = payload["turns"]
+        return SimpleNamespace(status="completed", output_text=json.dumps([{
+            "content": "서버 레이드를 클리어했어요", "evidence": "레이드",
+            "time_scope": "episodic", "event_at": "2026-10-29",
+            "sources": [{"message_id": rows[0]["message_id"], "role": "user", "evidence": "레이드"},
+                        {"message_id": rows[1]["message_id"], "role": "user", "evidence": "세 시간"}],
+        }]))
+
+    worker = SimpleNamespace(settings=Settings(discord_token="eval"), _memory_request=request,
+                             usage=SimpleNamespace(routing_event=lambda *args, **kwargs: None))
+    result = await run_server_case(worker, case)
+    assert result["failures"] == []
+    assert result["status"] == "passed"

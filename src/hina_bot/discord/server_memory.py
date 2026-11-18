@@ -1,4 +1,5 @@
 """Live Discord authority for server memories and public self-disclosures."""
+import asyncio
 import json
 
 import discord
@@ -42,7 +43,8 @@ async def _authority(guild, scope, channels, authors):
     try:
         reader = await guild.fetch_member(scope.user_id)
     except discord.HTTPException:
-        return set(), {}
+        return set(), set(), {}
+    private = set()
     allowed, members = set(), {str(reader.id): reader.display_name}
     for cid in sorted(channels):
         try:
@@ -57,13 +59,15 @@ async def _authority(guild, scope, channels, authors):
             cid == str(scope.channel_id) or (public.view_channel and public.read_message_history)
         ):
             allowed.add(cid)
+            if not (public.view_channel and public.read_message_history):
+                private.add(cid)
     for uid in sorted(authors - members.keys()):
         try:
             member = await guild.fetch_member(int(uid))
         except discord.HTTPException:
             continue
         members[uid] = member.display_name
-    return allowed, members
+    return allowed, private, members
 
 
 def server_reader(client, message, scope):
@@ -90,7 +94,12 @@ def server_reader(client, message, scope):
             return []
         channels = {s["source_channel_id"] for s in sources} | {p["origin_channel_id"] for p in profiles}
         authors = {s["author_user_id"] for s in sources} | related
-        allowed, members = await _authority(guild, scope, channels, authors)
+        try:
+            async with asyncio.timeout(8):
+                allowed, private, members = await _authority(guild, scope, channels, authors)
+        except (TimeoutError, OSError):
+            client.events.emit("memory.server_access_unavailable")
+            return []
         if str(scope.user_id) not in members:
             return []
         if manage:
@@ -101,6 +110,7 @@ def server_reader(client, message, scope):
             return []
         rows = store.server_memory_candidates(scope, readable_channel_ids=allowed, member_user_ids=members,
                                               related_user_ids=related)
+        rows = [r for r in rows if r["space_key"] == "guild" or r["origin_channel_id"] in private]
         rows.extend(p for p in _profiles(store, scope, related & members.keys()) if p["origin_channel_id"] in allowed)
         result = select_server_rows(rows, query, lookup=lookup)
         for row in result:

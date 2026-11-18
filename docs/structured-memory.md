@@ -586,3 +586,8 @@ again allows future contributions. Message deletion removes dependent memories,
 including those citing a delivered reply. The bot must receive the deletion event.
 Guild managers can use `/server-memory show` and `remove`. The operator dashboard
 links to server memory from Structured Memory and supports retraction and deletion.
+
+The existing live evaluation CLI accepts `--target server` to run the six
+guild extraction fixtures through the production parser and an isolated
+in-memory database. It requires the selected provider's credentials:
+`hina-memory-extraction-eval --target server --provider gemini --model MODEL`.

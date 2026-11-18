@@ -42,7 +42,7 @@ def _source_text(row, role: str) -> str:
     if not isinstance(provenance, dict):
         provenance = {}
     # The bot must never restate recalled material and then canonize it as a new memory.
-    if provenance.get("history_lookup") or provenance.get("memory_lookup"):
+    if any(provenance.get(key) for key in ("history_lookup", "memory_lookup", "server_memory")):
         raise ValueError("A history/memory lookup reply cannot ground a server memory")
     return str(row["reply"])
 
@@ -430,7 +430,7 @@ class ServerMemoryRepository:
                 not all(self.subject_readable(uid) for uid in subjects)
                 or not subjects.issubset(members)
                 or str(scope.user_id) in subjects  # owner's personal memory handles this
-                or subjects.isdisjoint(related)
+                or not subjects.issubset(related)
             ):
                 continue
             result.append(item)
