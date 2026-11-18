@@ -314,7 +314,8 @@ def personal_memory_selection(
     now = (now or datetime.now(zone)).astimezone(zone)
     own_texts = recent_own_texts(store, scope, now) if include_recent else ()
     ctx = SelectionContext(scope=scope, message=message, now=now)
-    return PersonalMemorySelection(None, items, annotations, ctx, own_texts)
+    eligible = full_memory_items(items, annotations, ctx)
+    return PersonalMemorySelection(None, eligible, annotations, ctx, own_texts)
 
 
 REPLY_CHAIN_KINDS = frozenset({
@@ -374,7 +375,7 @@ def personal_memory_fields(
         snapshot = personal_memory_selection(
             store, scope, message=message, settings=settings, now=now,
         )
-    items = full_memory_items(snapshot.items, snapshot.annotations, snapshot.ctx) if snapshot else ()
+    items = snapshot.items if snapshot else ()
     if mode == "decision" and decision_scores is not None:
         items = [item for item in items if str(item.id) in decision_scores
                  or memory_access(item, scope) == MemoryAccess.IMPLICIT]

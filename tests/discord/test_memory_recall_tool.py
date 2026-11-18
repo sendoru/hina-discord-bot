@@ -17,6 +17,7 @@ from hina_bot.discord.memory_recall_tool import (
     register_memory_recall_tool,
 )
 
+
 @pytest.mark.asyncio
 async def test_server_tool_uses_request_reader_and_enforces_call_budget():
     async def reader(query, *, lookup):

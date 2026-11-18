@@ -86,5 +86,3 @@ async def test_explicit_owner_reference_cannot_unlock_cross_space_memory():
         CURRENT_CONTEXT_PROVENANCE.set(None)
         await llm.close()
         store.close()
-
-

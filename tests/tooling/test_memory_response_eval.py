@@ -1,4 +1,3 @@
-from hina_bot.ai.decisions import DecisionResult
 """Memory response eval (#457): case setup, scoring and the runner without paid calls."""
 
 import json
@@ -11,6 +10,7 @@ import httpx
 import pytest
 from openai import AsyncOpenAI
 
+from hina_bot.ai.decisions import DecisionResult
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.core.config import Settings
 from hina_bot.core.memory_selection import effective_status

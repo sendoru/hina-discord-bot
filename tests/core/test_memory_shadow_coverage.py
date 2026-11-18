@@ -13,10 +13,10 @@ from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEM
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
 from hina_bot.core.memory_selection import (
     MemoryReadRun,
-    SelectionContext,
-    legacy_notes,
-    decision_memory_candidates,
     MemorySelection,
+    SelectionContext,
+    decision_memory_candidates,
+    legacy_notes,
     shadow_coverage,
 )
 from hina_bot.core.routing import Scope
@@ -66,7 +66,7 @@ def _store():
 def _run(store, scope, message):
     items = store.memory_items(100)
     annotations = store.memory_annotations([item.id for item in items])
-    ctx = SelectionContext(scope=scope, message=message, now=NOW, hours_since_last_turn=1)
+    ctx = SelectionContext(scope=scope, message=message, now=NOW)
     entries = decision_memory_candidates(items, annotations, ctx)
     selected = MemorySelection(selected=[e for e in entries if (
         e.item.content.startswith("사내") if "회사" in message else e.item.content.startswith(("매운", "고양이"))

@@ -5,18 +5,17 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace as NS
 from zoneinfo import ZoneInfo
 
-
 from hina_bot.ai.memory_extraction import parse_annotation
 from hina_bot.core.memory_annotations import Annotator, UsageMode
 from hina_bot.core.memory_context import CURRENT_MEMORY_SELECTION
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
 from hina_bot.core.memory_selection import (
     MemoryReadRun,
+    MemorySelection,
     MemoryUsage,
     SelectionContext,
-    memory_usage,
     decision_memory_candidates,
-    MemorySelection,
+    memory_usage,
 )
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -46,7 +45,7 @@ def _store():
 
 def _select(store, message, *, now=NOW, hours=1, **mode):
     items = store.memory_items(100)
-    ctx = SelectionContext(scope=DM, message=message, now=now, hours_since_last_turn=hours)
+    ctx = SelectionContext(scope=DM, message=message, now=now)
     return MemorySelection(selected=decision_memory_candidates(items, store.memory_annotations([i.id for i in items]), ctx))
 
 
@@ -100,5 +99,3 @@ def test_bot_records_usage_once_and_isolates_failures():
     HinaClient._record_memory_usage(broken, "매운 거", "dm")
     assert events[-1][0] == "memory.usage_failed"
     store.close()
-
-

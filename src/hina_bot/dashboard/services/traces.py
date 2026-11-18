@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 
-
 from ..analytics import (
     PREFLIGHT_LATENCY_STAGES,
     TURN_LATENCY_STAGES,

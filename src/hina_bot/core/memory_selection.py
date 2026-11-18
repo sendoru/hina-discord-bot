@@ -69,14 +69,6 @@ class SelectionContext:
     scope: Scope
     message: str
     now: datetime
-    reply_texts: tuple[str, ...] = ()
-    hours_since_last_turn: float | None = None
-    session_followup: str = "dm"
-    explicit_call: bool = True
-    task_register: bool = False
-    authorized_item_ids: frozenset[int] = frozenset()
-    # The user's own recent messages to Hina in this conversation, oldest first (carry).
-    recent_own_texts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -264,14 +256,6 @@ def is_light_chat(message: str) -> bool:
     )
 
 
-def _scope_relation(item: MemoryItem, scope: Scope) -> str:
-    if item.origin_realm == scope.realm and item.origin_channel_id == str(scope.channel_id):
-        return "current_channel"
-    if scope.guild_id is not None and item.origin_realm == scope.realm:
-        return "same_server_other_channel"
-    return "cross_space"
-
-
 def full_memory_items(items, annotations, ctx):
     """Filter the owner's records before choosing a representative for each duplicate."""
     scope = ctx.scope
@@ -314,9 +298,9 @@ def full_memory_items(items, annotations, ctx):
 
 
 def decision_memory_candidates(items, annotations, ctx) -> list[SelectedMemory]:
-    """Expose only full-access records; implicit relationship text stays private."""
+    """Describe eligible snapshot items; implicit relationship text stays private."""
     candidates = []
-    for item in full_memory_items(items, annotations, ctx):
+    for item in items:
         if memory_access(item, ctx.scope) != MemoryAccess.FULL:
             continue
         annotation, _ = effective_annotation(item, annotations.get(item.id))
@@ -426,7 +410,7 @@ def legacy_notes(
     """The same raw records full can expose, for Decision shadow coverage."""
     return tuple(
         (item, effective_annotation(item, annotations.get(item.id))[0])
-        for item in full_memory_items(items, annotations, ctx)
+        for item in items
         if memory_access(item, ctx.scope) == MemoryAccess.FULL
     )
 
@@ -503,5 +487,3 @@ def shadow_coverage(run: MemoryReadRun, answer: str) -> ShadowCoverage:
         covered_profile=sum(1 for entry in covering if entry.tier == "Tp"),
         covered_carry=sum(1 for entry in covering if entry.via == "carry"),
     )
-
-

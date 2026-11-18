@@ -296,6 +296,15 @@ async def test_decision_memory_scope_sensitive_reference_and_opt_out():
         )
         assert "민감한 진료 일정" in {row["content"] for row in reference["structured_owner_memory"]}
 
+        def unavailable(_request):
+            return httpx.Response(503)
+
+        for mode in ("full", "decision"):
+            _, reference, _, _ = await _decision_answer(
+                store, SERVER, "내 진료 일정 기억나?", memory=mode, lore="full", handler=unavailable,
+            )
+            assert {r["content"] for r in reference["structured_full_memory"]} == {"이 서버 공개 사실"}
+
         store.set_user_memory_mode(SERVER.user_id, "off")
         _, reference, trace, run = await _decision_answer(
             store, SERVER, "진료 일정이 어땠지?", lore="full",

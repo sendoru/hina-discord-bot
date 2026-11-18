@@ -1,7 +1,7 @@
 """Live response eval for the personal memory read path (#457, #449 §10).
 
 Each fictional case seeds one user's memories, then sends the same turns through the
-runtime answer path once per ``PERSONAL_MEMORY_READ_MODE`` (``legacy`` and ``tiered`` by
+runtime answer path once per ``PERSONAL_MEMORY_READ_MODE`` (``full`` and ``decision`` by
 default). A judge model grades every reply against the case's checks:
 
 - ``not_raised``: a memory the user did not bring up stays out of the reply.
@@ -12,10 +12,7 @@ default). A judge model grades every reply against the case's checks:
 - ``recalls``: a memory the user asks about is used. This is the positive control, so a
   read path cannot score well by never using memory.
 
-Memory dates are relative to the run, so time states hold whenever it runs. In
-``tiered`` the runner stores usage after each reply as the bot does, which keeps
-multi-turn cooldown and follow-up limits realistic. These are paid calls and never part
-of pytest. Judgments are probabilistic: read the replies in the Markdown report, not
+Memory dates are relative to the run. Live calls are paid. Judgments are probabilistic: read the replies in the Markdown report, not
 only the rates.
 """
 
@@ -420,7 +417,6 @@ async def run_case(llm, case: dict, *, judge_model: str | None, attempt: int = 1
         for index, message in enumerate(case["turns"], 1):
             events = _Events()
             registry = LocalToolRegistry()
-            # The same tool exposure as the bot: recall_memory only on the tiered path.
             register_memory_recall_tool(registry, events=events)
             tools_token = CURRENT_LOCAL_TOOLS.set(registry if registry else None)
             selection_token = CURRENT_MEMORY_SELECTION.set(None)

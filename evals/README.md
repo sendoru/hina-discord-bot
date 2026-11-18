@@ -223,9 +223,9 @@ uv run hina-memory-extraction-eval --id extract_relative_date_resolved --repeat 
 
 ## 장기기억 응답 평가 (memory v2 읽기 경로)
 
-`memory_response_cases.jsonl`은 tiered 읽기 경로로 넘어가기 전에 답변이 기억을 어떻게 쓰는지 live 모델로
+`memory_response_cases.jsonl`은 개인 기억 읽기 모드별로 답변이 기억을 어떻게 쓰는지 live 모델로
 비교하는 가상 사례입니다(#457 운영, #449 §10). `hina-memory-response-eval`이 사례마다 기억을 심은 뒤 같은
-턴을 런타임 답변 경로로 `PERSONAL_MEMORY_READ_MODE`별(기본 `legacy`, `tiered`)로 보내고, judge 모델이
+턴을 런타임 답변 경로로 `PERSONAL_MEMORY_READ_MODE`별(기본 `full`, `decision`)로 보내고, judge 모델이
 답변을 채점합니다.
 
 ```bash

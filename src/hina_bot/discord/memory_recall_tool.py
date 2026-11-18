@@ -1,6 +1,7 @@
 """Request-scoped lookup of authorized P4 server memories."""
 
 import time
+
 from hina_bot.ai.local_tools import LocalToolError, LocalToolSpec
 from hina_bot.ai.prompts import load_prompt
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE
