@@ -561,9 +561,6 @@ class Store:
     def delete_memory_item(self, item_id: int, *, expected_revision: int) -> None:
         self._memories.delete_memory_item(item_id, expected_revision=expected_revision)
 
-    def reference_gated_memory_candidates(self, scope: Scope, *, limit: int = 24):
-        return self._memories.reference_gated_memory_candidates(scope, limit=limit)
-
     def memory_annotation(self, item_id: int) -> MemoryAnnotation | None:
         return self._memories.memory_annotation(item_id)
 
@@ -945,6 +942,14 @@ class Store:
         if user <= 0:
             raise ValueError("Invalid Discord user id")
         return f"user:{user}"
+
+    def cross_scope_opt_in(self, user_id: int | str) -> bool:
+        key = "config:personal_memory_cross_scope:" + self._user_memory_key(user_id)
+        return self.settings.note(key) == "on"
+
+    def set_cross_scope_opt_in(self, user_id: int | str, enabled: bool) -> None:
+        key = "config:personal_memory_cross_scope:" + self._user_memory_key(user_id)
+        self.settings.set_note(key, "on" if enabled else "")
 
     def user_memory_mode(self, user_id: int | str) -> str:
         """The owner's global read/write preference, independent of admin scope rules."""

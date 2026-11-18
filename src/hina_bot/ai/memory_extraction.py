@@ -280,7 +280,7 @@ def _legacy_item_fields(raw: dict) -> tuple[MemoryKind | None, MemoryDisclosure,
         kind = MemoryKind.FACT
         flags.append(LINT_KIND_DEFAULTED)
     disclosure = _enum_or_none(MemoryDisclosure, raw.get("disclosure"))
-    if disclosure is None:
+    if disclosure is None or disclosure == MemoryDisclosure.REFERENCE_GATED:
         disclosure = MemoryDisclosure.LOCAL
         flags.append(LINT_DISCLOSURE_DEFAULTED)
     return kind, disclosure, tuple(flags)
@@ -489,6 +489,8 @@ def parse_shadow_extraction(
         if source_turns is not None and kind != MemoryKind.RELATIONSHIP:
             cited = [source_turns[value] for value in source_ids if value in source_turns]
             annotation = parse_annotation(raw, kind, cited)
+            if LINT_DISCLOSURE_DEFAULTED in defaulted_flags:
+                annotation = replace(annotation, audience=Audience.OWNER)
             if defaulted_flags:
                 annotation = replace(annotation, lint_flags=tuple(
                     dict.fromkeys((*annotation.lint_flags, *defaulted_flags))

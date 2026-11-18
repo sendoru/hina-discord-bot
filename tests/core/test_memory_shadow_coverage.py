@@ -13,9 +13,10 @@ from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEM
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
 from hina_bot.core.memory_selection import (
     MemoryReadRun,
+    MemorySelection,
     SelectionContext,
+    decision_memory_candidates,
     legacy_notes,
-    select_personal_memory,
     shadow_coverage,
 )
 from hina_bot.core.routing import Scope
@@ -65,9 +66,13 @@ def _store():
 def _run(store, scope, message):
     items = store.memory_items(100)
     annotations = store.memory_annotations([item.id for item in items])
-    ctx = SelectionContext(scope=scope, message=message, now=NOW, hours_since_last_turn=1)
+    ctx = SelectionContext(scope=scope, message=message, now=NOW)
+    entries = decision_memory_candidates(items, annotations, ctx)
+    selected = MemorySelection(selected=[e for e in entries if (
+        e.item.content.startswith("사내") if "회사" in message else e.item.content.startswith(("매운", "고양이"))
+    )])
     return MemoryReadRun(
-        "tiered_shadow", select_personal_memory(items, annotations, ctx), message=message, now=NOW,
+        "decision_shadow", selected, message=message, now=NOW,
         legacy_notes=legacy_notes(items, annotations, ctx),
     )
 
@@ -79,7 +84,7 @@ def test_legacy_notes_mirror_the_legacy_projection_without_directives():
     server = _run(store, SERVER, "안녕").legacy_notes
 
     # Relationship items use the profile path; directives always reach T0.
-    assert dm == {ids["food"], ids["work"], ids["cat"]}
+    assert dm == set(ids.values())
     # DM-local items are not FULL in a server, so legacy never sent them there.
     assert server == ()
     store.close()
@@ -89,39 +94,19 @@ def test_coverage_counts_used_covered_and_missed_notes():
     store, ids = _store()
     run = _run(store, DM, "아 배고프다")
     assert [entry.item.id for entry in run.selection.selected
-            if entry.placement == "notes"] == [ids["food"]]
+            if entry.placement == "notes"] == [ids["food"], ids["cat"]]
 
     coverage = shadow_coverage(run, "매운 거 먹자! 보리는 밥 먹었어? 회사 결제 건은 끝났고?")
 
     # The cat is importance-3 daily life, so the core profile covers it without a match.
-    assert (coverage.notes, coverage.used, coverage.covered) == (3, 3, 2)
-    assert (coverage.covered_profile, coverage.covered_carry) == (1, 0)
+    assert (coverage.notes, coverage.used, coverage.covered) == (len(ids), 3, 2)
+    assert (coverage.covered_profile, coverage.covered_carry) == (0, 0)
     assert coverage.missed_item_ids == (ids["work"],)
     # The missed note was not in the user's message: the answer recalled it unprompted.
     assert coverage.missed_unprompted == 1
     assert coverage.missed_current == 1
     assert coverage.missed_usage == {"contextual": 1}
     assert coverage.missed_importance == {"2": 1}
-    store.close()
-
-
-def test_coverage_counts_notes_covered_by_a_carried_topic():
-    store, ids = _store()
-    items = store.memory_items(100)
-    annotations = store.memory_annotations([item.id for item in items])
-    ctx = SelectionContext(scope=DM, message="이거 언제 끝나냐", now=NOW, hours_since_last_turn=1,
-                           recent_own_texts=("회사 결제 건 때문에 야근 중",))
-    run = MemoryReadRun("tiered_shadow", select_personal_memory(items, annotations, ctx),
-                        message=ctx.message, now=NOW,
-                        legacy_notes=legacy_notes(items, annotations, ctx))
-
-    coverage = shadow_coverage(run, "결제 건 오늘 안에 끝나면 좋겠다")
-
-    assert coverage.missed == 0
-    assert (coverage.covered_profile, coverage.covered_carry) == (0, 1)
-    assert [entry.via for entry in run.selection.selected if entry.item.id == ids["work"]] == [
-        "carry"
-    ]
     store.close()
 
 
@@ -151,7 +136,7 @@ def test_bot_records_shadow_coverage_without_touching_memory():
     rows = []
     run = replace(_run(store, DM, "아 배고프다"), visual_turn=True)
     CURRENT_MEMORY_SELECTION.set(run)
-    CURRENT_CONTEXT_PROVENANCE.set({"memory_selection": {"mode": "tiered_shadow", "tiers": {"T2": 1}}})
+    CURRENT_CONTEXT_PROVENANCE.set({"memory_selection": {"mode": "decision_shadow", "tiers": {"T2": 1}}})
 
     HinaClient._record_memory_usage(
         _client(store, rows), "매운 거 먹자. 보리는 잘 있어? 회사 결제 건은?", "dm",
@@ -165,11 +150,11 @@ def test_bot_records_shadow_coverage_without_touching_memory():
     assert coverage["missed_item_ids"] == [ids["work"]]
     assert coverage["visual_turn"] is True and coverage["recent_own_turn"] is False
     [(operation, fields)] = rows
-    assert operation == "memory.shadow_coverage"
+    assert operation == "memory.decision_coverage"
     assert fields["memory_coverage_used"] == 3
     assert fields["memory_coverage_missed"] == 1
     assert fields["memory_coverage_missed_contextual"] == 1
-    assert fields["memory_coverage_covered_profile"] == 1
+    assert fields["memory_coverage_covered_profile"] == 0
     assert fields["memory_space"] == "dm" and fields["memory_visual_turn"] is True
     serialized = repr(fields) + repr(coverage)
     assert "고양이" not in serialized and "결제" not in serialized
@@ -179,7 +164,7 @@ def test_bot_records_shadow_coverage_without_touching_memory():
 def test_bot_shadow_coverage_failure_never_raises():
     store, _ids = _store()
     rows = []
-    CURRENT_MEMORY_SELECTION.set(MemoryReadRun("tiered_shadow", selection=None, legacy_notes=()))
+    CURRENT_MEMORY_SELECTION.set(MemoryReadRun("decision_shadow", selection=None, legacy_notes=()))
 
     HinaClient._record_memory_usage(_client(store, rows), "응", "dm")
 

@@ -20,10 +20,6 @@ CURRENT_MEMORY_SELECTION: ContextVar[object | None] = ContextVar(
     default=None,
 )
 # Reference-gated items this turn's T4 recall authorized; recall_memory may return them.
-CURRENT_AUTHORIZED_MEMORY_IDS: ContextVar[frozenset] = ContextVar(
-    "current_authorized_memory_ids",
-    default=frozenset(),
-)
 CURRENT_EGRESS_DECISION: ContextVar[dict | None] = ContextVar(
     "current_egress_decision",
     default=None,
@@ -141,7 +137,6 @@ def history_lookup_provenance(row) -> dict:
 
 
 __all__ = [
-    "CURRENT_AUTHORIZED_MEMORY_IDS",
     "CURRENT_CONTEXT_PROVENANCE",
     "CURRENT_EGRESS_DECISION",
     "CURRENT_MEMORY_CONTEXT",

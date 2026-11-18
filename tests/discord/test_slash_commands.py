@@ -27,7 +27,7 @@ def slash_bot():
 def test_runtime_registers_separated_memory_note_and_chatlog_commands(slash_bot):
     memory = slash_bot.tree.get_command("memory")
     assert memory is not None
-    for name in ("mode", "purge", "show", "remove", "preference", "status", "clear"):
+    for name in ("mode", "purge", "show", "remove", "preference", "cross-scope", "status", "clear"):
         assert memory.get_command(name) is not None
     for removed in ("note", "note-clear", "server-show", "server-note", "server-clear"):
         assert memory.get_command(removed) is None
@@ -85,7 +85,7 @@ def test_production_composition_registers_only_expected_commands_and_contexts():
             "server-memory", "memory", "note", "chatlog", "state", "emoji", "knowledge", "help", "config",
         }
         assert {c.name for c in bot.tree.get_command("memory").commands} == {
-            "mode", "purge", "show", "remove", "preference", "status", "clear", "sharing",
+            "mode", "purge", "show", "remove", "preference", "cross-scope", "status", "clear", "sharing",
         }
         assert {c.name for c in bot.tree.get_command("chatlog").commands} == {"mode", "clear"}
         assert {c.name for c in bot.tree.get_command("state").commands} == {"show"}

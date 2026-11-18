@@ -30,7 +30,7 @@ ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 # tool: model-controlled local keyword search; full/v1 remain rollback paths.
 DECISION_MODES = frozenset({"decision_shadow", "decision"})
 RAG_MODES = frozenset({"off", "v1", "full", "tool"}) | DECISION_MODES
-PERSONAL_MEMORY_READ_MODES = frozenset({"full", "tiered_shadow", "tiered"}) | DECISION_MODES
+PERSONAL_MEMORY_READ_MODES = frozenset({"full"}) | DECISION_MODES
 # Provider-facing conversation transport only; independent from memory read policy.
 CONTEXT_INPUT_MODES = frozenset({"legacy", "structured", "structured_with_replay"})
 MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})
@@ -79,7 +79,7 @@ def parse_external_context_policy(value: str) -> str:
 
 def canonical_memory_read_mode(value: str) -> str:
     """Read the pre-#508 spelling from startup settings, stored config or historical traces."""
-    return {"shadow": "tiered_shadow", "legacy": "full"}.get(value, value)
+    return "full" if value in {"legacy", "shadow", "tiered_shadow", "tiered"} else value
 
 
 def _env_key(provider: str) -> str:
@@ -164,6 +164,7 @@ class Settings:
     chat_web_search: bool = True
     rag_mode: str = "full"
     runtime_timezone: str = "Asia/Seoul"
+    personal_memory_cross_scope: str = "on"
     server_memory_read: str = "on"
     personal_memory_read_mode: str = "full"
     memory_session_followup: str = "dm"
@@ -425,6 +426,9 @@ class Settings:
             raise ValueError(
                 "CONTEXT_INPUT_MODE는 legacy, structured, structured_with_replay 중 하나여야 합니다."
             )
+        personal_memory_cross_scope = os.getenv("PERSONAL_MEMORY_CROSS_SCOPE", "on").strip().lower()
+        if personal_memory_cross_scope not in {"on", "off"}:
+            raise ValueError("PERSONAL_MEMORY_CROSS_SCOPE must be on or off")
         server_memory_read = os.getenv("SERVER_MEMORY_READ", "on").strip().lower()
         if server_memory_read not in {"on", "off"}:
             raise ValueError("SERVER_MEMORY_READ must be on or off")
@@ -500,6 +504,7 @@ class Settings:
             ),
             public_memory_in_dm=public_memory == "true",
             external_context_policy=external_context_policy,
+            personal_memory_cross_scope=personal_memory_cross_scope,
             server_memory_read=server_memory_read,
             personal_memory_read_mode=personal_memory_read_mode,
             memory_session_followup=memory_session_followup,

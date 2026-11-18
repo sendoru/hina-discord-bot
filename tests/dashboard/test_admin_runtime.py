@@ -216,7 +216,7 @@ def test_runtime_dashboard_edits_overrides_inline(tmp_path):
     assert '<option value="off"' in response.text
     assert '<option value="on"' in response.text
     assert 'id="runtime-external_context_policy"' in response.text
-    assert '<option value="tiered_shadow" selected' in response.text
+    assert '<option value="full" selected' in response.text
     assert '<option value="decision_shadow"' in response.text
     assert '<option value="shadow"' not in response.text
     assert '<option value="bot_interactions_only"' in response.text

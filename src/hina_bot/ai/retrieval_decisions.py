@@ -17,7 +17,6 @@ from .structured_memory_context import (
     personal_memory_fields,
     personal_memory_selection,
     recent_own_texts,
-    structured_memory_context,
 )
 
 _DISCORD_ID = re.compile(r"<(?:@!?|@&|#)\d+>|\b\d{17,20}\b")
@@ -182,8 +181,7 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
     def memory_snapshot():
         return personal_memory_selection(
             store, scope, message=message, settings=llm.settings, now=now,
-            authorized_factual_items=memory_kwargs["authorized_factual_items"],
-            explicit_call=memory_kwargs["explicit_call"], select_tiered=False,
+            include_recent=True,
         )
 
     lore_candidates = []
@@ -235,7 +233,7 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
         memory_run = None
         invalidated = "memory_disabled"
         memory_kwargs = {
-            **memory_kwargs, "use_memory": False, "authorized_factual_items": (),
+            **memory_kwargs, "use_memory": False,
         }
     elif memory_run is not None:
         refreshed = memory_snapshot()
@@ -246,15 +244,6 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
             or policy != llm.settings.external_context_policy
         ):
             invalidated = "memory_context_changed"
-            # Do not carry a T4 approval across edits to its source item.
-            memory_kwargs = {
-                **memory_kwargs,
-                "authorized_factual_items": tuple(
-                    item for item in memory_kwargs["authorized_factual_items"]
-                    if refreshed is not None and item in refreshed.items
-                ),
-            }
-            refreshed = memory_snapshot() if refreshed is not None else None
         memory_run = refreshed
 
     memory_result = results.get("memory")
@@ -306,15 +295,6 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
             entry for entry in personal["selection"].selected if entry.via == "decision"
         ] if personal["selection"] else []
         ids = [entry.item.id for entry in selected_notes]
-        baseline_fields = (
-            structured_memory_context(
-                store, scope, use_memory=memory_kwargs["use_memory"],
-                allow_cross_space=memory_kwargs["allow_cross_space"],
-                authorized_factual_items=memory_kwargs["authorized_factual_items"],
-            )
-            if memory_mode == "decision" and memory_run is not None
-            else personal["fields"]
-        )
         fallback = invalidated
         if memory_mode == "decision" and memory_run is not None and memory_scores is None:
             fallback = fallback or "full"
@@ -322,11 +302,8 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
             memory_result, mode=memory_mode, applied=memory_mode == "decision"
             and memory_scores is not None, selected_ids=ids,
             selected_chars=sum(len(entry.item.content) for entry in selected_notes),
-            baseline_chars=sum(
-                len(entry["content"])
-                for field in ("structured_owner_memory", "structured_full_memory")
-                for entry in baseline_fields.get(field, [])
-            ),
+            baseline_chars=sum(len(entry.item.content) for entry in memory_candidates)
+            if memory_run is not None else 0,
             fallback=fallback, elapsed_ms=round((perf_counter() - started) * 1000),
         ), ids
     for domain, (metrics, _) in observations.items():
@@ -334,4 +311,4 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
     return personal, compact, {
         domain: {**metrics, "selected_ids": ids}
         for domain, (metrics, ids) in observations.items()
-    }, memory_kwargs["use_memory"], memory_kwargs["authorized_factual_items"]
+    }, memory_kwargs["use_memory"]

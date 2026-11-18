@@ -69,6 +69,4 @@ function output으로만 provider에 전달됩니다.
 검증하며, 지원하지 않는 채널에서는 안전한 도구 오류를 반환합니다. 자동 문맥과 reset 이전 명시 조회의 구분, 조회 예산·권한·출처 처리는
 [과거 대화 조회 도구](chat-history-tool.md)를 참고하세요.
 
-`PERSONAL_MEMORY_READ_MODE=tiered`이고 현재 사용자의 기억 읽기가 허용되면 `recall_memory`도 등록됩니다.
-정리된 장기 기억(사실·취향·일정)을 찾는 도구이며, 대화 원문을 찾는 `get_chat_history`와 역할이
-다릅니다. 범위와 표시 규칙은 [구조화 기억](structured-memory.md#recall_memory-tool)을 참고하세요.
+서버 조회가 가능한 요청에서는 `recall_memory`로 P4 서버 공유 기억을 조회합니다. 개인 기억 읽기 모드와 독립적으로 동작하며, 호출할 때 원 채널의 열람권을 확인합니다. 개인 기억은 답변을 만들기 전에 선택합니다. [구조화 기억](structured-memory.md#personal-memory-read-modes)

@@ -227,7 +227,7 @@ class StructuredMemoryPrivacyTests(unittest.TestCase):
         self.assertEqual(memory_access(item, self.guild_a), MemoryAccess.HIDDEN)
         self.assertEqual(
             memory_access(item, self.guild_a, explicitly_referenced=True),
-            MemoryAccess.FULL,
+            MemoryAccess.HIDDEN,
         )
 
     def test_reference_gated_server_memory_is_not_shared_between_servers(self):
@@ -236,7 +236,7 @@ class StructuredMemoryPrivacyTests(unittest.TestCase):
         self.assertEqual(memory_access(item, self.guild_b), MemoryAccess.HIDDEN)
         self.assertEqual(
             memory_access(item, self.guild_b, explicitly_referenced=True),
-            MemoryAccess.FULL,
+            MemoryAccess.HIDDEN,
         )
 
     def test_private_server_memory_stays_gated_even_inside_same_guild(self):
@@ -246,7 +246,7 @@ class StructuredMemoryPrivacyTests(unittest.TestCase):
         self.assertEqual(memory_access(item, self.guild_a_other_private), MemoryAccess.HIDDEN)
         self.assertEqual(
             memory_access(item, self.guild_a, explicitly_referenced=True),
-            MemoryAccess.FULL,
+            MemoryAccess.HIDDEN,
         )
 
     def test_owner_dm_aggregates_reference_gated_memory_from_every_origin(self):

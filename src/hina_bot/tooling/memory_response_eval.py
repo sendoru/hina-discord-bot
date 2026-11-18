@@ -1,7 +1,7 @@
 """Live response eval for the personal memory read path (#457, #449 §10).
 
 Each fictional case seeds one user's memories, then sends the same turns through the
-runtime answer path once per ``PERSONAL_MEMORY_READ_MODE`` (``legacy`` and ``tiered`` by
+runtime answer path once per ``PERSONAL_MEMORY_READ_MODE`` (``full`` and ``decision`` by
 default). A judge model grades every reply against the case's checks:
 
 - ``not_raised``: a memory the user did not bring up stays out of the reply.
@@ -12,10 +12,7 @@ default). A judge model grades every reply against the case's checks:
 - ``recalls``: a memory the user asks about is used. This is the positive control, so a
   read path cannot score well by never using memory.
 
-Memory dates are relative to the run, so time states hold whenever it runs. In
-``tiered`` the runner stores usage after each reply as the bot does, which keeps
-multi-turn cooldown and follow-up limits realistic. These are paid calls and never part
-of pytest. Judgments are probabilistic: read the replies in the Markdown report, not
+Memory dates are relative to the run. Live calls are paid. Judgments are probabilistic: read the replies in the Markdown report, not
 only the rates.
 """
 
@@ -30,11 +27,9 @@ from collections import Counter
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from hina_bot.ai.local_tools import CURRENT_LOCAL_TOOLS, LocalToolRegistry
-from hina_bot.ai.structured_memory_context import personal_memory_selection
 from hina_bot.ai.web_search_text import response_text
 from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.config import MEMORY_SESSION_FOLLOWUP_MODES
@@ -59,7 +54,7 @@ from hina_bot.discord.memory_recall_tool import register_memory_recall_tool
 
 DEFAULT_CASES = Path("evals/memory_response_cases.jsonl")
 DEFAULT_RESULTS = Path("data/evals")
-READ_MODES = ("legacy", "tiered")
+READ_MODES = ("full", "decision")
 # Check type -> the failure it measures. Every metric is a failure rate: lower is better.
 METRICS = {
     "not_raised": "proactive_mention",
@@ -304,39 +299,6 @@ def seed_memories(store, case: dict, now: datetime) -> dict[str, dict]:
     return seeded
 
 
-def placements(selection: MemorySelection, seeded: dict[str, dict]) -> dict[str, str]:
-    by_id = {
-        entry.item.id: f"notes:{entry.tier}" if entry.placement == "notes" else entry.placement
-        for entry in selection.selected
-    }
-    return {ref: by_id.get(info["id"], "absent") for ref, info in seeded.items()}
-
-
-def first_turn_placements(
-    case: dict, *, timezone: str = "Asia/Seoul", followup: str = "dm",
-    now: datetime | None = None,
-) -> dict[str, str]:
-    """Where tiered puts each memory on the first turn, without any model call.
-
-    This guards the cases themselves: if selection rules change, a case that no longer
-    sets up what it claims to test fails in pytest instead of quietly measuring nothing.
-    """
-
-    zone = ZoneInfo(timezone)
-    now = (now or datetime.now(zone)).astimezone(zone)
-    store = Store.create(":memory:")
-    try:
-        seeded = seed_memories(store, case, now)
-        run = personal_memory_selection(
-            store, case_scopes(case)[1], message=case["turns"][0],
-            settings=SimpleNamespace(runtime_timezone=timezone, memory_session_followup=followup),
-            now=now,
-        )
-        return placements(run.selection, seeded)
-    finally:
-        store.close()
-
-
 def keyword_hit(keywords, reply: str, user_texts) -> bool:
     """A judge-free proxy: the reply used a memory keyword the user has not said."""
 
@@ -455,8 +417,7 @@ async def run_case(llm, case: dict, *, judge_model: str | None, attempt: int = 1
         for index, message in enumerate(case["turns"], 1):
             events = _Events()
             registry = LocalToolRegistry()
-            # The same tool exposure as the bot: recall_memory only on the tiered path.
-            register_memory_recall_tool(registry, store, scope, llm.settings, events=events)
+            register_memory_recall_tool(registry, events=events)
             tools_token = CURRENT_LOCAL_TOOLS.set(registry if registry else None)
             selection_token = CURRENT_MEMORY_SELECTION.set(None)
             turn_token = CURRENT_TURN_ID.set(new_turn_id())
@@ -470,7 +431,7 @@ async def run_case(llm, case: dict, *, judge_model: str | None, attempt: int = 1
                         "recall_calls": sum(event == "memory.recall" for event, _ in events.rows)}
                 if run is not None and run.selection is not None:
                     turn["selection"] = _selection_rows(run.selection, ref_by_id)
-                    if run.mode == "tiered":
+                    if run.mode == "decision":
                         # Mirror the bot's post-reply bookkeeping so later turns see cooldown.
                         usages = memory_usage(run.selection, reply, datetime.now(UTC))
                         store.record_memory_usage(usages)
@@ -660,7 +621,7 @@ async def run(args, make_llm=None) -> tuple[list[dict], dict]:
 def _modes(value: str) -> tuple[str, ...]:
     modes = tuple(dict.fromkeys(part.strip() for part in value.split(",") if part.strip()))
     if not modes or set(modes) - set(READ_MODES):
-        raise argparse.ArgumentTypeError("--modes는 legacy, tiered 중 하나 이상이어야 합니다.")
+        raise argparse.ArgumentTypeError("--modes는 full, decision 중 하나 이상이어야 합니다.")
     return modes
 
 
@@ -668,7 +629,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Live personal memory response eval (#457)")
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--modes", type=_modes, default=READ_MODES,
-                        help="comma-separated read modes to compare (default: legacy,tiered)")
+                        help="comma-separated read modes to compare (default: full,decision)")
     parser.add_argument("--provider", choices=("openai", "gemini", "openrouter"))
     parser.add_argument("--model")
     parser.add_argument("--routing-mode", choices=("fixed", "adaptive"), default="fixed")

@@ -33,6 +33,7 @@ DM에서는 메시지 맨 앞에 `히나야`를 붙여 말을 걸 수 있습니�
 자동 장기 기억
 `/memory show` — 현재 공간 또는 모든 공간의 내 기억을 페이지별로 조회
 `/memory remove` — ID로 내 기억 하나 철회 (확인 필요)
+`/memory cross-scope` — 서버에서 다른 공간의 내 개인 기억 사용에 동의하거나 철회
 `/memory preference` — 내 기억 사용/저장 설정 (모든 서버 및 DM 공통)
 `/memory status` — 내 설정과 관리자 정책을 합친 실제 기억 상태
 `/memory clear` — 현재 서버 또는 DM에서 내 자동 대화 기억 삭제
@@ -250,6 +251,16 @@ def upgrade_memory_group(client):
             ephemeral=True,
         )
 
+    @app_commands.command(name="cross-scope", description="서버에서 다른 공간의 내 개인 기억을 사용하는 데 동의하거나 철회")
+    async def cross_scope(interaction: discord.Interaction, enabled: bool):
+        client.store.set_cross_scope_opt_in(interaction.user.id, enabled)
+        default_on = client.settings.personal_memory_cross_scope == "on"
+        await interaction.response.send_message(
+            f"내 동의: {'켜짐' if enabled else '꺼짐'} · 전체 기본값: {'켜짐' if default_on else '꺼짐'}\n"
+            f"서버에서 다른 공간의 내 기억 사용: {'허용' if enabled or default_on else '차단'}. "
+            "본인 DM에는 적용되지 않아요.", ephemeral=True,
+        )
+
     @app_commands.command(name="status", description="내 기억 설정과 현재 공간의 최종 읽기/저장 상태")
     async def status(interaction: discord.Interaction):
         try:
@@ -258,10 +269,13 @@ def upgrade_memory_group(client):
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
         owner = client.store.user_memory_mode(scope.user_id)
+        opted_in = client.store.cross_scope_opt_in(scope.user_id)
+        default_on = client.settings.personal_memory_cross_scope == "on"
         admin = client.store.memory_mode_chain(scope)
         effective = client.store.memory_mode(scope)
         reads, writes = memory_mode_capabilities(effective)
         await interaction.response.send_message(
+            f"서버 간 개인 기억: 전체 기본값 {'켜짐' if default_on else '꺼짐'} · 내 동의 {'켜짐' if opted_in else '꺼짐'}\n"
             f"내 개인 설정: **{owner}** (전체 서버·DM 공통)\n"
             f"관리자 설정: **{admin['effective']}** ({admin['source']})\n"
             f"현재 공간 최종: **{effective}**\n"
@@ -303,7 +317,7 @@ def upgrade_memory_group(client):
         result = "앞으로의 기여를 허용했어요." if enabled else f"기여를 중단하고 관련 기억 {removed}개를 삭제했어요."
         await interaction.response.send_message(result, ephemeral=True)
 
-    for command in (show, remove, preference, status, clear, sharing):
+    for command in (show, remove, preference, cross_scope, status, clear, sharing):
         group.add_command(command)
 
     return group

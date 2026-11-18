@@ -3,7 +3,7 @@
 | Runtime setting | Default | Observation | Active |
 |---|---|---|---|
 | `RAG_MODE` | `full` | `decision_shadow` | `decision` |
-| `PERSONAL_MEMORY_READ_MODE` | `legacy` | `decision_shadow` | `decision` |
+| `PERSONAL_MEMORY_READ_MODE` | `full` | `decision_shadow` | `decision` |
 
 Set each independently in Dashboard **Runtime Config** or with `/config set`. An observation
 mode uses its default answer context and evaluates the same candidate pool as active mode. Both
@@ -23,12 +23,7 @@ behavior.
   with explicit evidence dependencies is packed together with those sources when they fit.
   `LORE_MAX_ITEMS` and `LORE_MAX_CHARS` bound the selected static block. Core persona and world
   instructions are always included.
-- Memory applies owner, memory mode, disclosure, activity and time eligibility before egress.
-  Sensitive notes require a keyword in the current message. The deterministic tiers handle
-  directives, quiet boundaries, session follow-up, the background-only core profile and this
-  turn's explicit T4 approvals. Decisions selects relevant notes for T2. It cannot grant a
-  proactive-use hint or modify disclosure or annotation judgments. Raw relationships stay out of
-  the selection; the answer receives the numeric relationship profile.
+- Memory uses the same eligible, deduplicated records as manual full mode. In the owner’s DM these may include sensitive personal memories from any origin. Guild requests exclude sensitive records even when explicitly mentioned. Implicit relationship text never enters the Decisions request.
 - The initial score threshold is 0.65. Empty selection is a valid result. A 1,000-question cap,
   conservative 240,000-byte body cap and configurable `DECISION_TIMEOUT_SECONDS` deadline
   (default 1.5 seconds, range 0.25–30) bound each call. Change it in Dashboard Runtime Config
@@ -57,13 +52,6 @@ selection and the default projection. Memory shadow coverage is recorded separat
 `tiered_shadow` coverage. The coverage check is based on keyword or content-word matches in the
 reply.
 
-## Transition from `shadow`
+## Configuration migration
 
-On bot startup, the existing SQLite override and startup snapshot for
-`personal_memory_read_mode` are normalized from `"shadow"` to `"tiered_shadow"` if present.
-The update is idempotent and preserves the override and its timestamp. The dashboard, reports and
-environment export can read old records before startup. Existing `PERSONAL_MEMORY_READ_MODE=shadow`
-in an environment file still loads as `tiered_shadow`. Use the canonical spelling for new writes
-and update deployment environment files during the transition. On rollback to a release that
-predates this rename, restore `"shadow"` for this DB override and `shadow` in the environment file
-if applicable. The independent `ROUTING_CLASSIFIER_MODE=shadow` still observes model/web routing.
+Existing `legacy`, `shadow`, `tiered` and `tiered_shadow` personal settings load as `full`. Startup also updates stored overrides and startup snapshots. This can increase the answer input size for former tiered users. Only explicit Decision modes enable Decisions calls.

@@ -15,8 +15,6 @@ from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.memory_extraction import parse_annotation
 from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.request_assembly import (
-    STRUCTURED_MEMORY_POLICY,
-    TIERED_MEMORY_POLICY,
     WORLD_CORE_POLICY,
 )
 from hina_bot.ai.runtime_context import build_runtime_context
@@ -82,94 +80,14 @@ async def _answer(mode, scope, message):
         store.close()
 
 
-@pytest.mark.asyncio
-async def test_tiered_dm_sends_only_selected_memory_with_its_policy():
-    payload, provenance, selection = await _answer("tiered", DM, "아 배고프다")
-
-    reference = read_reference_context(payload["input"][0]["content"])
-    memory = reference["user_memory"]
-    assert memory["directives"] == ["가족 얘기는 먼저 꺼내지 말아 달라고 함"]
-    assert [note["text"] for note in memory["notes"]] == ["매운 음식을 좋아함"]
-    assert reference["relationship_profile"] == {"comfort": 2}
-    raw = json.dumps(reference, ensure_ascii=False)
-    assert "마이그레이션" not in raw and "가벼운 장난" not in raw
-    assert "structured_owner_memory" not in reference
-    assert TIERED_MEMORY_POLICY.strip() in payload["instructions"]
-    assert STRUCTURED_MEMORY_POLICY.strip() not in payload["instructions"]
-    assert provenance["memory_selection"]["tiers"] == {"T0": 1, "T2": 1}
-    assert {row["store"] for row in provenance["structured_memory"]} == {"personal"}
-    assert selection.mode == "tiered" and selection.legacy_notes == ()
-
-
-@pytest.mark.asyncio
-async def test_tiered_policy_stays_when_nothing_is_selected():
-    payload, provenance, _ = await _answer("tiered", SERVER, "오늘 날씨 좋다")
-
-    reference = read_reference_context(payload["input"][0]["content"])
-    # DM-local items stay hidden in the server; the DM boundary applies quietly.
-    assert reference["user_memory"]["notes"] == []
-    assert reference["user_memory"]["quiet_boundaries"] == ["가족 얘기는 먼저 꺼내지 말아 달라고 함"]
-    assert TIERED_MEMORY_POLICY.strip() in payload["instructions"]
-    assert provenance["memory_selection"]["excluded"]["permission"] == 2
-
-
-@pytest.mark.asyncio
-async def test_shadow_answers_with_legacy_memory_and_records_the_selection():
-    payload, provenance, selection = await _answer("tiered_shadow", DM, "아 배고프다")
-
-    reference = read_reference_context(payload["input"][0]["content"])
-    assert "user_memory" not in reference
-    assert {row["content"] for row in reference["structured_owner_memory"]} >= {
-        "사내 결제 시스템 마이그레이션 담당", "매운 음식을 좋아함",
-    }
-    assert STRUCTURED_MEMORY_POLICY.strip() in payload["instructions"]
-    assert provenance["memory_selection"]["mode"] == "tiered_shadow"
-    assert provenance["memory_selection"]["tiers"] == {"T0": 1, "T2": 1}
-    # Nothing was injected from the selection: the run only carries the coverage reference
-    # (every FULL non-directive note legacy sent), never usage to record.
-    assert selection.mode == "tiered_shadow"
-    assert {item.content for item, _annotation in selection.legacy_notes} == {
-        "사내 결제 시스템 마이그레이션 담당", "매운 음식을 좋아함",
-    }
-
-
-@pytest.mark.asyncio
-async def test_legacy_mode_is_unchanged_and_records_no_selection():
-    payload, provenance, selection = await _answer("legacy", DM, "아 배고프다")
+@pytest.mark.parametrize("mode", ["full", "legacy", "tiered", "tiered_shadow", "shadow"])
+async def test_legacy_mode_is_unchanged_and_records_no_selection(mode):
+    payload, provenance, selection = await _answer(mode, DM, "아 배고프다")
 
     reference = read_reference_context(payload["input"][0]["content"])
     assert "structured_owner_memory" in reference and "user_memory" not in reference
     assert "memory_selection" not in provenance
     assert selection is None
-
-
-@pytest.mark.asyncio
-async def test_tiered_profile_and_carried_topic_reach_the_request():
-    calls = []
-    llm = LLM(Settings(discord_token="test", openai_api_key="test",
-                       external_context_policy="full", personal_memory_read_mode="tiered"),
-              client=_client(calls))
-    store = Store.create(":memory:")
-    try:
-        _seed(store)
-        cat = store.add_memory_item(DM, "고양이 보리를 키움", kind=MemoryKind.FACT,
-                                    disclosure=MemoryDisclosure.LOCAL)
-        _annotate(store, cat, quote="고양이 보리 키워", evidence="고양이 보리 키워",
-                  time_scope="ongoing", stability="long", usage_mode="ambient", importance=3,
-                  keywords=["고양이", "보리"])
-        # The user's previous message here carries the work topic into "이거 언제 끝나냐".
-        store.record_completed_turn(DM, 1, "회사 결제 건 때문에 야근 중", "고생 많네", name="사용자")
-        await llm.answer(store, DM, "사용자", "이거 언제 끝나냐", channel_context=[])
-        payload, provenance = calls[-1], CURRENT_CONTEXT_PROVENANCE.get()
-    finally:
-        await llm.close()
-        store.close()
-
-    memory = read_reference_context(payload["input"][0]["content"])["user_memory"]
-    assert memory["profile"] == ["고양이 보리를 키움"]
-    assert [note["text"] for note in memory["notes"]] == ["사내 결제 시스템 마이그레이션 담당"]
-    items = provenance["memory_selection"]["items"]
-    assert {(row["tier"], row.get("via")) for row in items} >= {("Tp", None), ("T2", "carry")}
 
 
 async def _decision_answer(
@@ -239,13 +157,12 @@ async def test_decisions_evaluate_both_full_pools_concurrently_and_keep_core():
     assert all(row["kind"] != "fandom" for row in bodies["lore"].values())
     assert {row["content"] for row in bodies["memory"].values()} == {
         "사내 결제 시스템 마이그레이션 담당", "매운 음식을 좋아함",
+        "가족 얘기는 먼저 꺼내지 말아 달라고 함", "가벼운 장난을 주고받음",
     }
-    assert reference["user_memory"]["notes"][0]["text"] == "사내 결제 시스템 마이그레이션 담당"
-    assert reference["user_memory"]["notes"][0]["use"] == "if_relevant"
-    assert reference["user_memory"]["directives"] == ["가족 얘기는 먼저 꺼내지 말아 달라고 함"]
-    assert reference["relationship_profile"] == {"comfort": 2}
+    assert [row["content"] for row in reference["structured_owner_memory"]] == [
+        "사내 결제 시스템 마이그레이션 담당",
+    ]
     assert WORLD_CORE_POLICY.strip() in payload["instructions"]
-    assert TIERED_MEMORY_POLICY.strip() in payload["instructions"]
     lore = trace["retrieval_decisions"]["lore"]
     assert lore["decision_candidates"] == len(bodies["lore"])
     assert lore["decision_selected"] < len(bodies["lore"])
@@ -354,10 +271,9 @@ async def test_decision_error_fallback_and_successful_empty_are_distinct():
 
     assert "[검수된 정적 설정 자료" in failure["instructions"]
     assert "[검수된 정적 설정 자료" not in empty["instructions"]
-    assert ref_empty["user_memory"]["notes"] == []
+    assert not ref_empty.get("structured_owner_memory")
     assert ref_failed["structured_owner_memory"] == manual_full["structured_owner_memory"]
     assert len(ref_failed["structured_owner_memory"]) == 4
-    assert ref_empty["user_memory"]["directives"]
     assert trace_failed["retrieval_decisions"]["lore"]["decision_fallback"] == "full"
     assert trace_failed["retrieval_decisions"]["memory"]["decision_fallback"] == "full"
     assert trace_empty["retrieval_decisions"]["lore"]["decision_applied"]
@@ -404,18 +320,26 @@ async def test_decision_memory_scope_sensitive_reference_and_opt_out():
             store, SERVER, "내가 DM에서 말한 오로라 엔진 기억나?", lore="full", handler=handler,
         )
         assert {row["content"] for row in bodies[-1].values()} == {"이 서버 공개 사실"}
-        assert reference["user_memory"]["quiet_boundaries"] == [
-            "가족 얘기는 먼저 꺼내지 말아 달라고 함",
-        ]
-        assert any(
-            row["item_id"] == gated and row["tier"] == "T4"
-            for row in trace["memory_selection"]["items"]
-        )
+        assert all(row["item_id"] != gated for row in trace["memory_selection"]["items"])
+        assert "오로라 엔진" not in json.dumps(reference, ensure_ascii=False)
 
         _, reference, _, _ = await _decision_answer(
             store, SERVER, "진료 일정이 어땠지?", lore="full", handler=handler,
         )
-        assert any(note["use"] == "only_if_user_raises" for note in reference["user_memory"]["notes"])
+        assert "민감한 진료 일정" not in json.dumps(reference, ensure_ascii=False)
+        _, reference, _, _ = await _decision_answer(
+            store, DM, "안녕", lore="full", handler=handler,
+        )
+        assert "민감한 진료 일정" in {row["content"] for row in reference["structured_owner_memory"]}
+
+        def unavailable(_request):
+            return httpx.Response(503)
+
+        for mode in ("full", "decision"):
+            _, reference, _, _ = await _decision_answer(
+                store, SERVER, "내 진료 일정 기억나?", memory=mode, lore="full", handler=unavailable,
+            )
+            assert {r["content"] for r in reference["structured_full_memory"]} == {"이 서버 공개 사실"}
 
         store.set_user_memory_mode(SERVER.user_id, "off")
         _, reference, trace, run = await _decision_answer(
@@ -445,5 +369,66 @@ async def test_retracted_candidate_during_http_request_cannot_reach_answer():
         assert "삭제된 예약" not in json.dumps(reference, ensure_ascii=False)
         assert trace["retrieval_decisions"]["memory"]["decision_fallback"] == "memory_context_changed"
         assert trace["retrieval_decisions"]["memory"]["selected_ids"] == []
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(("default", "opted_in"), [
+    ("on", False), ("on", True), ("off", False), ("off", True),
+])
+async def test_cross_scope_policy_precedes_full_decision_and_fallback(default, opted_in):
+    store = Store.create(":memory:")
+    store.set_cross_scope_opt_in(DM.user_id, opted_in)
+    try:
+        for origin, content, disclosure in [
+            (SERVER, "현재 공간", MemoryDisclosure.LOCAL),
+            (DM, "공간 간 취향", MemoryDisclosure.GLOBAL),
+            (DM, "비공개 사실", MemoryDisclosure.LOCAL),
+        ]:
+            store.add_memory_item(origin, content, kind=MemoryKind.FACT, disclosure=disclosure)
+        expected = {"현재 공간"}
+        if default == "on" or opted_in:
+            expected.add("공간 간 취향")
+
+        for mode, fail in [("full", False), ("decision", False), ("decision", True)]:
+            def handler(request, mode=mode, fail=fail):
+                assert mode == "decision"
+                body = json.loads(request.content)
+                rows = json.loads(body["input"])["candidates"]
+                assert {row["content"] for row in rows.values()} == expected
+                return httpx.Response(503) if fail else _decisions_reply(body, lambda row: True)
+
+            _, reference, _, _ = await _decision_answer(
+                store, SERVER, "뭐 할까?", lore="full", memory=mode, handler=handler,
+                personal_memory_cross_scope=default,
+            )
+            assert {row["content"] for row in reference["structured_full_memory"]} == expected
+        _, reference, _, _ = await _decision_answer(
+            store, DM, "뭐 할까?", lore="full", memory="full",
+            handler=lambda _: pytest.fail("manual full called Decisions"), personal_memory_cross_scope=default,
+        )
+        assert len(reference["structured_owner_memory"]) == 3
+        assert store.cross_scope_opt_in(DM.user_id) is opted_in
+    finally:
+        store.close()
+
+
+async def test_opt_in_revoked_while_decision_pending_removes_cross_scope_memory():
+    store = Store.create(":memory:")
+    try:
+        store.add_memory_item(DM, "다른 공간의 취향", kind=MemoryKind.FACT,
+                              disclosure=MemoryDisclosure.GLOBAL)
+        store.set_cross_scope_opt_in(DM.user_id, True)
+
+        def revoke(request):
+            store.set_cross_scope_opt_in(DM.user_id, False)
+            return _decisions_reply(json.loads(request.content), lambda row: True)
+
+        _, reference, trace, _ = await _decision_answer(
+            store, SERVER, "내 취향", lore="full", handler=revoke,
+            personal_memory_cross_scope="off",
+        )
+        assert not reference.get("structured_full_memory")
+        assert trace["retrieval_decisions"]["memory"]["decision_fallback"] == "memory_context_changed"
     finally:
         store.close()
