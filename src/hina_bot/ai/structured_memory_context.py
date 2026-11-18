@@ -22,8 +22,6 @@ from hina_bot.core.memory_selection import (
     decision_memory_candidates,
     full_memory_items,
     legacy_notes,
-    render_user_memory,
-    select_personal_memory,
     selection_provenance,
 )
 from hina_bot.core.relationship_profile import (
@@ -32,7 +30,6 @@ from hina_bot.core.relationship_profile import (
     RELATIONSHIP_RECENCY_DECAY,
     aggregate_owner_relationship_evidence,
     aggregate_relationship_evidence,
-    aggregate_shared_relationship_evidence,
     full_relationship_observations,
     implicit_relationship_profile_contributors,
 )
@@ -338,7 +335,7 @@ def personal_memory_selection(
     authorized_factual_items: Iterable[MemoryItem] = (),
     explicit_call: bool = True,
     now: datetime | None = None,
-    select_tiered: bool = True,
+    include_recent: bool = False,
 ) -> PersonalMemorySelection | None:
     """Run the tiered selector for the current owner; None when memory is unreadable."""
 
@@ -354,94 +351,14 @@ def personal_memory_selection(
     )
     zone = ZoneInfo(getattr(settings, "runtime_timezone", "") or "Asia/Seoul")
     now = (now or datetime.now(zone)).astimezone(zone)
-    last_turn = getattr(store, "latest_turn_at", None)
-    own_texts = recent_own_texts(store, scope, now)
-    ctx = SelectionContext(
-        scope=scope,
-        message=message,
-        now=now,
-        reply_texts=tuple(text for text in reply_texts if text),
-        hours_since_last_turn=_hours_since(last_turn(scope.user_id), now)
-        if callable(last_turn) else None,
-        session_followup=getattr(settings, "memory_session_followup", "dm"),
-        explicit_call=explicit_call,
-        authorized_item_ids=frozenset(
-            item.id for item in authorized_factual_items if item.user_id == str(scope.user_id)
-        ),
-        recent_own_texts=own_texts,
-    )
-    return PersonalMemorySelection(
-        select_personal_memory(items, annotations, ctx) if select_tiered else None,
-        items, annotations, ctx, own_texts,
-    )
-
-
-def tiered_memory_context(
-    scope: Scope,
-    selection: MemorySelection,
-    items: Iterable[MemoryItem],
-    *,
-    allow_cross_space: bool,
-) -> tuple[dict, bool]:
-    """Provider fields for the tiered read path and whether to attach its policy.
-
-    The policy is attached whenever the owner has any memory, even when nothing was
-    selected, so the instruction prefix stays stable for prompt caching (#449 §7 7).
-    """
-
-    items = list(items)
-    profile = (
-        aggregate_owner_relationship_evidence(items, scope)
-        if scope.guild_id is None
-        else aggregate_shared_relationship_evidence(
-            items, scope, include_implicit=allow_cross_space
-        )
-    )
-    has_memory = bool(items) or bool(profile)
-    if not has_memory:
-        return {}, False
-    return {
-        "user_memory": render_user_memory(selection, scope),
-        "relationship_profile": profile,
-    }, True
-
-
-def tiered_memory_provenance(selection: MemorySelection, relationship_profile: dict) -> dict:
-    """Content-free admitted items in the shape the trace view already reads."""
-
-    items = []
-    for entry in selection.selected:
-        item = entry.item
-        items.append({
-            "store": "personal",
-            "item_id": item.id,
-            "projection": f"tiered_{entry.tier.lower()}_{entry.placement}",
-            "tier": entry.tier,
-            "status": entry.status.status.value,
-            "kind": item.kind.value,
-            "disclosure": item.disclosure.value,
-            "origin_realm": item.origin_realm,
-            "origin_channel_id": item.origin_channel_id,
-            "access": MemoryAccess.FULL.value if entry.placement != "quiet_boundaries" else (
-                "cross_space_boundary"
-            ),
-        })
-    return {"items": items, "relationship_axes": sorted(relationship_profile)}
+    own_texts = recent_own_texts(store, scope, now) if include_recent else ()
+    ctx = SelectionContext(scope=scope, message=message, now=now)
+    return PersonalMemorySelection(None, items, annotations, ctx, own_texts)
 
 
 REPLY_CHAIN_KINDS = frozenset({
     "reply_reference_source", "reply_origin_source", "reply_origin_request", "replied_message",
 })
-
-
-def reply_chain_texts(channel_context) -> list[str]:
-    """Texts of the explicit reply chain, a stronger relevance signal than channel chatter."""
-
-    return [
-        str(row.get("content") or "")
-        for row in channel_context or ()
-        if isinstance(row, dict) and row.get("context_kind") in REPLY_CHAIN_KINDS
-    ]
 
 
 def personal_memory_fields(
@@ -472,15 +389,7 @@ def personal_memory_fields(
     mode = mode if mode in PERSONAL_MEMORY_READ_MODES else "full"
     authorized = tuple(authorized_factual_items)
     result = {"mode": mode, "selection": None, "policy": None, "run": None}
-    run = (
-        personal_memory_selection(
-            store, scope, message=message, settings=settings,
-            reply_texts=reply_chain_texts(channel_context),
-            authorized_factual_items=authorized, explicit_call=explicit_call, now=now,
-        )
-        if use_memory and mode in {"tiered", "tiered_shadow"}
-        else None
-    )
+    run = None
     if decision_run is not None and decision_scores is not None:
         run = decision_run
         selection = MemorySelection(selected=[
@@ -498,28 +407,16 @@ def personal_memory_fields(
             message=message,
             now=run.ctx.now,
             legacy_notes=(
-                legacy_notes(run.items, run.annotations, run.ctx) if mode in {"tiered_shadow", "decision_shadow"} else ()
+                legacy_notes(run.items, run.annotations, run.ctx) if mode == "decision_shadow" else ()
             ),
             visual_turn=visual_turn,
             recent_own_turn=bool(run.recent_own_texts),
         )
-    if mode == "tiered" and run is not None and run.selection is not None:
-        selection = run.selection
-        fields, has_memory = tiered_memory_context(
-            scope, selection, run.items, allow_cross_space=allow_cross_space
-        )
-        result.update(
-            fields=fields,
-            policy="tiered" if has_memory else None,
-            selection=selection,
-            trace=tiered_memory_provenance(selection, fields.get("relationship_profile", {})),
-        )
-        return result
     snapshot = decision_run or run
     if use_memory and snapshot is None:
         snapshot = personal_memory_selection(
             store, scope, message=message, settings=settings, now=now,
-            authorized_factual_items=authorized, explicit_call=explicit_call, select_tiered=False,
+            authorized_factual_items=authorized, explicit_call=explicit_call,
         )
     items = full_memory_items(snapshot.items, snapshot.annotations, snapshot.ctx) if snapshot else ()
     if mode == "decision" and decision_scores is not None:
@@ -554,10 +451,7 @@ __all__ = [
     "personal_memory_fields",
     "personal_memory_selection",
     "recent_own_texts",
-    "reply_chain_texts",
     "selection_provenance",
     "structured_memory_context",
     "structured_memory_provenance",
-    "tiered_memory_context",
-    "tiered_memory_provenance",
 ]

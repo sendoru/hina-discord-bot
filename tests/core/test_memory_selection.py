@@ -1,6 +1,5 @@
 """Tiered selection details not covered by the shared fixtures (#457)."""
 
-import json
 from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -21,11 +20,6 @@ from hina_bot.core.memory_selection import (
     effective_annotation,
     effective_status,
     is_light_chat,
-    query_idf,
-    recall_personal_memory,
-    render_user_memory,
-    select_personal_memory,
-    selection_provenance,
 )
 from hina_bot.core.routing import Scope
 
@@ -113,82 +107,16 @@ def test_light_chat_detection(message, light):
     assert is_light_chat(message) is light
 
 
-def test_rendered_block_and_provenance_hold_no_ids_kinds_or_scores():
-    items = [_item(1), _item(2, "업무 얘기는 먼저 꺼내지 말아 달라고 함", kind=MemoryKind.BOUNDARY)]
-    annotations = {1: _annotation(keywords=("보리",))}
-    ctx = SelectionContext(scope=DM, message="보리 오늘 귀여웠어", now=NOW)
+def test_only_eligible_duplicates_compete_and_local_record_wins():
+    from hina_bot.core.memory_selection import full_memory_items
 
-    selection = select_personal_memory(items, annotations, ctx)
-    rendered = render_user_memory(selection, DM)
-    provenance = selection_provenance(selection)
-
-    assert rendered == {
-        "directives": ["업무 얘기는 먼저 꺼내지 말아 달라고 함"],
-        "quiet_boundaries": [],
-        "profile": [],
-        "notes": [{"text": "고양이 보리를 키움", "status": "current", "noted": "2026-10-20",
-                   "use": "free"}],
-    }
-    assert provenance["tiers"] == {"T0": 1, "T2": 1}
-    assert {entry["store"] for entry in provenance["items"]} == {"personal"}
-    assert "보리" not in json.dumps(provenance, ensure_ascii=False)
-
-
-def test_zero_injection_is_normal_and_other_owners_never_leak():
-    other = _item(3, "다른 사람의 고양이", user_id="2")
-    ctx = SelectionContext(scope=DM, message="고양이 얘기 하자", now=NOW)
-
-    selection = select_personal_memory(
-        [_item(1, "회사에서 결제 시스템을 담당함"), other],
-        {1: _annotation(usage_mode=UsageMode.CONTEXTUAL, keywords=("회사",)),
-         3: replace(_annotation(keywords=("고양이",)), memory_item_id=3)},
-        ctx,
-    )
-
-    assert selection.selected == []
-
-
-def _cat_memories():
-    """Five distinct memories about the cat Bori and one rare food memory, confirmed earliest."""
-
-    contents = ["보리는 창가를 좋아함", "보리는 밤에 자주 운다", "보리는 올해 세 살",
-                "보리를 보호소에서 입양함", "보리는 목욕을 싫어함"]
-    items = [_item(index, text) for index, text in enumerate(contents, 1)]
-    items.append(_item(9, "연어 사료를 좋아함"))
-    annotations = {
-        index: _annotation(memory_item_id=index, keywords=("보리",),
-                           last_confirmed_at=f"2026-10-2{index} 03:00:00")
-        for index in range(1, 6)
-    }
-    annotations[9] = _annotation(memory_item_id=9, keywords=("사료", "연어"),
-                                 last_confirmed_at="2026-10-01 03:00:00")
-    return items, annotations
-
-
-def test_idf_weighs_rare_query_words_above_common_ones():
-    items, annotations = _cat_memories()
-
-    idf = query_idf([(item, annotations[item.id]) for item in items], (("보리 사료", 1.0),))
-
-    assert idf["사료"] > idf["보리"] > 0
-
-
-def test_recall_ranks_the_rare_match_first_despite_older_confirmation():
-    items, annotations = _cat_memories()
-    ctx = SelectionContext(scope=DM, message="", now=NOW)
-
-    found = recall_personal_memory(items, annotations, ctx, "보리 사료")
-
-    # Every match scores the same before IDF; the newest "보리" items would lead.
-    assert found[0].item.id == 9
-
-
-def test_t2_cap_keeps_the_rare_match():
-    items, annotations = _cat_memories()
-    ctx = SelectionContext(scope=DM, message="보리 사료 바꿨어", now=NOW)
-
-    selection = select_personal_memory(items, annotations, ctx)
-
-    chosen = [entry.item.id for entry in selection.selected]
-    assert len(chosen) == 4 and chosen[0] == 9
-    assert selection.excluded["t2_cap"] == 2
+    server = Scope(1, 20, 1, True)
+    local = _item(1, "보리   키움", origin_realm=server.realm, origin_channel_id="20")
+    remote = _item(2, "보리 키움", disclosure=MemoryDisclosure.GLOBAL)
+    sensitive = _item(3, "보리 키움", origin_realm=server.realm, origin_channel_id="20")
+    foreign = replace(local, id=4, user_id="2")
+    annotations = {3: _annotation(usage_mode=UsageMode.SENSITIVE)}
+    ctx = SelectionContext(server, "보리", NOW)
+    assert full_memory_items([remote, foreign, sensitive, local], annotations, ctx) == [local]
+    assert full_memory_items([sensitive, remote], annotations, ctx) == [remote]
+    assert full_memory_items([sensitive], annotations, replace(ctx, scope=DM, message="")) == [sensitive]

@@ -183,7 +183,7 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
         return personal_memory_selection(
             store, scope, message=message, settings=llm.settings, now=now,
             authorized_factual_items=memory_kwargs["authorized_factual_items"],
-            explicit_call=memory_kwargs["explicit_call"], select_tiered=False,
+            explicit_call=memory_kwargs["explicit_call"], include_recent=True,
         )
 
     lore_candidates = []

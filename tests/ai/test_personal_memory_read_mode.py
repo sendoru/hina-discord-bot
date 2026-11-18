@@ -15,8 +15,6 @@ from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.memory_extraction import parse_annotation
 from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.request_assembly import (
-    STRUCTURED_MEMORY_POLICY,
-    TIERED_MEMORY_POLICY,
     WORLD_CORE_POLICY,
 )
 from hina_bot.ai.runtime_context import build_runtime_context
