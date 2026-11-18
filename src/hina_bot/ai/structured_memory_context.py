@@ -315,6 +315,12 @@ def personal_memory_selection(
     own_texts = recent_own_texts(store, scope, now) if include_recent else ()
     ctx = SelectionContext(scope=scope, message=message, now=now)
     eligible = full_memory_items(items, annotations, ctx)
+    if scope.guild_id is not None:
+        raw_relationship_ids = {item.id for item in full_relationship_observations(eligible, scope)}
+        eligible = [
+            item for item in eligible if item.kind != MemoryKind.RELATIONSHIP
+            or memory_access(item, scope) == MemoryAccess.IMPLICIT or item.id in raw_relationship_ids
+        ]
     return PersonalMemorySelection(None, eligible, annotations, ctx, own_texts)
 
 
