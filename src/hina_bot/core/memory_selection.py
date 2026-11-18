@@ -352,7 +352,11 @@ def _bigrams(text: str) -> set[str]:
 
 
 def _similar(left: MemoryItem, right: MemoryItem) -> bool:
-    a, b = _bigrams(left.content), _bigrams(right.content)
+    return similar_memory_text(left.content, right.content)
+
+
+def similar_memory_text(left: str, right: str) -> bool:
+    a, b = _bigrams(left), _bigrams(right)
     return bool(a and b) and len(a & b) / len(a | b) >= DUPLICATE_SIMILARITY
 
 

@@ -59,10 +59,15 @@ async def extract_server_batch(llm, store, guild, channel, *, stale=False, admin
             return
         ids = {r["message_id"] for r in turns}
         accepted = 0
+        checked_admins = {}
         for public in (False, True):
             eligible = {r["message_id"]: r for r in turns if r["public"] == public}
             if not eligible:
                 continue
+            # Another partition may have waited for an API response since the snapshot.
+            current = {r["message_id"] for r in batch(store, guild, channel)}
+            if not eligible.keys() <= current:
+                return
             space_key = "guild" if public else f"channel:{channel}"
             repo = store._server_memories
             existing = _candidates(repo, guild, channel, space_key)
@@ -95,14 +100,18 @@ async def extract_server_batch(llm, store, guild, channel, *, stale=False, admin
                         s.role == "user" or "reply" in eligible[s.message_id]) for s in sources):
                         continue
                     admin_ids = set()
-                    if admin_verifier and fields.get("usage_mode") == "directive":
+                    if admin_verifier:
                         for ref in sources:
                             uid = eligible[ref.message_id]["user_id"]
-                            if ref.role == "user" and await admin_verifier(guild, int(uid)):
-                                admin_ids.add(uid)
+                            if ref.role == "user":
+                                if uid not in checked_admins:
+                                    checked_admins[uid] = await admin_verifier(guild, int(uid))
+                                if checked_admins[uid]:
+                                    admin_ids.add(uid)
                         if not eligible.keys() <= {r["message_id"] for r in batch(store, guild, channel)}:
                             return
-                    store.add_server_memory(guild, sources=sources, relation=relation, relation_target=target, verified_admin_ids=frozenset(admin_ids), **fields)
+                    store.add_server_memory(guild, sources=sources, relation=relation, relation_target=target,
+                                            model_tier=plan.tier.value, verified_admin_ids=frozenset(admin_ids), **fields)
                     accepted += 1
                 except (ValueError, PermissionError, KeyError, TypeError):
                     continue

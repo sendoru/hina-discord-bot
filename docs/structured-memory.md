@@ -591,3 +591,10 @@ The existing live evaluation CLI accepts `--target server` to run the six
 guild extraction fixtures through the production parser and an isolated
 in-memory database. It requires the selected provider's credentials:
 `hina-memory-extraction-eval --target server --provider gemini --model MODEL`.
+
+A correction or conflict between community claims holds both rows for operator
+review. The dashboard shows the proposed relation and supports approval,
+retraction and deletion. Server extraction operations are audited without
+copying the claim text. A confirmed personal correction can suppress a related
+claim about that same subject when the old sources or content match. The
+correction text is never copied into the community memory.

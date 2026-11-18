@@ -342,6 +342,16 @@ SERVER_MEMORY_DDL = (
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY(guild_id,user_id)
         )""",
+    """CREATE TABLE IF NOT EXISTS memory_consolidation_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, owner_key TEXT NOT NULL, mode TEXT NOT NULL,
+        model_tier TEXT, apply_mode TEXT NOT NULL, status TEXT NOT NULL,
+        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, finished_at TEXT, reverted_at TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS memory_consolidation_ops (
+        run_id INTEGER NOT NULL REFERENCES memory_consolidation_runs(id),
+        op TEXT NOT NULL, store TEXT NOT NULL, item_id INTEGER NOT NULL, target_id INTEGER NOT NULL,
+        reason_code TEXT NOT NULL, confidence REAL, outcome TEXT NOT NULL
+    )""",
     """CREATE INDEX IF NOT EXISTS server_memory_items_scope
        ON server_memory_items(guild_id,space_key,status,id)""",
     """CREATE INDEX IF NOT EXISTS server_memory_sources_message
@@ -350,7 +360,8 @@ SERVER_MEMORY_DDL = (
        ON server_memory_sources(author_user_id,item_id)""",
 )
 
-SERVER_MEMORY_TABLES = ('server_memory_items', 'server_memory_sources', 'server_memory_opt_outs')
+SERVER_MEMORY_TABLES = ('server_memory_items', 'server_memory_sources', 'server_memory_opt_outs',
+                        'memory_consolidation_runs', 'memory_consolidation_ops')
 
 
 # Current DDL for fresh creation: v1 plus every later version's additions.
@@ -424,6 +435,6 @@ V2_SIGNATURES = {
 
 # Exact full store layouts for fresh and historically migrated installations.
 V3_STORE_SIGNATURES = {
-    "07fe1795002f352a62783783713094d77d4d83eed778e3c2f3927c3a89649c31",
-    "1eef5e634cf61631d6583c99c2afb1b33f65c8e01bab855010982fae32be4a7b",
+    "684a93a88361745d659602ea2ab55c6aeb89350b137863e33075b1b7e61a6fec",
+    "d314f8a1041e8cad1288198e94a80dbf7446f9e054e916d8707a29b2b60110ce",
 }

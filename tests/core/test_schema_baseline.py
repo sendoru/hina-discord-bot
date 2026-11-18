@@ -45,7 +45,8 @@ def test_operational_baseline_adds_only_ledger_and_annotations_and_restores_exac
     assert changed == db_schema.COMPONENTS
     assert signature(backup.path) == before
     added = {"schema_migrations", "memory_item_annotations",
-             "server_memory_items", "server_memory_sources", "server_memory_opt_outs"}
+             "server_memory_items", "server_memory_sources", "server_memory_opt_outs",
+             "memory_consolidation_runs", "memory_consolidation_ops"}
     with closing(open_readonly(path)) as db, closing(open_readonly(backup.path)) as old:
         old_schema = list(old.execute("SELECT type,name,tbl_name,sql FROM sqlite_master"))
         new_schema = [row for row in db.execute("SELECT type,name,tbl_name,sql FROM sqlite_master")

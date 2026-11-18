@@ -369,6 +369,13 @@ class HinaClient(discord.Client):
                     error["error_fingerprint"],
                 )
 
+    async def _extract_server_memory(self, scope):
+        try:
+            await extract_server_batch(self.llm, self.store, scope.guild_id, scope.channel_id,
+                                       admin_verifier=self._server_memory_admin)
+        except Exception as exc:  # noqa: BLE001 - background work is retried by the sweep
+            self.events.emit("memory.server_extraction_failed", error_type=type(exc).__name__)
+
     async def _server_memory_admin(self, guild_id, user_id):
         guild = self.get_guild(guild_id)
         if guild is None:
@@ -1037,12 +1044,10 @@ class HinaClient(discord.Client):
                         self._keep_pending_visuals(scope, message.id, text, scope_kind)
 
                 memory_failures = 0
-                if save_memory and scope.guild_id is not None:
-                    try:
-                        await extract_server_batch(self.llm, self.store, scope.guild_id, scope.channel_id,
-                                                   admin_verifier=self._server_memory_admin)
-                    except Exception as exc:  # noqa: BLE001 - isolate server extraction
-                        self.events.emit("memory.server_extraction_failed", error_type=type(exc).__name__)
+                if save_memory and scope.guild_id is not None and not self.stopping:
+                    extraction = asyncio.create_task(self._extract_server_memory(scope))
+                    self.active_tasks.add(extraction)
+                    extraction.add_done_callback(self.active_tasks.discard)
 
                 if save_memory:
                     stage = "memory"

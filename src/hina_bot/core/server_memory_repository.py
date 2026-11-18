@@ -100,6 +100,7 @@ class ServerMemoryRepository:
         self,
         guild_id: int,
         *,
+        model_tier: str | None = None,
         relation_target: int | None = None,
         relation: str | None = None,
         verified_admin_ids: frozenset[str] = frozenset(),
@@ -123,7 +124,11 @@ class ServerMemoryRepository:
         guild_id = int(guild_id)
         if guild_id <= 0 or self.db.in_transaction:
             raise ValueError("Invalid guild or active transaction")
-        content, evidence = str(content).strip(), str(evidence).strip()
+        if not isinstance(content, str) or not isinstance(evidence, str):
+            raise TypeError("Expected text and evidence")
+        if any(v is not None and (not isinstance(v, str) or len(v) > 100) for v in (event_at, recurrence)):
+            raise ValueError("Malformed event date or recurrence")
+        content, evidence = content.strip(), evidence.strip()
         refs = tuple(sources)
         proposed_usage_mode = usage_mode
         if not content or len(content) > 600 or not evidence or len(evidence) > 120:
@@ -263,6 +268,17 @@ class ServerMemoryRepository:
                     relation=?,relation_target=? WHERE id=?""", (relation, relation_target, item_id))
                 if relation in {"conflicts", "corrects"}:
                     self.db.execute("UPDATE server_memory_items SET status='pending' WHERE id=?", (relation_target,))
+            if relation and (added_sources or item_id != relation_target):
+                run = self.db.execute("""INSERT INTO memory_consolidation_runs(
+                    owner_key,mode,model_tier,apply_mode,status,finished_at)
+                    VALUES (?,'extraction',?,'apply','completed',CURRENT_TIMESTAMP)""",
+                    (f"space:{guild_id}:{space_key}", model_tier)).lastrowid
+                self.db.execute("""INSERT INTO memory_consolidation_ops(
+                    run_id,op,store,item_id,target_id,reason_code,outcome)
+                    VALUES (?,?,'server',?,?,?,?)""",
+                    (run, relation, item_id, relation_target,
+                     "exact_match" if item_id == relation_target else "requires_review",
+                     "applied" if item_id == relation_target else "queued"))
             self.db.commit()
             return item_id
         except BaseException:
@@ -287,6 +303,11 @@ class ServerMemoryRepository:
         if not ids:
             return 0
         binds = ",".join("?" for _ in ids)
+        self.db.execute(f"""DELETE FROM memory_consolidation_ops WHERE store='server'
+            AND (item_id IN ({binds}) OR target_id IN ({binds}))""", (*ids, *ids))
+        self.db.execute("""DELETE FROM memory_consolidation_runs WHERE mode='extraction'
+            AND NOT EXISTS (SELECT 1 FROM memory_consolidation_ops WHERE run_id=memory_consolidation_runs.id)""")
+        self.db.execute(f"UPDATE server_memory_items SET relation_target=NULL,relation=NULL WHERE relation_target IN ({binds})", ids)
         self.db.execute(f"DELETE FROM server_memory_sources WHERE item_id IN ({binds})", ids)
         return max(0, int(self.db.execute(
             f"DELETE FROM server_memory_items WHERE id IN ({binds})", ids
@@ -328,6 +349,13 @@ class ServerMemoryRepository:
                                   (str(guild_id), item_id)).fetchone()
             if row is None:
                 raise ValueError("Unknown server memory")
+            if action in ("retract", "delete"):
+                # Prevent a pending model response from recreating the withdrawn
+                # item from the same input, even after physical deletion.
+                self.db.execute("""UPDATE turns SET context_provenance=json_set(
+                    CASE WHEN json_valid(context_provenance) THEN context_provenance ELSE '{}' END,
+                    '$.source_trigger_kind','withdrawn') WHERE realm=? AND message_id IN (
+                    SELECT message_id FROM server_memory_sources WHERE item_id=?)""", (f"guild:{guild_id}", item_id))
             if action == "delete":
                 return self._delete_items([item_id])
             if action == "approve":

@@ -275,7 +275,7 @@ async def test_multi_author_extraction_rechecks_consent_and_selects_by_tier(stor
         assert select_server_rows(rows, "안녕")[0]["tier"] == "S1"
         assert select_server_rows(rows, "모임")[0]["tier"] == "S2"
         assert select_server_rows(rows, "모임", lookup=True)[0]["tier"] == "S3"
-        assert select_server_rows(rows, "전혀 다른 질문") == []
+        assert select_server_rows(rows, "다른 문제를 설명해 줘") == []
 
 
 @pytest.mark.asyncio
@@ -347,3 +347,22 @@ async def test_server_eval_scores_existing_corroboration_fixture():
     result = await run_server_case(worker, case)
     assert result["failures"] == []
     assert result["status"] == "passed"
+
+
+@pytest.mark.asyncio
+async def test_consent_changed_between_partitions_blocks_next_provider_input(store):
+    from types import SimpleNamespace
+
+    from hina_bot.ai.server_memory_extraction import extract_server_batch
+    from hina_bot.core.config import Settings
+
+    for index in range(16):
+        source(store, user=100 if index < 8 else 101, public=index >= 8, message=1001 + index)
+    calls = []
+    async def request(operation, instructions, payload, plan):
+        calls.append({t["user_id"] for t in payload["turns"]})
+        store.set_server_memory_opt_out(1, 101, True)
+        return SimpleNamespace(status="completed", output_text="[]")
+    worker = SimpleNamespace(settings=Settings(discord_token="test"), _memory_request=request)
+    await extract_server_batch(worker, store, 1, 10)
+    assert calls == [{"100"}]

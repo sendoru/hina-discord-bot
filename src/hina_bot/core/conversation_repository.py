@@ -223,7 +223,9 @@ class ConversationRepository:
         if trigger in ("explicit", "implicit"):
             context_provenance = {
                 **(context_provenance if isinstance(context_provenance, dict) else {}),
-                "source_trigger_kind": trigger,
+                "source_trigger_kind": (
+                    "bot" if (interaction.get("speaker") or {}).get("is_bot") else trigger
+                ),
             }
         encoded_provenance = (
             json.dumps(context_provenance, ensure_ascii=False, separators=(",", ":"))
