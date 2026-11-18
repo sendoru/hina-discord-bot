@@ -954,3 +954,22 @@ def test_manual_full_mode_persists_and_reads_legacy_overrides(monkeypatch, tmp_p
         assert RuntimeSettings(_base(), store).personal_memory_read_mode == "full"
     finally:
         store.close()
+
+
+def test_cross_scope_default_can_change_without_creating_opt_ins(tmp_path):
+    path = str(tmp_path / "preferences.db")
+    store = Store.create(path)
+    try:
+        settings = RuntimeSettings(_base(), store)
+        assert settings.personal_memory_cross_scope == "on"
+        store.set_cross_scope_opt_in(100, True)
+        assert settings.set_text("PERSONAL_MEMORY_CROSS_SCOPE", "off") == "off"
+    finally:
+        store.close()
+    store = Store.create(path)
+    try:
+        assert RuntimeSettings(_base(), store).personal_memory_cross_scope == "off"
+        assert store.cross_scope_opt_in(100)
+        assert not store.cross_scope_opt_in(200)
+    finally:
+        store.close()

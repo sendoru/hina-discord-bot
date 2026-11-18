@@ -375,3 +375,24 @@ async def test_cross_scope_policy_precedes_full_decision_and_fallback(default, o
         assert store.cross_scope_opt_in(DM.user_id) is opted_in
     finally:
         store.close()
+
+
+async def test_opt_in_revoked_while_decision_pending_removes_cross_scope_memory():
+    store = Store.create(":memory:")
+    try:
+        store.add_memory_item(DM, "다른 공간의 취향", kind=MemoryKind.FACT,
+                              disclosure=MemoryDisclosure.GLOBAL)
+        store.set_cross_scope_opt_in(DM.user_id, True)
+
+        def revoke(request):
+            store.set_cross_scope_opt_in(DM.user_id, False)
+            return _decisions_reply(json.loads(request.content), lambda row: True)
+
+        _, reference, trace, _ = await _decision_answer(
+            store, SERVER, "내 취향", lore="full", handler=revoke,
+            personal_memory_cross_scope="off",
+        )
+        assert not reference.get("structured_full_memory")
+        assert trace["retrieval_decisions"]["memory"]["decision_fallback"] == "memory_context_changed"
+    finally:
+        store.close()
