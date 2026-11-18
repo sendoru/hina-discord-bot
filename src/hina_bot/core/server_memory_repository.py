@@ -88,6 +88,8 @@ class ServerMemoryRepository:
             provenance = {}
         if not isinstance(provenance, dict) or provenance.get("source_trigger_kind") != "explicit":
             raise ValueError("Only explicitly addressed bot interactions can ground P4")
+        if provenance.get("server_thread_public_at_capture") is True:
+            scope = Scope(guild_id, channel_id, user_id, True)
         text = _source_text(row, ref.role)
         return row, channel_id, scope, text
 

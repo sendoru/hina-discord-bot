@@ -578,7 +578,7 @@ recall. Extraction, withdrawal, personal memory and administrator notes continue
 S0 carries verified administrator directives. S1 permits one ambient item at a
 casual greeting and has a 72-hour cooldown. S2 and S3 return at most three
 matched items and 800 content characters. Discord membership and source-channel
-visibility are checked for each read. Thread sources currently fail closed.
+visibility are checked for each read. Thread sources use live parent-channel permissions. Public threads and forum posts can be shared when captured as public and still public. Private threads remain local and require live thread membership or Manage Threads in addition to parent read access.
 
 Use `/memory sharing enabled:false` to withdraw contributions in the current
 guild. Existing memories citing the contributor are deleted in full. Opting in

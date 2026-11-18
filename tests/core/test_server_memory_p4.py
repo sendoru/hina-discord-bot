@@ -392,3 +392,41 @@ def test_withdrawal_before_turn_commit_cannot_create_evidence(store, action):
             context_provenance={"source_trigger_kind": "explicit", "assistant_message_ids": ["2001"]})
     with pytest.raises(ValueError, match="explicitly"):
         remember(store)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("private,local,member,manage,history,public_parent,expected", [
+    (False, False, False, False, True, True, True),
+    (False, False, True, False, True, False, False),
+    (False, True, True, False, True, False, True),
+    (True, True, True, False, True, True, True),
+    (True, True, False, False, True, True, False),
+    (True, True, False, True, True, True, True),
+    (True, False, True, True, True, True, False),
+    (True, True, True, True, False, True, False),
+])
+async def test_thread_source_authority(private, local, member, manage, history, public_parent, expected):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    import discord
+
+    from hina_bot.discord.server_memory import _authority
+
+    reader = SimpleNamespace(id=200, display_name="reader")
+    thread = MagicMock(spec=discord.Thread)
+    thread.parent_id = 20
+    thread.is_private.return_value = private
+    thread.fetch_member = AsyncMock(return_value=reader)
+    if not member:
+        thread.fetch_member.side_effect = discord.NotFound(SimpleNamespace(status=404, reason="missing"), "")
+    parent = MagicMock(spec=discord.TextChannel if private else discord.ForumChannel)
+    parent.permissions_for.side_effect = [
+        SimpleNamespace(view_channel=True, read_message_history=history, manage_threads=manage),
+        SimpleNamespace(view_channel=public_parent, read_message_history=public_parent),
+    ]
+    guild = SimpleNamespace(fetch_member=AsyncMock(return_value=reader), default_role=object(),
+                            fetch_channel=AsyncMock(side_effect=[thread, parent]))
+    allowed, restricted, _ = await _authority(guild, Scope(1, 10 if local else 11, 200), {"10"}, set())
+    assert ("10" in allowed) == expected
+    assert ("10" in restricted) == (expected and (private or not public_parent))

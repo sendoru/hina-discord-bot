@@ -1040,6 +1040,16 @@ class HinaClient(discord.Client):
                         save_memory = False
                     if save_memory:
                         stage = "memory_persist"
+                        if isinstance(message.channel, discord.Thread):
+                            thread = message.channel
+                            parent = thread.parent
+                            public_thread = False
+                            if not thread.is_private() and isinstance(parent, (discord.TextChannel, discord.ForumChannel)):
+                                perms = parent.permissions_for(message.guild.default_role)
+                                public_thread = perms.view_channel and perms.read_message_history
+                            provenance = dict(CURRENT_CONTEXT_PROVENANCE.get() or {})
+                            provenance["server_thread_public_at_capture"] = public_thread
+                            CURRENT_CONTEXT_PROVENANCE.set(provenance)
                         self.store.record_completed_turn(
                             scope,
                             message.id,

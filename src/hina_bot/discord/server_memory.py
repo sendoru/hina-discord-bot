@@ -49,18 +49,30 @@ async def _authority(guild, scope, channels, authors):
     for cid in sorted(channels):
         try:
             channel = await guild.fetch_channel(int(cid))
+            thread = channel if isinstance(channel, discord.Thread) else None
+            if thread is not None:
+                channel = await guild.fetch_channel(thread.parent_id)
+                if not isinstance(channel, (discord.TextChannel, discord.ForumChannel)):
+                    continue
+            elif not isinstance(channel, discord.TextChannel):
+                continue
+            perm = channel.permissions_for(reader)
+            if not (perm.view_channel and perm.read_message_history):
+                continue
+            public = channel.permissions_for(guild.default_role)
+            private_thread = thread is not None and thread.is_private()
+            is_public = not private_thread and public.view_channel and public.read_message_history
+            if not is_public:
+                if cid != str(scope.channel_id):
+                    continue
+                if private_thread and not perm.manage_threads:
+                    membership = await thread.fetch_member(reader.id)
+                    if membership.id != reader.id:
+                        continue
+                private.add(cid)
+            allowed.add(cid)
         except discord.HTTPException:
             continue
-        if not isinstance(channel, discord.TextChannel):
-            continue
-        perm = channel.permissions_for(reader)
-        public = channel.permissions_for(guild.default_role)
-        if perm.view_channel and perm.read_message_history and (
-            cid == str(scope.channel_id) or (public.view_channel and public.read_message_history)
-        ):
-            allowed.add(cid)
-            if not (public.view_channel and public.read_message_history):
-                private.add(cid)
     for uid in sorted(authors - members.keys()):
         try:
             member = await guild.fetch_member(int(uid))
