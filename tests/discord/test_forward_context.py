@@ -159,7 +159,7 @@ def test_forward_snapshot_is_used_only_after_call_routing():
 
     forward.content = "히나야"
     assert message_turn_text(forward, trigger_text(forward, 99)).startswith(
-        "히나야\\n\\n[Discord 전달 메시지"
+        "히나야\n\n[Discord 전달 메시지"
     )
     plain = NS(content="", message_snapshots=[])
     assert message_turn_text(plain, "") == ""
@@ -213,7 +213,7 @@ async def test_forward_in_current_turn_reaches_llm_instead_of_fixed_reply(
         assert "[Discord 전달 메시지 (Forward; 원 작성자 확인 불가)]" in model_text
         assert model_text.count(FORWARD_TEXT) == 1
         if content:
-            assert model_text.startswith(content + "\\n\\n")
+            assert model_text.startswith(content + "\n\n")
         channel.send.assert_awaited()
         assert channel.send.await_args.args[0] == "전달된 내용 확인했어."
         assert message.content == content
