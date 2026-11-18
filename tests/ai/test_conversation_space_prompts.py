@@ -95,9 +95,10 @@ def test_relationship_prompts_use_cross_space_history_without_role_leakage():
     for prompt in (ordinary, special):
         assert "같은 사용자임이 확인되는" in prompt
         assert "자연스럽게 참고" in prompt
-        assert "숨기" in prompt
 
     assert "현재 공간의 관계 모드를 바꾸는 근거로 삼지 마세요" in ordinary
     assert "사적인 관계를 불필요하게 공개하거나 암시하지 마세요" in ordinary
+    assert "정체나 관계를 숨기고 있다는 식으로 추측하지 마세요" in ordinary
     assert "현재 DM의 관계와 모순되지 않습니다" in special
+    assert "정체를 숨긴다고 단정하거나 이유를 추측" in special
     assert "그 공간의 호칭이나 태도를 현재 DM에 그대로 적용하지 마세요" in special
