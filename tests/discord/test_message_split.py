@@ -92,9 +92,10 @@ def test_utf16_surrogate_pairs_and_custom_emoji_are_not_split():
 
 
 def test_paragraph_boundaries_take_priority_over_midword_cuts():
-    text = "첫 문단입니다.\n\n" + ("나 " * 1400)
+    first = "첫 문단입니다. " * 75
+    text = first + "\n\n" + ("나 " * 1400)
     _, parts = prepare_discord_answer(text)
-    assert parts[0] == "첫 문단입니다."
+    assert parts[0] == first
     assert len(parts) > 1
 
 
