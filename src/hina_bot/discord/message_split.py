@@ -156,6 +156,10 @@ def _fallback_split(text: str, limit: int) -> list[str]:
             raise ValueError("Discord splitter could not make progress")
         fence, inline, styles = _format_state(prefix)
         body = prefix.rstrip("\r\n")
+        if styles or inline:
+            # A closing Markdown marker after whitespace may not close an
+            # emphasis/code span in Discord; move that whitespace to the boundary.
+            body = body.rstrip(" \t")
         suffix = "".join(reversed(styles))
         reopen = "".join(styles)
         if inline:
