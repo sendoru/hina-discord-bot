@@ -7,15 +7,19 @@ from .providers import create_provider_client
 from .routing_plan import build_routing_plan
 from .vision import VISION_REQUEST_ACTIVE, wrap_vision_client
 
+# Keep transport limits above the configurable 300s answer deadline, including
+# clients constructed by the production entrypoint and injected into LLM.
+ANSWER_TRANSPORT_TIMEOUT_SECONDS = 305.0
+
 
 class LLM(InformationPipeline):
     """Production LLM orchestrating routing, vision, memory, and RP policy."""
 
     def __init__(self, settings, client=None, classifier_client=None, *, admin_db=None):
         primary_client = wrap_vision_client(
-            # Runtime answer deadlines can exceed the old 45s HTTP timeout.
-            # Keep the transport ceiling above the configurable 300s maximum.
-            client or create_provider_client(settings, settings.provider, timeout=305.0),
+            client or create_provider_client(
+                settings, settings.provider, timeout=ANSWER_TRANSPORT_TIMEOUT_SECONDS,
+            ),
             reference_image_path=getattr(settings, "vision_hina_reference_path", ""),
         )
         super().__init__(

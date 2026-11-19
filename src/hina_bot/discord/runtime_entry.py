@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from hina_bot.ai.providers import create_provider_client
-from hina_bot.ai.runtime_llm import LLM
+from hina_bot.ai.runtime_llm import ANSWER_TRANSPORT_TIMEOUT_SECONDS, LLM
 from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.config import Settings
 from hina_bot.core.db_schema import SchemaError
@@ -38,7 +38,9 @@ def main():
             admin = AdminDatabase.open_existing(base.db_path)
         except SchemaError as exc:
             raise SystemExit(str(exc)) from None
-        provider = create_provider_client(settings, settings.provider)
+        provider = create_provider_client(
+            settings, settings.provider, timeout=ANSWER_TRANSPORT_TIMEOUT_SECONDS,
+        )
         llm = LLM(settings, client=provider, admin_db=admin)
         bot = web_bot.HinaClient(settings, store=store, llm=llm)
         settings.capture_startup_snapshot()
