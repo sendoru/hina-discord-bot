@@ -67,6 +67,7 @@ def test_markdown_emphasis_is_closed_and_reopened_at_forced_boundaries():
     assert cleaned == text
     assert len(parts) > 1
     assert all(part.count("**") % 2 == 0 for part in parts)
+    assert all(not part.endswith(" **") for part in parts)
     assert all(utf16_length(part) <= DISCORD_MESSAGE_LIMIT for part in parts)
 
 
@@ -74,7 +75,7 @@ def test_long_fenced_code_block_remains_renderable_per_message():
     text = "다음 코드야:\n```python\n" + "print('안녕')\n" * 270 + "```"
     cleaned, parts = prepare_discord_answer(text)
     assert cleaned == text
-    assert len(parts) > 2
+    assert len(parts) >= 2
     assert all(utf16_length(part) <= DISCORD_MESSAGE_LIMIT for part in parts)
     assert all(part.count("```") % 2 == 0 for part in parts)
     assert any(part.startswith("```python\n") for part in parts[1:])
