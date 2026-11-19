@@ -208,19 +208,6 @@ _SELECTION_EXCLUSIONS = (
 )
 
 
-_VISUAL_TURN_KINDS = frozenset({"current_message", "replied_message"})
-
-
-def _visual_turn(visuals) -> bool:
-    """A photo the user sent or replied to now; custom emoji and stickers do not count."""
-
-    return any(
-        getattr(visual, "source", "") == "attachment"
-        and getattr(visual, "context_kind", "") in _VISUAL_TURN_KINDS
-        for visual in visuals or ()
-    )
-
-
 class RequestAssembler(BaseLLM):
     """Build the final model request from a precomputed information plan."""
 
@@ -449,7 +436,6 @@ class RequestAssembler(BaseLLM):
             "use_memory": use_memory,
             "allow_cross_space": structured_cross_space_memory,
             "message": visible_content,
-            "visual_turn": _visual_turn(CURRENT_VISUAL_INPUTS.get()),
             "read_mode": memory_read_mode,
         }
         compact_decision_lore = None

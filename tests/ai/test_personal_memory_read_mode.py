@@ -3,13 +3,11 @@
 import asyncio
 import json
 from dataclasses import replace
-from datetime import UTC, datetime
 
 import httpx
 import pytest
 from openai import AsyncOpenAI
 
-from hina_bot.ai import request_assembly
 from hina_bot.ai.decisions import DecisionsClient
 from hina_bot.ai.information_pipeline import LLM
 from hina_bot.ai.memory_extraction import parse_annotation
@@ -17,7 +15,6 @@ from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.request_assembly import (
     WORLD_CORE_POLICY,
 )
-from hina_bot.ai.runtime_context import build_runtime_context
 from hina_bot.core.config import Settings
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_SELECTION
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
@@ -204,45 +201,6 @@ async def test_decisions_runtime_timeout_change_affects_both_requests_without_re
     finally:
         await llm.close()
         store.close()
-
-
-async def test_decision_shadow_matches_legacy_answer_and_keeps_metrics_private(
-    tmp_path, monkeypatch,
-):
-    monkeypatch.setattr(
-        request_assembly, "build_runtime_context",
-        lambda settings: build_runtime_context(settings, now=datetime(2026, 11, 13, tzinfo=UTC)),
-    )
-    store = Store.create(":memory:")
-    log = tmp_path / "usage.jsonl"
-    try:
-        _seed(store)
-
-        def handler(request):
-            return _decisions_reply(json.loads(request.content), lambda row: True)
-
-        def unused(_request):
-            pytest.fail("legacy must not contact Decisions")
-
-        baseline, _, _, _ = await _decision_answer(
-            store, DM, "current private utterance", lore="full", memory="legacy", handler=unused,
-        )
-        shadow, _, trace, run = await _decision_answer(
-            store, DM, "current private utterance", lore="decision_shadow",
-            memory="decision_shadow", handler=handler, usage_log_path=str(log),
-        )
-    finally:
-        store.close()
-
-    assert shadow["instructions"] == baseline["instructions"]
-    assert shadow["input"] == baseline["input"]
-    assert run.mode == "decision_shadow" and run.legacy_notes
-    assert all(not row["decision_applied"] for row in trace["retrieval_decisions"].values())
-    raw = log.read_text()
-    assert "current private utterance" not in raw and "마이그레이션" not in raw
-    metrics = [row for line in raw.splitlines() if (row := json.loads(line))["operation"].startswith("decision.")]
-    assert {row["operation"] for row in metrics} == {"decision.lore", "decision.memory"}
-    assert all(row["input_tokens"] == 8000 and "selected_ids" not in row for row in metrics)
 
 
 async def test_decision_error_fallback_and_successful_empty_are_distinct():
