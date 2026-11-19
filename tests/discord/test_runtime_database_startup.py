@@ -39,7 +39,7 @@ def test_runtime_startup_capture_and_cleanup(tmp_path, monkeypatch, failure):
     settings = Settings(discord_token="test", db_path=str(path), model="new-base")
     monkeypatch.setattr(Settings, "load", classmethod(lambda cls: settings))
     provider = SimpleNamespace(close=AsyncMock())
-    monkeypatch.setattr(runtime_entry, "create_provider_client", lambda *args: provider)
+    monkeypatch.setattr(runtime_entry, "create_provider_client", lambda *args, **kwargs: provider)
     resources = {}
 
     class FakeLLM:
@@ -106,6 +106,70 @@ def test_runtime_startup_capture_and_cleanup(tmp_path, monkeypatch, failure):
 
 def _fail_if_started(*args, **kwargs):
     raise AssertionError("startup must stop before creating runtime resources")
+
+
+@pytest.mark.parametrize("provider_name", ["gemini", "openai", "openrouter"])
+def test_runtime_startup_transport_allows_maximum_answer_deadline(
+    tmp_path, monkeypatch, provider_name
+):
+    path = tmp_path / "runtime.sqlite3"
+    prepare_database(path, apply=True, offline_confirmed=True)
+    with closing(Store.open_existing(str(path))) as store:
+        RuntimeSettings(Settings(discord_token="test"), store).set_text(
+            "answer_timeout_seconds", "120"
+        )
+    settings = Settings(
+        discord_token="test", db_path=str(path), provider=provider_name,
+        openai_api_key="test", gemini_api_key="test", openrouter_api_key="test",
+        routing_classifier_mode="off", usage_log_path=str(tmp_path / "usage.jsonl"),
+    )
+    monkeypatch.setattr(Settings, "load", classmethod(lambda cls: settings))
+    created = []
+    real_create = runtime_entry.create_provider_client
+
+    def create(*args, **kwargs):
+        client = real_create(*args, **kwargs)
+        created.append(client)
+        return client
+
+    class FakeBot:
+        def __init__(self, settings, *, store, llm):
+            self.settings, self.store, self.llm = settings, store, llm
+            self.closed = False
+
+        def is_closed(self):
+            return self.closed
+
+        async def close(self):
+            self.closed = True
+            try:
+                await self.llm.close()
+            finally:
+                self.store.close()
+
+    def run(bot, token):
+        try:
+            assert bot.llm.settings is bot.settings
+            assert bot.settings.answer_timeout_seconds == 120.0
+            # Exercise the real provider constructed by main(), rather than only
+            # the separate default-client path inside LLM.__init__.
+            client = created[0]
+            transport_timeout = (
+                client._http.timeout if provider_name == "gemini" else
+                client._client.timeout if provider_name == "openrouter" else
+                client.timeout
+            )
+            read_timeout = getattr(transport_timeout, "read", transport_timeout)
+            assert read_timeout > 300.0
+            bot.settings.set_text("answer_timeout_seconds", "300")
+            assert bot.llm.settings.answer_timeout_seconds == 300.0
+        finally:
+            asyncio.run(bot.close())
+
+    monkeypatch.setattr(runtime_entry, "create_provider_client", create)
+    monkeypatch.setattr(runtime_entry.web_bot, "HinaClient", FakeBot)
+    monkeypatch.setattr(runtime_entry, "run_client", run)
+    runtime_entry.main()
 
 
 @pytest.mark.parametrize("nested", [False, True])
