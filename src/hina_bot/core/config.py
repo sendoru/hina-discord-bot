@@ -27,9 +27,8 @@ def gemini_store_enabled(settings, domain: str, *, provider: str | None = None) 
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
-# tool: model-controlled local keyword search; full/v1 remain rollback paths.
-DECISION_MODES = frozenset({"decision_shadow", "decision"})
-RAG_MODES = frozenset({"off", "v1", "full", "tool"}) | DECISION_MODES
+DECISION_MODES = frozenset({"decision"})
+RAG_MODES = frozenset({"off", "full", "tool"}) | DECISION_MODES
 PERSONAL_MEMORY_READ_MODES = frozenset({"full"}) | DECISION_MODES
 # Provider-facing conversation transport only; independent from memory read policy.
 CONTEXT_INPUT_MODES = frozenset({"legacy", "structured", "structured_with_replay"})
@@ -77,9 +76,13 @@ def parse_external_context_policy(value: str) -> str:
     return policy
 
 
+def canonical_rag_mode(value: str) -> str:
+    return "full" if value in {"v1", "decision_shadow"} else value
+
+
 def canonical_memory_read_mode(value: str) -> str:
     """Read the pre-#508 spelling from startup settings, stored config or historical traces."""
-    return "full" if value in {"legacy", "shadow", "tiered_shadow", "tiered"} else value
+    return "full" if value in {"legacy", "shadow", "tiered_shadow", "tiered", "decision_shadow"} else value
 
 
 def _env_key(provider: str) -> str:
@@ -205,7 +208,7 @@ class Settings:
 
         provider = _provider(os.getenv("LLM_PROVIDER", "openai"), "LLM_PROVIDER")
 
-        rag_mode = os.getenv("RAG_MODE", "full").strip().lower() or "full"
+        rag_mode = canonical_rag_mode(os.getenv("RAG_MODE", "full").strip().lower() or "full")
         if rag_mode not in RAG_MODES:
             allowed = ", ".join(sorted(RAG_MODES))
             raise ValueError(f"RAG_MODE는 {allowed} 중 하나여야 합니다.")
