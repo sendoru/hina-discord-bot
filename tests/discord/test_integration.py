@@ -194,6 +194,21 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         return NS(id=id, content=text, author=self.author, guild=self.guild,
                   channel=self.channel, mentions=[], webhook_id=None)
 
+    async def test_model_message_split_uses_cleaned_history_and_multiple_discord_ids(self):
+        self.llm.answer.return_value = (
+            "첫 번째 답변\\n<<<MESSAGE_SPLIT>>>\\n두 번째 답변"
+        ).replace("\\n", "\n")
+        self.channel.send.side_effect = [NS(id=1000), NS(id=1001)]
+
+        await self.bot.on_message(self.message())
+        sent_texts = [call.args[0] for call in self.channel.send.call_args_list]
+        self.assertEqual(sent_texts, ["첫 번째 답변", "두 번째 답변"])
+        turn = self.store.history(Scope(1, 10, 100))[0]
+        self.assertEqual(turn["reply"], "첫 번째 답변\\n\\n두 번째 답변".replace("\\n", "\n"))
+        self.assertNotIn("<<<MESSAGE_SPLIT>>>", turn["reply"])
+        provenance = json.loads(turn["context_provenance"])
+        self.assertEqual(provenance["assistant_message_ids"], ["1000", "1001"])
+
     async def test_plain_channel_send_and_duplicate_suppression(self):
         await self.bot.on_message(self.message())
         await self.bot.on_message(self.message())
