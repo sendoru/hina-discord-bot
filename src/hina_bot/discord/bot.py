@@ -31,6 +31,7 @@ from .admin_commands import initialize_admin_commands, run_admin_command_once
 from .embed_context import message_embed_text
 from .emoji_commands import EmojiRegistry
 from .forward_context import message_context_text, message_turn_text
+from .message_split import prepare_discord_answer
 from .output_safety import neutralize_mentions
 from .target_recent import CURRENT_CHANNEL_CONTEXT
 from .vision import memory_visuals_for_turn, message_has_visual
@@ -972,9 +973,10 @@ class HinaClient(discord.Client):
                                     [e for e in emoji_catalog if e["id"] in current],
                                 )
                                 answer = neutralize_mentions(answer)
-                                if not answer:
+                                answer, parts = prepare_discord_answer(answer)
+                                if not parts:
                                     answer = self.settings.empty_response_reply
-                                parts = list(chunks(answer))
+                                    answer, parts = prepare_discord_answer(answer)
 
                                 stage = "delivery"
                                 await _stop_active_typing()
