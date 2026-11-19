@@ -5,8 +5,8 @@ request-text lexical preselection with a **model-selected local `search_lore`
 function**. It does not add an embedding call, semantic classifier, or second
 model. The existing answer model decides if and how to search.
 
-`RAG_MODE=full` remains the default and is a one-command rollback; `v1` and
-`off` remain available. Set `RAG_MODE=tool` through `/config set` or the
+`RAG_MODE=full` remains the default and is a one-command rollback.
+`off` disables retrieval. Set `RAG_MODE=tool` through `/config set` or the
 runtime dashboard; the runtime DB override takes precedence over `.env`.
 Changing `LORE_PATH` still requires a restart to rebuild the static index.
 
