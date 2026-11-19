@@ -86,6 +86,7 @@ def model_segments(text: str) -> list[str]:
                 continue
             if fence is None:
                 # A malformed boundary inside an emphasis span is not sent literally.
+                found = True
                 current.append("\n")
                 continue
         current.append(line)
