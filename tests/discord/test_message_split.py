@@ -62,7 +62,7 @@ def test_model_segments_over_limit_use_safe_fallback():
 
 
 def test_markdown_emphasis_is_closed_and_reopened_at_forced_boundaries():
-    text = "**" + "가나다라마바사 " * 350 + "**"
+    text = "**" + "가나다라마바사 " * 350 + "끝**"
     cleaned, parts = prepare_discord_answer(text)
     assert cleaned == text
     assert len(parts) > 1
