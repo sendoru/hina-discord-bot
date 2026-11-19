@@ -1,15 +1,7 @@
 # Gemini Decisions for Lore and personal memory
 
-| Runtime setting | Default | Observation | Active |
-|---|---|---|---|
-| `RAG_MODE` | `full` | `decision_shadow` | `decision` |
-| `PERSONAL_MEMORY_READ_MODE` | `full` | `decision_shadow` | `decision` |
-
-Set each independently in Dashboard **Runtime Config** or with `/config set`. An observation
-mode uses its default answer context and evaluates the same candidate pool as active mode. Both
-modes make a billable Decisions request when candidates exist. Runtime knowledge stays on the
-existing bounded lookup. Lore tool, web search and URL Context keep their existing mode-specific
-behavior.
+Select `decision` independently for lore and personal memory. Both default to `full`.
+Only active Decision selection makes billable Decisions requests.
 
 ## Selection and fallback
 
@@ -48,10 +40,8 @@ The usage log records counts, request bytes, scores by band, timing, usage and f
 Trace detail also shows selected IDs from the stored context snapshot. The existing `answer` and
 Discord exchange rows provide input, cached and output token counts for the same turn. Compare
 those with `decision.lore` and `decision.memory`, including the character counts for the candidate
-selection and the default projection. Memory shadow coverage is recorded separately from
-`tiered_shadow` coverage. The coverage check is based on keyword or content-word matches in the
-reply.
+selection and the default projection.
 
 ## Configuration migration
 
-Existing `legacy`, `shadow`, `tiered` and `tiered_shadow` personal settings load as `full`. Startup also updates stored overrides and startup snapshots. This can increase the answer input size for former tiered users. Only explicit Decision modes enable Decisions calls.
+Former lore `v1` and either domain's `decision_shadow` load as `full`. Startup migrates stored overrides and snapshots. Switching from lexical lore to full can increase input size. Historical traces keep their recorded mode.

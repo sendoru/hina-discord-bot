@@ -391,7 +391,7 @@ with the date and whether an undated plan has expired), next to the last-used an
 follow-up markers it records after replies (#457).
 
 Trace detail shows a **Memory selection** block for tiered or Decisions memory modes. It lists tier
-counts, exclusions and session follow-up attempts. In `tiered_shadow` or `decision_shadow` the
+counts, exclusions and session follow-up attempts. In historical `tiered_shadow` or `decision_shadow` traces the
 answer used legacy memory and **Selection coverage** shows how many legacy notes the answer used, how many of
 them the selection had (and how many only through the core profile or a carried-over topic), and
 links to the missed items, with photo-turn and recent-own-turn markers (see

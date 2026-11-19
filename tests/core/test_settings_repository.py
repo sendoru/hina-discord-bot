@@ -58,7 +58,7 @@ def test_startup_snapshot_insert_failure_preserves_previous_snapshot(store):
 
 def test_failed_runtime_write_does_not_change_effective_override(store):
     settings = RuntimeSettings(Settings(discord_token="token", openai_api_key="key"), store)
-    settings.set_text("rag_mode", "v1")
+    settings.set_text("rag_mode", "tool")
     store.db.execute(
         """CREATE TRIGGER reject_runtime_write BEFORE INSERT ON runtime_config
            BEGIN SELECT RAISE(ABORT, 'write failure'); END"""
@@ -67,6 +67,6 @@ def test_failed_runtime_write_does_not_change_effective_override(store):
     with pytest.raises(sqlite3.IntegrityError, match="write failure"):
         settings.set_text("rag_mode", "off")
 
-    assert settings.rag_mode == "v1"
-    assert store.settings.runtime_values()["rag_mode"] == '"v1"'
+    assert settings.rag_mode == "tool"
+    assert store.settings.runtime_values()["rag_mode"] == '"tool"'
     assert not store.db.in_transaction

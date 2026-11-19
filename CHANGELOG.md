@@ -4,6 +4,8 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ## Unreleased
 
+- 설정집의 `v1`과 설정집·개인 기억의 `decision_shadow`를 퇴역시킵니다. 기존 환경 설정과 DB 값은 `full`로 이관합니다. 기존 `v1` 사용자는 정적 설정집 전체가 답변 입력에 포함됩니다.
+
 ### Added
 
 - 자동 문맥 `HISTORY_TURNS`와 별도로 `RAW_RETENTION_TURNS`(기본 scope·테이블별 1000건)를

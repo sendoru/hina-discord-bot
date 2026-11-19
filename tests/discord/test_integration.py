@@ -22,7 +22,6 @@ from hina_bot.core.store import Store
 if AVAILABLE:
     from hina_bot.ai.information_pipeline import LLM
     from hina_bot.core.config import Settings
-    from hina_bot.core.lore import LoreIndex
     from hina_bot.discord.bot import HinaClient
 
 
@@ -47,7 +46,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         self.llm = LLM(
             # v1 keeps static lore as per-turn references, which the lore tests below inspect.
             Settings(discord_token="test", openai_api_key="test", summary_every=2,
-                     external_context_policy="full", rag_mode="v1"),
+                     external_context_policy="full", rag_mode="full"),
             client=client,
         )
         self.store = Store.create(":memory:")
@@ -163,38 +162,6 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reference["conversation_history"][0]["user_message"]["content"], attack)
         self.assertEqual(reference["conversation_history"][0]["assistant_reply"]["role"], "assistant")
         self.assertIn("신뢰할 수 없는", payload["instructions"])
-
-    async def test_relevant_lore_is_data_not_an_instruction(self):
-        self.llm.lore = LoreIndex([{
-            "id": "test.organization.pandemonium", "lane": "canon",
-            "fact_type": "fact_direct", "summary": "마코토와 이로하는 만마전 소속이다.",
-            "keywords": ["마코토", "이로하", "만마전", "조직"],
-            "subjects": ["마코토", "이로하", "만마전"],
-            "knowledge": "public_knowledge", "timeline": "테스트 시점",
-        }])
-        await self.llm.answer(self.store, Scope(None, 20, 100), "사용자",
-                              "마코토와 이로하는 어느 조직이야?")
-        payload = self.calls[-1]
-        reference = read_reference_context(payload["input"][0]["content"])
-        lore = reference["lore_reference"]
-        self.assertEqual(lore[0]["reference"], "test.organization.pandemonium")
-        self.assertEqual(lore[0]["kind"], "world_fact")
-        self.assertNotIn("test.organization.pandemonium", payload["instructions"])
-
-    async def test_meme_reference_does_not_expose_editorial_labels(self):
-        self.llm.lore = LoreIndex([{
-            "id": "test.meme.head", "lane": "community_meme",
-            "summary": "테스트용 반응 자료", "keywords": ["머리", "머리 크기"],
-            "subjects": ["히나"], "knowledge": "unknown", "timeline": "상시",
-            "reaction": "머리 크기 놀림에는 짧게 발끈하거나 받아친다.",
-        }])
-        await self.llm.answer(self.store, Scope(None, 20, 100), "사용자",
-                              "히나야 머리가 왜 이렇게 크니")
-        reference = read_reference_context(self.calls[-1]["input"][0]["content"])
-        lore = json.dumps(reference["lore_reference"], ensure_ascii=False)
-        self.assertIn("optional_reaction", lore)
-        self.assertNotRegex(lore, "공식|커뮤니티|밈|meme")
-
 
 @unittest.skipUnless(AVAILABLE, "Install project dev dependencies to test SDK/Discord adapters")
 class AdapterTests(unittest.IsolatedAsyncioTestCase):

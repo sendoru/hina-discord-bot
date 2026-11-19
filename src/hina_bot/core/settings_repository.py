@@ -114,13 +114,17 @@ class SettingsRepository:
 
     def migrate_memory_read_mode(self) -> None:
         """Canonicalize existing overrides and startup snapshots at bot startup."""
-        old_modes = ('"legacy"', '"tiered"', '"tiered_shadow"', '"shadow"')
+        old_modes = ('"legacy"', '"tiered"', '"tiered_shadow"', '"shadow"', '"decision_shadow"')
         with self.db:
             for table in ("runtime_config", "runtime_config_startup"):
                 self.db.execute(
                     f"UPDATE {table} SET value=? WHERE key='personal_memory_read_mode' "
-                    "AND trim(value) IN (?, ?, ?, ?)",
+                    "AND trim(value) IN (?, ?, ?, ?, ?)",
                     ('"full"', *old_modes),
+                )
+                self.db.execute(
+                    f"UPDATE {table} SET value=? WHERE key='rag_mode' AND trim(value) IN (?, ?)",
+                    ('"full"', '"v1"', '"decision_shadow"'),
                 )
 
     def runtime_values(self) -> dict[str, str]:

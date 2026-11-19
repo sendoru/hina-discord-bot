@@ -76,7 +76,7 @@ async def chat_llm():
     )
     # Static lore lookup (v1) feeds the local-evidence check exercised here.
     llm = LLM(Settings(discord_token="test", openai_api_key="test", model="test-model", summary_every=2,
-                       usage_log_path="", chat_web_search=True, rag_mode="v1"), client=client)
+                       usage_log_path="", chat_web_search=True, rag_mode="full"), client=client)
     llm.lore = LoreIndex([])
     yield llm, calls
     await llm.close()
@@ -116,7 +116,8 @@ async def test_relation_question_still_searches_with_one_local_fact(chat_llm):
         payload = calls[-1]
         assert_auto_web_with_code(payload)
         reference = read_reference_context(payload["input"][0]["content"])
-        assert reference["lore_reference"][0]["reference"] == "test.hina.nagisa.meeting"
+        assert reference["lore_reference"] == []
+        assert "[검수된 정적 설정 자료" in payload["instructions"]
     finally:
         store.close()
 
