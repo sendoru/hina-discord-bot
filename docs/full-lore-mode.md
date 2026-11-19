@@ -1,13 +1,10 @@
 # Compact full lore (`RAG_MODE=full`)
 
-`RAG_MODE=full` is the **default** and the mode production runs. `v1` (lexical lore
-lookup) stays as the fallback when static lore grows too large for the full prompt, and
-`off` disables knowledge RAG. Retrieval v2 (`shadow`, `v2`) was removed in #463. Change
+`RAG_MODE=full` is the default. Change
 the mode through the Dashboard **`/admin/runtime`** or the `RAG_MODE` environment value
 (a DB override wins). Config changes are
 read for every turn; the **compiled document itself is loaded at bot startup**.
-Restart after changing `LORE_PATH` or packaged static lore. The independent `decision_shadow` and
-`decision` modes are documented in [Gemini Decisions](gemini-decisions.md).
+Restart after changing `LORE_PATH` or packaged static lore. The `decision` mode is documented in [Gemini Decisions](gemini-decisions.md).
 
 ## Data and trust boundaries
 
@@ -61,7 +58,7 @@ comparison, inspect `usage.jsonl`:
 - Answer API request: `input_tokens`, `cached_tokens`, `elapsed_ms`
   and total token usage.
 
-Use the same query set with `RAG_MODE=v1` versus `full` to compare
+Use the same query set with `RAG_MODE=decision` versus `full` to compare
 factual correctness, contradictory ages/roles, event chronology, model
 ability to ignore unknown/audience-only facts, p50/p95 latency and actual
 input/cached/output token costs. Do not assume a prompt cache hit just
@@ -69,5 +66,5 @@ because the full document is static.
 
 ## Rollback
 
-Use Dashboard `/admin/runtime` to set `RAG_MODE=v1` (lexical lore lookup),
+Use Dashboard `/admin/runtime` to set `RAG_MODE=tool` (on-demand lore lookup),
 or `off` (no lore/runtime-knowledge retrieval) without a deploy.

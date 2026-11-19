@@ -7,7 +7,7 @@
 > `core/retrieval_contracts.py` (formerly `core/retrieval_v2.py`) and the candidate
 > metadata below. The pre-search local-evidence check uses them; see
 > [Structured local evidence sufficiency](evidence-sufficiency.md). Answers use
-> `RAG_MODE=full` (default) or `v1`; see [full-lore-mode.md](full-lore-mode.md). The rest of
+> `RAG_MODE=full` (default) or `tool`; see [full-lore-mode.md](full-lore-mode.md). The rest of
 > this page is the design record from the time the contracts were introduced.
 
 This milestone began as an **opt-in contract and lexical adapter**, not a production

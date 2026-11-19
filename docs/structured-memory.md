@@ -190,7 +190,7 @@ For owner memory in guild replies, `PERSONAL_MEMORY_CROSS_SCOPE` defaults to `on
 
 The first filter checks active ownership and disclosure. In the owner's DM, records from every origin are eligible, including sensitive records. In a guild, a sensitive annotation excludes the record even when the current message repeats its keywords. The filter uses no conversation history. Eligible duplicate records (normalized text or an existing cluster) contribute once, preferring the current channel. Original records are retained.
 
-`full` sends all eligible factual content. `decision` scores that pool and sends the selected records. An empty selection stays empty. On a request error the same full projection is used for that turn. Implicit relationship evidence can contribute to a numeric profile without exposing its text. `decision_shadow` serves full and observes Decisions. Server lookup through `recall_memory` uses its independent P4 permissions.
+`full` sends all eligible factual content. `decision` scores that pool and sends the selected records. An empty selection stays empty. On a request error the same full projection is used for that turn. Implicit relationship evidence can contribute to a numeric profile without exposing its text. Server lookup through `recall_memory` uses its independent P4 permissions.
 
 ## Disclosure semantics
 

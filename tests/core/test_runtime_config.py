@@ -898,18 +898,46 @@ def test_rag_mode_defaults_to_full_and_accepts_tool_mode():
         settings = RuntimeSettings(_base(), store)
         assert settings.rag_mode == "full"
         assert set(RUNTIME_SETTING_SPECS["rag_mode"].choices) == {
-            "off", "v1", "full", "tool", "decision", "decision_shadow",
+            "off", "full", "tool", "decision",
         }
         assert settings.set_text("RAG_MODE", "tool") == "tool"
-        assert settings.set_text("RAG_MODE", "v1") == "v1"
-        for removed in ("shadow", "v2"):
+        for removed in ("shadow", "v2", "v1", "decision_shadow"):
             with pytest.raises(ValueError):
                 settings.set_text("RAG_MODE", removed)
-        assert settings.rag_mode == "v1"
+        assert settings.rag_mode == "tool"
         # The old alias and the v2-only knobs are no longer runtime settings (#463).
         for key in ("RETRIEVAL_V2_MODE", "RETRIEVAL_V2_TIMEOUT_SECONDS"):
             with pytest.raises(ValueError):
                 settings.set_text(key, "off")
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize(("key", "old"), [
+    ("rag_mode", "v1"), ("rag_mode", "decision_shadow"),
+    ("personal_memory_read_mode", "decision_shadow"),
+])
+def test_retired_modes_migrate_to_full(key, old, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "test")
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    monkeypatch.setenv(key.upper(), old)
+    assert getattr(Settings.load(), key) == "full"
+    store = Store.create(":memory:")
+    try:
+        encoded = f'"{old}"'
+        store.settings.set_runtime_value(key, encoded)
+        store.settings.replace_startup_snapshot([(key, encoded)])
+        settings = RuntimeSettings(_base(), store)
+        assert getattr(settings, key) == "full"
+        assert settings.source(key) == "db"
+        with pytest.raises(ValueError):
+            settings.set_text(key, old)
+        store.settings.migrate_memory_read_mode()
+        assert store.settings.runtime_values()[key] == '"full"'
+        assert store.db.execute(
+            "SELECT value FROM runtime_config_startup WHERE key=?", (key,)
+        ).fetchone()[0] == '"full"'
     finally:
         store.close()
 
@@ -937,7 +965,7 @@ def test_settings_load_rag_mode_defaults_to_full_and_ignores_old_alias(
     assert Settings.load().rag_mode == "full"
 
     monkeypatch.setenv("RAG_MODE", "v1")
-    assert Settings.load().rag_mode == "v1"
+    assert Settings.load().rag_mode == "full"
     monkeypatch.setenv("RAG_MODE", "tool")
     assert Settings.load().rag_mode == "tool"
 
@@ -968,7 +996,7 @@ def test_old_memory_shadow_config_is_read_and_migrated_without_changing_other_se
         assert store.db.execute(
             "SELECT value FROM runtime_config_startup WHERE key='personal_memory_read_mode'"
         ).fetchone()[0] == '"full"'
-        for mode in ("decision_shadow", "decision"):
+        for mode in ("full", "decision"):
             assert settings.set_text("PERSONAL_MEMORY_READ_MODE", mode) == mode
             assert settings.set_text("RAG_MODE", mode) == mode
     finally:

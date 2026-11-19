@@ -256,17 +256,13 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         )
 
     def build_information_plan(
-        self, routing: RoutingPlan, *, use_lore: bool = True,
-        use_runtime_lore: bool = False,
+        self, routing: RoutingPlan, *, use_runtime_lore: bool,
     ) -> InformationPlan:
         query = routing.routing_query
         request = classify_information_request(query, call_prefixes=self._call_prefixes())
         # Full mode keeps bounded runtime knowledge while compiling static lore
         # once into the stable prompt prefix. Off skips both channels.
-        references = (
-            self.lore_references(query) if use_lore
-            else self.runtime_lore_references(query) if use_runtime_lore else []
-        )
+        references = self.runtime_lore_references(query) if use_runtime_lore else []
         freshness = request.freshness
         fact_question = self._looks_like_world_fact_question(query) and not (
             freshness == FreshnessMode.REQUIRED and is_live_domain(query)
@@ -375,13 +371,13 @@ class InformationPipeline(MemorySummaryMixin, RequestAssembler):
         rag_mode = getattr(self.settings, "rag_mode", "full")
         full_lore = rag_mode == "full" or rag_mode in DECISION_MODES
         information = self.build_information_plan(
-            routing, use_lore=rag_mode == "v1", use_runtime_lore=full_lore,
+            routing, use_runtime_lore=full_lore,
         )
         information = replace(information, full_lore=full_lore)
         if rag_mode not in DECISION_MODES:
             self.usage.routing_event(
                 "rag.mode", rag_mode=rag_mode,
-                rag_selected_context=rag_mode if rag_mode in {"v1", "full", "tool"} else "none",
+                rag_selected_context=rag_mode if rag_mode in {"full", "tool"} else "none",
             )
 
         assembly_store = store

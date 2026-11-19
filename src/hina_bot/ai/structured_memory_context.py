@@ -22,7 +22,6 @@ from hina_bot.core.memory_selection import (
     SelectionContext,
     decision_memory_candidates,
     full_memory_items,
-    legacy_notes,
     selection_provenance,
 )
 from hina_bot.core.relationship_profile import (
@@ -342,7 +341,6 @@ def personal_memory_fields(
     use_memory: bool,
     allow_cross_space: bool,
     message: str = "",
-    visual_turn: bool = False,
     now: datetime | None = None,
     read_mode: str | None = None,
     decision_run: PersonalMemorySelection | None = None,
@@ -350,8 +348,7 @@ def personal_memory_fields(
 ) -> dict:
     """Provider fields, policy choice, selection and trace for PERSONAL_MEMORY_READ_MODE.
 
-    Observation modes answer with the legacy projection and keep a separate selection.
-    ``run`` carries the selection to the post-reply bookkeeping (usage or coverage).
+    A successful Decision selection is retained for post-reply usage accounting.
     """
 
     mode = read_mode or getattr(settings, "personal_memory_read_mode", "legacy")
@@ -373,13 +370,6 @@ def personal_memory_fields(
         result["run"] = MemoryReadRun(
             mode=mode,
             selection=run.selection,
-            message=message,
-            now=run.ctx.now,
-            legacy_notes=(
-                legacy_notes(run.items, run.annotations, run.ctx) if mode == "decision_shadow" else ()
-            ),
-            visual_turn=visual_turn,
-            recent_own_turn=bool(run.recent_own_texts),
         )
     snapshot = decision_run
     if use_memory and snapshot is None:

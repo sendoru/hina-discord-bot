@@ -19,6 +19,7 @@ from .config import (
     RAG_MODES,
     Settings,
     canonical_memory_read_mode,
+    canonical_rag_mode,
     parse_call_prefixes,
     parse_discord_id_set,
     parse_external_context_policy,
@@ -44,10 +45,10 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
-    "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. decision_shadow는 full로 응답하면서 Gemini Decisions 선택을 관측하고, decision은 그 선택을 적용합니다. v1은 기존 어휘 검색, off는 지식 검색을 끕니다.",
+    "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. decision은 Gemini Decisions 선택을 적용하고, off는 지식 검색을 끕니다.",
     "personal_memory_cross_scope": "서버에서 본인의 다른 공간 기억을 읽는 기본값입니다. off이면 직접 동의한 사용자만 허용합니다.",
     "server_memory_read": "서버 공유 기억의 응답 주입과 조회를 제어합니다.",
-    "personal_memory_read_mode": "full은 허용된 개인 기억 전체, decision은 그중 선택된 기억을 사용합니다. decision_shadow는 full로 답하면서 선택 품질을 관측합니다.",
+    "personal_memory_read_mode": "full은 허용된 개인 기억 전체, decision은 그중 선택된 기억을 사용합니다.",
     "memory_session_followup": "이전 배포와 호환되는 설정입니다. 현재 개인 기억 읽기에는 사용하지 않습니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
@@ -462,6 +463,8 @@ def decode_runtime_value(spec: RuntimeSettingSpec, encoded: str, *, settings=Non
             raise ValueError("stored value is not string")
         if spec.attr == "personal_memory_read_mode":
             value = canonical_memory_read_mode(value)
+        elif spec.attr == "rag_mode":
+            value = canonical_rag_mode(value)
         return parse_runtime_value(spec, value or "none", settings=settings)
     raise ValueError(f"unsupported runtime setting kind: {spec.kind}")
 
