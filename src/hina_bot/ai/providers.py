@@ -131,6 +131,14 @@ def _gemini_content(value):
             if isinstance(text, str) and text:
                 blocks.append({"type": "text", "text": text})
             continue
+        if block_type == "input_audio":
+            audio_url = item.get("audio_url")
+            if isinstance(audio_url, str) and audio_url.startswith("data:audio/") and ";base64," in audio_url:
+                header, data = audio_url.split(",", 1)
+                mime_type = header[5:].split(";", 1)[0]
+                if data:
+                    blocks.append({"type": "audio", "data": data, "mime_type": mime_type})
+            continue
         if block_type == "input_image":
             image_url = item.get("image_url")
             if isinstance(image_url, str) and image_url:
@@ -242,9 +250,9 @@ def _gemini_generate_content_parts(value):
         if block_type == "text":
             parts.append({"text": block["text"]})
             continue
-        if block_type != "image":
+        if block_type not in {"image", "audio"}:
             continue
-        mime_type = block.get("mime_type") or "image/png"
+        mime_type = block.get("mime_type") or ("audio/ogg" if block_type == "audio" else "image/png")
         if block.get("data"):
             parts.append({
                 "inline_data": {
