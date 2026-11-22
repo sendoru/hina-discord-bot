@@ -321,6 +321,94 @@ class ConversationRepository:
                         (scope.conversation, scope.realm, str(scope.user_id), name,
                          text[:1500], through))
 
+    def recent_public_candidates(
+        self,
+        user_id: int,
+        guild_id: int | None,
+        *,
+        since: str,
+        exclude_channel_id: int | None = None,
+    ) -> list[Scope]:
+        """Recent public bot calls by this user, newest source first.
+
+        `created_at` is SQLite's UTC CURRENT_TIMESTAMP; `since` uses the same
+        YYYY-MM-DD HH:MM:SS format. Filter before permission checks to avoid
+        fetching member permissions for inactive/old sources.
+        """
+        conditions = ["user_id=?", "created_at>=?"]
+        params: list[object] = [str(user_id), since]
+        if guild_id is not None:
+            conditions.append("realm=?")
+            params.append(f"guild:{guild_id}")
+            if exclude_channel_id is not None:
+                conditions.append("scope<>?")
+                params.append(
+                    f"guild:{guild_id}:channel:{exclude_channel_id}:user:{user_id}"
+                )
+        rows = self.db.execute(
+            "SELECT scope, user_id, MAX(created_at) AS latest_at, MAX(id) AS latest_id "
+            "FROM shared_calls WHERE " + " AND ".join(conditions) +
+            " GROUP BY scope, user_id ORDER BY latest_at DESC, latest_id DESC LIMIT 30",
+            params,
+        ).fetchall()
+        return [
+            Scope(
+                int(row["scope"].split(":")[1]),
+                int(row["scope"].split(":")[3]),
+                int(row["user_id"]),
+            )
+            for row in rows
+        ]
+
+    def recent_public_context(
+        self,
+        allowed_scopes: list[Scope],
+        *,
+        since: str,
+        max_chars: int = 4000,
+    ) -> list[dict]:
+        """Windowed, owner-only public exchanges; never include undated summaries.
+
+        Recent public calls are joined to completed turns when the reply still
+        exists. Results are limited to four scopes, two exchanges each and a
+        combined character budget (excluding small source metadata).
+        """
+        remaining = max(0, int(max_chars))
+        context = []
+        for source in allowed_scopes[:4]:
+            if remaining <= 0:
+                break
+            rows = self.db.execute(
+                "SELECT c.name, c.content, c.created_at, t.reply "
+                "FROM shared_calls AS c "
+                "LEFT JOIN turns AS t ON t.scope=c.scope AND t.message_id=c.message_id "
+                "WHERE c.scope=? AND c.user_id=? AND c.created_at>=? "
+                "ORDER BY c.id DESC LIMIT 2",
+                (source.conversation, str(source.user_id), since),
+            ).fetchall()
+            exchanges = []
+            for row in reversed(rows):
+                if remaining <= 0:
+                    break
+                user_text = str(row["content"] or "")[:min(800, remaining)]
+                remaining -= len(user_text)
+                if not user_text:
+                    continue
+                hina_text = str(row["reply"] or "")[:min(800, remaining)]
+                remaining -= len(hina_text)
+                exchange = {"at": row["created_at"], "user": user_text}
+                if hina_text:
+                    exchange["hina"] = hina_text
+                exchanges.append(exchange)
+            if exchanges:
+                context.append({
+                    "source": source.conversation,
+                    "user_id": str(source.user_id),
+                    "name": str(rows[0]["name"] or "")[:100],
+                    "recent_exchanges": exchanges,
+                })
+        return context
+
     def public_candidates(self, user_id: int, guild_id: int | None = None):
         # Server queries include all speakers in this guild. DM queries include only its owner.
         condition, value = (("realm=?", f"guild:{guild_id}") if guild_id is not None
