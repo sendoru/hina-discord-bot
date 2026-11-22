@@ -3,7 +3,6 @@ import logging
 import re
 import time
 from contextlib import nullcontext
-from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 
 import discord
@@ -37,7 +36,7 @@ from .memory_recall_tool import register_memory_recall_tool
 from .reply_context import REPLY_CONTEXT, collect_reply_context
 from .server_memory import server_reader
 from .slash_commands import install_slash_commands
-from .target_context import TARGET_CONTEXT, collect, retrieval_mode
+from .target_context import TARGET_CONTEXT, collect
 from .target_recent import CURRENT_CHANNEL_CONTEXT, TargetAwareRecentMessages
 from .turn_provenance import CURRENT_TURN_PROVENANCE, build_turn_provenance
 from .vision import (
@@ -49,12 +48,6 @@ from .vision import (
 )
 
 log = logging.getLogger("hina")
-
-CURRENT_PUBLIC_CONTEXT_REQUEST = ContextVar(
-    "current_public_context_request",
-    default=(False, ()),
-)
-
 
 class _ManagedTyping:
     """Stop typing before the first reply send, or on request exit."""
@@ -83,68 +76,12 @@ async def _timed(awaitable):
     return result, round((time.perf_counter() - started) * 1000)
 
 
-_PUBLIC_MEMORY_QUERY = re.compile(
-    r"(?:기억(?:나|해|하고)|전에|저번|지난번|예전에|다른\s*(?:채널|방)|"
-    r"서버(?:에서|의)|평소|원래|(?:말|얘기)했|어떤\s*(?:사람|애|유저)|"
-    r"성격|인상|평판|어떻게\s*생각)",
-    re.IGNORECASE,
-)
-
-
 def _target_history_visibility(store, scope, *, strict_egress: bool) -> str:
     if not store.chat_log_enabled(scope):
         return "off"
     if strict_egress or capture_mode(store, scope) == "direct":
         return "direct"
     return "all"
-
-
-_BROAD_SERVER_MEMORY_QUERY = re.compile(
-    r"(?:서버(?:에서|의).*(?:누가|누구|사람들|다른\s*사람)|"
-    r"누가.*(?:말했|얘기했))",
-    re.IGNORECASE,
-)
-
-
-def _public_context_request(
-    scope: Scope,
-    text: str,
-    sampled: list[dict],
-    *,
-    allow_cross_user: bool = True,
-):
-    """Choose whether cross-channel public memory is relevant to this invocation.
-
-    Ordinary chat should not receive unrelated users' summaries. Explicitly targeted user questions
-    may use that target's public memory, while history/memory questions without a target default to
-    the current user's own public calls. Only clearly broad server-history questions may fan out.
-    A strict external-context policy disables cross-user fan-out entirely.
-    """
-    target_ids = tuple({
-        *(
-            int(item["user_id"])
-            for item in sampled
-            if str(item.get("user_id", "")).isdigit()
-        ),
-    })
-    if target_ids and allow_cross_user:
-        mode = retrieval_mode(text)
-        # Resolving a person authorizes identity only. Recent speech stays channel-local;
-        # calling/pinging someone must not load that person's public summaries/history.
-        if mode == "basic":
-            return False, ()
-        if mode == "deep" or _PUBLIC_MEMORY_QUERY.search(text):
-            return True, target_ids
-        return False, ()
-    if not _PUBLIC_MEMORY_QUERY.search(text):
-        return False, ()
-    if (
-        allow_cross_user
-        and scope.guild_id is not None
-        and _BROAD_SERVER_MEMORY_QUERY.search(text)
-    ):
-        return True, None
-    return True, (scope.user_id,)
 
 
 class HinaClient(BaseHinaClient):
@@ -230,49 +167,6 @@ class HinaClient(BaseHinaClient):
             self.store.forget_server_memory_source(
                 getattr(payload, "guild_id", None), payload.channel_id, message_id
             )
-
-    async def public_sources(self, user_id: int, guild_id: int | None = None):
-        enabled, requested_ids = CURRENT_PUBLIC_CONTEXT_REQUEST.get()
-        if not enabled:
-            return []
-        if guild_id is None and not self.settings.public_memory_in_dm:
-            return []
-
-        requested = None if requested_ids is None else set(requested_ids)
-        allowed, members = [], {}
-        for source in self.store.public_candidates(user_id, guild_id):
-            if requested is not None and source.user_id not in requested:
-                continue
-            if (
-                self.settings.allowed_guild_ids
-                and source.guild_id not in self.settings.allowed_guild_ids
-            ):
-                continue
-            guild = self.get_guild(source.guild_id)
-            if guild is None or guild.unavailable:
-                continue
-            channel = guild.get_channel(source.channel_id)
-            if not isinstance(channel, discord.TextChannel):
-                continue
-            public = channel.permissions_for(guild.default_role)
-            if not (public.view_channel and public.read_message_history):
-                continue
-            if source.guild_id not in members:
-                try:
-                    # Access is checked for the current caller, not for the source-message author.
-                    members[source.guild_id] = await guild.fetch_member(user_id)
-                except discord.HTTPException:
-                    members[source.guild_id] = None
-            member = members[source.guild_id]
-            if member is None:
-                continue
-            permissions = channel.permissions_for(member)
-            if not (permissions.view_channel and permissions.read_message_history):
-                continue
-            allowed.append(source)
-            if len(allowed) == 4:
-                break
-        return allowed
 
     async def hydrate_recent_history(self, message, scope):
         """Backfill the bounded history while respecting the active chatlog mode."""
@@ -502,12 +396,6 @@ class HinaClient(BaseHinaClient):
         if text is not None:
             message = await self._refresh_missing_embed(message)
         strict_egress = strict_policy(self.settings.external_context_policy)
-        third_party_mention = any(
-            getattr(user, "id", None) not in {self.user.id, scope.user_id}
-            and not getattr(user, "bot", False)
-            for user in getattr(message, "mentions", ())
-        )
-
         target_visibility = _target_history_visibility(
             self.store,
             scope,
@@ -601,20 +489,6 @@ class HinaClient(BaseHinaClient):
         )
         audio_fetch_ms = round((time.perf_counter() - audio_fetch_started) * 1000)
         visual_context_ms = round((time.perf_counter() - visual_context_started) * 1000)
-        public_request = (
-            (
-                (False, ())
-                if strict_egress and third_party_mention
-                else _public_context_request(
-                    scope,
-                    text,
-                    sampled,
-                    allow_cross_user=not strict_egress,
-                )
-            )
-            if text is not None
-            else (False, ())
-        )
         if preflight_started is not None and preflight_turn_id is not None:
             event_token = CURRENT_TURN_ID.set(preflight_turn_id)
             try:
@@ -677,7 +551,6 @@ class HinaClient(BaseHinaClient):
             if text is not None
             else None
         )
-        public_token = CURRENT_PUBLIC_CONTEXT_REQUEST.set(public_request)
         # Keep the user's text untouched. The base client uses request-scoped visual
         # provenance to let current-message / explicit-reply visual-only turns reach the LLM,
         # while a plain bare call still takes the configured fixed-reply path.
@@ -707,7 +580,6 @@ class HinaClient(BaseHinaClient):
                 CURRENT_TURN_ID.reset(correlation_token)
             CURRENT_SERVER_READER.reset(reader_token)
             CURRENT_LOCAL_TOOLS.reset(local_tools_token)
-            CURRENT_PUBLIC_CONTEXT_REQUEST.reset(public_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)
             CURRENT_AUDIO_INPUTS.reset(audio_token)
             CURRENT_TURN_PROVENANCE.reset(provenance_token)

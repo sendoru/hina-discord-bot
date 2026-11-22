@@ -563,12 +563,25 @@ class HinaClient(discord.Client):
             return
         self.recent.mark_hydrated(scope)
 
-    async def public_sources(self, user_id: int, guild_id: int | None = None):
-        """Fail closed; only ordinary public text channels, with live membership checks."""
+    async def public_sources(
+        self, user_id: int, guild_id: int | None = None, *,
+        since: str | None = None, exclude_channel_id: int | None = None,
+    ):
+        """Recent owner-only public sources, with live channel and member checks."""
         if guild_id is None and not self.settings.public_memory_in_dm:
             return []
+        if since is None:
+            since = (
+                datetime.now(UTC) - timedelta(
+                    minutes=self.settings.recent_context_window_minutes
+                )
+            ).strftime("%Y-%m-%d %H:%M:%S")
         allowed, members = [], {}
-        for scope in self.store.public_candidates(user_id, guild_id):
+        for scope in self.store.recent_public_candidates(
+            user_id, guild_id, since=since, exclude_channel_id=exclude_channel_id,
+        ):
+            if not self.store.chat_log_enabled(scope):
+                continue
             if (self.settings.allowed_guild_ids
                     and scope.guild_id not in self.settings.allowed_guild_ids):
                 continue
@@ -886,12 +899,26 @@ class HinaClient(discord.Client):
                             ):
                                 stage = "context"
                                 context_started = time.perf_counter()
+                                public_since = (
+                                    datetime.now(UTC) - timedelta(
+                                        minutes=self.settings.recent_context_window_minutes
+                                    )
+                                ).strftime("%Y-%m-%d %H:%M:%S")
                                 sources = (
-                                    await self.public_sources(scope.user_id, guild_id)
+                                    await self.public_sources(
+                                        scope.user_id, guild_id, since=public_since,
+                                        exclude_channel_id=(
+                                            scope.channel_id if guild_id is not None else None
+                                        ),
+                                    )
                                     if use_memory
                                     else []
                                 )
-                                context = self.store.public_context(sources) if use_memory else []
+                                context = (
+                                    self.store.recent_public_context(sources, since=public_since)
+                                    if use_memory
+                                    else []
+                                )
                                 emoji_catalog = await self.emoji_registry.catalog(message.channel)
                                 timings["context_ms"] = round(
                                     (time.perf_counter() - context_started) * 1000
