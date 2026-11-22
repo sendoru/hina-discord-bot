@@ -181,6 +181,11 @@ class PublicRecentContextTests(unittest.TestCase):
         self.store.add(scope, message_id, text, reply, name=f"user-{user}")
         at = (self.now - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
         with self.store.db:
+            # Store.add writes turns only; the completed Discord delivery path
+            # also records the public call in shared_calls.
+            self.store._conversations.write_shared_call(
+                scope, message_id, f"user-{user}", text,
+            )
             self.store.db.execute(
                 "UPDATE shared_calls SET created_at=? WHERE message_id=?",
                 (at, str(message_id)),
