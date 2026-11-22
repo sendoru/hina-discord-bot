@@ -523,13 +523,38 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(calls), 1)
         self.assertNotIn("A의 일반 발언", str(dict(calls[0])))
 
-    async def test_other_speakers_public_sources_available_in_server(self):
+    async def test_public_sources_include_only_owner_other_channels(self):
         with self.store.db:
-            self.store._conversations.write_shared_call(Scope(1, 10, 200, True), 500, "B", "나는 커피를 좋아해")
+            self.store._conversations.write_shared_call(
+                Scope(1, 10, 200, True), 500, "B", "다른 사람의 대화",
+            )
+            self.store._conversations.write_shared_call(
+                Scope(1, 10, 100, True), 501, "A", "현재 채널",
+            )
+            self.store._conversations.write_shared_call(
+                Scope(1, 20, 100, True), 502, "A", "본인의 다른 채널",
+            )
         self.guild.get_channel = MagicMock(return_value=self.channel)
         self.guild.fetch_member = AsyncMock(return_value=NS(id=100))
         self.bot.get_guild = MagicMock(return_value=self.guild)
-        self.assertEqual([s.user_id for s in await self.bot.public_sources(100, 1)], [200])
+        sources = await self.bot.public_sources(100, 1, exclude_channel_id=10)
+        self.assertEqual([(s.guild_id, s.channel_id, s.user_id) for s in sources],
+                         [(1, 20, 100)])
+        self.assertEqual([s.user_id for s in await self.bot.public_sources(100)], [100])
+
+    async def test_recent_public_sources_respect_chatlog_and_dm_switch(self):
+        source = Scope(1, 20, 100, True)
+        with self.store.db:
+            self.store._conversations.write_shared_call(source, 503, "A", "본인 대화")
+        self.guild.get_channel = MagicMock(return_value=self.channel)
+        self.guild.fetch_member = AsyncMock(return_value=NS(id=100))
+        self.bot.get_guild = MagicMock(return_value=self.guild)
+        self.assertEqual(len(await self.bot.public_sources(100)), 1)
+        self.store.set_chat_log_mode_override(source.channel, "off")
+        self.assertEqual(await self.bot.public_sources(100), [])
+        self.store.set_chat_log_mode_override(source.channel, "on")
+        from dataclasses import replace
+        self.bot.settings = replace(self.bot.settings, public_memory_in_dm=False)
         self.assertEqual(await self.bot.public_sources(100), [])
 
     async def test_memory_off_skips_persistent_memory_but_keeps_recent_context(self):
