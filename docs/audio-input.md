@@ -1,4 +1,4 @@
-# Native Discord audio input (#534)
+# Native Discord audio input (#534 / #537)
 
 This feature supplies the **original audio** to Gemini. It does not transcribe speech,
 summarize audio in a separate model call, join voice channels, or produce audio output.
@@ -7,9 +7,12 @@ summarize audio in a separate model call, join voice channels, or produce audio 
 
 - Current Discord message attachments (voice messages and ordinary audio files) have priority.
 - Explicit reply targets use the same bounded audio path with their original author and message ID.
-- Recent admitted chat context can attach **at most one** audio file, and its total played
-  duration must fit the smaller passive-recent time budget. A recent audio file's presence is
-  not a reason to invent a new user request.
+- **Ordinary passive recent chat (including older messages from the same speaker) stays
+  metadata-only for audio**. Explicit replies and a bounded reply-origin chain may attach
+  original audio if their provenance is verifiably an explicit reply, not inherited ambient media.
+  This prevents incidental audio in the context from disabling Gemini code execution on
+  otherwise unrelated turns. The original file is never implicitly attached from an unrelated
+  recent message.
 - When a file is outside the budget, cannot be read or cannot be safely inspected, the model
   receives only the original message's filename/duration metadata (if present), **not**
   transcription or invented audio content. A later explicit reply can request the original.
@@ -39,10 +42,8 @@ Environment variables are startup-only until wired into the dashboard:
 | AUDIO_INPUT_ENABLED | on | Disable original audio injection |
 | AUDIO_MAX_ATTACHMENTS | 2 | Total audio files per answer |
 | AUDIO_MAX_SECONDS | 300 | Maximum duration of each source file |
-| AUDIO_RECENT_MAX_ATTACHMENTS | 1 | Recent-context-only file count |
-| AUDIO_RECENT_MAX_SECONDS | 60 | Recent-context cumulative duration |
 
-Limits are inclusive for current/reply/recent selection, with current first.
+Limits are inclusive for current/explicit-reply-chain selection, with current first.
 A file may also be excluded by the separate 12 MiB/file and 16 MiB/request size budgets.
 Duration and file count are bounded, but exact token accounting remains provider-specific.
 
