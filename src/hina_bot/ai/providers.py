@@ -76,6 +76,13 @@ def _gemini_interactions_tool_error(error: ProviderAPIError) -> bool:
     if error.status_code not in {400, 422, 500, 501, 503}:
         return False
     diagnostic = f"{error.error_code} {error.error_message}".lower()
+    # A media/tool incompatibility is a malformed *input combination*, not a
+    # search endpoint failure. Retrying via generateContent replays the same
+    # incompatible payload and consumes latency without a chance of recovery.
+    if ("mime type" in diagnostic or "mime_type" in diagnostic) and (
+        "not supported for code execution" in diagnostic
+    ):
+        return False
     return any(term in diagnostic for term in (
         "google_search", "google search", "url_context", "url context",
         "code_execution", "code execution",
