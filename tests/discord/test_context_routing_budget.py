@@ -225,9 +225,8 @@ class PublicRecentContextTests(unittest.TestCase):
         self.assertNotIn("현재 채널", str(context))
 
     def test_per_source_two_exchanges_and_total_character_budget(self):
-        scope = None
         for i in range(3):
-            scope = self.add_call(1, 10, 100, 301 + i, f"user-{i}", f"reply-{i}", minutes=3 - i)
+            self.add_call(1, 10, 100, 301 + i, f"user-{i}", f"reply-{i}", minutes=3 - i)
         sources = self.store.recent_public_candidates(100, None, since=self.since)
         context = self.store.recent_public_context(sources, since=self.since, max_chars=23)
         self.assertEqual(len(context), 1)
