@@ -340,11 +340,152 @@ async def test_executor_stops_after_bounded_tool_rounds():
     registry.register(spec(), lambda arguments: arguments)
     executor = LocalToolExecutor(registry, max_rounds=1)
 
-    async def send(_request):
+    requests = []
+
+    async def send_ignoring_missing_tools(request):
+        requests.append(request)
         return function_response()
 
     with pytest.raises(ToolRoundLimitError):
-        await executor.run(send, {"model": "test", "input": "hello"})
+        await executor.run(send_ignoring_missing_tools, {
+            "model": "test", "input": "hello", "tools": registry.schemas(),
+        })
+    assert "tools" not in requests[-1]
+
+
+
+@pytest.mark.asyncio
+async def test_executor_finishes_with_tool_free_answer_at_round_limit():
+    registry = LocalToolRegistry()
+    executed = []
+    registry.register(spec(), lambda arguments: executed.append(arguments) or arguments)
+    executor = LocalToolExecutor(registry, max_rounds=2)
+    requests = []
+    responses = [
+        function_response(call_id="call_1"),
+        function_response(call_id="call_2"),
+        final_response("I cannot verify the earlier name."),
+    ]
+
+    async def send(request):
+        requests.append(request)
+        return responses[len(requests) - 1]
+
+    original = {
+        "model": "test",
+        "input": [{"role": "user", "content": "what was the earlier name?"}],
+        "instructions": "Original instructions.",
+        "tools": registry.schemas(),
+        "tool_choice": "auto",
+    }
+    result = await executor.run(send, original)
+
+    assert result.response.output_text == "I cannot verify the earlier name."
+    assert result.local_calls == 2
+    assert len(result.responses) == 3
+    assert len(executed) == 2
+    assert requests[1]["tools"] == registry.schemas()
+    assert requests[1]["tool_choice"] == "auto"
+    assert "tools" not in requests[2]
+    assert "tool_choice" not in requests[2]
+    assert "Original instructions." in requests[2]["instructions"]
+    assert "더 이상 도구를 호출하지 말고" in requests[2]["instructions"]
+    assert json.loads(requests[2]["input"][-1]["output"])["ok"] is True
+    # The executor must never mutate the input request provided by its caller.
+    assert original["tool_choice"] == "auto"
+    assert original["tools"] == registry.schemas()
+
+
+@pytest.mark.asyncio
+async def test_executor_finishes_after_tool_budget_exhausted():
+    registry = LocalToolRegistry()
+    attempts = []
+
+    def exhausted(_arguments):
+        attempts.append(1)
+        raise LocalToolError("budget_exhausted")
+
+    registry.register(spec(), exhausted)
+    executor = LocalToolExecutor(registry, max_rounds=1)
+    requests = []
+
+    async def send(request):
+        requests.append(request)
+        return function_response() if len(requests) == 1 else final_response("Unknown.")
+
+    result = await executor.run(send, {
+        "model": "test", "input": "question", "tools": registry.schemas(),
+        "tool_choice": "auto",
+    })
+
+    assert result.response.output_text == "Unknown."
+    assert result.local_calls == 1
+    assert attempts == [1]
+    assert "tools" not in requests[1]
+    assert json.loads(requests[1]["input"][-1]["output"]) == {
+        "ok": False, "result": {"error": "budget_exhausted"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_executor_tool_free_final_preserves_stored_gemini_state():
+    registry = LocalToolRegistry()
+    registry.register(spec(), lambda arguments: arguments)
+    executor = LocalToolExecutor(registry, max_rounds=1)
+    first = function_response()
+    first._hina_interaction_id = "int_previous"
+    first._hina_gemini_api = "interactions"
+    requests = []
+
+    async def send(request):
+        requests.append(request)
+        return first if len(requests) == 1 else final_response("Finished.")
+
+    result = await executor.run(send, {
+        "model": "test", "input": "question", "store": True,
+        "tools": registry.schemas(), "tool_choice": "auto",
+    })
+
+    assert result.response.output_text == "Finished."
+    followup = requests[-1]
+    assert followup["previous_interaction_id"] == "int_previous"
+    assert followup["_hina_gemini_api"] == "interactions"
+    assert followup["store"] is True
+    assert len(followup["input"]) == 1
+    assert followup["input"][0]["name"] == "echo"
+    assert "tools" not in followup
+
+
+@pytest.mark.asyncio
+async def test_executor_tool_free_final_preserves_stateless_gemini_steps():
+    registry = LocalToolRegistry()
+    registry.register(spec(), lambda arguments: arguments)
+    executor = LocalToolExecutor(registry, max_rounds=1)
+    first = function_response()
+    first._hina_interaction_id = ""
+    first._hina_gemini_api = "generate_content"
+    first._hina_interaction_steps = (
+        {"type": "thought", "signature": "sig", "summary": []},
+        {"type": "function_call", "id": "call_1", "name": "echo",
+         "arguments": {"value": "hello"}},
+    )
+    requests = []
+
+    async def send(request):
+        requests.append(request)
+        return first if len(requests) == 1 else final_response("Finished.")
+
+    await executor.run(send, {
+        "model": "test", "input": [{"role": "user", "content": "hello"}],
+        "store": False, "tools": registry.schemas(), "tool_choice": "auto",
+    })
+
+    followup = requests[-1]
+    assert followup["_hina_gemini_api"] == "generate_content"
+    assert "previous_interaction_id" not in followup
+    assert followup["input"][1:3] == list(first._hina_interaction_steps)
+    assert followup["input"][-1]["type"] == "function_call_output"
+    assert "tools" not in followup
 
 
 @pytest.mark.asyncio
