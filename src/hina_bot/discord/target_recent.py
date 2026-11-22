@@ -183,7 +183,7 @@ class TargetAwareRecentMessages(RecentMessages):
             if remaining <= 0 or len(selected) >= slots:
                 break
             content = str(row.get("content", ""))
-            if not content and not row.get("has_visual") and not row.get("has_audio") and not row.get("has_audio"):
+            if not content and not row.get("has_visual") and not row.get("has_audio"):
                 continue
             item = dict(row)
             item["content"] = content[:remaining]
@@ -226,7 +226,7 @@ class TargetAwareRecentMessages(RecentMessages):
             anchors_left = len(required) - index
             share = max(1, remaining // anchors_left)
             content = str(row.get("content", ""))
-            if not content and not row.get("has_visual"):
+            if not content and not row.get("has_visual") and not row.get("has_audio"):
                 continue
             item = dict(row)
             item["content"] = content[:share]
