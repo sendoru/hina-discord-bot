@@ -523,6 +523,36 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(calls), 1)
         self.assertNotIn("A의 일반 발언", str(dict(calls[0])))
 
+    async def test_server_to_dm_recent_context_is_injected_without_lexical_match(self):
+        """Regression: a server conversation eight minutes ago informs an ordinary DM."""
+        source = Scope(1, 10, 100, True)
+        self.store.add(source, 601, "서버에서 했던 헛소리", "이제 그만해", name="A")
+        with self.store.db:
+            self.store.db.execute(
+                "UPDATE shared_calls SET created_at=datetime('now', '-8 minutes') "
+                "WHERE message_id='601'"
+            )
+        self.guild.get_channel = MagicMock(return_value=self.channel)
+        self.guild.fetch_member = AsyncMock(return_value=NS(id=100))
+        self.bot.get_guild = MagicMock(return_value=self.guild)
+
+        dm_channel = MagicMock(spec=discord.DMChannel)
+        dm_channel.id = 90
+        dm_channel.send = AsyncMock(return_value=NS(id=1001))
+        dm_channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
+        dm_channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
+        dm_message = NS(
+            id=602, content="히나야 헛소리는 여기다 하는 게 나았겠네",
+            author=self.author, guild=None, channel=dm_channel,
+            mentions=[], webhook_id=None,
+        )
+        await self.bot.on_message(dm_message)
+        submitted = self.llm.answer.call_args.kwargs["public_context"]
+        self.assertEqual(len(submitted), 1)
+        self.assertIn("서버에서 했던 헛소리", str(submitted))
+        self.assertIn("이제 그만해", str(submitted))
+        self.assertNotIn("summary", str(submitted))
+
     async def test_public_sources_include_only_owner_other_channels(self):
         with self.store.db:
             self.store._conversations.write_shared_call(
