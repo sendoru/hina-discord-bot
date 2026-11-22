@@ -528,6 +528,9 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         source = Scope(1, 10, 100, True)
         self.store.add(source, 601, "서버에서 했던 헛소리", "이제 그만해", name="A")
         with self.store.db:
+            self.store._conversations.write_shared_call(
+                source, 601, "A", "서버에서 했던 헛소리",
+            )
             self.store.db.execute(
                 "UPDATE shared_calls SET created_at=datetime('now', '-8 minutes') "
                 "WHERE message_id='601'"
@@ -570,7 +573,9 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         sources = await self.bot.public_sources(100, 1, exclude_channel_id=10)
         self.assertEqual([(s.guild_id, s.channel_id, s.user_id) for s in sources],
                          [(1, 20, 100)])
-        self.assertEqual([s.user_id for s in await self.bot.public_sources(100)], [100])
+        self.assertEqual(
+            [s.channel_id for s in await self.bot.public_sources(100)], [20, 10],
+        )
 
     async def test_recent_public_sources_respect_chatlog_and_dm_switch(self):
         source = Scope(1, 20, 100, True)
