@@ -7,6 +7,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
+from .audio import AUDIO_INPUT_POLICY, CURRENT_AUDIO_INPUTS, augment_audio_input
 from .discord_emoji_input import normalize_custom_emoji_text
 from .prompts import load_prompt
 
@@ -363,7 +364,8 @@ class _VisionResponses:
 
     async def create(self, **kwargs):
         visuals = CURRENT_VISUAL_INPUTS.get()
-        if not VISION_REQUEST_ACTIVE.get() or not visuals:
+        audios = CURRENT_AUDIO_INPUTS.get() if self._provider_name == "gemini" else ()
+        if not VISION_REQUEST_ACTIVE.get() or not (visuals or audios):
             return await self._responses.create(**kwargs)
 
         request = dict(kwargs)
@@ -371,11 +373,14 @@ class _VisionResponses:
         include_media_resolution = (
             self._provider_name == "gemini" and model.startswith("gemini-3")
         )
-        request["input"] = _augment_input(
-            request.get("input"),
-            visuals,
-            include_media_resolution=include_media_resolution,
-        )
+        if visuals:
+            request["input"] = _augment_input(
+                request.get("input"),
+                visuals,
+                include_media_resolution=include_media_resolution,
+            )
+        if audios:
+            request["input"] = augment_audio_input(request.get("input"), audios)
         # Passive recent images alone do not activate the fixed reference.
         if (
             self._provider_name == "gemini"
@@ -396,7 +401,9 @@ class _VisionResponses:
                 len(self._reference_image_urls),
             )
         request["instructions"] = (
-            (request.get("instructions") or "").rstrip() + "\n\n" + VISION_INPUT_POLICY
+            (request.get("instructions") or "").rstrip()
+            + ("\n\n" + VISION_INPUT_POLICY if visuals else "")
+            + ("\n\n" + AUDIO_INPUT_POLICY if audios else "")
         ).strip()
         return await self._responses.create(**request)
 
