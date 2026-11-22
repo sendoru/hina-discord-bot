@@ -41,10 +41,19 @@ The executor:
 2. extracts function calls,
 3. executes registered handlers,
 4. appends function-call outputs,
-5. lets the model continue with `tool_choice=auto`.
+5. lets the model continue with `tool_choice=auto` while local-tool rounds remain,
+6. after the last permitted local-tool round, makes one **tool-free final answer request**
+   with the collected tool results and original conversation state.
 
-The loop is bounded to four local-tool rounds by default. Exceeding the limit raises
-`ToolRoundLimitError`.
+The loop is bounded to four local-tool execution rounds by default. On the final
+continuation, all tool schemas and tool-choice options are omitted, including managed
+tools (such as web search). This works for adapters that do not forward `tool_choice`
+to the provider and avoids another `requires_action` loop. The finalization policy
+is maintained in `src/hina_bot/prompts/integration/local_tool_finalization.md` so the
+model can answer from available evidence without inventing missing history.
+If the provider still emits a function call without being offered a tool, the
+existing `ToolRoundLimitError` safeguard remains in effect. Provider failures,
+timeouts, and invalid/empty final responses still follow existing error handling.
 
 ## Provider adapters
 
