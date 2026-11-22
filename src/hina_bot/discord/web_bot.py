@@ -8,9 +8,9 @@ from datetime import UTC, datetime, timedelta
 
 import discord
 
+from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS
 from hina_bot.ai.egress_policy import strict_policy
 from hina_bot.ai.local_tools import CURRENT_LOCAL_TOOLS, LocalToolRegistry
-from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
@@ -18,6 +18,12 @@ from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.server_memory_selection import CURRENT_SERVER_READER
 
+from .audio import (
+    AudioLimits,
+    audio_context_refs,
+    collect_audio_inputs,
+    message_has_audio,
+)
 from .bot import CURRENT_TYPING_ACTIVE, CURRENT_TYPING_STOP
 from .bot import HinaClient as BaseHinaClient
 from .chat_history_tool import register_chat_history_tool
@@ -34,12 +40,6 @@ from .slash_commands import install_slash_commands
 from .target_context import TARGET_CONTEXT, collect, retrieval_mode
 from .target_recent import CURRENT_CHANNEL_CONTEXT, TargetAwareRecentMessages
 from .turn_provenance import CURRENT_TURN_PROVENANCE, build_turn_provenance
-from .audio import (
-    AudioLimits,
-    audio_context_refs,
-    collect_audio_inputs,
-    message_has_audio,
-)
 from .vision import (
     VisionFetchCache,
     VisionLimits,
