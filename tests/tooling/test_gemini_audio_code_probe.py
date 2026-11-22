@@ -1,4 +1,3 @@
-import io
 import wave
 
 import pytest
