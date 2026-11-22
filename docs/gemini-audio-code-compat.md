@@ -94,8 +94,34 @@ when the API accepted a client-side function call.
 - An HTTP 200 demonstrates request acceptance, **not** that the model actually
   called or executed Python. The test deliberately does not claim that.
 
-The real API matrix has **not** yet been run from this repository branch:
-no production Gemini credentials are available to the investigation environment.
+## Live results (2026-11-22, user-operated API key)
+
+The operator ran the default six-case probe against `gemini-3.5-flash-lite`
+using its synthetic **1-second PCM WAV** sample. Statuses and timings below
+are transcribed from the screenshot of the terminal output (not from a CI run).
+Neither endpoint was routed through the production request gating.
+
+| API | Variant | HTTP | Status/error | Elapsed |
+| --- | --- | --- | --- | ---: |
+| Interactions | text+code | 200 | completed | 1,832 ms |
+| Interactions | audio-only | 200 | completed | 1,491 ms |
+| Interactions | audio+code | 400 | `invalid_request: The mime type: audio/wav is not supported for code execution.` | 570 ms |
+| generateContent | text+code | 200 | completed | 1,194 ms |
+| generateContent | audio-only | 200 | completed | 1,507 ms |
+| generateContent | audio+code | 400 | `INVALID_ARGUMENT: The mime type: audio/wav is not supported for code execution.` | 598 ms |
+
+Together with the previous Discord `audio/ogg` live failure and subsequent
+successful audio-only tests, this demonstrates that **at least WAV and OGG
+fail with the provider-managed code execution tool**, rather than the problem
+being solely Discord OGG handling. Both endpoints reject the combination for
+the tested model. The prompt did not ask for code execution on the audio cases:
+these are request-validation failures with the tool *declared*.
+
+The result does **not** establish support for other models, other audio MIME
+types, local function calling, or two-stage computation. Function support can
+be checked using `--include-function` with the same sample (8 total calls).
+The current production gating remains appropriate until a replacement is
+designed and verified.
 
 ## Next decision
 
