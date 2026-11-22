@@ -125,11 +125,14 @@ designed and verified.
 
 ## Next decision
 
-Keep the current fail-safe code tool gating until live matrix results are
-available. If audio+code is unsupported across the relevant APIs and formats,
-avoid blind retries, re-encoding, or always-on STT. Consider a deliberate
-second *text-only* computation stage for genuinely computation-heavy audio
-questions, or a narrowly scoped local calculation function, with strict
-provenance and per-turn token/latency budgets. Such a solution should preserve
-raw audio in the initial understanding step and should be developed separately
-after the compatibility boundary is established.
+Keep the current fail-safe code tool gating for the tested model and APIs.
+The validated WAV and observed OGG failures make simply changing endpoints or
+converting OGG to WAV ineffective. **Next check audio + local function calling**
+using the same probe's `--include-function` flag. If that combination works,
+assess whether a narrowly scoped, deterministic local calculation function
+suffices for common tasks without providing arbitrary Python execution.
+For complex computation, consider an explicitly requested second *text-only*
+code-execution stage, using only carefully bounded derived data, not raw audio.
+Preserve native audio in the original understanding stage; do not adopt
+always-on STT, blind retries, or unchecked re-encoding. Any replacement needs
+provenance, security review, and per-turn token/latency budgets.
