@@ -1,10 +1,14 @@
 import json
+from dataclasses import replace
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
 from openai import AsyncOpenAI
 
 from hina_bot.ai.information_pipeline import LLM
+from hina_bot.ai.memory_extraction import parse_annotation
 from hina_bot.ai.reference_context_blocks import read_reference_context
 from hina_bot.ai.request_assembly import STRUCTURED_MEMORY_POLICY
 from hina_bot.ai.structured_memory_context import (
@@ -13,6 +17,9 @@ from hina_bot.ai.structured_memory_context import (
     full_relationship_memory,
     full_shared_memory,
     owner_dm_memory,
+    personal_memory_fields,
+    personal_memory_selection,
+    structured_memory_context,
 )
 from hina_bot.core.config import Settings
 from hina_bot.core.memory_items import MemoryDisclosure, MemoryKind
@@ -427,6 +434,7 @@ def test_same_disclosure_space_gets_raw_relationship_memory_not_cross_space_prof
         "content": "SAME_SPACE_RELATIONSHIP",
         "confidence": 0.95,
         "scope_relation": "same_server_other_channel",
+        "disclosure": "implicit",
         "relationship_evidence": {"familiarity": 3, "casualness": 3},
     }]
     assert implicit == {}
@@ -797,6 +805,183 @@ async def test_other_users_relationship_evidence_never_projects():
         assert reference["cross_space_relationship"] == {}
         assert reference["structured_relationship_memory"] == []
         assert "OTHER_USER_RELATIONSHIP" not in json.dumps(reference, ensure_ascii=False)
+    finally:
+        await llm.close()
+        store.close()
+
+
+NOW_MEMORY = datetime(2026, 11, 22, 21, 0, tzinfo=ZoneInfo("Asia/Seoul"))
+
+
+def _save_annotation(store, item_id, kind, fields, *, verified=False):
+    evidence = fields.get("evidence", "사용자 발화")
+    annotation = parse_annotation(
+        fields, kind, [{"user": evidence, "at": "2026-11-20 03:00:00"}],
+    )
+    store.upsert_memory_annotation(replace(
+        annotation, memory_item_id=item_id, verified=verified,
+    ))
+
+
+def test_all_admitted_non_relationship_memories_keep_semantic_annotations():
+    store = Store.create(":memory:")
+    dm = Scope(None, 10, 100)
+    try:
+        style_id = store.add_memory_item(
+            dm, "계속 귀여운 말투로 말해주기를 바람",
+            kind=MemoryKind.PREFERENCE, disclosure=MemoryDisclosure.LOCAL,
+        )
+        past_id = store.add_memory_item(
+            dm, "예전에 기타를 배움",
+            kind=MemoryKind.FACT, disclosure=MemoryDisclosure.LOCAL,
+        )
+        unknown_id = store.add_memory_item(
+            dm, "좋아하는 게임이 있음",
+            kind=MemoryKind.PREFERENCE, disclosure=MemoryDisclosure.LOCAL,
+        )
+        _save_annotation(store, style_id, MemoryKind.PREFERENCE, {
+            "evidence": "앞으로도 계속 귀여운 말투로 말해줘",
+            "time_scope": "ongoing",
+            "stability": "long",
+            "usage_mode": "directive",
+            "directive_type": "style",
+            "importance": 3,
+            "explicit": True,
+            "keywords": ["귀여운 말투"],
+            "audience": "owner",
+        }, verified=True)
+        _save_annotation(store, past_id, MemoryKind.FACT, {
+            "evidence": "예전에 기타를 배웠어",
+            "time_scope": "past",
+            "usage_mode": "contextual",
+            "importance": 2,
+        })
+
+        projected = structured_memory_context(
+            store, dm, use_memory=True, allow_cross_space=True, now=NOW_MEMORY,
+        )["structured_owner_memory"]
+        rows = {row["content"]: row for row in projected}
+        style = rows["계속 귀여운 말투로 말해주기를 바람"]
+        assert style["disclosure"] == "local"
+        assert style["annotation"] == {
+            "state": "current",
+            "time_scope": "ongoing",
+            "usage_mode": "directive",
+            "audience": "owner",
+            "importance": 3,
+            "explicit": True,
+            "verified": True,
+            "status": "current",
+            "stability": "long",
+            "directive_type": "style",
+            "status_noted": "2026-11-20",
+        }
+        assert rows["예전에 기타를 배움"]["annotation"]["status"] == "past"
+        assert rows["예전에 기타를 배움"]["annotation"]["usage_mode"] == "contextual"
+        assert rows["좋아하는 게임이 있음"]["annotation"]["state"] == "missing"
+        assert rows["좋아하는 게임이 있음"]["annotation"]["usage_mode"] == "contextual"
+        assert rows["좋아하는 게임이 있음"]["annotation"]["verified"] is False
+        raw = json.dumps(projected, ensure_ascii=False)
+        assert '"evidence"' not in raw
+        assert '"keywords"' not in raw
+        assert '"source_message_ids"' not in raw
+    finally:
+        store.close()
+
+
+def test_stale_style_annotation_retains_type_but_cannot_claim_current_verification():
+    store = Store.create(":memory:")
+    dm = Scope(None, 10, 100)
+    try:
+        item_id = store.add_memory_item(
+            dm, "귀여운 말투 유지", kind=MemoryKind.PREFERENCE,
+        )
+        _save_annotation(store, item_id, MemoryKind.PREFERENCE, {
+            "evidence": "앞으로도 귀여운 말투 유지해줘",
+            "time_scope": "ongoing",
+            "stability": "long",
+            "usage_mode": "directive",
+            "directive_type": "style",
+        }, verified=True)
+        original = store.memory_item(item_id)
+        # Simulate a later item edit without refreshing its annotation.
+        stale_item = replace(original, revision=original.revision + 1)
+        metadata = structured_memory_context(
+            store, dm, use_memory=True, allow_cross_space=True,
+            items=[stale_item],
+            annotations=store.memory_annotations([item_id]),
+            now=NOW_MEMORY,
+        )["structured_owner_memory"][0]["annotation"]
+        assert metadata["state"] == "stale"
+        assert metadata["usage_mode"] == "directive"
+        assert metadata["directive_type"] == "style"
+        assert metadata["verified"] is False
+    finally:
+        store.close()
+
+
+def test_decision_mode_keeps_annotations_for_selected_items_only():
+    store = Store.create(":memory:")
+    dm = Scope(None, 10, 100)
+    settings = Settings(discord_token="test", openai_api_key="test")
+    try:
+        style_id = store.add_memory_item(
+            dm, "계속 작고 귀여운 말투", kind=MemoryKind.PREFERENCE,
+        )
+        store.add_memory_item(dm, "비공개 다른 정보", kind=MemoryKind.FACT)
+        _save_annotation(store, style_id, MemoryKind.PREFERENCE, {
+            "evidence": "앞으로 계속 작고 귀여운 말투로 말해줘",
+            "time_scope": "ongoing",
+            "stability": "long",
+            "usage_mode": "directive",
+            "directive_type": "style",
+        }, verified=True)
+        snapshot = personal_memory_selection(
+            store, dm, message="안녕", settings=settings, now=NOW_MEMORY,
+        )
+        fields = personal_memory_fields(
+            store, dm, settings=settings, use_memory=True, allow_cross_space=True,
+            read_mode="decision", decision_run=snapshot,
+            decision_scores={str(style_id): 0.9}, now=NOW_MEMORY,
+        )["fields"]
+        assert len(fields["structured_owner_memory"]) == 1
+        selected = fields["structured_owner_memory"][0]
+        assert selected["content"] == "계속 작고 귀여운 말투"
+        assert selected["annotation"]["verified"] is True
+        assert selected["annotation"]["directive_type"] == "style"
+        assert "비공개 다른 정보" not in json.dumps(fields, ensure_ascii=False)
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_real_response_payload_contains_verified_style_annotation():
+    calls = []
+    client = _client(calls)
+    llm = LLM(
+        Settings(discord_token="test", openai_api_key="test",
+                 external_context_policy="full", personal_memory_read_mode="full"),
+        client=client,
+    )
+    store = Store.create(":memory:")
+    dm = Scope(None, 10, 100)
+    try:
+        item_id = store.add_memory_item(
+            dm, "앞으로도 귀여운 말투를 유지해주길 바람",
+            kind=MemoryKind.PREFERENCE,
+        )
+        _save_annotation(store, item_id, MemoryKind.PREFERENCE, {
+            "evidence": "앞으로도 귀여운 말투를 계속 유지해줘",
+            "time_scope": "ongoing",
+            "stability": "long",
+            "usage_mode": "directive",
+            "directive_type": "style",
+        }, verified=True)
+        await llm.answer(store, dm, "사용자", "안녕", channel_context=[])
+        memory = _reference(calls[-1])["structured_owner_memory"]
+        assert memory[0]["annotation"]["verified"] is True
+        assert memory[0]["annotation"]["directive_type"] == "style"
+        assert "지속하기를 요청한 말투" in calls[-1]["instructions"]
     finally:
         await llm.close()
         store.close()
