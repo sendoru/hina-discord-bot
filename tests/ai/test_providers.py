@@ -773,6 +773,84 @@ def test_gemini_built_in_requires_action_without_function_call_is_diagnostic():
     assert response._hina_error_codes == ["unexpected_requires_action"]
 
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored", [False, True])
+async def test_gemini_tool_round_limit_forces_tool_free_final_response(stored):
+    from hina_bot.ai.local_tools import LocalToolExecutor, LocalToolRegistry, LocalToolSpec
+
+    payloads = []
+
+    async def handler(request: httpx.Request):
+        payload = __import__("json").loads(request.content)
+        payloads.append(payload)
+        if len(payloads) == 1:
+            return httpx.Response(200, json={
+                "id": "int_first",
+                "status": "requires_action",
+                "steps": [{
+                    "type": "function_call",
+                    "id": "call_1",
+                    "name": "echo",
+                    "arguments": {"value": "hello"},
+                }],
+                "usage": {},
+            })
+        return httpx.Response(200, json={
+            "id": "int_final",
+            "status": "completed",
+            "steps": [{
+                "type": "model_output",
+                "content": [{"type": "text", "text": "best effort"}],
+            }],
+            "usage": {},
+        })
+
+    registry = LocalToolRegistry()
+    registry.register(LocalToolSpec(
+        name="echo",
+        description="Echo an input",
+        parameters={"type": "object", "properties": {"value": {"type": "string"}}},
+    ), lambda arguments: arguments)
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        provider = _GeminiResponses(http)
+
+        async def send(payload):
+            return await provider.create(**payload)
+
+        result = await LocalToolExecutor(registry, max_rounds=1).run(
+            send,
+            {
+                "model": "gemini-test",
+                "input": [{"role": "user", "content": "hello"}],
+                "store": stored,
+                "tools": [{"type": "web_search"}, *registry.schemas()],
+                "tool_choice": "auto",
+            },
+        )
+    finally:
+        await http.aclose()
+
+    assert result.local_calls == 1
+    assert result.response.output_text == "best effort"
+    assert len(payloads) == 2
+    assert [tool["type"] for tool in payloads[0]["tools"]] == [
+        "google_search", "function",
+    ]
+    assert "tools" not in payloads[1]
+    if stored:
+        assert payloads[1]["previous_interaction_id"] == "int_first"
+        assert len(payloads[1]["input"]) == 1
+    else:
+        assert "previous_interaction_id" not in payloads[1]
+        assert payloads[1]["input"][0]["type"] == "user_input"
+        assert payloads[1]["input"][1]["type"] == "function_call"
+    assert payloads[1]["input"][-1]["type"] == "function_result"
+    assert payloads[1]["input"][-1]["name"] == "echo"
+
+
 @pytest.mark.asyncio
 async def test_gemini_mixed_search_then_local_function_replays_native_steps():
     from hina_bot.ai.local_tools import LocalToolExecutor, LocalToolRegistry, LocalToolSpec

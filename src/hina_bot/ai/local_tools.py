@@ -9,6 +9,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
+from .prompts import load_prompt
+
 JsonObject = dict[str, Any]
 ToolHandler = Callable[[JsonObject], Any | Awaitable[Any]]
 
@@ -257,6 +259,24 @@ def continuation_request(
     return followup
 
 
+_FINAL_TOOL_ROUND_POLICY = load_prompt("local_tool_finalization.md")
+
+
+def _final_answer_request(request: dict) -> dict:
+    """Retain the completed tool round, but disallow further tool execution."""
+    final_request = dict(request)
+    # Omitting schemas also disables function calls for provider adapters that do
+    # not forward tool_choice (notably Gemini Interactions/generateContent).
+    final_request.pop("tools", None)
+    final_request.pop("tool_choice", None)
+    previous_instructions = str(final_request.get("instructions") or "").strip()
+    final_request["instructions"] = "\n\n".join(
+        text for text in (previous_instructions, _FINAL_TOOL_ROUND_POLICY.strip())
+        if text
+    )
+    return final_request
+
+
 CURRENT_LOCAL_TOOLS: ContextVar[LocalToolRegistry | None] = ContextVar(
     "current_local_tools",
     default=None,
@@ -291,6 +311,10 @@ class LocalToolExecutor:
             results = tuple([await self.registry.execute(call) for call in calls])
             local_calls += len(calls)
             current_request = continuation_request(current_request, response, calls, results)
+            if round_index == self.max_rounds - 1:
+                # Give the model one final, tool-free chance to answer rather than
+                # failing just because it would otherwise request another tool.
+                current_request = _final_answer_request(current_request)
 
         raise ToolRoundLimitError("local tool round limit exceeded")
 
