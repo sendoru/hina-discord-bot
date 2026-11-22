@@ -68,6 +68,7 @@ class TargetAwareRecentMessages(RecentMessages):
         reply_target_user_id=None,
         direct_trigger=None,
         has_visual=False,
+        has_audio=False,
         capture_turn_provenance=False,
     ):
         direct = direct_trigger
@@ -101,6 +102,7 @@ class TargetAwareRecentMessages(RecentMessages):
             reply_target_user_id=reply_target_user_id,
             direct_trigger=direct,
             has_visual=has_visual,
+            has_audio=has_audio,
             capture_turn_provenance=capture_turn_provenance,
         )
         # Delivered live answers own ephemeral sources; buffer eviction/deletion removes both.
@@ -181,7 +183,7 @@ class TargetAwareRecentMessages(RecentMessages):
             if remaining <= 0 or len(selected) >= slots:
                 break
             content = str(row.get("content", ""))
-            if not content and not row.get("has_visual"):
+            if not content and not row.get("has_visual") and not row.get("has_audio") and not row.get("has_audio"):
                 continue
             item = dict(row)
             item["content"] = content[:remaining]
@@ -434,6 +436,7 @@ class TargetAwareRecentMessages(RecentMessages):
                     "reply_target_user_id": None,
                     "direct_trigger": sampled.get("direct_trigger"),
                     **({"has_visual": True} if sampled.get("has_visual") else {}),
+                    **({"has_audio": True} if sampled.get("has_audio") else {}),
                     "target_retrieval_mode": str(target.get("retrieval_mode", "")),
                     "explicit_history_request": bool(
                         target.get("explicit_history_request", False)
