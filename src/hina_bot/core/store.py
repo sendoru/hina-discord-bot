@@ -918,6 +918,19 @@ class Store:
             self.db.rollback()
             raise
 
+    def recent_public_candidates(
+        self, user_id: int, guild_id: int | None, *, since: str,
+        exclude_channel_id: int | None = None,
+    ):
+        return self._conversations.recent_public_candidates(
+            user_id, guild_id, since=since, exclude_channel_id=exclude_channel_id,
+        )
+
+    def recent_public_context(self, allowed_scopes, *, since: str, max_chars: int = 4000):
+        return self._conversations.recent_public_context(
+            allowed_scopes, since=since, max_chars=max_chars,
+        )
+
     def public_candidates(self, user_id: int, guild_id: int | None = None):
         return self._conversations.public_candidates(user_id, guild_id)
 
