@@ -156,6 +156,17 @@ Discord Developer Portal에서 Bot을 만들고 **Message Content Intent**를 �
 구분해 넣거나, 운영 중 `/config set key:ALWAYS_REPLY_CHANNEL_IDS value:<ID,...>`로 변경할 수 있습니다.
 이 implicit trigger는 사람 메시지에만 적용되며 다른 봇은 명시적 호출이 계속 필요합니다.
 
+## 오디오 입력
+
+Discord 음성 메시지와 MP3/OGG/Opus/M4A/WAV/FLAC 등 지원되는 일반 오디오 첨부를
+별도 STT 없이 Gemini 답변 모델에 원본으로 전달합니다. 음성 발화뿐 아니라 음악·비언어적 표현·
+환경음을 문맥에 맞게 이해할 수 있습니다. Discord 음성 채널 수신·TTS는 지원하지 않습니다.
+
+기본 설정은 `AUDIO_INPUT_ENABLED=on`, 현재·명시적 답장 개별 최대 300초, 자동 최근
+문맥 원본은 최대 1개·총 60초이며 재생 길이를 확인하지 못하는 파일은 메타데이터만 남깁니다.
+원본을 DB나 최근 채팅 기록에 영구 저장하지 않습니다. 자세한 내용은
+[docs/audio-input.md](docs/audio-input.md)를 참고하세요.
+
 ## 이미지 입력
 
 현재 호출 메시지, 사용자가 명시적으로 답장한 메시지, 그리고 제한된 최근 채널 메시지의 시각
