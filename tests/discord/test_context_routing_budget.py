@@ -9,7 +9,7 @@ from hina_bot.core.store import Store
 from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.target_context import TARGET_CONTEXT
 from hina_bot.discord.target_recent import TargetAwareRecentMessages
-from hina_bot.discord.web_bot import HinaClient, _public_context_request
+from hina_bot.discord.web_bot import HinaClient
 
 
 class ContextBudgetTests(unittest.TestCase):
@@ -167,31 +167,84 @@ class ContextBudgetTests(unittest.TestCase):
         self.assertTrue(any(row.get("context_kind") == "speaker_thread" for row in rows))
 
 
-class PublicContextRoutingTests(unittest.TestCase):
-    def test_ordinary_chat_does_not_load_public_memory(self):
-        scope = Scope(1, 10, 100)
-        self.assertEqual(_public_context_request(scope, "배고파", []), (False, ()))
+class PublicRecentContextTests(unittest.TestCase):
+    def setUp(self):
+        self.store = Store.create(":memory:")
+        self.now = datetime(2026, 11, 22, 11, 31, tzinfo=UTC)
+        self.since = (self.now - timedelta(minutes=60)).strftime("%Y-%m-%d %H:%M:%S")
 
-    def test_current_user_memory_question_only_loads_current_user(self):
-        scope = Scope(1, 10, 100)
+    def tearDown(self):
+        self.store.close()
+
+    def add_call(self, guild, channel, user, message_id, text, reply, *, minutes):
+        scope = Scope(guild, channel, user, True)
+        self.store.add(scope, message_id, text, reply, name=f"user-{user}")
+        at = (self.now - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+        with self.store.db:
+            self.store.db.execute(
+                "UPDATE shared_calls SET created_at=? WHERE message_id=?",
+                (at, str(message_id)),
+            )
+        return scope
+
+    def test_recent_own_calls_are_selected_without_query_keywords(self):
+        own = self.add_call(1, 10, 100, 101, "서버의 헛소리", "그만해", minutes=8)
+        self.add_call(1, 20, 200, 102, "다른 사람 이야기", "응", minutes=2)
+        self.add_call(1, 30, 100, 103, "오래된 말", "오래된 대답", minutes=61)
+        self.add_call(2, 40, 100, 104, "다른 서버 본인", "응", minutes=5)
+        with self.store.db:
+            self.store._conversations.write_shared_summary(
+                own, "speaker", "시간 확인 불가능한 오래된 요약", 1,
+            )
+
+        sources = self.store.recent_public_candidates(100, None, since=self.since)
         self.assertEqual(
-            _public_context_request(scope, "내가 전에 뭐라고 했지?", []),
-            (True, (100,)),
+            [source.channel_id for source in sources], [40, 10],
+        )
+        context = self.store.recent_public_context(sources, since=self.since)
+        self.assertEqual(len(context), 2)
+        self.assertIn("서버의 헛소리", str(context))
+        self.assertIn("그만해", str(context))
+        self.assertNotIn("오래된 말", str(context))
+        self.assertNotIn("다른 사람 이야기", str(context))
+        self.assertNotIn("시간 확인 불가능한 오래된 요약", str(context))
+        self.assertNotIn("summary", str(context))
+
+    def test_server_scope_excludes_current_channel_and_other_guild(self):
+        self.add_call(1, 10, 100, 201, "현재 채널", "여기 답변", minutes=4)
+        self.add_call(1, 20, 100, 202, "다른 채널", "저기 답변", minutes=5)
+        self.add_call(1, 30, 200, 203, "다른 사용자", "응", minutes=3)
+        self.add_call(2, 40, 100, 204, "다른 서버", "응", minutes=2)
+
+        sources = self.store.recent_public_candidates(
+            100, 1, since=self.since, exclude_channel_id=10,
+        )
+        self.assertEqual([source.channel_id for source in sources], [20])
+        context = self.store.recent_public_context(sources, since=self.since)
+        self.assertIn("다른 채널", str(context))
+        self.assertNotIn("현재 채널", str(context))
+
+    def test_per_source_two_exchanges_and_total_character_budget(self):
+        scope = None
+        for i in range(3):
+            scope = self.add_call(1, 10, 100, 301 + i, f"user-{i}", f"reply-{i}", minutes=3 - i)
+        sources = self.store.recent_public_candidates(100, None, since=self.since)
+        context = self.store.recent_public_context(sources, since=self.since, max_chars=23)
+        self.assertEqual(len(context), 1)
+        exchanges = context[0]["recent_exchanges"]
+        self.assertEqual([row["user"] for row in exchanges], ["user-1", "user-2"])
+        self.assertLessEqual(
+            sum(len(row["user"]) + len(row.get("hina", "")) for row in exchanges),
+            23,
         )
 
-    def test_explicit_target_only_loads_that_users_public_memory(self):
-        scope = Scope(1, 10, 100)
-        sampled = [{"user_id": "200", "name": "B", "sampled_messages": []}]
-        enabled, user_ids = _public_context_request(scope, "B는 어떤 사람이야?", sampled)
-        self.assertTrue(enabled)
-        self.assertEqual(set(user_ids), {200})
-
-    def test_broad_server_history_query_can_fan_out(self):
-        scope = Scope(1, 10, 100)
-        self.assertEqual(
-            _public_context_request(scope, "이 서버에서 누가 전에 그런 말 했어?", []),
-            (True, None),
-        )
+    def test_public_window_caps_source_count_at_four(self):
+        for i in range(5):
+            self.add_call(1, 10 + i, 100, 401 + i, f"channel-{i}", "응", minutes=10 - i)
+        sources = self.store.recent_public_candidates(100, None, since=self.since)
+        context = self.store.recent_public_context(sources, since=self.since)
+        self.assertEqual(len(sources), 5)
+        self.assertEqual(len(context), 4)
 
 
 class FakeHistoryChannel:
