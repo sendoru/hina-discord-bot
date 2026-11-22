@@ -387,7 +387,9 @@ class ConversationRepository:
                 (source.conversation, str(source.user_id), since),
             ).fetchall()
             exchanges = []
-            for row in reversed(rows):
+            # Spend the budget on the newest exchanges first, then restore
+            # chronological ordering for the model.
+            for row in rows:
                 if remaining <= 0:
                     break
                 user_text = str(row["content"] or "")[:min(800, remaining)]
@@ -405,7 +407,7 @@ class ConversationRepository:
                     "source": source.conversation,
                     "user_id": str(source.user_id),
                     "name": str(rows[0]["name"] or "")[:100],
-                    "recent_exchanges": exchanges,
+                    "recent_exchanges": list(reversed(exchanges)),
                 })
         return context
 
