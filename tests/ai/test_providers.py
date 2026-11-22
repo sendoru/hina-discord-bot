@@ -816,8 +816,12 @@ async def test_gemini_tool_round_limit_forces_tool_free_final_response(stored):
     http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
         provider = _GeminiResponses(http)
+
+        async def send(payload):
+            return await provider.create(**payload)
+
         result = await LocalToolExecutor(registry, max_rounds=1).run(
-            provider.create,
+            send,
             {
                 "model": "gemini-test",
                 "input": [{"role": "user", "content": "hello"}],
