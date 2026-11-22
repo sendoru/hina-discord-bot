@@ -76,6 +76,13 @@ def _gemini_interactions_tool_error(error: ProviderAPIError) -> bool:
     if error.status_code not in {400, 422, 500, 501, 503}:
         return False
     diagnostic = f"{error.error_code} {error.error_message}".lower()
+    # A media/tool incompatibility is a malformed *input combination*, not a
+    # search endpoint failure. Retrying via generateContent replays the same
+    # incompatible payload and consumes latency without a chance of recovery.
+    if ("mime type" in diagnostic or "mime_type" in diagnostic) and (
+        "not supported for code execution" in diagnostic
+    ):
+        return False
     return any(term in diagnostic for term in (
         "google_search", "google search", "url_context", "url context",
         "code_execution", "code execution",
@@ -130,6 +137,14 @@ def _gemini_content(value):
             text = item.get("text")
             if isinstance(text, str) and text:
                 blocks.append({"type": "text", "text": text})
+            continue
+        if block_type == "input_audio":
+            audio_url = item.get("audio_url")
+            if isinstance(audio_url, str) and audio_url.startswith("data:audio/") and ";base64," in audio_url:
+                header, data = audio_url.split(",", 1)
+                mime_type = header[5:].split(";", 1)[0]
+                if data:
+                    blocks.append({"type": "audio", "data": data, "mime_type": mime_type})
             continue
         if block_type == "input_image":
             image_url = item.get("image_url")
@@ -242,9 +257,9 @@ def _gemini_generate_content_parts(value):
         if block_type == "text":
             parts.append({"text": block["text"]})
             continue
-        if block_type != "image":
+        if block_type not in {"image", "audio"}:
             continue
-        mime_type = block.get("mime_type") or "image/png"
+        mime_type = block.get("mime_type") or ("audio/ogg" if block_type == "audio" else "image/png")
         if block.get("data"):
             parts.append({
                 "inline_data": {

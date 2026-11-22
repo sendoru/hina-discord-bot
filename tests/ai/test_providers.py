@@ -7,6 +7,7 @@ import pytest
 from hina_bot.ai.providers import (
     ProviderAPIError,
     _gemini_input,
+    _gemini_interactions_tool_error,
     _gemini_output,
     _GeminiResponses,
     _OpenRouterResponses,
@@ -1375,3 +1376,18 @@ async def test_gemini_master_store_switch_reads_runtime_value_each_call():
     finally:
         await http.aclose()
     assert [payload["store"] for payload in payloads] == [False, True]
+
+
+def test_media_code_execution_error_does_not_retry_via_search_fallback():
+    error = ProviderAPIError(
+        "gemini", 400,
+        code="INVALID_ARGUMENT",
+        message="The mime type: audio/ogg is not supported for code execution.",
+    )
+    assert not _gemini_interactions_tool_error(error)
+    other = ProviderAPIError(
+        "gemini", 400,
+        code="INVALID_ARGUMENT",
+        message="google_search is not available for this API.",
+    )
+    assert _gemini_interactions_tool_error(other)

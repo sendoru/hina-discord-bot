@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import discord
 
+from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS
 from hina_bot.ai.egress_policy import strict_policy
 from hina_bot.ai.local_tools import CURRENT_LOCAL_TOOLS, LocalToolRegistry
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
@@ -17,6 +18,12 @@ from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope, trigger_text
 from hina_bot.core.server_memory_selection import CURRENT_SERVER_READER
 
+from .audio import (
+    AudioLimits,
+    audio_context_refs,
+    collect_audio_inputs,
+    message_has_audio,
+)
 from .bot import CURRENT_TYPING_ACTIVE, CURRENT_TYPING_STOP
 from .bot import HinaClient as BaseHinaClient
 from .chat_history_tool import register_chat_history_tool
@@ -152,6 +159,7 @@ class HinaClient(BaseHinaClient):
             external_context_policy=settings.external_context_policy,
         )
         self.vision_limits = VisionLimits.from_settings(settings)
+        self.audio_limits = AudioLimits.from_settings(settings)
         self.visual_cache = VisionFetchCache()
         install_slash_commands(self)
 
@@ -174,6 +182,7 @@ class HinaClient(BaseHinaClient):
                 ):
                     row["content"] = message_context_text(after)[:4000]
                     row["has_visual"] = message_has_visual(after)
+                    row["has_audio"] = message_has_audio(after)
                     break
         if channel is not None:
             self.visual_cache.invalidate(channel.id, getattr(after, "id", None))
@@ -313,7 +322,8 @@ class HinaClient(BaseHinaClient):
                 if policy == "direct" and not own_bot and historical_text is None:
                     continue
                 has_visual = message_has_visual(old)
-                if not message_context_text(old) and not has_visual:
+                has_audio = message_has_audio(old)
+                if not message_context_text(old) and not has_visual and not has_audio:
                     continue
                 historical_scope = Scope(
                     scope.guild_id,
@@ -332,6 +342,7 @@ class HinaClient(BaseHinaClient):
                     reply_target_user_id=None,
                     direct_trigger=None if own_bot else historical_text is not None,
                     has_visual=has_visual,
+                    has_audio=has_audio,
                     capture_turn_provenance=False,
                 )
                 if str(old.id) in derived_replies:
@@ -396,7 +407,8 @@ class HinaClient(BaseHinaClient):
                 scope.guild_id is not None
                 and self.store.chat_log_enabled(scope)
                 and capture_mode(self.store, scope) == "all"
-                and (message_context_text(message) or message_has_visual(message))
+                and (message_context_text(message) or message_has_visual(message)
+                     or message_has_audio(message))
             ):
                 self.recent.add(
                     scope,
@@ -405,10 +417,16 @@ class HinaClient(BaseHinaClient):
                     message_context_text(message),
                     role="bot",
                     has_visual=message_has_visual(message),
+                    has_audio=message_has_audio(message),
                 )
             return
 
-        if text == "" and getattr(message, "reference", None) is None and not message_has_visual(message) and not message_embed_text(message):
+        if (text == "" and getattr(message, "reference", None) is None
+                and not message_has_visual(message)
+                and not (self.settings.audio_input_enabled
+                         and self.settings.provider == "gemini"
+                         and message_has_audio(message))
+                and not message_embed_text(message)):
             # A bare call without a current or explicit-reply visual always takes
             # the fixed-reply path. Do not fetch old visual context for it.
             token = CURRENT_TURN_ID.set(new_turn_id())
@@ -570,6 +588,18 @@ class HinaClient(BaseHinaClient):
             else []
         )
         visual_fetch_ms = round((time.perf_counter() - visual_fetch_started) * 1000)
+        audio_fetch_started = time.perf_counter()
+        audio_inputs = (
+            await collect_audio_inputs(
+                message,
+                context_refs=audio_context_refs([*replied, *selected_context]),
+                limits=self.audio_limits,
+            )
+            if (text is not None and self.settings.audio_input_enabled
+                and self.settings.provider == "gemini")
+            else []
+        )
+        audio_fetch_ms = round((time.perf_counter() - audio_fetch_started) * 1000)
         visual_context_ms = round((time.perf_counter() - visual_context_started) * 1000)
         public_request = (
             (
@@ -606,6 +636,10 @@ class HinaClient(BaseHinaClient):
                     visual_ref_count=len(visual_refs),
                     visual_fetch_ms=visual_fetch_ms,
                     visual_input_count=len(visuals),
+                    audio_input_count=len(audio_inputs),
+                    audio_duration_seconds=round(sum(a.duration_seconds for a in audio_inputs), 1),
+                    audio_input_bytes=sum(len(a.data) for a in audio_inputs),
+                    audio_fetch_ms=audio_fetch_ms,
                 )
             finally:
                 CURRENT_TURN_ID.reset(event_token)
@@ -637,6 +671,7 @@ class HinaClient(BaseHinaClient):
         reply_token = REPLY_CONTEXT.set(tuple(replied))
         channel_context_token = CURRENT_CHANNEL_CONTEXT.set(tuple(selected_context))
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
+        audio_token = CURRENT_AUDIO_INPUTS.set(tuple(audio_inputs))
         provenance_token = CURRENT_TURN_PROVENANCE.set(
             build_turn_provenance(message, text or "", replied, visuals)
             if text is not None
@@ -674,6 +709,7 @@ class HinaClient(BaseHinaClient):
             CURRENT_LOCAL_TOOLS.reset(local_tools_token)
             CURRENT_PUBLIC_CONTEXT_REQUEST.reset(public_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)
+            CURRENT_AUDIO_INPUTS.reset(audio_token)
             CURRENT_TURN_PROVENANCE.reset(provenance_token)
             CURRENT_CHANNEL_CONTEXT.reset(channel_context_token)
             REPLY_CONTEXT.reset(reply_token)

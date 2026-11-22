@@ -31,6 +31,7 @@ class RecentMessages:
         reply_target_user_id=None,
         direct_trigger=None,
         has_visual=False,
+        has_audio=False,
         capture_turn_provenance=False,
     ):
         now = time.monotonic()
@@ -63,6 +64,7 @@ class RecentMessages:
             "reply_target_user_id": reply_target_id,
             "direct_trigger": direct,
             **({"has_visual": True} if has_visual else {}),
+            **({"has_audio": True} if has_audio else {}),
             "name": name[:100],
             "content": content[:4000],
             "role": role,
@@ -122,7 +124,7 @@ class RecentMessages:
             if remaining <= 0 or len(result) >= max_items:
                 break
             content = str(row.get("content", ""))
-            if not content and not row.get("has_visual"):
+            if not content and not row.get("has_visual") and not row.get("has_audio"):
                 continue
             item = dict(row)
             item["content"] = content[:remaining]

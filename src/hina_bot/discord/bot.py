@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 import discord
 
+from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS
 from hina_bot.ai.server_memory_extraction import extract_server_batch, pending_spaces
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
@@ -28,6 +29,7 @@ from hina_bot.core.scope_overrides import MemoryMode
 from hina_bot.core.store import Store
 
 from .admin_commands import initialize_admin_commands, run_admin_command_once
+from .audio import message_has_audio
 from .embed_context import message_embed_text
 from .emoji_commands import EmojiRegistry
 from .forward_context import message_context_text, message_turn_text
@@ -526,7 +528,8 @@ class HinaClient(discord.Client):
                 if old.author.bot and not own_bot:
                     continue
                 has_visual = message_has_visual(old)
-                if not message_context_text(old) and not has_visual:
+                has_audio = message_has_audio(old)
+                if not message_context_text(old) and not has_visual and not has_audio:
                     continue
                 historical_scope = Scope(
                     scope.guild_id, scope.channel_id, old.author.id, scope.public_at_capture)
@@ -552,6 +555,7 @@ class HinaClient(discord.Client):
                     reply_target_user_id=None,
                     direct_trigger=None if own_bot else historical_text is not None,
                     has_visual=has_visual,
+                    has_audio=has_audio,
                 )
         except discord.HTTPException as exc:
             # Do not log message contents or channel data. Retry naturally on a later call.
@@ -639,6 +643,7 @@ class HinaClient(discord.Client):
                 reply_target_user_id=None,
                 direct_trigger=text is not None,
                 has_visual=message_has_visual(message),
+                has_audio=message_has_audio(message),
             )
         if text is None:
             return
@@ -809,7 +814,9 @@ class HinaClient(discord.Client):
                         return
                     self.cooldowns[key] = cooldown_received_at
 
-                    if not text and not message_embed_text(message) and not _has_strong_visual_context(CURRENT_VISUAL_INPUTS.get()):
+                    if (not text and not message_embed_text(message)
+                            and not _has_strong_visual_context(CURRENT_VISUAL_INPUTS.get())
+                            and not _has_strong_visual_context(CURRENT_AUDIO_INPUTS.get())):
                         raw_turn_persistence = "skipped"
                         raw_turn_persistence_reason = "fixed_reply_no_raw_turn"
                         stage = "delivery"
