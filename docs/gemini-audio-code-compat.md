@@ -3,11 +3,11 @@
 ## Observed failure
 
 On 2026-11-22, the production Gemini request including native Discord audio and
-the declared \`code_execution\` tool failed with HTTP 400 INVALID_ARGUMENT:
+the declared `code_execution` tool failed with HTTP 400 INVALID_ARGUMENT:
 
-\`\`\`text
+```text
 The mime type: audio/ogg is not supported for code execution.
-\`\`\`
+```
 
 A subsequent native-audio test without code execution did not reproduce that
 failure. PR #536 temporarily omitted code execution **only when a Gemini answer
@@ -41,7 +41,7 @@ The opt-in diagnostic script directly calls the project's Gemini provider adapte
 without passing through the answer assembler's audio gating. This means it can
 reproduce the unsupported combination without disabling production safeguards.
 
-\`\`\`bash
+```bash
 uv run python -m hina_bot.tooling.gemini_audio_code_probe --dry-run
 
 # An actual short OGG voice note is preferred to the generated WAV baseline:
@@ -57,13 +57,13 @@ uv run python -m hina_bot.tooling.gemini_audio_code_probe \
 # If only one API is in question:
 uv run python -m hina_bot.tooling.gemini_audio_code_probe \
     --api generate_content --audio /path/to/short-voice-message.ogg
-\`\`\`
+```
 
-The command loads \`GEMINI_API_KEY\` from the existing environment or
-\`.env.local\`/\`.env\`. Do not post the key or raw audio to GitHub.
-Without \`--audio\`, the script generates a one-second silent WAV for a baseline
+The command loads `GEMINI_API_KEY` from the existing environment or
+`.env.local`/`.env`. Do not post the key or raw audio to GitHub.
+Without `--audio`, the script generates a one-second silent WAV for a baseline
 test. Provided files are capped at 4 MiB and 10 seconds by default (an explicit
-\`--max-seconds\` can increase this to at most 60). It performs six low-token API
+`--max-seconds` can increase this to at most 60). It performs six low-token API
 calls by default and **may incur API charges**:
 
 | API | Input | Tool declaration | Purpose |
@@ -75,20 +75,20 @@ calls by default and **may incur API charges**:
 | generateContent | audio | none | Audio control for second API |
 | generateContent | audio | code_execution | Same combination on second API |
 
-Optional \`--include-function\` adds audio+custom-function tests, relevant to
-#535. Optional \`--include-search\` adds audio+Google Search tests; these may have
-additional search charges. Requests use \`store=false\`, do not write media or
+Optional `--include-function` adds audio+custom-function tests, relevant to
+#535. Optional `--include-search` adds audio+Google Search tests; these may have
+additional search charges. Requests use `store=false`, do not write media or
 response content to files, and emit only status codes, limited provider error
-diagnostics, and elapsed milliseconds. Responses may say \`requires_action\`
+diagnostics, and elapsed milliseconds. Responses may say `requires_action`
 when the API accepted a client-side function call.
 
 ### Interpretation
 
-- \`text+code=200\`, \`audio-only=200\`, \`audio+code=400\` isolates a
+- `text+code=200`, `audio-only=200`, `audio+code=400` isolates a
   code/media combination restriction for that **API + model + MIME type**.
-- \`audio-only=400\` means the audio transport/model/MIME must be fixed before
+- `audio-only=400` means the audio transport/model/MIME must be fixed before
   drawing conclusions about code execution.
-- \`text+code=400\` means the baseline model/tool setup isn't supported.
+- `text+code=400` means the baseline model/tool setup isn't supported.
 - A different outcome between Interactions and generateContent means the
   workaround might be API-specific rather than a model-wide restriction.
 - An HTTP 200 demonstrates request acceptance, **not** that the model actually
