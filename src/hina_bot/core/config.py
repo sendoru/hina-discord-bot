@@ -176,8 +176,6 @@ class Settings:
     audio_input_enabled: bool = True
     audio_max_attachments: int = 2
     audio_max_seconds: int = 300
-    audio_recent_max_attachments: int = 1
-    audio_recent_max_seconds: int = 60
     vision_max_attachments: int = 4
     vision_max_emojis: int = 12
     vision_max_stickers: int = 8
@@ -457,8 +455,6 @@ class Settings:
             raise ValueError("AUDIO_INPUT_ENABLED은 on 또는 off여야 합니다.")
         audio_max_attachments = int(os.getenv("AUDIO_MAX_ATTACHMENTS", "2"))
         audio_max_seconds = int(os.getenv("AUDIO_MAX_SECONDS", "300"))
-        audio_recent_max_attachments = int(os.getenv("AUDIO_RECENT_MAX_ATTACHMENTS", "1"))
-        audio_recent_max_seconds = int(os.getenv("AUDIO_RECENT_MAX_SECONDS", "60"))
         vision_max_attachments = int(os.getenv("VISION_MAX_ATTACHMENTS", "4"))
         vision_max_emojis = int(os.getenv("VISION_MAX_EMOJIS", "12"))
         vision_max_stickers = int(os.getenv("VISION_MAX_STICKERS", "8"))
@@ -557,8 +553,6 @@ class Settings:
             audio_input_enabled=audio_input_enabled == "on",
             audio_max_attachments=audio_max_attachments,
             audio_max_seconds=audio_max_seconds,
-            audio_recent_max_attachments=audio_recent_max_attachments,
-            audio_recent_max_seconds=audio_recent_max_seconds,
             vision_max_attachments=vision_max_attachments,
             vision_max_emojis=vision_max_emojis,
             vision_max_stickers=vision_max_stickers,
@@ -589,8 +583,6 @@ class Settings:
                 and 0 <= s.lore_max_items <= 20 and 0 <= s.lore_max_chars <= 12000
                 and 0 <= s.audio_max_attachments <= 8
                 and 1 <= s.audio_max_seconds <= 1800
-                and 0 <= s.audio_recent_max_attachments <= s.audio_max_attachments
-                and 0 <= s.audio_recent_max_seconds <= s.audio_max_seconds
                 and 0 <= s.vision_max_attachments <= 32
                 and 0 <= s.vision_max_emojis <= 32
                 and 0 <= s.vision_max_stickers <= 32
@@ -607,7 +599,6 @@ class Settings:
                              "structured memory stale은 60초~7일, sweep interval은 0 또는 60초~24시간, "
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "audio attachments 0~8, audio max duration 1~1800초, "
-                             "recent audio 제한은 전체 오디오 제한 이하여야 하고, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하, "
                              "memory visual pending 상한은 16~4096 MB")
         if not s.history_turns <= s.raw_retention_turns <= 100000:
