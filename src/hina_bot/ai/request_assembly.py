@@ -18,6 +18,7 @@ from hina_bot.core.memory_context import (
 from hina_bot.core.memory_selection import selection_provenance
 from hina_bot.core.server_memory_selection import CURRENT_SERVER_READER
 
+from .audio import CURRENT_AUDIO_INPUTS
 from .context_input import build_context_input
 from .context_provenance import build_context_provenance
 from .discord_emoji_input import normalize_custom_emoji_text, normalized_message_context
@@ -757,7 +758,12 @@ class RequestAssembler(BaseLLM):
         if lore_mode == "tool":
             instruction_parts.append(LORE_TOOL_POLICY)
             instruction_group_chars["instruction_tools_chars"] += len(LORE_TOOL_POLICY)
-        if managed_tool_config(self.settings.provider):
+        # Gemini currently rejects audio-bearing requests when code execution is enabled.
+        # Audio stays native; omit only code execution, not search or local functions.
+        native_audio_request = (
+            self.settings.provider == "gemini" and bool(CURRENT_AUDIO_INPUTS.get())
+        )
+        if managed_tool_config(self.settings.provider) and not native_audio_request:
             instruction_parts.append(CODE_EXECUTION_POLICY)
             instruction_group_chars["instruction_tools_chars"] += len(
                 CODE_EXECUTION_POLICY
@@ -803,7 +809,9 @@ class RequestAssembler(BaseLLM):
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
         tools = list(tool_config(search_mode) or ())
-        managed_tools = managed_tool_config(self.settings.provider)
+        managed_tools = (
+            [] if native_audio_request else managed_tool_config(self.settings.provider)
+        )
         if url_context_enabled:
             managed_tools.extend(managed_tool_config(
                 self.settings.provider,
