@@ -9,8 +9,8 @@ from datetime import UTC, datetime, timedelta
 
 import discord
 
-from hina_bot.ai.server_memory_extraction import extract_server_batch, pending_spaces
 from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS
+from hina_bot.ai.server_memory_extraction import extract_server_batch, pending_spaces
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
@@ -29,13 +29,13 @@ from hina_bot.core.scope_overrides import MemoryMode
 from hina_bot.core.store import Store
 
 from .admin_commands import initialize_admin_commands, run_admin_command_once
+from .audio import message_has_audio
 from .embed_context import message_embed_text
 from .emoji_commands import EmojiRegistry
 from .forward_context import message_context_text, message_turn_text
 from .message_split import prepare_discord_answer
 from .output_safety import neutralize_mentions
 from .target_recent import CURRENT_CHANNEL_CONTEXT
-from .audio import message_has_audio
 from .vision import memory_visuals_for_turn, message_has_visual
 
 log = logging.getLogger("hina")
