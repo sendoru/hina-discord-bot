@@ -31,7 +31,8 @@ def message_turn_text(message, routed_text: str) -> str:
     never supply a prefix or mention to the routing decision.
     """
     return "\n\n".join(
-        part for part in (routed_text, message_forward_text(message)) if part.strip()
+        part for part in (routed_text, message_forward_text(message), audio_context_text(message))
+        if part.strip()
     )
 
 
