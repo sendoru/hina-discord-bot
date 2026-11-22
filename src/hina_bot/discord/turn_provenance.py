@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 
 from ..ai.vision import VisualInput
+from .audio import message_has_audio
 from .vision import message_has_visual
 
 CURRENT_TURN_PROVENANCE: ContextVar[dict | None] = ContextVar(
@@ -80,6 +81,7 @@ def build_turn_provenance(
         "provenance_class": "conversation",
         "at": created_at.isoformat() if created_at is not None else "",
         "has_visual": message_has_visual(message),
+        "has_audio": message_has_audio(message),
     }
 
     sources: list[dict] = []
@@ -102,6 +104,11 @@ def build_turn_provenance(
             "direct_trigger": value.get("direct_trigger"),
             "at": _source_at(value),
             "has_visual": bool(value.get("has_visual", False)),
+            "has_audio": bool(value.get("has_audio", False)),
+            "audio_explicit_reference": bool(
+                value.get("has_audio")
+                and value.get("reference_strength") == "explicit_reply"
+            ),
             "provenance_class": (
                 "conversation"
                 if role == "assistant" or author_id == request["author_user_id"]
