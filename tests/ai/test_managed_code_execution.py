@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS
 from hina_bot.ai.information_pipeline import InformationPipeline
 from hina_bot.ai.managed_tools import (
     CODE_EXECUTION_POLICY,
@@ -153,6 +154,46 @@ async def test_normal_openai_chat_exposes_code_interpreter_in_one_model_call(tmp
             "container": {"type": "auto"},
         } in request["tools"]
         assert request["tool_choice"] == "auto"
+        assert CODE_EXECUTION_POLICY in request["instructions"]
+    finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_gemini_audio_disables_only_code_execution_not_other_tools(tmp_path):
+    """Audio + code_execution is a Gemini API 400 even when code execution isn't used."""
+    fake = client("음악이 들리네.")
+    llm = InformationPipeline(settings(tmp_path), client=fake)
+    store = Store.create(":memory:")
+    scope = Scope(None, 10, 100)
+    token = CURRENT_AUDIO_INPUTS.set((object(),))
+    try:
+        await llm.answer(
+            store, scope, "사용자",
+            "히나야 https://example.com/docs 이 소리 어때?",
+            channel_context=[],
+        )
+        request = fake.responses.create.await_args.kwargs
+        assert {"type": "code_execution"} not in request.get("tools", [])
+        assert {"type": "url_context"} in request.get("tools", [])
+        assert CODE_EXECUTION_POLICY not in request["instructions"]
+    finally:
+        CURRENT_AUDIO_INPUTS.reset(token)
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_gemini_without_audio_keeps_code_execution_after_audio_turn(tmp_path):
+    fake = client("알겠어.")
+    llm = InformationPipeline(settings(tmp_path), client=fake)
+    store = Store.create(":memory:")
+    scope = Scope(None, 10, 100)
+    try:
+        await llm.answer(store, scope, "사용자", "히나야 안녕", channel_context=[])
+        request = fake.responses.create.await_args.kwargs
+        assert {"type": "code_execution"} in request["tools"]
         assert CODE_EXECUTION_POLICY in request["instructions"]
     finally:
         await llm.close()
