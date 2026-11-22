@@ -36,16 +36,12 @@ _MIME_BY_KIND = {
 class AudioLimits:
     attachments: int = 2
     max_seconds: float = 300
-    recent_seconds: float = 60
-    recent_files: int = 1
 
     @classmethod
     def from_settings(cls, settings):
         return cls(
             attachments=settings.audio_max_attachments,
             max_seconds=settings.audio_max_seconds,
-            recent_seconds=settings.audio_recent_max_seconds,
-            recent_files=settings.audio_recent_max_attachments,
         )
 
 
@@ -82,15 +78,28 @@ def audio_context_refs(rows) -> list[VisualContextRef]:
     """Use only provenance-selected messages, ordered by strength then recency."""
     refs = []
     seen = set()
-    order = {
-        "replied_message": 0, "reply_reference_source": 1,
-        "reply_origin_source": 1, "reply_origin_request": 1,
-        "prior_reply_source": 2, "speaker_thread": 3,
-        "target_user_history": 4, "channel_ambient": 5,
+    # Only explicit causal reply links may bring original audio into an answer.
+    # Ordinary recent messages (even the same speaker) are metadata-only: audio
+    # otherwise disables Gemini code execution on otherwise unrelated turns.
+    allowed = {
+        "replied_message": "explicit_reply",
+        "reply_origin_request": "prior_user_request",
+        "reply_origin_source": "prior_explicit_reply",
     }
+    order = {name: i for i, name in enumerate(allowed)}
+
     for row in rows or ():
         mid = str(row.get("message_id") or "")
+        kind = str(row.get("context_kind") or "")
+        strength = str(row.get("reference_strength") or "")
         if not mid or not row.get("has_audio") or mid in seen:
+            continue
+        if allowed.get(kind) != strength:
+            continue
+        # Origin sources can include passively selected images/other references.
+        # An audio source must actually have been a *direct reply*, not merely
+        # inherited as a reference of the replied-to assistant answer.
+        if kind == "reply_origin_source" and not row.get("audio_explicit_reference"):
             continue
         seen.add(mid)
         refs.append(VisualContextRef(
@@ -209,22 +218,17 @@ async def collect_audio_inputs(message, *, context_refs=(), limits=None):
         return []
     result = []
     bytes_used = 0
-    recent_used = 0
-    recent_seconds = 0.0
     seen = set()
 
     async def collect(target, kind, strength):
-        nonlocal bytes_used, recent_used, recent_seconds
+        nonlocal bytes_used
         mid = str(getattr(target, "id", "") or "")
         if mid in seen:
             return
         seen.add(mid)
-        recent = strength not in {"current_message", "explicit_reply", "prior_explicit_reply"}
         metadata = _message_metadata(target, kind, strength)
         for attachment in audio_attachments(target):
             if len(result) >= limits.attachments:
-                break
-            if recent and recent_used >= limits.recent_files:
                 break
             size = int(getattr(attachment, "size", 0) or 0)
             if size <= 0 or size > AUDIO_MAX_BYTES or bytes_used + size > AUDIO_TOTAL_BYTES:
@@ -249,9 +253,6 @@ async def collect_audio_inputs(message, *, context_refs=(), limits=None):
             # from compressed file bytes. Unsupported containers remain metadata-only.
             if duration is None or not 0 < duration <= limits.max_seconds:
                 continue
-            if recent and (duration > limits.recent_seconds
-                           or recent_seconds + duration > limits.recent_seconds):
-                continue
             result.append(AudioInput(
                 data=data,
                 mime_type=mime,
@@ -261,9 +262,6 @@ async def collect_audio_inputs(message, *, context_refs=(), limits=None):
                 **metadata,
             ))
             bytes_used += len(data)
-            if recent:
-                recent_used += 1
-                recent_seconds += duration
 
     await collect(message, "current_message", "current_message")
     fetch = getattr(getattr(message, "channel", None), "fetch_message", None)
