@@ -423,7 +423,9 @@ class HinaClient(BaseHinaClient):
 
         if (text == "" and getattr(message, "reference", None) is None
                 and not message_has_visual(message)
-                and not (self.settings.audio_input_enabled and message_has_audio(message))
+                and not (self.settings.audio_input_enabled
+                         and self.settings.provider == "gemini"
+                         and message_has_audio(message))
                 and not message_embed_text(message)):
             # A bare call without a current or explicit-reply visual always takes
             # the fixed-reply path. Do not fetch old visual context for it.
@@ -593,7 +595,8 @@ class HinaClient(BaseHinaClient):
                 context_refs=audio_context_refs([*replied, *selected_context]),
                 limits=self.audio_limits,
             )
-            if text is not None and self.settings.audio_input_enabled
+            if (text is not None and self.settings.audio_input_enabled
+                and self.settings.provider == "gemini")
             else []
         )
         audio_fetch_ms = round((time.perf_counter() - audio_fetch_started) * 1000)
