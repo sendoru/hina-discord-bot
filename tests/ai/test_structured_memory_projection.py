@@ -835,7 +835,7 @@ def test_all_admitted_non_relationship_memories_keep_semantic_annotations():
             dm, "예전에 기타를 배움",
             kind=MemoryKind.FACT, disclosure=MemoryDisclosure.LOCAL,
         )
-        unknown_id = store.add_memory_item(
+        store.add_memory_item(
             dm, "좋아하는 게임이 있음",
             kind=MemoryKind.PREFERENCE, disclosure=MemoryDisclosure.LOCAL,
         )
