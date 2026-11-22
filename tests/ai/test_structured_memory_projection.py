@@ -895,6 +895,7 @@ def test_stale_style_annotation_retains_type_but_cannot_claim_current_verificati
     try:
         item_id = store.add_memory_item(
             dm, "귀여운 말투 유지", kind=MemoryKind.PREFERENCE,
+            disclosure=MemoryDisclosure.LOCAL,
         )
         _save_annotation(store, item_id, MemoryKind.PREFERENCE, {
             "evidence": "앞으로도 귀여운 말투 유지해줘",
@@ -927,8 +928,12 @@ def test_decision_mode_keeps_annotations_for_selected_items_only():
     try:
         style_id = store.add_memory_item(
             dm, "계속 작고 귀여운 말투", kind=MemoryKind.PREFERENCE,
+            disclosure=MemoryDisclosure.LOCAL,
         )
-        store.add_memory_item(dm, "비공개 다른 정보", kind=MemoryKind.FACT)
+        store.add_memory_item(
+            dm, "비공개 다른 정보", kind=MemoryKind.FACT,
+            disclosure=MemoryDisclosure.LOCAL,
+        )
         _save_annotation(store, style_id, MemoryKind.PREFERENCE, {
             "evidence": "앞으로 계속 작고 귀여운 말투로 말해줘",
             "time_scope": "ongoing",
@@ -969,6 +974,7 @@ async def test_real_response_payload_contains_verified_style_annotation():
         item_id = store.add_memory_item(
             dm, "앞으로도 귀여운 말투를 유지해주길 바람",
             kind=MemoryKind.PREFERENCE,
+            disclosure=MemoryDisclosure.LOCAL,
         )
         _save_annotation(store, item_id, MemoryKind.PREFERENCE, {
             "evidence": "앞으로도 귀여운 말투를 계속 유지해줘",
