@@ -7,6 +7,7 @@ explicit instead of attributing its text to the forwarding user or to Hina.
 
 from __future__ import annotations
 
+from .audio import audio_context_text
 from .embed_context import message_embed_text
 
 
@@ -39,6 +40,7 @@ def message_context_text(message) -> str:
     content = str(getattr(message, "content", "") or "")
     forwarded = message_forward_text(message)
     preview = message_embed_text(message)
+    audio = audio_context_text(message)
     return "\n\n".join(
-        part for part in (content, forwarded, preview) if part.strip()
+        part for part in (content, forwarded, preview, audio) if part.strip()
     )
