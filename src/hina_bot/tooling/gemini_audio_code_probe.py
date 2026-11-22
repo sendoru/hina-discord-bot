@@ -95,7 +95,7 @@ def audio_sample(path: str | None, *, max_seconds: float = 10) -> tuple[bytes, s
 
 def _input(case: ProbeCase, *, data: bytes, mime: str) -> str | list[dict]:
     prompt = (
-        "Listen to the audio, briefly describe the sounds. Also calculate 17*19."
+        "Briefly describe the audio. Do not run code or use tools."
         if case.audio else
         "Calculate 17*19. When code execution is available, use it."
     )
