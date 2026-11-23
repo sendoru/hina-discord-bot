@@ -235,3 +235,16 @@ def test_explicit_reply_stays_available_after_automatic_session_expiry():
         assert plan.prior_user_request == ""
     finally:
         store.close()
+
+
+def test_zero_gap_allows_old_history_as_routing_fallback():
+    store = Store.create(":memory:")
+    scope = Scope(None, 10, 100)
+    try:
+        store.add(scope, 1, "며칠 전 얘기", "옛날 답변")
+        _age_turn(store, 1, hours=72)
+        plan = build_routing_plan(store, scope, "왜?", [], session_gap_minutes=0)
+        assert plan.anchor_source == "conversation_history"
+        assert plan.prior_user_request == "며칠 전 얘기"
+    finally:
+        store.close()
