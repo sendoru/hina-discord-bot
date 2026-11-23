@@ -574,7 +574,8 @@ class Settings:
                 and 0 <= s.history_max_chars <= 120000
                 and 0 <= s.channel_context_chars <= 12000
                 and 15 <= s.recent_context_window_minutes <= 180
-                and 15 <= s.conversation_session_gap_minutes <= 1440
+                and (s.conversation_session_gap_minutes == 0
+                     or 15 <= s.conversation_session_gap_minutes <= 1440)
                 and 2 <= s.structured_memory_every <= s.history_turns <= 30
                 and 2 <= s.summary_every <= s.history_turns
                 and 60 <= s.structured_memory_stale_after_seconds <= 7 * 24 * 60 * 60

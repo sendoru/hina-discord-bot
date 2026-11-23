@@ -9,8 +9,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
-# An active chat can continue across many short pauses, but its automatic context
-# should not carry an indefinitely old conversation along with it.
+# With a positive gap, do not automatically carry indefinitely old sessions.
+# A zero gap skips both time limits, retaining the caller's history budgets.
 MAX_AUTOMATIC_SESSION_AGE = timedelta(hours=24)
 
 
@@ -46,13 +46,15 @@ def active_session_turns(
 
     `turns` is already a bounded, chronologically ordered `store.history(scope)`
     result. Each step compares the timestamp to the next newer turn (initially
-    the *current request time*). At the first invalid timestamp, gap greater
-    than the configured limit, or age greater than 24h, stop rather than
-    backfilling from an unrelated past session.
+    the *current request time*). Positive gaps stop at a gap beyond the limit
+    or an age beyond 24h. A zero gap disables both time limits; invalid and
+    non-chronological timestamps still stop the scan. Callers provide bounded history.
     """
+    if gap_minutes < 0:
+        raise ValueError("gap_minutes must be non-negative")
     current = (now or datetime.now(UTC)).astimezone(UTC)
-    gap = timedelta(minutes=gap_minutes)
-    earliest = current - MAX_AUTOMATIC_SESSION_AGE
+    gap = timedelta(minutes=gap_minutes) if gap_minutes else None
+    earliest = current - MAX_AUTOMATIC_SESSION_AGE if gap is not None else None
     next_time = current
     selected = []
     for turn in reversed(list(turns)):
@@ -60,8 +62,8 @@ def active_session_turns(
         if (
             timestamp is None
             or timestamp > next_time
-            or timestamp < earliest
-            or next_time - timestamp > gap
+            or (earliest is not None and timestamp < earliest)
+            or (gap is not None and next_time - timestamp > gap)
         ):
             break
         selected.append(turn)
