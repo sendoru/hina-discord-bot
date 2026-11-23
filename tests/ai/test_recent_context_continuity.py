@@ -224,3 +224,41 @@ def test_server_auto_recent_keeps_four_turn_and_character_budgets_in_session():
         assert [row["message_id"] for row in rows] == ["3", "4", "5", "6"]
     finally:
         store.close()
+
+
+def test_zero_gap_admits_old_dm_turns_but_respects_character_budget():
+    now = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+    scope = Scope(None, 10, 100)
+    store = Store.create(":memory:")
+    try:
+        for message_id in range(1, 5):
+            store.add(scope, message_id, f"user-{message_id}", f"hina-{message_id}")
+        _mark_ages(store, now, {1: 72, 2: 48, 3: 30, 4: 1})
+        history, ids = RequestAssembler._dm_conversation_history(
+            store, scope, 12000, gap_minutes=0, now=now
+        )
+        assert ids == ["1", "2", "3", "4"]
+        assert len(history) == 8
+        limited, limited_ids = RequestAssembler._dm_conversation_history(
+            store, scope, len("user-4") + len("hina-4"), gap_minutes=0, now=now
+        )
+        assert limited_ids == ["4"]
+        assert len(limited) == 2
+    finally:
+        store.close()
+
+
+def test_zero_gap_server_recent_still_uses_four_turn_limit():
+    now = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+    scope = Scope(1, 10, 100)
+    store = Store.create(":memory:")
+    try:
+        for message_id in range(1, 7):
+            store.add(scope, message_id, f"user-{message_id}", f"hina-{message_id}")
+        _mark_ages(store, now, {i: 144 - i * 12 for i in range(1, 7)})
+        rows = RequestAssembler._server_recent_conversation(
+            store, scope, [], gap_minutes=0, now=now
+        )
+        assert [r["message_id"] for r in rows] == ["3", "4", "5", "6"]
+    finally:
+        store.close()
