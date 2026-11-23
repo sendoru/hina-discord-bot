@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -21,6 +21,8 @@ from hina_bot.core.memory_selection import (
     MemorySelection,
     SelectionContext,
     decision_memory_candidates,
+    effective_annotation,
+    effective_status,
     full_memory_items,
     selection_provenance,
 )
@@ -56,26 +58,84 @@ def _scope_relation(item: MemoryItem, scope: Scope) -> str:
     return "cross_space"
 
 
-def _serialize_memory_item(item: MemoryItem, scope: Scope) -> dict:
+def _semantic_annotation(
+    item: MemoryItem,
+    annotations: Mapping[int, MemoryAnnotation],
+    now: datetime,
+) -> dict:
+    """Response-use judgments only; omit extraction evidence and internal bookkeeping.
+
+    Missing/stale annotations use the same conservative fallback as memory selection.
+    A stale directive may remain visible for safety, but is never presented as verified.
+    """
+    annotation, state = effective_annotation(item, annotations.get(item.id))
+    status = effective_status(annotation, now)
+    result = {
+        "state": state,
+        "time_scope": annotation.time_scope.value,
+        "usage_mode": annotation.usage_mode.value,
+        "audience": annotation.audience.value,
+        "importance": annotation.importance,
+        "explicit": annotation.explicit,
+        "verified": annotation.verified and state == "current",
+        "status": status.status.value,
+    }
+    if annotation.stability is not None:
+        result["stability"] = annotation.stability.value
+    if annotation.directive_type is not None:
+        result["directive_type"] = annotation.directive_type.value
+    if annotation.event_at:
+        result["event_at"] = annotation.event_at
+    if annotation.recurrence:
+        result["recurrence"] = annotation.recurrence
+    if status.date:
+        result["status_date"] = status.date
+    if status.noted:
+        result["status_noted"] = status.noted
+    if status.expired:
+        result["expired"] = True
+    return result
+
+
+def _serialize_memory_item(
+    item: MemoryItem,
+    scope: Scope,
+    *,
+    annotations: Mapping[int, MemoryAnnotation] | None = None,
+    now: datetime | None = None,
+) -> dict:
     row = {
         "kind": item.kind.value,
         "content": item.content,
         "confidence": item.confidence,
         "scope_relation": _scope_relation(item, scope),
+        "disclosure": item.disclosure.value,
     }
+    if item.kind != MemoryKind.RELATIONSHIP:
+        row["annotation"] = _semantic_annotation(
+            item,
+            annotations or {},
+            now or datetime.now(ZoneInfo("Asia/Seoul")),
+        )
     evidence = item.relationship_evidence.as_dict()
     if evidence:
         row["relationship_evidence"] = evidence
     return row
 
 
-def owner_dm_memory(items: Iterable[MemoryItem], scope: Scope) -> list[dict]:
+def owner_dm_memory(
+    items: Iterable[MemoryItem],
+    scope: Scope,
+    *,
+    annotations: Mapping[int, MemoryAnnotation] | None = None,
+    now: datetime | None = None,
+) -> list[dict]:
     """Serialize all structured memory owned by the current user only in their DM."""
 
     if scope.guild_id is not None:
         return []
     return [
-        _serialize_memory_item(item, scope)
+        _serialize_memory_item(item, scope, annotations=annotations, now=now)
         for item in _owned(items, scope)
         if memory_access(item, scope) == MemoryAccess.FULL
     ]
@@ -97,11 +157,17 @@ def _full_shared_items(
     ]
 
 
-def full_shared_memory(items: Iterable[MemoryItem], scope: Scope) -> list[dict]:
+def full_shared_memory(
+    items: Iterable[MemoryItem],
+    scope: Scope,
+    *,
+    annotations: Mapping[int, MemoryAnnotation] | None = None,
+    now: datetime | None = None,
+) -> list[dict]:
     """Serialize non-relationship memory that is FULL in the current shared space."""
 
     return [
-        _serialize_memory_item(item, scope)
+        _serialize_memory_item(item, scope, annotations=annotations, now=now)
         for item in _full_shared_items(items, scope)
     ]
 
@@ -204,6 +270,8 @@ def structured_memory_context(
     use_memory: bool,
     allow_cross_space: bool,
     items: Iterable[MemoryItem] | None = None,
+    annotations: Mapping[int, MemoryAnnotation] | None = None,
+    now: datetime | None = None,
 ) -> dict:
     """Build structured fields safe to serialize into the response request."""
 
@@ -223,9 +291,22 @@ def structured_memory_context(
             return empty
 
         items = reader(scope.user_id)
+    items = list(items)
+    if annotations is None:
+        annotation_reader = getattr(store, "memory_annotations", None)
+        annotations = (
+            annotation_reader([item.id for item in items if item.kind != MemoryKind.RELATIONSHIP])
+            if callable(annotation_reader)
+            else {}
+        )
+    now = now or datetime.now(ZoneInfo("Asia/Seoul"))
     return {
-        "structured_owner_memory": owner_dm_memory(items, scope),
-        "structured_full_memory": full_shared_memory(items, scope),
+        "structured_owner_memory": owner_dm_memory(
+            items, scope, annotations=annotations, now=now,
+        ),
+        "structured_full_memory": full_shared_memory(
+            items, scope, annotations=annotations, now=now,
+        ),
         "structured_relationship_memory": full_relationship_memory(items, scope),
         "owner_relationship_profile": (
             aggregate_owner_relationship_evidence(items, scope)
@@ -383,6 +464,8 @@ def personal_memory_fields(
     fields = structured_memory_context(
         store, scope, use_memory=use_memory, allow_cross_space=allow_cross_space,
         items=items,
+        annotations=snapshot.annotations if snapshot else None,
+        now=snapshot.ctx.now if snapshot else now,
     )
     result.update(
         fields=fields,
