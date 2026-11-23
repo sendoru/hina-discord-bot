@@ -79,7 +79,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "memory_routing_smart_threshold": "장기 기억 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
     "channel_context_chars": "최근 서버 채널 문맥에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다. 0이면 전달하지 않습니다.",
     "recent_context_window_minutes": "최근 서버 채널 문맥 및 본인의 다른 공개 채널 대화를 자동 참고할 시간 범위(분)입니다. 변경하면 기존 채널 버퍼를 비우고 Discord 히스토리를 다시 수집하며, 다른 공개 채널의 최근 대화는 다음 요청부터 새 범위로 읽습니다. 메시지 수·문자 예산 및 privacy/reset 경계는 유지됩니다.",
-    "conversation_session_gap_minutes": "본인과 히나의 완료된 과거 대화를 응답에 자동 포함할 때 인접 턴 사이 허용하는 최대 공백(분)입니다. 기본 240분, 절대 상한 24시간. 서버/DM 및 이전 발화 routing에 공통 적용하며, 명시적 답장·검색·장기기억 저장에는 적용하지 않습니다. 실행 중 변경 즉시 다음 요청부터 적용됩니다.",
+    "conversation_session_gap_minutes": "본인과 히나의 완료된 과거 대화를 응답에 자동 포함할 때 인접 턴 사이 허용하는 최대 공백(분)입니다. 기본 240분, 양수 15~1440분이면 현재 시각 기준 24시간 절대 상한도 적용됩니다. 0이면 공백 제한과 24시간 상한을 모두 해제하지만 기존 턴 수·문자 예산과 privacy/reset 경계는 유지됩니다. 서버/DM 및 이전 발화 routing에 공통 적용하며, 명시적 답장·검색·장기기억 저장에는 적용하지 않습니다. 실행 중 변경 즉시 다음 요청부터 적용됩니다.",
     "context_input_mode": "모델에 채팅 문맥을 전달하는 형식입니다. legacy는 기존 JSON 참고자료, structured는 현재 상호작용·Reply 체인을 현재 발화에 배치, structured_with_replay는 여기에 Gemini DM의 안전한 완료 턴을 합성 user_input/model_output 이력으로 전달합니다(실험용).",
     "history_max_chars": "DM 최근 대화에서 외부 모델 요청에 사용할 본문 문자 수 상한입니다.",
     "cooldown": "같은 사용자의 연속 호출을 제한하는 cooldown 시간(초)입니다.",
@@ -271,7 +271,7 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "recent_context_window_minutes", "RECENT_CONTEXT_WINDOW_MINUTES", "int", minimum=15, maximum=180
     ),
     "conversation_session_gap_minutes": _runtime_spec(
-        "conversation_session_gap_minutes", "CONVERSATION_SESSION_GAP_MINUTES", "int", minimum=15, maximum=1440
+        "conversation_session_gap_minutes", "CONVERSATION_SESSION_GAP_MINUTES", "int", minimum=0, maximum=1440
     ),
     "context_input_mode": _runtime_spec(
         "context_input_mode", "CONTEXT_INPUT_MODE", "string",
@@ -369,6 +369,8 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             raise ValueError("정수 값을 입력해 주세요.") from exc
         if spec.minimum is not None and value < spec.minimum:
             raise ValueError(f"{spec.env_name}는 {spec.minimum} 이상이어야 해요.")
+        if spec.attr == "conversation_session_gap_minutes" and 0 < value < 15:
+            raise ValueError(f"{spec.env_name}는 0 또는 15~1440이어야 해요.")
         if spec.maximum is not None and value > spec.maximum:
             raise ValueError(f"{spec.env_name}는 {spec.maximum} 이하여야 해요.")
         return value

@@ -177,17 +177,19 @@ def test_conversation_session_gap_env_and_runtime_override(monkeypatch, tmp_path
         settings = RuntimeSettings(base, store)
         assert settings.set_text("CONVERSATION_SESSION_GAP_MINUTES", "1440") == 1440
         assert settings.conversation_session_gap_minutes == 1440
-        for invalid in ("14", "1441", "nan", "60.5", "0"):
+        assert settings.set_text("CONVERSATION_SESSION_GAP_MINUTES", "0") == 0
+        assert settings.conversation_session_gap_minutes == 0
+        for invalid in ("-1", "1", "14", "1441", "nan", "60.5"):
             with pytest.raises(ValueError):
                 settings.set_text("conversation_session_gap_minutes", invalid)
-        assert settings.conversation_session_gap_minutes == 1440
+        assert settings.conversation_session_gap_minutes == 0
         assert settings.reset("CONVERSATION_SESSION_GAP_MINUTES") == 90
         assert settings.conversation_session_gap_minutes == 90
     finally:
         store.close()
 
 
-@pytest.mark.parametrize("raw", ["14", "1441", "not-a-number"])
+@pytest.mark.parametrize("raw", ["-1", "1", "14", "1441", "not-a-number"])
 def test_conversation_session_gap_rejects_invalid_env(monkeypatch, tmp_path: Path, raw):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DISCORD_TOKEN", "token")
@@ -195,6 +197,14 @@ def test_conversation_session_gap_rejects_invalid_env(monkeypatch, tmp_path: Pat
     monkeypatch.setenv("CONVERSATION_SESSION_GAP_MINUTES", raw)
     with pytest.raises(ValueError):
         Settings.load()
+
+
+def test_conversation_session_gap_env_accepts_unlimited(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("CONVERSATION_SESSION_GAP_MINUTES", "0")
+    assert Settings.load().conversation_session_gap_minutes == 0
 
 
 def test_env_example_lists_all_runtime_setting_names():
