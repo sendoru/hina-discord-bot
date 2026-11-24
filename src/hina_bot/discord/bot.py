@@ -29,7 +29,7 @@ from hina_bot.core.scope_overrides import MemoryMode
 from hina_bot.core.store import Store
 
 from .admin_commands import initialize_admin_commands, run_admin_command_once
-from .audio import message_has_audio
+from .audio import memory_audios_for_turn, message_has_audio
 from .embed_context import message_embed_text
 from .emoji_commands import EmojiRegistry
 from .forward_context import message_context_text, message_turn_text
@@ -158,6 +158,11 @@ class HinaClient(discord.Client):
         if configure_pending_visuals is not None:
             configure_pending_visuals(
                 max_bytes=settings.memory_visual_pending_max_mb * 1024 * 1024
+            )
+        configure_pending_audio = getattr(getattr(self.store, "pending_audio", None), "configure", None)
+        if configure_pending_audio is not None:
+            configure_pending_audio(
+                max_bytes=settings.memory_audio_pending_max_mb * 1024 * 1024
             )
         self.llm = llm
         self.emoji_registry = EmojiRegistry(self, self.store)
@@ -354,7 +359,7 @@ class HinaClient(discord.Client):
         )
 
     def _sweep_pending_visuals(self) -> None:
-        """Delete photos whose turn is no longer waiting for extraction, and expired ones."""
+        """Sweep images and audio whose turn is no longer pending or has expired."""
         try:
             removed = self.store.pending_visuals.sweep(
                 self.store.pending_visual_keys(),
@@ -367,9 +372,24 @@ class HinaClient(discord.Client):
                 "Pending visual sweep failed (%s, fingerprint=%s)",
                 type(exc).__name__, error["error_fingerprint"],
             )
+        else:
+            if removed:
+                self.events.emit("memory.visual_swept", removed=removed)
+        if not hasattr(self.store, "pending_audio"):
             return
-        if removed:
-            self.events.emit("memory.visual_swept", removed=removed)
+        try:
+            audio_removed = self.store.pending_audio.sweep(
+                self.store.pending_visual_keys(),
+                max_age_seconds=self._pending_visual_ttl_seconds(),
+            )
+        except Exception as exc:  # noqa: BLE001 - isolated media cleanup
+            error = safe_exception_fields(exc, "pending_audio_sweep")
+            self.events.emit("memory.audio_sweep_failed", level="warning", **error)
+            log.warning("Pending audio sweep failed (%s, fingerprint=%s)",
+                        type(exc).__name__, error["error_fingerprint"])
+        else:
+            if audio_removed:
+                self.events.emit("memory.audio_swept", removed=audio_removed)
 
     def _keep_pending_visuals(self, scope: Scope, message_id: int, text: str, scope_kind: str):
         """Hold this turn's own photos until memory extraction has read them.
@@ -407,6 +427,33 @@ class HinaClient(discord.Client):
             offered=len(visuals),
             evicted=getattr(pending, "evicted", 0) - evicted_before,
         )
+
+    def _keep_pending_audio(self, scope: Scope, message_id: int, scope_kind: str) -> None:
+        """Hold current-turn own audio only. Never claim the uploader is its speaker."""
+        if not self.settings.memory_audio_input:
+            return
+        audios = memory_audios_for_turn(
+            CURRENT_AUDIO_INPUTS.get(), user_id=scope.user_id, message_id=message_id,
+            max_seconds=self.settings.memory_audio_max_seconds,
+            max_files=self.settings.memory_audio_max_attachments,
+        )
+        if not audios:
+            return
+        pending = self.store.pending_audio
+        before = getattr(pending, "evicted", 0)
+        try:
+            stored = pending.put(
+                scope.realm, str(scope.channel_id), str(scope.user_id), str(message_id), audios
+            )
+        except Exception as exc:  # noqa: BLE001 - completed turn was already saved
+            error = safe_exception_fields(exc, "pending_audio_store")
+            self.events.emit("memory.audio_store_failed", level="warning",
+                             scope=scope_kind, **error)
+            log.warning("Pending audio store failed (%s, fingerprint=%s)",
+                        type(exc).__name__, error["error_fingerprint"])
+            return
+        self.events.emit("memory.audio_stored", scope=scope_kind, files=stored,
+                         offered=len(audios), evicted=getattr(pending, "evicted", 0) - before)
 
     async def _sweep_stale_structured_memory(self):
         scopes = self.store.stale_memory_extraction_scopes(
@@ -1047,6 +1094,7 @@ class HinaClient(discord.Client):
                         raw_turn_persistence = "stored"
                         raw_turn_persistence_reason = ""
                         self._keep_pending_visuals(scope, message.id, text, scope_kind)
+                        self._keep_pending_audio(scope, message.id, scope_kind)
 
                 memory_failures = 0
                 if save_memory and scope.guild_id is not None and not self.stopping:

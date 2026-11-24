@@ -185,6 +185,11 @@ class Settings:
     # read them, then delete. Off by default.
     memory_visual_input: bool = False
     memory_visual_pending_max_mb: int = 256
+    # Startup-only: pending native audio for future memory extraction (P1 storage only).
+    memory_audio_input: bool = False
+    memory_audio_max_attachments: int = 2
+    memory_audio_max_seconds: int = 120
+    memory_audio_pending_max_mb: int = 256
 
     def api_key_for(self, provider: str) -> str:
         provider = _provider(provider, "provider")
@@ -463,6 +468,12 @@ class Settings:
         if memory_visual_input not in {"off", "on"}:
             raise ValueError("MEMORY_VISUAL_INPUT은 off 또는 on이어야 합니다.")
         memory_visual_pending_max_mb = int(os.getenv("MEMORY_VISUAL_PENDING_MAX_MB", "256"))
+        memory_audio_input = os.getenv("MEMORY_AUDIO_INPUT", "off").strip().lower() or "off"
+        if memory_audio_input not in {"off", "on"}:
+            raise ValueError("MEMORY_AUDIO_INPUT은 off 또는 on이어야 합니다.")
+        memory_audio_max_attachments = int(os.getenv("MEMORY_AUDIO_MAX_ATTACHMENTS", "2"))
+        memory_audio_max_seconds = int(os.getenv("MEMORY_AUDIO_MAX_SECONDS", "120"))
+        memory_audio_pending_max_mb = int(os.getenv("MEMORY_AUDIO_PENDING_MAX_MB", "256"))
 
         s = cls(
             discord_token=token,
@@ -559,6 +570,10 @@ class Settings:
             vision_hina_reference_path=os.getenv("VISION_HINA_REFERENCE_PATH", "").strip(),
             memory_visual_input=memory_visual_input == "on",
             memory_visual_pending_max_mb=memory_visual_pending_max_mb,
+            memory_audio_input=memory_audio_input == "on",
+            memory_audio_max_attachments=memory_audio_max_attachments,
+            memory_audio_max_seconds=memory_audio_max_seconds,
+            memory_audio_pending_max_mb=memory_audio_pending_max_mb,
         )
         if s.special_dm_user_id is not None and s.special_dm_user_id <= 0:
             raise ValueError("SPECIAL_DM_USER_ID는 양의 Discord 사용자 ID여야 합니다.")
@@ -588,7 +603,10 @@ class Settings:
                 and 0 <= s.vision_max_emojis <= 32
                 and 0 <= s.vision_max_stickers <= 32
                 and vision_total <= 32
-                and 16 <= s.memory_visual_pending_max_mb <= 4096):
+                and 16 <= s.memory_visual_pending_max_mb <= 4096
+                and 0 <= s.memory_audio_max_attachments <= 2
+                and 1 <= s.memory_audio_max_seconds <= 1800
+                and 16 <= s.memory_audio_pending_max_mb <= 4096):
             raise ValueError("설정 범위 오류: cooldown 0~3600, concurrency 1~20, "
                              "output_tokens 128~65536, fast output <= smart output, "
                              "memory output tokens 128~65536, "
@@ -601,7 +619,8 @@ class Settings:
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "audio attachments 0~8, audio max duration 1~1800초, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하, "
-                             "memory visual pending 상한은 16~4096 MB")
+                             "memory visual pending 상한은 16~4096 MB, memory audio pending 상한은 16~4096 MB, "
+                             "memory audio attachments 0~2, seconds 1~AUDIO_MAX_SECONDS")
         if not s.history_turns <= s.raw_retention_turns <= 100000:
             raise ValueError("RAW_RETENTION_TURNS는 HISTORY_TURNS 이상, 100000 이하여야 해요.")
         return s

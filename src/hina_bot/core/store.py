@@ -22,6 +22,12 @@ from .memory_items import (
     RelationshipEvidence,
 )
 from .memory_repository import MemoryRepository
+from .pending_audio import (
+    DiskPendingAudioStore,
+    NullPendingAudioStore,
+    PendingAudioStore,
+    pending_audio_root,
+)
 from .pending_visuals import (
     DiskPendingVisualStore,
     NullPendingVisualStore,
@@ -57,6 +63,7 @@ class Store:
         history_turns: int = 12,
         pending_visuals: PendingVisualStore | None = None,
         *,
+        pending_audio: PendingAudioStore | None = None,
         raw_retention_turns: int = 1000,
     ):
         """Take ownership of an already prepared connection; performs no SQL."""
@@ -68,6 +75,7 @@ class Store:
         self.pending_visuals = (
             pending_visuals if pending_visuals is not None else NullPendingVisualStore()
         )
+        self.pending_audio = pending_audio if pending_audio is not None else NullPendingAudioStore()
         self.settings = SettingsRepository(db)
         self._conversations = ConversationRepository(db, history_turns, raw_retention_turns)
         self._atomic_memory_batch_open = False
@@ -91,6 +99,7 @@ class Store:
             db.execute('PRAGMA secure_delete=ON')
             return cls(
                 db, history_turns, DiskPendingVisualStore(pending_visual_root(path)),
+                pending_audio=DiskPendingAudioStore(pending_audio_root(path)),
                 raw_retention_turns=raw_retention_turns,
             )
         except BaseException:
@@ -122,7 +131,11 @@ class Store:
             pending = (
                 DiskPendingVisualStore(pending_visual_root(path)) if path != ':memory:' else None
             )
-            return cls(db, history_turns, pending, raw_retention_turns=raw_retention_turns)
+            pending_audio = (
+                DiskPendingAudioStore(pending_audio_root(path)) if path != ':memory:' else None
+            )
+            return cls(db, history_turns, pending, pending_audio=pending_audio,
+                       raw_retention_turns=raw_retention_turns)
         except BaseException:
             db.close()
             raise
@@ -727,18 +740,16 @@ class Store:
         self._discard_pending_visuals("discard_user", scope.realm, str(scope.user_id))
 
     def _discard_pending_visuals(self, operation: str, *args) -> None:
-        """Clear pending photos after the database commit; a file error never undoes a purge.
-
-        Anything this misses stays unreachable: the sweep deletes images whose turn row is
-        gone, so a failure here only delays the cleanup.
-        """
-        try:
-            getattr(self.pending_visuals, operation)(*args)
-        except Exception as exc:  # noqa: BLE001 - cleanup must not fail a committed purge
-            log.warning("Pending visual cleanup failed (%s, op=%s)", type(exc).__name__, operation)
+        """Clear both pending media stores after DB commits; failures remain independent."""
+        for kind, pending in (("visual", self.pending_visuals), ("audio", self.pending_audio)):
+            try:
+                getattr(pending, operation)(*args)
+            except Exception as exc:  # noqa: BLE001 - never fail a committed purge
+                log.warning("Pending %s cleanup failed (%s, op=%s)",
+                            kind, type(exc).__name__, operation)
 
     def discard_pending_visuals_for_message(self, channel_id, message_id) -> None:
-        """Drop the pending photos of one Discord message its author deleted."""
+        """Drop any pending media of a Discord message its author deleted."""
         try:
             row = self.db.execute(
                 "SELECT realm,user_id FROM turns WHERE message_id=? AND scope LIKE ?",
@@ -754,9 +765,9 @@ class Store:
             )
 
     def pending_visual_keys(self) -> set[tuple[str, str, str, str]]:
-        """``(realm, channel_id, user_id, message_id)`` of turns still awaiting extraction.
+        """``(realm, channel_id, user_id, message_id)`` of turns awaiting extraction.
 
-        A stored photo is valid only while its turn is in this set; the sweep deletes the rest.
+        Both media stores use this set to sweep orphaned/committed turns.
         """
         rows = self.db.execute(
             """SELECT t.realm,t.scope,t.user_id,t.message_id FROM turns t

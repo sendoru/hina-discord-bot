@@ -177,6 +177,13 @@ class DiskPendingVisualStore(PendingVisualStore):
     turn without its photo is still extracted from its text.
     """
 
+    # Media-specific subclasses reuse the safe file lifecycle without changing visual files.
+    file_pattern = _FILE
+    extensions = _EXT_BY_MIME
+    mime_by_ext = _MIME_BY_EXT
+    sniff_mime = staticmethod(sniff_image_mime)
+    item_type = MemoryVisual
+
     def __init__(
         self,
         root: str | Path,
@@ -232,7 +239,7 @@ class DiskPendingVisualStore(PendingVisualStore):
                             if item.name.startswith(".") and item.name.endswith(".tmp"):
                                 temps.append((Path(item.path), info.st_mtime))
                                 continue
-                            file_match = _FILE.fullmatch(item.name)
+                            file_match = self.file_pattern.fullmatch(item.name)
                             if file_match is None:
                                 continue
                             entries.append(_Entry(
@@ -268,7 +275,7 @@ class DiskPendingVisualStore(PendingVisualStore):
             return 0
         count = sum(
             1 for _, _, names in os.walk(path) for name in names
-            if _FILE.fullmatch(name)
+            if self.file_pattern.fullmatch(name)
         )
         shutil.rmtree(path)
         return count
@@ -292,12 +299,12 @@ class DiskPendingVisualStore(PendingVisualStore):
         message_id = str(message_id)
         items = []
         for visual in visuals:
-            extension = _EXT_BY_MIME.get(visual.mime_type)
+            extension = self.extensions.get(visual.mime_type)
             if (
                 extension is None
                 or not visual.data
                 or len(visual.data) > self.max_file_bytes
-                or sniff_image_mime(visual.data) != visual.mime_type
+                or self.sniff_mime(visual.data) != visual.mime_type
             ):
                 continue
             items.append((visual, extension))
@@ -368,7 +375,7 @@ class DiskPendingVisualStore(PendingVisualStore):
         except FileNotFoundError:
             return {}
         for item in listing:
-            match = _FILE.fullmatch(item.name)
+            match = self.file_pattern.fullmatch(item.name)
             if match is None or match.group(1) not in wanted:
                 continue
             if not item.is_file(follow_symlinks=False):
@@ -380,8 +387,8 @@ class DiskPendingVisualStore(PendingVisualStore):
                     data = handle.read()
             except OSError:
                 continue
-            mime = _MIME_BY_EXT[match.group(3)]
-            if sniff_image_mime(data) != mime:
+            mime = self.mime_by_ext[match.group(3)]
+            if self.sniff_mime(data) != mime:
                 continue
             try:
                 os.utime(item.path)  # recently used: the last to be evicted
@@ -389,7 +396,7 @@ class DiskPendingVisualStore(PendingVisualStore):
                 pass
             number = int(match.group(2))
             found.setdefault(match.group(1), []).append(
-                (number, MemoryVisual(match.group(1), number, mime, data))
+                (number, self.item_type(match.group(1), number, mime, data))
             )
         return {
             message_id: [visual for _, visual in sorted(found[message_id], key=lambda p: p[0])]

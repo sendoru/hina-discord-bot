@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from hina_bot.core.pending_audio import discard_all_pending_audio
 from hina_bot.core.pending_visuals import discard_all_pending_visuals
 
 from .maintenance_db import (
@@ -251,6 +252,7 @@ def reset_analysis_data(
 
     # The turns are gone, so photos that waited for their memory extraction have no owner.
     discard_all_pending_visuals(database_path)
+    discard_all_pending_audio(database_path)
 
     deleted_files: list[Path] = []
     for path in plan.telemetry_files:

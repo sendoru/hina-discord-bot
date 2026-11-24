@@ -13,6 +13,8 @@ from pathlib import PurePath
 import discord
 
 from hina_bot.ai.audio import AudioInput
+from hina_bot.core.audio_mime import sniff_audio_mime as _sniff_audio
+from hina_bot.core.pending_audio import MemoryAudio
 
 from .vision import VisualContextRef, _message_metadata
 
@@ -113,24 +115,6 @@ def audio_context_refs(rows) -> list[VisualContextRef]:
         key=lambda r: (order.get(r.context_kind, 6), -int(r.message_id)
                        if r.message_id.isdecimal() else 0),
     )
-
-
-def _sniff_audio(data: bytes) -> str | None:
-    if data.startswith(b"OggS"):
-        return "audio/ogg"
-    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
-        return "audio/wav"
-    if data.startswith(b"fLaC"):
-        return "audio/flac"
-    if data[:4] == b"\x1a\x45\xdf\xa3":
-        return "audio/webm"
-    if data[4:8] == b"ftyp" and data[8:12] not in {b"heic", b"avif"}:
-        return "audio/mp4"
-    if data.startswith(b"ID3") or (
-        len(data) >= 2 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0
-    ):
-        return "audio/mpeg"
-    return None
 
 
 def _mp3_duration(data: bytes) -> float | None:
@@ -278,3 +262,20 @@ async def collect_audio_inputs(message, *, context_refs=(), limits=None):
                 continue
             await collect(target, ref.context_kind, ref.reference_strength)
     return result
+
+
+def memory_audios_for_turn(inputs, *, user_id, message_id, max_seconds=120, max_files=2) -> list[MemoryAudio]:
+    """Only the current user's own validated audio attachments may support memory.
+
+    Never reuse replied-to, passive, forwarded, or another author's audio as the sender's.
+    A file uploader is not necessarily the actual speaker; P2 validates that distinction.
+    """
+    own = [item for item in inputs
+           if item.source == "attachment"
+           and item.context_kind == "current_message"
+           and item.reference_strength == "current_message"
+           and str(item.author_user_id) == str(user_id)
+           and str(item.message_id) == str(message_id)
+           and 0 < item.duration_seconds <= max_seconds]
+    return [MemoryAudio(str(message_id), index, item.mime_type, item.data)
+            for index, item in enumerate(own[:max_files], 1)]

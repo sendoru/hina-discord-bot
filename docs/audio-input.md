@@ -21,7 +21,9 @@ summarize audio in a separate model call, join voice channels, or produce audio 
 - Audio provenance follows the original Discord message and audio speaker identity must not
   be inferred from the Discord file uploader.
 - No raw audio, base64, or Discord CDN URL is written to long-term memory or chat history.
-  Unlike opt-in image memory extraction, audio does not enter the memory extractor.
+  P1 optionally stages the current user's own audio for future memory extraction
+  (`MEMORY_AUDIO_INPUT=on`, default off), but it **does not enter the memory extractor yet**.
+  See #548; do not enable in production before P2. Staged bytes are never part of SQLite.
 
 ## Supported formats
 

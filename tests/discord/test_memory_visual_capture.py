@@ -7,8 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS, AudioInput
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS, VisualInput
 from hina_bot.core.config import Settings
+from hina_bot.core.pending_audio import DiskPendingAudioStore
 from hina_bot.core.pending_visuals import DiskPendingVisualStore, pending_visual_root
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -61,12 +63,14 @@ class Harness:
         return NS(id=id, content=text, author=self.author, guild=self.guild,
                   channel=self.channel, mentions=[], webhook_id=None)
 
-    async def send(self, text="히나야 우리 애 오늘 미용했어", id=1, visuals=()):
-        token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
+    async def send(self, text="히나야 우리 애 오늘 미용했어", id=1, visuals=(), audios=()):
+        visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
+        audio_token = CURRENT_AUDIO_INPUTS.set(tuple(audios))
         try:
             await self.bot.on_message(self.message(text, id))
         finally:
-            CURRENT_VISUAL_INPUTS.reset(token)
+            CURRENT_VISUAL_INPUTS.reset(visual_token)
+            CURRENT_AUDIO_INPUTS.reset(audio_token)
 
     def events(self, name):
         if not self.event_path.exists():
@@ -284,3 +288,69 @@ async def test_a_photo_held_at_chat_time_reaches_extraction_and_is_then_deleted(
     (item,) = harness.store.memory_items(100)
     assert item.confidence == 0.75 and item.source_message_ids == ("2",)
     assert harness.held("2") == {}
+
+
+OGG = b"OggS" + b"\x00" * 32
+
+
+def audio(message_id="1", **overrides) -> AudioInput:
+    values = {
+        "data": OGG, "mime_type": "audio/ogg", "source": "attachment",
+        "context_kind": "current_message", "reference_strength": "current_message",
+        "message_id": str(message_id), "author_user_id": "100",
+        "author_name": "사용자", "message_content": "", "at": "",
+        "name": "voice.ogg", "duration_seconds": 3.5,
+    }
+    values.update(overrides)
+    return AudioInput(**values)
+
+
+@pytest.mark.asyncio
+async def test_own_native_audio_is_staged_only_when_opted_in(tmp_path):
+    harness = Harness(tmp_path, memory_visual_input=False, memory_audio_input=True)
+    try:
+        await harness.send(text="히나야", audios=[audio()])
+        assert isinstance(harness.store.pending_audio, DiskPendingAudioStore)
+        found = harness.store.pending_audio.get("guild:1", "10", "100", ["1"])
+        assert [(v.mime_type, v.data) for v in found["1"]] == [("audio/ogg", OGG)]
+        assert harness.events("memory.audio_stored")[0]["files"] == 1
+        assert harness.store.pending_visuals.get("guild:1", "10", "100", ["1"]) == {}
+    finally:
+        await harness.bot.close()
+
+
+@pytest.mark.asyncio
+async def test_pending_audio_feature_is_off_by_default(tmp_path):
+    harness = Harness(tmp_path, memory_visual_input=False)
+    try:
+        await harness.send(text="히나야", audios=[audio()])
+        assert harness.store.pending_audio.get("guild:1", "10", "100", ["1"]) == {}
+    finally:
+        await harness.bot.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_audio_does_not_claim_historical_or_foreign_media(tmp_path):
+    harness = Harness(tmp_path, memory_audio_input=True)
+    try:
+        await harness.send(text="히나야", audios=[
+            audio(author_user_id="200"), audio(context_kind="replied_message"),
+            audio(message_id="2"), audio(duration_seconds=150),
+        ])
+        assert harness.store.pending_audio.get("guild:1", "10", "100", ["1"]) == {}
+    finally:
+        await harness.bot.close()
+
+
+@pytest.mark.asyncio
+async def test_pending_audio_is_swept_after_memory_cursor_advances(tmp_path):
+    harness = Harness(tmp_path, memory_audio_input=True)
+    try:
+        await harness.send(text="히나야", audios=[audio()])
+        original = harness.store.history(SCOPE)[-1]
+        harness.store.save_memory_extraction_cursor(SCOPE, original["id"])
+        harness.bot._sweep_pending_visuals()
+        assert harness.store.pending_audio.get("guild:1", "10", "100", ["1"]) == {}
+        assert harness.events("memory.audio_swept")[0]["removed"] == 1
+    finally:
+        await harness.bot.close()
