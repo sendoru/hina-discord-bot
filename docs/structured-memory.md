@@ -102,6 +102,20 @@ The parser never trusts a judgment it cannot check (#449 principle 6):
   must still quote the user's utterance as `evidence` (otherwise it is rejected), is capped at
   confidence 0.75 and carries the `visual_grounded` lint flag. `visual_refs` is honoured only for
   turns that had a photo in that request; a text-only retry gets no visual credit.
+- With `MEMORY_AUDIO_INPUT=on` (default `off`), a Gemini personal extraction batch may
+  also carry original audio from this user's **current-message attachments** staged in
+  `audio_pending/` (#548 P2). Unlike photos, native voice may be the user utterance itself.
+  Audio-derived items require `audio_refs` naming a single source turn, a second native-audio
+  `verify_memory_audio` confirmation and a short verified spoken `evidence` quote. A failed
+  confirmation cannot persist an audio item, but the batch's independently text-grounded
+  memories still commit. Audio items are capped at confidence 0.75, limited to local
+  disclosure/owner audience, and marked `audio_grounded`; an `ambient` suggestion is
+  downgraded to `contextual`. The verifier's quote is not a stored transcription or a
+  substring of the Discord text: it is a bounded annotation, and original bytes are
+  deleted on commit. Text-only fallback cannot authorize audio claims. Audio-backed
+  relationship claims and mixed photo/audio attributes are excluded for this phase.
+  P4 server shared memory is still text-only until #548 P3; default off remains in place
+  until real Gemini audio-quality verification.
 
 Directive items get one more small request (`verify_memory_directives`) before the commit. The
 verifier sees only the directive items and the user utterances they cite: `keep` marks the item

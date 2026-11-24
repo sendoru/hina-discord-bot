@@ -211,3 +211,39 @@ async def test_audio_cleanup_failure_isolated_and_swept_later(store, monkeypatch
     assert "Pending audio cleanup failed (OSError)" in caplog.text
     assert "sensitive/user/path" not in caplog.text
     assert store.pending_audio.sweep(store.pending_visual_keys(), max_age_seconds=3600) == 1
+
+
+@pytest.mark.asyncio
+async def test_audio_only_ongoing_style_directive_is_independently_verified(store):
+    hold(store)
+    command = audio_item(
+        content="앞으로 답변을 귀엽게 해주길 원함",
+        usage_mode="directive", directive_type="style",
+        evidence="앞으로도 계속 귀엽게 말해줘",
+    )
+    spoken_quote = "앞으로도 계속 귀엽게 말해줘"
+    directive_result = NS(status="completed", output_text=json.dumps({
+        "results": [{"index": 0, "verdict": "keep"}],
+    }))
+    worker = harness(completed([command]), verdict(evidence=spoken_quote), directive_result)
+
+    assert await worker.extract_structured_memory(store, SCOPE)
+    ((entry, annotation),) = results(store)
+    assert entry.content == "앞으로 답변을 귀엽게 해주길 원함"
+    assert annotation.verified is True
+    assert annotation.usage_mode.value == "directive"
+    assert annotation.directive_type.value == "style"
+    assert annotation.evidence == spoken_quote
+    payload = json.loads(request(worker, 2)["input"])
+    assert payload["items"][0]["audio_verified"] is True
+    assert payload["items"][0]["source_turns"][0]["audio_verified_evidence"] == spoken_quote
+    assert holding(store) == {}
+
+
+@pytest.mark.asyncio
+async def test_audio_store_not_read_for_non_gemini_provider(store):
+    hold(store)
+    worker = harness(completed(), provider="openai")
+    assert await worker.extract_structured_memory(store, SCOPE)
+    assert isinstance(request(worker, 0)["input"], str)
+    assert holding(store) == {}
