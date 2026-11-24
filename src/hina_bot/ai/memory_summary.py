@@ -10,6 +10,12 @@ from hina_bot.core.memory_annotations import LINT_AUDIO_GROUNDED, LINT_VISUAL_GR
 from hina_bot.core.store import SharedSummaryConflict
 
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
+from .memory_audio import (
+    audio_message_ids,
+    select_memory_audios,
+    verification_candidates,
+    verified_audio_evidence,
+)
 from .memory_extraction import (
     DIRECTIVE_VERIFICATION_POLICY,
     SHADOW_EXTRACTION_POLICY,
@@ -23,12 +29,6 @@ from .memory_extraction import (
     persist_shadow_items_detailed,
     select_reconciliation_candidates,
     shadow_extraction_payload,
-)
-from .memory_audio import (
-    audio_message_ids,
-    select_memory_audios,
-    verification_candidates,
-    verified_audio_evidence,
 )
 from .memory_model_routing import build_memory_model_plan
 from .memory_visual import extraction_input, select_memory_visuals, visual_message_ids
@@ -311,7 +311,7 @@ class MemorySummaryMixin:
                     return response, images, sounds
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001 - retry without optional media
+            except Exception as exc:
                 if index == len(attempts) - 1:
                     raise
                 log.warning("Memory extraction with media failed (%s)", type(exc).__name__)
