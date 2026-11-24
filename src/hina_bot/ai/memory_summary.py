@@ -312,6 +312,8 @@ class MemorySummaryMixin:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - retry without optional media
+                if index == len(attempts) - 1:
+                    raise
                 log.warning("Memory extraction with media failed (%s)", type(exc).__name__)
             # If the plain-text request fails, do not hide the error or advance the cursor.
             if index == len(attempts) - 1:

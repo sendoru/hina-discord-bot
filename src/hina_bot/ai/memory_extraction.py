@@ -490,7 +490,7 @@ def parse_shadow_extraction(
             textual = [str(source_turns[mid].get("user", "")) for mid in source_ids
                        if mid in source_turns]
             textual = [
-                "\\n".join(line for line in utterance.splitlines()
+                "\n".join(line for line in utterance.splitlines()
                           if not line.lstrip().startswith("[첨부 오디오:"))
                 for utterance in textual
             ]
