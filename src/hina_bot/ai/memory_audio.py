@@ -18,7 +18,7 @@ MEMORY_AUDIO_CONFIDENCE_CAP = 0.75
 _SUPPORTED_MIME = frozenset({
     "audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav", "audio/flac", "audio/webm",
 })
-_FENCE = re.compile(r"^```(?:json)?\\s*(.*?)\\s*```$", re.IGNORECASE | re.DOTALL)
+_FENCE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.IGNORECASE | re.DOTALL)
 
 
 def select_memory_audios(
