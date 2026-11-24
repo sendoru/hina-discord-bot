@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .audio_mime import sniff_audio_mime
-from .pending_visuals import DiskPendingVisualStore, MemoryVisual, NullPendingVisualStore
+from .pending_visuals import DiskPendingVisualStore, MemoryVisual, PendingVisualStore
 
 log = logging.getLogger("hina")
 PENDING_AUDIO_DIRNAME = "audio_pending"
@@ -35,11 +35,12 @@ class MemoryAudio(MemoryVisual):
     """Raw bytes of a validated current-message attachment, keyed by source turn."""
 
 
-class PendingAudioStore(NullPendingVisualStore):
-    """No-op pending audio interface for in-memory stores."""
+class PendingAudioStore(PendingVisualStore):
+    """Common audio store interface with safe no-op defaults."""
 
 
-NullPendingAudioStore = PendingAudioStore
+class NullPendingAudioStore(PendingAudioStore):
+    """Does not retain audio, as used by in-memory databases."""
 
 
 class DiskPendingAudioStore(DiskPendingVisualStore, PendingAudioStore):

@@ -290,7 +290,7 @@ async def test_a_photo_held_at_chat_time_reaches_extraction_and_is_then_deleted(
     assert harness.held("2") == {}
 
 
-OGG = b"OggS" + b"\\x00" * 32
+OGG = b"OggS" + b"\x00" * 32
 
 
 def audio(message_id="1", **overrides) -> AudioInput:

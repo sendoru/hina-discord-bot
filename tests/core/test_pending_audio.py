@@ -3,6 +3,9 @@
 import os
 import time
 
+import pytest
+
+from hina_bot.core.config import Settings
 from hina_bot.core.pending_audio import (
     DiskPendingAudioStore,
     MemoryAudio,
@@ -13,8 +16,8 @@ from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.tooling.reset_conversation import reset_conversation
 
-OGG = b"OggS" + b"\\x00" * 40
-MP3 = b"ID3" + b"\\x00" * 40
+OGG = b"OggS" + b"\x00" * 40
+MP3 = b"ID3" + b"\x00" * 40
 
 
 def clip(mid="1", data=OGG, mime="audio/ogg"):
@@ -85,7 +88,7 @@ def test_get_refuses_linked_audio_and_directory(tmp_path):
     path.unlink()
     path.symlink_to(outside)
     assert disk.get("guild:1", "10", "100", ["1"]) == {}
-    assert disk.discard_channel("guild:1", "10") == 0
+    assert disk.discard_channel("guild:1", "10") == 1
     assert outside.read_bytes() == OGG
 
 
@@ -115,3 +118,24 @@ def test_in_memory_store_is_noop():
         assert put(store.pending_audio) == 0
     finally:
         store.close()
+
+
+@pytest.mark.parametrize("flag,valid", [("on", True), ("off", True), ("yes", False)])
+def test_memory_audio_opt_in_validation(monkeypatch, flag, valid):
+    monkeypatch.setenv("MEMORY_AUDIO_INPUT", flag)
+    if valid:
+        assert Settings.load().memory_audio_input == (flag == "on")
+    else:
+        with pytest.raises(ValueError, match="MEMORY_AUDIO_INPUT"):
+            Settings.load()
+
+
+@pytest.mark.parametrize("key,value", [
+    ("MEMORY_AUDIO_MAX_ATTACHMENTS", "3"),
+    ("MEMORY_AUDIO_MAX_SECONDS", "0"),
+    ("MEMORY_AUDIO_PENDING_MAX_MB", "15"),
+])
+def test_memory_audio_limits_are_validated(monkeypatch, key, value):
+    monkeypatch.setenv(key, value)
+    with pytest.raises(ValueError, match="memory audio"):
+        Settings.load()

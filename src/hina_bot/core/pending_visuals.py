@@ -169,13 +169,6 @@ def _subdirs(path: Path) -> list[os.DirEntry]:
 
 
 class DiskPendingVisualStore(PendingVisualStore):
-    # Media-specific subclasses reuse the safe file lifecycle without changing visual files.
-    file_pattern = _FILE
-    extensions = _EXT_BY_MIME
-    mime_by_ext = _MIME_BY_EXT
-    sniff_mime = staticmethod(sniff_image_mime)
-    item_type = MemoryVisual
-
     """Photos as files under ``<database folder>/visual_pending``.
 
     Layout: ``{guild|dm}-{id}/{channel_id}/{user_id}/{message_id}.{n}.{ext}``. Only digits
@@ -183,6 +176,13 @@ class DiskPendingVisualStore(PendingVisualStore):
     atomically. When space runs out the least recently used photos are evicted, because a
     turn without its photo is still extracted from its text.
     """
+
+    # Media-specific subclasses reuse the safe file lifecycle without changing visual files.
+    file_pattern = _FILE
+    extensions = _EXT_BY_MIME
+    mime_by_ext = _MIME_BY_EXT
+    sniff_mime = staticmethod(sniff_image_mime)
+    item_type = MemoryVisual
 
     def __init__(
         self,

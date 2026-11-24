@@ -619,7 +619,7 @@ class Settings:
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "audio attachments 0~8, audio max duration 1~1800초, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하, "
-                             "memory visual/audio pending 상한은 16~4096 MB, "
+                             "memory visual pending 상한은 16~4096 MB, memory audio pending 상한은 16~4096 MB, "
                              "memory audio attachments 0~2, seconds 1~AUDIO_MAX_SECONDS")
         if not s.history_turns <= s.raw_retention_turns <= 100000:
             raise ValueError("RAW_RETENTION_TURNS는 HISTORY_TURNS 이상, 100000 이하여야 해요.")
