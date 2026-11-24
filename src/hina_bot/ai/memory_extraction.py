@@ -590,7 +590,7 @@ def directive_verification_payload(
             "content": item.content,
             "directive_type": annotation.directive_type.value if annotation.directive_type else "",
             "evidence": annotation.evidence,
-            "audio_verified": LINT_AUDIO_GROUNDED in annotation.lint_flags,
+            **({"audio_verified": True} if LINT_AUDIO_GROUNDED in annotation.lint_flags else {}),
             "source_turns": [
                 {"user": (annotation.evidence if LINT_AUDIO_GROUNDED in annotation.lint_flags
                           else str(source_turns[value].get("user", ""))),

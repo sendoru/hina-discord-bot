@@ -38,7 +38,7 @@ def parse(items, *, audios=frozenset({"102"}), source_audio=frozenset({"102"}), 
         allowed_source_ids={"101", "102"},
         source_turns={
             "101": {"user": "나는 춤을 좋아해", "at": "2026-11-24 08:00:00"},
-            "102": {"user": "히나야\\n[첨부 오디오: voice.ogg; 재생 길이 3초]",
+            "102": {"user": "히나야\n[첨부 오디오: voice.ogg; 재생 길이 3초]",
                     "at": "2026-11-24 08:05:00"},
         },
         audio_message_ids=audios,

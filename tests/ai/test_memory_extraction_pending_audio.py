@@ -16,7 +16,7 @@ from hina_bot.core.store import Store
 
 SCOPE = Scope(1, 10, 100, True)
 OGG = b"OggS" + b"private-test-voice"
-PNG = b"\\x89PNG\\r\\n\\x1a\\n" + b"photo"
+PNG = b"\x89PNG\r\n\x1a\n" + b"photo"
 
 
 class Worker(MemorySummaryMixin):
@@ -65,7 +65,7 @@ def audio_item(**kw):
 def store(tmp_path):
     value = Store.create(str(tmp_path / "hina.sqlite3"))
     for mid in (101, 102, 103, 104):
-        user = ("히나야\\n[첨부 오디오: voice.ogg; 재생 길이 3.5초; 원본은 별도 입력]"
+        user = ("히나야\n[첨부 오디오: voice.ogg; 재생 길이 3.5초; 원본은 별도 입력]"
                 if mid == 102 else f"plain text {mid}")
         value.add(SCOPE, mid, user, f"reply-{mid}")
     yield value
