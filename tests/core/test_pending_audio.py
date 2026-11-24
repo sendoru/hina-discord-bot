@@ -122,6 +122,8 @@ def test_in_memory_store_is_noop():
 
 @pytest.mark.parametrize("flag,valid", [("on", True), ("off", True), ("yes", False)])
 def test_memory_audio_opt_in_validation(monkeypatch, flag, valid):
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
     monkeypatch.setenv("MEMORY_AUDIO_INPUT", flag)
     if valid:
         assert Settings.load().memory_audio_input == (flag == "on")
@@ -136,6 +138,8 @@ def test_memory_audio_opt_in_validation(monkeypatch, flag, valid):
     ("MEMORY_AUDIO_PENDING_MAX_MB", "15"),
 ])
 def test_memory_audio_limits_are_validated(monkeypatch, key, value):
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
     monkeypatch.setenv(key, value)
     with pytest.raises(ValueError, match="memory audio"):
         Settings.load()
