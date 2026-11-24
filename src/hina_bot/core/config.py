@@ -605,7 +605,7 @@ class Settings:
                 and vision_total <= 32
                 and 16 <= s.memory_visual_pending_max_mb <= 4096
                 and 0 <= s.memory_audio_max_attachments <= 2
-                and 1 <= s.memory_audio_max_seconds <= s.audio_max_seconds
+                and 1 <= s.memory_audio_max_seconds <= 1800
                 and 16 <= s.memory_audio_pending_max_mb <= 4096):
             raise ValueError("설정 범위 오류: cooldown 0~3600, concurrency 1~20, "
                              "output_tokens 128~65536, fast output <= smart output, "

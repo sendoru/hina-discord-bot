@@ -23,7 +23,7 @@ _EXT_BY_MIME = {
     "audio/wav": "wav", "audio/flac": "flac", "audio/webm": "webm",
 }
 _MIME_BY_EXT = {value: key for key, value in _EXT_BY_MIME.items()}
-_FILE = re.compile(r"(\\d{1,20})\\.(\\d{1,3})\\.(ogg|mp3|mp4|wav|flac|webm)")
+_FILE = re.compile(r"(\d{1,20})\.(\d{1,3})\.(ogg|mp3|mp4|wav|flac|webm)")
 
 
 def pending_audio_root(database_path: str | Path) -> Path:

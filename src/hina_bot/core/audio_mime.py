@@ -7,7 +7,7 @@ def sniff_audio_mime(data: bytes) -> str | None:
         return "audio/wav"
     if data.startswith(b"fLaC"):
         return "audio/flac"
-    if data[:4] == b"\\x1a\\x45\\xdf\\xa3":
+    if data[:4] == b"\x1a\x45\xdf\xa3":
         return "audio/webm"
     if data[4:8] == b"ftyp" and data[8:12] not in {b"heic", b"avif"}:
         return "audio/mp4"

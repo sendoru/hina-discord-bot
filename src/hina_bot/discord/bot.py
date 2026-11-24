@@ -160,7 +160,7 @@ class HinaClient(discord.Client):
             configure_pending_visuals(
                 max_bytes=settings.memory_visual_pending_max_mb * 1024 * 1024
             )
-        configure_pending_audio = getattr(self.store.pending_audio, "configure", None)
+        configure_pending_audio = getattr(getattr(self.store, "pending_audio", None), "configure", None)
         if configure_pending_audio is not None:
             configure_pending_audio(
                 max_bytes=settings.memory_audio_pending_max_mb * 1024 * 1024
@@ -373,9 +373,11 @@ class HinaClient(discord.Client):
                 "Pending visual sweep failed (%s, fingerprint=%s)",
                 type(exc).__name__, error["error_fingerprint"],
             )
+        else:
+            if removed:
+                self.events.emit("memory.visual_swept", removed=removed)
+        if not hasattr(self.store, "pending_audio"):
             return
-        if removed:
-            self.events.emit("memory.visual_swept", removed=removed)
         try:
             audio_removed = self.store.pending_audio.sweep(
                 self.store.pending_visual_keys(),
