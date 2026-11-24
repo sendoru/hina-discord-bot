@@ -29,9 +29,8 @@ from hina_bot.core.scope_overrides import MemoryMode
 from hina_bot.core.store import Store
 
 from .admin_commands import initialize_admin_commands, run_admin_command_once
-from .audio import message_has_audio
+from .audio import memory_audios_for_turn, message_has_audio
 from .embed_context import message_embed_text
-from .audio import memory_audios_for_turn
 from .emoji_commands import EmojiRegistry
 from .forward_context import message_context_text, message_turn_text
 from .message_split import prepare_discord_answer

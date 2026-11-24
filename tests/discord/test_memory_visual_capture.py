@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS, VisualInput
 from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS, AudioInput
-from hina_bot.core.pending_audio import DiskPendingAudioStore
+from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS, VisualInput
 from hina_bot.core.config import Settings
+from hina_bot.core.pending_audio import DiskPendingAudioStore
 from hina_bot.core.pending_visuals import DiskPendingVisualStore, pending_visual_root
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store

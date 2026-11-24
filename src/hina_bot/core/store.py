@@ -23,7 +23,10 @@ from .memory_items import (
 )
 from .memory_repository import MemoryRepository
 from .pending_audio import (
-    DiskPendingAudioStore, NullPendingAudioStore, PendingAudioStore, pending_audio_root,
+    DiskPendingAudioStore,
+    NullPendingAudioStore,
+    PendingAudioStore,
+    pending_audio_root,
 )
 from .pending_visuals import (
     DiskPendingVisualStore,
