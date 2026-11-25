@@ -1,8 +1,10 @@
+from io import BytesIO
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
+from PIL import Image
 
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
@@ -14,6 +16,7 @@ from hina_bot.discord.vision import (
     VisionLimits,
     VisualContextRef,
     collect_visual_inputs,
+    fit_visual_bytes,
     message_has_visual,
     rank_visual_context_refs,
     visual_context_refs,
@@ -999,3 +1002,76 @@ async def test_selected_reply_embed_image_respects_provenance_and_visibility():
         current, context_refs=[], embed_downloader=AsyncMock(return_value=PNG),
     ) == []
     channel.fetch_message.assert_not_awaited()
+
+
+def _large_png():
+    # Uncompressed but easy to compress without reducing resolution or quality.
+    image = Image.new("RGBA", (256, 256), (32, 64, 128, 171))
+    stream = BytesIO()
+    image.save(stream, "PNG", compress_level=0)
+    return stream.getvalue()
+
+
+def test_fit_visual_bytes_preserves_pixels_and_alpha_at_original_resolution():
+    original = _large_png()
+    result, mime, reason = fit_visual_bytes(original, 8192)
+    assert len(original) > 8192 >= len(result) > 0
+    assert mime == "image/webp"
+    assert reason == "lossless"
+    with Image.open(BytesIO(original)) as before, Image.open(BytesIO(result)) as after:
+        assert after.size == before.size
+        assert after.convert("RGBA").tobytes() == before.tobytes()
+
+
+def test_fit_visual_bytes_keeps_small_originals_and_rejects_invalid_oversize():
+    assert fit_visual_bytes(PNG, len(PNG)) == (PNG, "image/png", "original")
+    assert fit_visual_bytes(PNG, 8) == (b"", "", "decode_failed")
+
+
+def test_fit_visual_bytes_preserves_animation_or_reports_budget_failure():
+    stream = BytesIO()
+    frames = [Image.new("RGB", (32, 32), color) for color in ("red", "blue")]
+    frames[0].save(stream, "GIF", save_all=True, append_images=frames[1:])
+    data = stream.getvalue()
+    assert fit_visual_bytes(data, len(data)) == (data, "image/gif", "original")
+    assert fit_visual_bytes(data, 8) == (b"", "", "animated_over_budget")
+
+
+@pytest.mark.asyncio
+async def test_oversize_current_attachment_is_compressed_and_total_budget_is_respected():
+    data = _large_png()
+    attachments = [
+        NS(size=len(data), content_type="image/png", filename="photo.png",
+           read=AsyncMock(return_value=data))
+        for _ in range(2)
+    ]
+    message = NS(id=123, content="", attachments=attachments, stickers=[])
+    limits = VisionLimits(max_image_bytes=8192, max_total_bytes=8192)
+    result = await collect_visual_inputs(message, limits=limits)
+    assert len(result) == 2
+    assert all(item.mime_type == "image/webp" for item in result)
+    assert all(item.reference_strength == "current_message" for item in result)
+    assert sum(len(item.data) for item in result) <= 8192
+    for attachment in attachments:
+        attachment.read.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_historical_visual_cache_respects_changed_runtime_byte_budget():
+    data = _large_png()
+    attachment = NS(size=len(data), content_type="image/png", filename="photo.png",
+                    read=AsyncMock(return_value=data))
+    old = NS(id=123, content="", attachments=[attachment], stickers=[])
+    channel = NS(id=10, fetch_message=AsyncMock(return_value=old))
+    message = NS(id=124, content="히나야", channel=channel, attachments=[], stickers=[])
+    ref = VisualContextRef("123", "speaker_thread")
+    cache = VisionFetchCache()
+    low = await collect_visual_inputs(
+        message, context_refs=[ref], cache=cache, limits=VisionLimits(max_image_bytes=8192),
+    )
+    high = await collect_visual_inputs(
+        message, context_refs=[ref], cache=cache, limits=VisionLimits(),
+    )
+    assert low[0].mime_type == "image/webp"
+    assert high[0].data == data
+    assert channel.fetch_message.await_count == 2
