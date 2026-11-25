@@ -1,0 +1,22 @@
+import base64
+
+from hina_bot.ai.providers import GeminiInlinePDF, _gemini_input, _gemini_generate_content_contents
+
+
+def test_document_stays_between_reference_and_current_turn():
+    pdf = b"%PDF-1.4 synthetic adapter fixture"
+    messages = [{"role": "assistant", "content": "previous"},
+                {"role": "user", "content": ["before", GeminiInlinePDF(pdf), "after"]}]
+    steps = _gemini_input(messages)
+    assert [step["type"] for step in steps] == ["model_output", "user_input"]
+    before, document, after = steps[1]["content"]
+    assert (before["text"], after["text"]) == ("before", "after")
+    assert document["type"] == "document"
+    assert document["mime_type"] == "application/pdf"
+    assert base64.b64decode(document["data"]) == pdf
+    turns = _gemini_generate_content_contents(messages)
+    assert [turn["role"] for turn in turns] == ["model", "user"]
+    before, document, after = turns[1]["parts"]
+    assert (before["text"], after["text"]) == ("before", "after")
+    assert document["inline_data"]["mime_type"] == "application/pdf"
+    assert base64.b64decode(document["inline_data"]["data"]) == pdf

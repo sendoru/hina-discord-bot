@@ -117,6 +117,17 @@ def _gemini_image_block(image_url: str, resolution: str = ""):
     return image
 
 
+class GeminiInlinePDF:
+    """An in-memory document created after Gemini routing and egress filtering."""
+
+    __slots__ = ("data",)
+
+    def __init__(self, pdf: bytes):
+        import base64
+
+        self.data = base64.b64encode(pdf).decode("ascii")
+
+
 def _gemini_content(value):
     if isinstance(value, str):
         return [{"type": "text", "text": value}] if value else []
@@ -129,6 +140,9 @@ def _gemini_content(value):
         if isinstance(item, str):
             if item:
                 blocks.append({"type": "text", "text": item})
+            continue
+        if isinstance(item, GeminiInlinePDF):
+            blocks.append({"type": "document", "mime_type": "application/pdf", "data": item.data})
             continue
         if not isinstance(item, dict):
             continue
@@ -257,7 +271,7 @@ def _gemini_generate_content_parts(value):
         if block_type == "text":
             parts.append({"text": block["text"]})
             continue
-        if block_type not in {"image", "audio"}:
+        if block_type not in {"image", "audio", "document"}:
             continue
         mime_type = block.get("mime_type") or ("audio/ogg" if block_type == "audio" else "image/png")
         if block.get("data"):
