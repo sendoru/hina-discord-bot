@@ -16,7 +16,10 @@ from hina_bot.ai.runtime_llm import LLM
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS, VisualInput
 from hina_bot.core.admin_db import AdminDatabase
 from hina_bot.core.config import (
-    GEMINI_THINKING_LEVELS, SUPPORTED_MODEL_PROVIDERS, Settings, migrate_legacy_env_values,
+    GEMINI_THINKING_LEVELS,
+    SUPPORTED_MODEL_PROVIDERS,
+    Settings,
+    migrate_legacy_env_values,
 )
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope
