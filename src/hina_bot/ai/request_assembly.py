@@ -360,7 +360,7 @@ class RequestAssembler(BaseLLM):
         model_plan = model_plan or fixed_model_plan(self.settings)
 
         lore_mode = getattr(self.settings, "rag_mode", "full")
-        memory_read_mode = getattr(self.settings, "personal_memory_read_mode", "legacy")
+        memory_read_mode = getattr(self.settings, "personal_memory_read_mode", "full")
         has_decisions = lore_mode in DECISION_MODES or memory_read_mode in DECISION_MODES
         memory_reader = getattr(store, "memory_mode", None)
         if callable(memory_reader):

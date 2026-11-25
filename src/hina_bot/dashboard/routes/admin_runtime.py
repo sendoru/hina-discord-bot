@@ -100,7 +100,6 @@ RUNTIME_CONFIG_SECTIONS = (
             "server_memory_read",
             "personal_memory_cross_scope",
             "personal_memory_read_mode",
-            "memory_session_followup",
             "community_lore",
             "memory_output_tokens",
             "memory_routing_smart_threshold",

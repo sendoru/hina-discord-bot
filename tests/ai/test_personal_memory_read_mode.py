@@ -77,9 +77,8 @@ async def _answer(mode, scope, message):
         store.close()
 
 
-@pytest.mark.parametrize("mode", ["full", "legacy", "tiered", "tiered_shadow", "shadow"])
-async def test_legacy_mode_is_unchanged_and_records_no_selection(mode):
-    payload, provenance, selection = await _answer(mode, DM, "아 배고프다")
+async def test_full_mode_records_no_selection():
+    payload, provenance, selection = await _answer("full", DM, "아 배고프다")
 
     reference = read_reference_context(payload["input"][0]["content"])
     assert "structured_owner_memory" in reference and "user_memory" not in reference

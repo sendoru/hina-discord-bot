@@ -219,3 +219,35 @@ def test_export_protects_input_paths_and_missing_db(tmp_path):
         "--output", str(tmp_path / "not-created"),
     ]) == 2
     assert not (tmp_path / "not-created").exists()
+
+
+@pytest.mark.parametrize("model", ["", "new-model"])
+def test_retired_env_keys_migrate_without_losing_model(tmp_path, model):
+    source = tmp_path / ".env"
+    source.write_text(
+        f"OPENAI_MODEL=old-model\nLLM_MODEL={model}\n"
+        "MEMORY_SESSION_FOLLOWUP=dm\nPERSONAL_MEMORY_READ_MODE=tiered\nRAG_MODE=v1\n"
+    )
+    rendered, dropped = normalize_env(source, ROOT / ".env.example")
+    result = parse_values(rendered)
+    assert result["LLM_MODEL"] == (model or "old-model")
+    assert result["PERSONAL_MEMORY_READ_MODE"] == result["RAG_MODE"] == "full"
+    assert dropped == {"OPENAI_MODEL", "MEMORY_SESSION_FOLLOWUP"}
+
+
+def test_export_ignores_retired_followup_and_converts_stored_modes(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("OPENAI_MODEL=old-model\nMEMORY_SESSION_FOLLOWUP=all\n")
+    db_path = tmp_path / "db.sqlite3"
+    store = Store.create(str(db_path))
+    try:
+        store.settings.set_runtime_value("memory_session_followup", '"dm"')
+        store.settings.set_runtime_value("personal_memory_read_mode", '"legacy"')
+        store.settings.replace_startup_snapshot([("rag_mode", '"decision_shadow"')])
+    finally:
+        store.close()
+    rendered, _, _, _ = export_env(env, ROOT / ".env.example", db_path)
+    result = parse_values(rendered)
+    assert result["LLM_MODEL"] == "old-model"
+    assert result["PERSONAL_MEMORY_READ_MODE"] == result["RAG_MODE"] == "full"
+    assert "MEMORY_SESSION_FOLLOWUP" not in result

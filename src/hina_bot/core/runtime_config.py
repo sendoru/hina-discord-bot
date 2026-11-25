@@ -13,7 +13,6 @@ from .config import (
     EXTERNAL_CONTEXT_POLICIES,
     GEMINI_SEARCH_API_MODES,
     GEMINI_THINKING_LEVELS,
-    MEMORY_SESSION_FOLLOWUP_MODES,
     MODEL_ROUTING_MODES,
     PERSONAL_MEMORY_READ_MODES,
     RAG_MODES,
@@ -49,7 +48,6 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "personal_memory_cross_scope": "서버에서 본인의 다른 공간 기억을 읽는 기본값입니다. off이면 직접 동의한 사용자만 허용합니다.",
     "server_memory_read": "서버 공유 기억의 응답 주입과 조회를 제어합니다.",
     "personal_memory_read_mode": "full은 허용된 개인 기억 전체, decision은 그중 선택된 기억을 사용합니다.",
-    "memory_session_followup": "이전 배포와 호환되는 설정입니다. 현재 개인 기억 읽기에는 사용하지 않습니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
     "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
@@ -157,12 +155,6 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "PERSONAL_MEMORY_READ_MODE",
         "string",
         choices=tuple(sorted(PERSONAL_MEMORY_READ_MODES)),
-    ),
-    "memory_session_followup": _runtime_spec(
-        "memory_session_followup",
-        "MEMORY_SESSION_FOLLOWUP",
-        "string",
-        choices=tuple(sorted(MEMORY_SESSION_FOLLOWUP_MODES)),
     ),
     "community_lore": _runtime_spec("community_lore", "COMMUNITY_LORE", "bool"),
     "model_routing_mode": _runtime_spec(
@@ -358,8 +350,6 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
     if spec.kind == "prefixes":
         return parse_call_prefixes(raw)
     text = raw.strip()
-    if spec.attr == "personal_memory_read_mode" and text.lower() == "legacy":
-        text = "full"
     if spec.kind in {"bool", "optional_bool"}:
         lowered = text.lower()
         if spec.kind == "optional_bool" and lowered == "inherit":

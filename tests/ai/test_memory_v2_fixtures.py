@@ -52,7 +52,6 @@ TIERS = {"T0", "T1", "T2", "Tp", "S0", "S1", "S2"}
 VIA = {"current", "chain", "carry"}
 ACTIVATIONS = {"P5"}
 EGRESS_POLICIES = {"full", "bot_interactions_only"}
-FOLLOWUP_MODES = {"off", "dm", "all"}
 SERVER_MEMORY_READ_MODES = {"on", "off"}
 
 SPACE = re.compile(r"dm|g\d+:c\d+:(?:public|private)")
@@ -209,7 +208,6 @@ def test_selection_fixture_contract():
         assert set(context) == set(defaults["context"]), case["id"]
         settings = {**defaults["settings"], **case.get("settings", {})}
         assert set(settings) == set(defaults["settings"]), case["id"]
-        assert settings["MEMORY_SESSION_FOLLOWUP"] in FOLLOWUP_MODES
         assert settings["external_context_policy"] in EGRESS_POLICIES
         assert settings["SERVER_MEMORY_READ"] in SERVER_MEMORY_READ_MODES
 

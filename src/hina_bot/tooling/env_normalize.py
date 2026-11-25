@@ -6,6 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from hina_bot.core.config import migrate_legacy_env_values
+
 from .env_template import (
     atomic_write,
     backup_env,
@@ -17,7 +19,7 @@ from .env_template import (
 
 def normalize_env(env_path: Path, template_path: Path) -> tuple[str, set[str]]:
     existing = parse_values(read_text(env_path))
-    rendered, template_keys = render_template(read_text(template_path), existing)
+    rendered, template_keys = render_template(read_text(template_path), migrate_legacy_env_values(existing))
     return rendered, set(existing) - template_keys
 
 
