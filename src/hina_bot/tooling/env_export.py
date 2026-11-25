@@ -7,6 +7,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from hina_bot.core.config import migrate_legacy_env_values
 from hina_bot.core.db_connections import open_readonly
 from hina_bot.core.runtime_config import RUNTIME_SETTING_SPECS, decode_runtime_value
 
@@ -52,6 +53,8 @@ def _read_runtime_db(db_path: Path) -> tuple[dict[str, str], dict[str, str]]:
         result: dict[str, str] = {}
         for row in rows:
             attr = str(row["key"])
+            if attr == "memory_session_followup":
+                continue
             if attr not in RUNTIME_SETTING_SPECS:
                 raise ValueError(f"Unknown runtime setting in {table}: {attr}")
             result[attr] = str(row["value"])
@@ -67,7 +70,7 @@ def export_env(
     existing = parse_values(read_text(env_path))
     template = read_text(template_path)
     startup, overrides = _read_runtime_db(db_path)
-    values = existing.copy()
+    values = migrate_legacy_env_values(existing)
     disabled: set[str] = set()
 
     for attr, spec in RUNTIME_SETTING_SPECS.items():
