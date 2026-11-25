@@ -8,6 +8,7 @@ from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
+from hina_bot.discord.reply_context import REPLY_CONTEXT
 from hina_bot.discord.vision import (
     VisionFetchCache,
     VisionLimits,
@@ -649,11 +650,17 @@ async def test_selected_speaker_context_drives_text_and_visual_from_one_snapshot
 
 
 @pytest.mark.asyncio
-async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
+@pytest.mark.parametrize("reply_ping", [False, True])
+@pytest.mark.parametrize("image_available", [True, False])
+async def test_image_only_invocation_distinguishes_loaded_and_unavailable_image(
+    reply_ping, image_available,
+):
     observed = []
+    observed_replies = []
 
     async def answer(*args, **kwargs):
         observed.extend(CURRENT_VISUAL_INPUTS.get())
+        observed_replies.extend(REPLY_CONTEXT.get())
         return "사진은 잘 보여."
 
     llm = NS(
@@ -664,8 +671,11 @@ async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
         close=AsyncMock(),
     )
     store = Store.create(":memory:")
+    store.set_memory_mode_override("global", "off")
+    store.set_chat_log_mode_override("global", "on")
     bot = HinaClient(Settings(discord_token="test", openai_api_key="test", cooldown=0), store=store, llm=llm)
-    bot._connection.user = NS(id=99)
+    bot._connection.user = NS(id=99, display_name="히나")
+    bot.emoji_registry.catalog = AsyncMock(return_value=[])
     channel = MagicMock()
     channel.id = 10
     channel.send = AsyncMock(return_value=NS(id=1000))
@@ -682,29 +692,44 @@ async def test_image_only_trigger_reaches_llm_with_ephemeral_visual_context():
         size=len(PNG),
         content_type="image/png",
         filename="photo.png",
-        read=AsyncMock(return_value=PNG),
+        read=AsyncMock(return_value=PNG if image_available else b"invalid image"),
+    )
+    replied = NS(
+        id=1, content="어떤 음악이야?", author=NS(id=99, bot=True, display_name="히나"),
+        channel=channel, attachments=[], stickers=[],
     )
     message = NS(
-        id=1,
-        content="히나야",
+        id=2,
+        content="" if reply_ping else "히나야",
         author=author,
-        guild=None,
+        guild=NS(id=1, default_role=NS()) if reply_ping else None,
         channel=channel,
-        mentions=[],
+        mentions=[bot.user] if reply_ping else [],
         webhook_id=None,
-        reference=None,
+        reference=NS(message_id=1, channel_id=10, resolved=replied) if reply_ping else None,
+        created_at=None,
         attachments=[attachment],
         stickers=[],
     )
 
     try:
         await bot.on_message(message)
-        llm.answer.assert_awaited_once()
-        assert len(observed) == 1
-        assert observed[0].source == "attachment"
-        assert observed[0].name == "photo.png"
-        assert observed[0].reference_strength == "current_message"
-        assert message.content == "히나야"
+        if image_available:
+            llm.answer.assert_awaited_once()
+            assert llm.answer.await_args.args[3] == ""
+            assert len(observed) == 1
+            assert observed[0].source == "attachment"
+            assert observed[0].name == "photo.png"
+            assert observed[0].reference_strength == "current_message"
+            assert observed[0].message_id == "2"
+            if reply_ping:
+                assert observed_replies[0]["message_id"] == "1"
+                assert observed_replies[0]["reference_strength"] == "explicit_reply"
+            assert channel.send.await_args.args[0] == "사진은 잘 보여."
+        else:
+            llm.answer.assert_not_awaited()
+            assert channel.send.await_args.args[0] == "첨부한 이미지를 읽지 못했어. 다시 보내 줄래?"
+        assert message.content == ("" if reply_ping else "히나야")
     finally:
         await bot.close()
 
