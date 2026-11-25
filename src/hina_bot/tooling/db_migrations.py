@@ -5,16 +5,25 @@ entry/current DDL/metadata signature. No schema repair or legacy format
 inference is performed by this path.
 """
 
-from hina_bot.core.db_ddl import LEDGER_DDL, MEMORY_ANNOTATION_DDL, SERVER_MEMORY_DDL, V1_TABLES
+from hina_bot.core.db_ddl import (
+    DISCLOSURE_DDL,
+    LEDGER_DDL,
+    MEMORY_ANNOTATION_DDL,
+    SERVER_MEMORY_DDL,
+    V1_TABLES,
+)
 from hina_bot.core.db_schema import (
     COMPONENTS,
     HISTORY,
     LEGACY_CONVERSION_HINT,
     OWNED_TABLES,
+    SCHEMA_SIGNATURES,
     SchemaError,
     create_tables,
+    owned_tables,
     record_versions,
     require_current,
+    schema_signature,
     schema_versions,
     validate_schema,
 )
@@ -34,10 +43,24 @@ def add_server_memory(db):
         db.execute(statement)
 
 
+def retire_reference_gated(db):
+    """Keep historical edits intact and narrow every retired live value to local."""
+    if db.execute("SELECT 1 FROM memory_items WHERE disclosure='reference_gated' LIMIT 1").fetchone():
+        db.execute("""INSERT INTO memory_item_edit_history
+                      (memory_item_id,revision,content,kind,disclosure,confidence,relationship_evidence)
+                      SELECT id,revision,content,kind,disclosure,confidence,relationship_evidence
+                      FROM memory_items WHERE disclosure='reference_gated'""")
+        db.execute("""UPDATE memory_items SET disclosure='local',revision=revision+1,updated_at=CURRENT_TIMESTAMP
+                      WHERE disclosure='reference_gated'""")
+    for statement in DISCLOSURE_DDL:
+        db.execute(statement)
+
+
 # Explicit (component, next_version, function) steps.
 UPGRADES = (
     ("store", 2, add_memory_item_annotations),
     ("store", 3, add_server_memory),
+    ("store", 4, retire_reference_gated),
 )
 
 
@@ -51,6 +74,14 @@ def apply_upgrades(db, component, version):
         step(db)
         db.execute("INSERT INTO schema_migrations(component,version,name) VALUES (?,?,?)",
                    (component, target, HISTORY[component][target - 1]))
+
+
+def _unversioned_layout(db, component):
+    version = len(HISTORY[component])
+    signature = schema_signature(db, owned_tables(component, version))
+    if signature in SCHEMA_SIGNATURES[component][version]:
+        return version
+    return 1
 
 
 def inspect_connection(db, components=COMPONENTS):
@@ -75,7 +106,8 @@ def inspect_connection(db, components=COMPONENTS):
             continue
         present = tables & set(V1_TABLES[component])
         if present or component in versions:
-            validate_schema(db, (component,), versions={component: versions.get(component, 1)})
+            version = versions[component] if component in versions else _unversioned_layout(db, component)
+            validate_schema(db, (component,), versions={component: version})
         if component not in versions:
             if present and component == "store":
                 marker = db.execute("SELECT text FROM notes WHERE scope='config:chatlog_unified_v1'").fetchone()
@@ -111,6 +143,9 @@ def prepare_connection(db, components=COMPONENTS, *, expected_signature=None):
                 if not db.execute("SELECT 1 FROM sqlite_master WHERE name=?",
                                   (V1_TABLES[component][0],)).fetchone():
                     create_tables(db, (component,))
+                    record_versions(db, component)
+                    continue
+                if _unversioned_layout(db, component) == len(HISTORY[component]):
                     record_versions(db, component)
                     continue
                 # Register the known current v1; do not replay legacy conversions.

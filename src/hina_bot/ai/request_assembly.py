@@ -595,6 +595,7 @@ class RequestAssembler(BaseLLM):
                     "structured_relationship_memory",
                     "owner_relationship_profile",
                     "cross_space_relationship",
+                    "cross_space_behavior",
                     "authorized_factual_memory",
                     "user_memory",
                     "relationship_profile",

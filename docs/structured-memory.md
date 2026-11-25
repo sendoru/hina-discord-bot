@@ -25,7 +25,7 @@ Each item stores:
 - `origin_realm`: `dm:<user>` or `guild:<guild>` where the memory was formed.
 - `origin_channel_id`: channel provenance inside that realm.
 - `origin_public_at_capture`: whether the guild channel was public when the source was captured.
-- `disclosure`: `local`, `implicit`, `reference_gated`, or `global`.
+- `disclosure`: `local`, `implicit`, or `global`.
 - `source_message_ids`: source Discord message ids for provenance/auditing.
 - `confidence`: extractor confidence in the range 0..1.
 - `relationship_evidence`: sparse positive 1..4 evidence vector used only by `relationship` items.
@@ -213,7 +213,6 @@ another user's memory to enter the DM.
 | --- | --- | --- | --- | --- |
 | `local` | full | hidden | hidden | full |
 | `implicit` | full | implicit | implicit | full |
-| `reference_gated` | full | hidden | hidden | full |
 | `global` | full | full | full | full |
 
 `PUBLIC_SERVER_MEMORY_IN_DM` remains relevant to the legacy summary path while migration is in
@@ -342,8 +341,12 @@ A missing axis means "no positive evidence", not a negative preference. Current 
 explicit boundaries always override the relationship profile. The model is explicitly forbidden from
 reconstructing concrete past events, locations, names, or conversation content from numeric evidence.
 
-- `reference_gated` factual content is still not opened in shared spaces, even when the current message
-  looks like a reference. Explicit factual recall remains Phase 4.
+- Store v4 retires `reference_gated` and migrates existing rows to `local`. Earlier edit history is retained.
+- Extraction defaults ordinary memories to `implicit`. Only relationship evidence and allowlisted
+  preference/boundary slots can influence a different space. Unmapped items contribute nothing.
+  `cross_space_behavior` contains only tone_gentle, tone_playful, tone_reserved or praise_light.
+  Sensitive annotations and stale slots cannot contribute. Low-risk stable address, language and
+  format preferences may be global. Context-specific or private memories remain local.
 - Raw structured-memory rows supplied to the response model include a coarse `scope_relation`:
   `current_channel`, `same_server_other_channel`, or `cross_space`. Raw guild/channel ids are not
   needed by the model for relevance decisions.

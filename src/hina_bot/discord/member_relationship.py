@@ -5,14 +5,14 @@ import discord
 
 from hina_bot.ai.local_tools import LocalToolError, LocalToolSpec
 from hina_bot.ai.prompts import load_prompt
-from hina_bot.core.memory_items import MemoryAccess, MemoryDisclosure, MemoryKind, memory_access
+from hina_bot.core.memory_items import MemoryAccess, MemoryKind, memory_access
 from hina_bot.core.relationship_profile import aggregate_shared_relationship_evidence
 from hina_bot.core.routing import Scope
 from hina_bot.core.scope_overrides import memory_mode_capabilities
 from hina_bot.core.server_memory_repository import ServerSourceRef
 
 from .private_thread_access import check_private_thread_access, private_thread_member_ids
-from .server_memory import _authority
+from .server_memory import _authority, retired_profile_restriction
 
 MEMBER_RELATIONSHIP = LocalToolSpec(
     name="get_member_relationship",
@@ -29,7 +29,7 @@ def _observations(store, target, cross_scope, public_channels):
             continue
         local = item.origin_realm == target.realm and item.origin_public_at_capture
         if local:
-            if item.origin_channel_id not in public_channels or item.disclosure == MemoryDisclosure.REFERENCE_GATED:
+            if item.origin_channel_id not in public_channels or retired_profile_restriction(store, item):
                 continue
         elif not (cross_scope and memory_access(item, target) == MemoryAccess.IMPLICIT):
             continue

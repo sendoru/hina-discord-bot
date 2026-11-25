@@ -63,13 +63,13 @@ async def test_explicit_owner_reference_cannot_unlock_cross_space_memory():
             dm,
             "다음 주 삼성 면접이 있다",
             kind=MemoryKind.EVENT,
-            disclosure=MemoryDisclosure.REFERENCE_GATED,
+            disclosure=MemoryDisclosure.LOCAL,
         )
         store.add_memory_item(
             dm,
             "고양이 이름은 하루다",
             kind=MemoryKind.FACT,
-            disclosure=MemoryDisclosure.REFERENCE_GATED,
+            disclosure=MemoryDisclosure.LOCAL,
         )
 
         await llm.answer(

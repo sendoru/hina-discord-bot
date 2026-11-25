@@ -60,7 +60,7 @@ def test_v1_store_requires_offline_upgrade_and_keeps_every_row(tmp_path):
             "SELECT component,version,name FROM schema_migrations ORDER BY component,version"
         )] == [("admin", 1, "admin-baseline-v1"), ("settings", 1, "settings-baseline-v1"),
                ("store", 1, "store-baseline-v1"), ("store", 2, "store-memory-annotations-v2"),
-               ("store", 3, "store-server-memory-v3")]
+               ("store", 3, "store-server-memory-v3"), ("store", 4, "store-disclosure-v4")]
     Store.open_existing(str(path)).close()
     current = signature(path)
     assert prepare_database.prepare_database(path, apply=True, offline_confirmed=True) == ((), None)
@@ -89,7 +89,7 @@ def test_fresh_store_is_created_at_v3(tmp_path):
     store = Store.create(str(tmp_path / "fresh.sqlite3"))
     try:
         versions = db_schema.schema_versions(store.db)
-        assert versions["store"] == len(db_schema.HISTORY["store"]) == 3
+        assert versions["store"] == len(db_schema.HISTORY["store"]) == 4
         assert store.db.execute(
             "SELECT 1 FROM sqlite_master WHERE name='memory_item_annotations'"
         ).fetchone()
@@ -169,3 +169,16 @@ def test_deployed_v2_migrates_to_v3_without_changing_annotations(tmp_path):
         db_schema.require_current(db)
         assert db.execute("SELECT memory_item_id FROM memory_item_annotations").fetchone()[0] == 41
         assert not db.execute("SELECT 1 FROM server_memory_items").fetchone()
+
+
+def test_retired_disclosure_is_migrated_and_cannot_be_reintroduced(tmp_path):
+    path = tmp_path / "retired.sqlite3"
+    v1_database(path)
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("UPDATE memory_items SET disclosure='reference_gated' WHERE id=41")
+        db.commit()
+        db_migrations.prepare_connection(db)
+        assert db.execute("SELECT disclosure,revision FROM memory_items WHERE id=41").fetchone() == ("local", 4)
+        assert db.execute("SELECT disclosure,revision FROM memory_item_edit_history").fetchone() == ("reference_gated", 3)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("UPDATE memory_items SET disclosure='reference_gated' WHERE id=41")

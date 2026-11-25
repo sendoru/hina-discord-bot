@@ -30,7 +30,6 @@
   - `hours_since_last_turn_any_space`: 모든 공간을 통틀어 마지막 턴 이후 시간(T1 세션 판정)
   - `mentions`, `reply_to_user`, `thread_participants`: 멤버 공개 프로필 관련성 판정(§8.5)
   - `classifier_codes`: 대화 성격 힌트(예: `debugging`)
-  - `authorized_reference_gated`: 이번 턴 T4가 승인한 항목
   - `member_opt_out`, `departed_members`: 공유 옵트아웃, 서버를 떠난 멤버
   - `reader_denied_channels`: 현재 화자가 지금 볼 수 없는 채널(원 채널 열람 권한 실시간 확인)
 - **`settings`**: `MEMORY_SESSION_FOLLOWUP`(`off|dm|all`), `external_context_policy`

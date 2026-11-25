@@ -310,7 +310,7 @@ def test_persist_shadow_items_never_upgrades_private_source_visibility():
     item = ExtractedMemoryItem(
         content="사용자는 프로젝트 A를 진행 중이다.",
         kind=MemoryKind.TASK,
-        disclosure=MemoryDisclosure.REFERENCE_GATED,
+        disclosure=MemoryDisclosure.LOCAL,
         confidence=0.95,
         source_message_ids=("201", "202"),
     )

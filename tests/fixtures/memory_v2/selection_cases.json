@@ -13,7 +13,6 @@
       "reply_to_user": null,
       "thread_participants": [],
       "classifier_codes": [],
-      "authorized_reference_gated": [],
       "member_opt_out": [],
       "departed_members": [],
       "reader_denied_channels": [],
@@ -447,12 +446,12 @@
       "expect": {"exclude": ["job_old", "job_new"]}
     },
     {
-      "id": "recall_does_not_open_reference_gated_without_t4",
-      "covers": "§10 선택: 서버에서 recall_memory가 다른 공간 reference_gated 검색 → X",
+      "id": "recall_does_not_open_local_without_t4",
+      "covers": "§10 선택: 서버에서 recall_memory가 다른 공간 local 검색 → X",
       "scope": "g1:c1:public",
       "message": "그거 뭐였더라",
       "memories": [
-        {"ref": "trip", "kind": "event", "origin": "dm", "disclosure": "reference_gated",
+        {"ref": "trip", "kind": "event", "origin": "dm", "disclosure": "local",
          "content": "다음 달 오사카 여행 예정",
          "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-11",
                         "keywords": ["여행", "오사카"]}}
@@ -460,18 +459,17 @@
       "expect": {"recall": {"query": "여행", "scope": "personal", "exclude": ["trip"]}}
     },
     {
-      "id": "recall_includes_reference_gated_authorized_by_t4",
-      "covers": "§10 선택: 이번 턴 T4가 승인한 reference_gated는 recall에 포함",
+      "id": "recall_keeps_local_private_after_reference",
+      "covers": "§10 선택: 직접 언급한 타 공간 local 기억도 recall에서 제외",
       "scope": "g1:c1:public",
       "message": "내가 전에 말했던 여행 기억나?",
-      "context": {"authorized_reference_gated": ["trip"]},
       "memories": [
-        {"ref": "trip", "kind": "event", "origin": "dm", "disclosure": "reference_gated",
+        {"ref": "trip", "kind": "event", "origin": "dm", "disclosure": "local",
          "content": "다음 달 오사카 여행 예정",
          "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-11",
                         "keywords": ["여행", "오사카"]}}
       ],
-      "expect": {"recall": {"query": "여행", "scope": "personal", "include": ["trip"]}}
+      "expect": {"recall": {"query": "여행", "scope": "personal", "exclude": ["trip"]}}
     },
     {
       "id": "recall_renders_temporal_status",
@@ -946,12 +944,12 @@
       "expect": {"include": ["cat"], "tier": {"cat": "Tp"}}
     },
     {
-      "id": "profile_never_widens_reference_gated",
-      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 다른 공간 reference_gated 기억은 T4 승인 없이 Tp로 열리지 않음",
+      "id": "profile_never_widens_local",
+      "covers": "#449 §7 Tp 핵심 프로필(P2 읽기 경로 보강): 다른 공간 local 기억은 T4 승인 없이 Tp로 열리지 않음",
       "scope": "g1:c1:public",
       "message": "ㅋㅋㅋ 이거 봐",
       "memories": [
-        {"ref": "cat", "content": "고양이 보리를 키움", "origin": "g2:c5:public", "disclosure": "reference_gated",
+        {"ref": "cat", "content": "고양이 보리를 키움", "origin": "g2:c5:public", "disclosure": "local",
          "annotation": {"usage_mode": "ambient", "importance": 3, "keywords": ["고양이", "보리", "냥이"], "audience": "server"}}
       ],
       "expect": {"exclude": ["cat"]}

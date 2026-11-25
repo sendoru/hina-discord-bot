@@ -666,7 +666,7 @@ def build_memory_service(tmp_path):
         scope,
         "remembered fact",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         source_message_ids=("700",),
         confidence=0.91,
     )
@@ -684,7 +684,7 @@ def test_memory_service_filters_and_source_drilldown(tmp_path):
     listing = service.memory_items(
         user_id="100",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         confidence_min="0.9",
         query="remembered",
     )
@@ -807,7 +807,7 @@ def build_reconciliation_service(tmp_path):
         scope,
         "old remembered value",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         source_message_ids=("101", "102"),
         confidence=0.8,
     )
@@ -815,7 +815,7 @@ def build_reconciliation_service(tmp_path):
         scope,
         "new remembered value",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         source_message_ids=("102", "101"),
         confidence=0.95,
     )
