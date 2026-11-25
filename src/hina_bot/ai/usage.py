@@ -400,6 +400,10 @@ class UsageLogger:
                 "semantic_web_need", "semantic_web_codes", "semantic_web_uncertain",
             }
             row.update({key: value for key, value in route_metadata.items() if key in allowed})
+        if provider == "gemini" and operation in {
+            "extract_memory_items_shadow", "summarize_shared", "knowledge_ingest",
+        }:
+            kwargs["_hina_operation_reference"] = True
         responses = []
         previous_interaction_id = str(kwargs.get("previous_interaction_id") or "")
         cumulative_baseline = (

@@ -786,9 +786,9 @@ class _GeminiResponses:
         if getattr(self.settings, "gemini_pdf_transport", "text") != "pdf" or payload.get("store"):
             return []
         messages = kwargs.get("input")
-        if kwargs.get("_hina_memory_reference") and isinstance(messages, str):
+        if kwargs.get("_hina_operation_reference") and isinstance(messages, str):
             messages = [{"role": "user", "content": [PDFReferenceText(type="input_text", text=messages)]}]
-        elif kwargs.get("_hina_memory_reference") and isinstance(messages, list) and len(messages) == 1:
+        elif kwargs.get("_hina_operation_reference") and isinstance(messages, list) and len(messages) == 1:
             content = messages[0].get("content")
             if isinstance(content, list) and content and content[0].get("type") == "input_text":
                 messages = [{**messages[0], "content": [PDFReferenceText(content[0]), *content[1:]]}]
