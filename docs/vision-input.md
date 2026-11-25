@@ -76,10 +76,13 @@ source별 count quota는 다음 환경 변수로 제어합니다.
 
 추가 byte 제한은 다음과 같습니다.
 
-- 개별 시각 입력 최대 5 MiB
-- 한 요청의 시각 입력 합계 최대 12 MiB
-- Discord CDN에서 이모지/스티커를 가져올 때 HTTP timeout 15초
-- quota나 byte limit을 넘거나 읽지 못한 항목은 해당 요청에서 제외
+- `VISION_MAX_IMAGE_MB`: 개별 시각 입력 전송 최대 5 MiB (1~20)
+- `VISION_MAX_TOTAL_MB`: 요청 전체 시각 입력 전송 최대 12 MiB (1~32)
+- 두 설정은 dashboard runtime config에서 변경 가능하며 다음 요청부터 적용합니다.
+- 개별 예산과 남은 전체 예산 중 작은 값을 적용합니다. 초과 정적 이미지는 원래 크기의 무손실 WebP, 같은 해상도의 고품질 WebP, 단계적 축소 순으로 시도합니다.
+- 원본 다운로드는 항목당 32 MiB, 압축용 디코딩은 3,200만 픽셀로 제한합니다. 애니메이션은 원본이 예산에 맞는 경우 그대로 전달하고, 초과하면 프레임을 임의로 버리지 않고 제외합니다.
+- Discord CDN HTTP timeout 15초. quota, 다운로드 실패, 지원 형식 및 압축 실패 등은 내용·URL 없이 로그에 기록합니다.
+- 기본값보다 용량을 높이면 base64와 다른 입력을 포함한 provider의 실제 요청 제한에 걸릴 수 있습니다.
 
 파일 byte 크기와 provider의 이미지 token 비용은 같은 값이 아닙니다. 실제 이미지 token 계산과
 과금은 선택한 provider/model 및 이미지 크기·처리 방식에 따라 달라질 수 있습니다.
@@ -306,7 +309,7 @@ GIF는 `image/gif` 그대로 provider에 전달합니다. 애니메이션의 여
 - `capture direct`/`capture all`/`off`에 따라 최근 이미지 범위가 달라짐
 - `bot_interactions_only`에서 제3자 일반 reply 이미지가 외부 모델로 나가지 않음
 - 최근 custom emoji는 passive history에서 다시 다운로드하지 않음
-- source별 quota와 5 MiB/12 MiB 제한이 전체 visual context에 공동 적용
+- source별 quota와 runtime 전송 용량 제한이 전체 visual context에 공동 적용
 - 이미지 안의 prompt injection 문구를 지침으로 실행하지 않음
 - 이미지가 없는 일반 대화의 routing/memory/chatlog 동작 회귀 없음
 - OpenAI, Gemini, OpenRouter의 실제 운영 provider/model 조합별 smoke test
