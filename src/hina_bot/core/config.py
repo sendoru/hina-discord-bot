@@ -179,6 +179,8 @@ class Settings:
     vision_max_attachments: int = 4
     vision_max_emojis: int = 12
     vision_max_stickers: int = 8
+    vision_max_image_mb: int = 5
+    vision_max_total_mb: int = 12
     # Startup-only: empty disables the fixed image reference.
     vision_hina_reference_path: str = ""
     # Startup-only (#472): keep a user's own photos on disk until memory extraction has
@@ -463,6 +465,8 @@ class Settings:
         vision_max_attachments = int(os.getenv("VISION_MAX_ATTACHMENTS", "4"))
         vision_max_emojis = int(os.getenv("VISION_MAX_EMOJIS", "12"))
         vision_max_stickers = int(os.getenv("VISION_MAX_STICKERS", "8"))
+        vision_max_image_mb = int(os.getenv("VISION_MAX_IMAGE_MB", "5"))
+        vision_max_total_mb = int(os.getenv("VISION_MAX_TOTAL_MB", "12"))
 
         memory_visual_input = os.getenv("MEMORY_VISUAL_INPUT", "off").strip().lower() or "off"
         if memory_visual_input not in {"off", "on"}:
@@ -567,6 +571,8 @@ class Settings:
             vision_max_attachments=vision_max_attachments,
             vision_max_emojis=vision_max_emojis,
             vision_max_stickers=vision_max_stickers,
+            vision_max_image_mb=vision_max_image_mb,
+            vision_max_total_mb=vision_max_total_mb,
             vision_hina_reference_path=os.getenv("VISION_HINA_REFERENCE_PATH", "").strip(),
             memory_visual_input=memory_visual_input == "on",
             memory_visual_pending_max_mb=memory_visual_pending_max_mb,
@@ -619,6 +625,7 @@ class Settings:
                              "lore_max_items 0~20, lore_max_chars 0~12000, "
                              "audio attachments 0~8, audio max duration 1~1800초, "
                              "vision source quota는 각각 0~32이고 합계는 32 이하, "
+                             "vision image 1~20 MiB, total 1~32 MiB, "
                              "memory visual pending 상한은 16~4096 MB, memory audio pending 상한은 16~4096 MB, "
                              "memory audio attachments 0~2, seconds 1~AUDIO_MAX_SECONDS")
         if not s.history_turns <= s.raw_retention_turns <= 100000:
