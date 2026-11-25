@@ -194,6 +194,23 @@ The first filter checks active ownership and disclosure. In the owner's DM, reco
 
 ## Disclosure semantics
 
+New extraction uses `global` for low-risk, portable self-knowledge such as hobbies, tastes,
+learning/technical interests, ordinary experiences, pets, habits and non-confidential ongoing
+projects. An explicit cross-space sharing request is not required. DM/private-channel origin
+alone is not a reason to narrow an otherwise ordinary memory. `implicit` is for relationship
+evidence and supported behavior signals, not the default for ordinary facts/preferences.
+Sensitive, confidential, identifying and space-specific information remains `local`; uncertain
+disclosure is narrowed. Admission, evidence and media-specific rules are unchanged.
+
+Disclosure controls eligibility to enter the owner's reply context, not relevance or permission
+to disclose to third parties. Annotation audience remains independent (e.g. a DM hobby can be
+`global` and `audience=owner`). In public replies, use such memories for natural personalization
+without volunteering private details or origins; the response instruction is not a hard output
+privacy filter. The existing owner, sensitive, setting/opt-in and P4 access gates remain unchanged.
+Previously stored disclosures are not automatically broadened by this extraction change;
+reviewed reclassification and duplicate handling are tracked separately in #554.
+
+
 The policy primitive returns one of three access levels:
 
 - `full`: the memory content may be supplied to the response layer.
