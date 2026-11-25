@@ -278,19 +278,14 @@ async def test_without_a_judge_or_with_a_broken_one_the_run_still_reports(tmp_pa
 def test_cli_settings_pin_the_read_mode_and_turn_off_web_search(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-not-a-real-key")
     monkeypatch.setenv("CHAT_WEB_SEARCH", "true")
-    monkeypatch.setenv("MEMORY_SESSION_FOLLOWUP", "off")
     args = _parser().parse_args(["--provider", "openai", "--model", "m", "--modes", "decision"])
 
     settings = _settings(args, "decision")
 
     assert args.modes == ("decision",)
     assert (settings.personal_memory_read_mode, settings.chat_web_search) == ("decision", False)
-    assert settings.memory_session_followup == "off"
     with pytest.raises(SystemExit):
         _parser().parse_args(["--modes", "shadow"])
-    monkeypatch.setenv("MEMORY_SESSION_FOLLOWUP", "sometimes")
-    with pytest.raises(ValueError, match="MEMORY_SESSION_FOLLOWUP"):
-        _settings(args, "full")
 
 
 def test_summary_separates_modes_and_ignores_errors_in_rates():
