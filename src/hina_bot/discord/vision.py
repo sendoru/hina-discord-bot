@@ -9,6 +9,7 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from io import BytesIO
+from threading import BoundedSemaphore
 from urllib.parse import urlsplit
 
 import discord
@@ -25,6 +26,7 @@ MAX_VISUAL_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_VISUAL_BYTES = 12 * 1024 * 1024
 MAX_SOURCE_VISUAL_BYTES = 32 * 1024 * 1024
 MAX_DECODE_PIXELS = 32_000_000
+_COMPRESSION_SLOTS = BoundedSemaphore(2)
 MAX_CONTEXT_VISUAL_MESSAGES = 3
 _CUSTOM_EMOJI = re.compile(r"<(?P<animated>a?):(?P<name>[^:<>\s]{1,32}):(?P<id>[0-9]{1,20})>")
 
@@ -126,6 +128,10 @@ class VisionFetchCache:
 _sniff_image_mime = sniff_image_mime
 
 
+class VisualSourceTooLarge(ValueError):
+    pass
+
+
 async def _download(url: str) -> bytes:
     async with (
         httpx.AsyncClient(timeout=15, follow_redirects=True) as client,
@@ -140,15 +146,16 @@ async def _bounded_body(response) -> bytes:
     if size:
         try:
             if int(size) > MAX_SOURCE_VISUAL_BYTES:
-                log.warning("Visual source skipped: reason=source_size_limit")
-                return b""
+                raise VisualSourceTooLarge
+
+        except VisualSourceTooLarge:
+            raise
         except ValueError:
             pass
     body = bytearray()
     async for chunk in response.aiter_bytes():
         if len(body) + len(chunk) > MAX_SOURCE_VISUAL_BYTES:
-            log.warning("Visual source skipped: reason=source_size_limit")
-            return b""
+            raise VisualSourceTooLarge
         body.extend(chunk)
     return bytes(body)
 
@@ -199,6 +206,12 @@ def fit_visual_bytes(data: bytes, budget: int) -> tuple[bytes, str, str]:
     except (OSError, ValueError, Image.DecompressionBombError):
         return b"", "", "decode_failed"
     return b"", "", "compression_budget"
+
+
+def _fit_visual_in_worker(data: bytes, budget: int) -> tuple[bytes, str, str]:
+    # Preflight runs before the generation semaphore; cap concurrent image decodes.
+    with _COMPRESSION_SLOTS:
+        return fit_visual_bytes(data, budget)
 
 
 def _emoji_candidates(content: str):
@@ -387,6 +400,7 @@ async def collect_visual_inputs(
     downloader=_download,
     embed_downloader=_download_embed,
     max_context_messages: int = MAX_CONTEXT_VISUAL_MESSAGES,
+    diagnostics: dict[str, int] | None = None,
 ) -> list[VisualInput]:
     """Fetch visuals only from the current message and already-selected message context."""
     limits = limits or VisionLimits()
@@ -394,6 +408,10 @@ async def collect_visual_inputs(
     counts = {"attachment": 0, "emoji": 0, "sticker": 0, "embed": 0}
     used = 0
     seen_message_ids: set[str] = set()
+
+    def note(reason: str) -> None:
+        if diagnostics is not None:
+            diagnostics[reason] = diagnostics.get(reason, 0) + 1
 
     def has_room(source: str) -> bool:
         return counts[source] < limits.for_source(source) and used < limits.max_total_bytes
@@ -408,24 +426,28 @@ async def collect_visual_inputs(
     ):
         nonlocal used
         if not has_room(source):
+            note("quota_or_total_budget")
             log.info("Visual skipped: source=%s reason=quota_or_total_budget", source)
             return
         if not data:
+            note("empty_download")
             log.warning("Visual skipped: source=%s reason=empty_download", source)
             return
         budget = min(limits.max_image_bytes, limits.max_total_bytes - used)
         original_size = len(data)
         if original_size > budget:
-            data, mime, reason = await asyncio.to_thread(fit_visual_bytes, data, budget)
+            data, mime, reason = await asyncio.to_thread(_fit_visual_in_worker, data, budget)
         else:
             data, mime, reason = fit_visual_bytes(data, budget)
         if not data:
+            note(reason)
             log.warning(
                 "Visual skipped: source=%s reason=%s bytes=%d budget=%d",
                 source, reason, original_size, budget,
             )
             return
         if reason != "original":
+            note(reason)
             log.info(
                 "Visual compressed: source=%s method=%s before_bytes=%d after_bytes=%d",
                 source, reason, original_size, len(data),
@@ -462,15 +484,20 @@ async def collect_visual_inputs(
             if content_type and not content_type.startswith("image/"):
                 continue
             if not has_room("attachment"):
+                note("quota_or_total_budget")
                 log.info("Visual skipped: source=attachment reason=quota_or_total_budget")
                 break
             size = int(getattr(attachment, "size", 0) or 0)
             if size > MAX_SOURCE_VISUAL_BYTES:
-                log.warning("Visual skipped: source=attachment reason=source_size_limit bytes=%d", size)
+                note("source_size_limit")
+                log.warning(
+                    "Visual skipped: source=attachment reason=source_size_limit bytes=%d", size,
+                )
                 continue
             try:
                 data = await attachment.read()
             except Exception as exc:  # noqa: BLE001 - Discord failures are content-free in logs
+                note("download_failed")
                 log.warning("Visual skipped: source=attachment reason=download_failed error=%s",
                             type(exc).__name__)
                 continue
@@ -495,11 +522,17 @@ async def collect_visual_inputs(
 
         for url, source, name in remote:
             if not has_room(source):
+                note("quota_or_total_budget")
                 log.info("Visual skipped: source=%s reason=quota_or_total_budget", source)
                 continue
             try:
                 data = await (embed_downloader if source == "embed" else downloader)(url)
+            except VisualSourceTooLarge:
+                note("source_size_limit")
+                log.warning("Visual skipped: source=%s reason=source_size_limit", source)
+                continue
             except Exception as exc:  # noqa: BLE001 - do not log Discord CDN URLs
+                note("download_failed")
                 log.warning("Visual skipped: source=%s reason=download_failed error=%s",
                             source, type(exc).__name__)
                 continue
@@ -561,6 +594,7 @@ async def collect_visual_inputs(
                 discord.NotFound,
                 discord.HTTPException,
             ) as exc:
+                note("context_lookup_failed")
                 log.warning("Selected visual lookup failed (%s)", type(exc).__name__)
                 if cache is not None and isinstance(exc, discord.NotFound):
                     cache.put(key, ())
