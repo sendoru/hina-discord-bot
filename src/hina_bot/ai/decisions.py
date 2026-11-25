@@ -9,6 +9,7 @@ from time import perf_counter
 
 import httpx
 
+from .pdf_transport import encode_reference
 from .prompts import load_prompt
 
 MODEL = "gemini-decision-1"
@@ -32,11 +33,13 @@ class DecisionResult:
     request_ms: int | None = None
     http_status: int | None = None
     elapsed_ms: int = 0
+    transport_metrics: dict | None = None
 
     def metrics(self) -> dict:
         scores = list((self.scores or {}).values())
         return {
             "decision_candidates": self.candidate_count,
+            "decision_transport": self.transport_metrics or {"transport": "text"},
             "decision_questions": self.question_count,
             "decision_request_bytes": self.request_bytes,
             "decision_request_ms": self.request_ms,
@@ -100,7 +103,7 @@ class DecisionsClient:
 
     async def evaluate(
         self, *, api_key: str, domain: str, query: dict, candidates: dict[str, dict],
-        timeout_seconds: float | None = None,
+        timeout_seconds: float | None = None, pdf_transport: bool = False,
     ) -> DecisionResult:
         started = perf_counter()
         count = len(candidates)
@@ -139,6 +142,22 @@ class DecisionsClient:
         request_meta = {"request_bytes": len(body), "question_count": count}
         if len(body) > MAX_REQUEST_BYTES:
             return result("request_size_limit", **request_meta)
+
+        if pdf_transport:
+            candidate_text = json.dumps({"candidates": shared["candidates"]}, ensure_ascii=False,
+                                        separators=(",", ":"))
+            document, metrics = await encode_reference(candidate_text)
+            if document:
+                control = {key: shared[key] for key in ("selection_rules", "turn")}
+                parts = [{"type": "text", "text": json.dumps(control, ensure_ascii=False)},
+                         {"type": "document", "mime_type": "application/pdf", "data": document.data}]
+                alternative = json.dumps({**payload, "input": parts}, ensure_ascii=False,
+                                         separators=(",", ":")).encode()
+                if len(alternative) <= MAX_REQUEST_BYTES:
+                    body = alternative
+                else:
+                    metrics.update(transport="text", fallback="request_size_limit")
+            request_meta.update(request_bytes=len(body), transport_metrics=metrics)
 
         if self.http is None:
             self.http = httpx.AsyncClient()
