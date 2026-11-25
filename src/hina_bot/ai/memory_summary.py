@@ -153,6 +153,8 @@ class MemorySummaryMixin:
         route_metadata = plan.telemetry()
         if self.settings.provider == "gemini":
             request["thinking_level"] = plan.thinking_level
+            if operation in {"extract_memory_items_shadow", "summarize_shared"}:
+                request["_hina_memory_reference"] = True
         else:
             route_metadata.pop("requested_thinking_level", None)
         return await self.usage.request(
