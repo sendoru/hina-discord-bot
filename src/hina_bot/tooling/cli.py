@@ -46,6 +46,9 @@ COMMAND_INFO: dict[str, CommandInfo] = {
     "hina-backfill-annotations": CommandInfo(
         "Database / Maintenance", "Backfill memory annotations", warning=True
     ),
+    "hina-review-memory-disclosure": CommandInfo(
+        "Database / Maintenance", "Review and apply personal memory disclosure changes", warning=True
+    ),
     "hina-reset-conversation": CommandInfo(
         "Database / Maintenance", "Reset conversation history", warning=True
     ),

@@ -236,6 +236,58 @@ another user's memory to enter the DM.
 progress, but it no longer controls structured-memory access: the owner's DM aggregates all of that
 owner's structured memory.
 
+### Reviewed disclosure backfill (#554)
+
+The new extraction policy does not change already stored disclosures. Use the offline
+`hina-review-memory-disclosure` command for an explicit two-phase review. By default it
+opens the current schema read-only, uses no model and prints counts only.
+
+```sh
+hina-review-memory-disclosure --database data/hina.sqlite3 --plan-out review.json
+# Optional alternative: request model suggestions on a new file. Sends eligible memory
+# content and its own retained source utterances to the configured memory provider.
+hina-review-memory-disclosure --database data/hina.sqlite3 --suggest --plan-out suggested.json
+```
+
+The owner-only plan file contains local memory item IDs, old/new disclosure, reason codes,
+blockers, same-origin duplicate hints and snapshot fingerprints, never original content,
+source utterances or Discord IDs. Inspect the listed memory IDs and their source context
+locally in the dashboard. A suggestion is not approval: only after reviewing the original
+meaning, privacy restrictions and current policy, set `new` and `approved: true` on each
+intended row. Leave all other rows untouched. Never publish the plan or backup.
+
+Missing/stale annotations, missing or non-owner/non-origin sources, mismatched quotes,
+sensitive or directive/boundary memories, administrator/previously edited rows, uncertain
+or media-grounded provenance flags, and disabled memory writes block tool application.
+Such cases require independent operator review; do not promote merely because the content
+looks innocuous. A model can suggest only eligible rows; ordinary non-relationship facts
+cannot be converted to implicit signals. Review the optional provider/logging settings before
+using `--suggest`. There is no new startup migration or response-time model call.
+
+Stop the bot and all SQLite writers, then apply the reviewed plan:
+
+```sh
+hina-review-memory-disclosure --database data/hina.sqlite3 --apply review.json --offline-confirmed
+```
+
+Apply takes a verified pre-change backup, then opens a write transaction and rechecks the
+row, annotation, owner/origin sources, edit history, memory mode and snapshot fingerprint.
+Changed or invalid rows are skipped and reported; an unexpected SQL failure rolls back the
+transaction. The old revision is retained in the normal memory edit history. Content,
+provenance, lifecycle and annotation semantics are preserved, and a current annotation's
+revision moves forward with the item. Rerunning the same plan cannot reapply changes.
+Generate a fresh plan to review again. To undo the batch immediately, stop all writers
+and restore the verified backup using the normal offline restore procedure (restoring a
+snapshot after new activity also discards that activity); otherwise inspect edit history
+and perform separately reviewed edits.
+
+Duplicate reconciliation intentionally does not widen an old memory automatically. The
+review plan exposes same-exact-origin superseded duplicate rows whose disclosure differs
+from their active target. Inspect both records in the dashboard; the target must still have
+its own source and pass all checks before approval. A cross-origin duplicate never grants
+authorization. No original quote is copied from the duplicate. This preserves existing
+reconciliation and deletion semantics while making the lost wider classification reviewable.
+
 ## Phase 1: storage and privacy foundation
 
 Phase 1 adds the schema, typed policy model, storage API, deletion integration, and privacy matrix
