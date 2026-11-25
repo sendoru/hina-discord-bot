@@ -62,10 +62,10 @@ def measure(font_path: Path, rows: int, size: int, sample: str) -> dict:
     with httpx.Client(transport=httpx.MockTransport(capture)) as client:
         for api, body in bodies.items():
             client.post(f"https://mock.invalid/{api}", json=body).raise_for_status()
-    return dict(pages=len(pages), rows=rows, font_pt=size, rows_per_page=rows/len(pages),
-                pdf_bytes=len(data), request_bytes=lengths, encode_ms=round(encoded_ms, 2),
-                missing_glyphs=len(missing), exact_roundtrip=recovered == lines,
-                eligible=not missing and recovered == lines, billing=None, model_fidelity=None)
+    return {"pages": len(pages), "rows": rows, "font_pt": size, "rows_per_page": rows/len(pages),
+                "pdf_bytes": len(data), "request_bytes": lengths, "encode_ms": round(encoded_ms, 2),
+                "missing_glyphs": len(missing), "exact_roundtrip": recovered == lines,
+                "eligible": not missing and recovered == lines, "billing": None, "model_fidelity": None}
 
 
 if __name__ == "__main__":
