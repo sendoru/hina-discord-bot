@@ -95,7 +95,6 @@ class HinaClient(BaseHinaClient):
             store=self.store,
             external_context_policy=settings.external_context_policy,
         )
-        self.vision_limits = VisionLimits.from_settings(settings)
         self.audio_limits = AudioLimits.from_settings(settings)
         self.visual_cache = VisionFetchCache()
         install_slash_commands(self)
@@ -465,12 +464,14 @@ class HinaClient(BaseHinaClient):
             (time.perf_counter() - visual_ref_select_started) * 1000
         )
         visual_fetch_started = time.perf_counter()
+        visual_diagnostics: dict[str, int] = {}
         visuals = (
             await collect_visual_inputs(
                 message,
                 context_refs=visual_refs,
-                limits=self.vision_limits,
+                limits=VisionLimits.from_settings(self.settings),
                 cache=self.visual_cache,
+                diagnostics=visual_diagnostics,
             )
             if text is not None
             else []
@@ -510,6 +511,7 @@ class HinaClient(BaseHinaClient):
                     visual_ref_count=len(visual_refs),
                     visual_fetch_ms=visual_fetch_ms,
                     visual_input_count=len(visuals),
+                    visual_diagnostics=visual_diagnostics,
                     audio_input_count=len(audio_inputs),
                     audio_duration_seconds=round(sum(a.duration_seconds for a in audio_inputs), 1),
                     audio_input_bytes=sum(len(a.data) for a in audio_inputs),

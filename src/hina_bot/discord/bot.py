@@ -874,17 +874,34 @@ class HinaClient(discord.Client):
                         return
                     self.cooldowns[key] = cooldown_received_at
 
+                    visuals = CURRENT_VISUAL_INPUTS.get()
+                    # An image-only invocation is not a bare call, even if its
+                    # attachment could not be downloaded or exceeded a media limit.
+                    # Historical/replied-to images cannot replace the current image.
+                    current_visual_missing = (
+                        message_has_visual(message)
+                        and not any(
+                            visual.reference_strength == "current_message"
+                            for visual in visuals
+                        )
+                    )
                     if (not text and not message_embed_text(message)
-                            and not _has_strong_visual_context(CURRENT_VISUAL_INPUTS.get())
-                            and not _has_strong_visual_context(CURRENT_AUDIO_INPUTS.get())):
+                            and (current_visual_missing or (
+                                not _has_strong_visual_context(visuals)
+                                and not _has_strong_visual_context(CURRENT_AUDIO_INPUTS.get())
+                            ))):
                         raw_turn_persistence = "skipped"
-                        raw_turn_persistence_reason = "fixed_reply_no_raw_turn"
+                        raw_turn_persistence_reason = (
+                            "current_visual_unavailable" if current_visual_missing
+                            else "fixed_reply_no_raw_turn"
+                        )
                         stage = "delivery"
                         await _stop_active_typing()
                         delivery_started = time.perf_counter()
                         await self.send_text(
                             message.channel,
-                            _bare_call_reply(
+                            "첨부한 이미지를 읽지 못했어. 다시 보내 줄래?"
+                            if current_visual_missing else _bare_call_reply(
                                 scope,
                                 self.settings.special_dm_user_id,
                                 self.settings.empty_call_reply,

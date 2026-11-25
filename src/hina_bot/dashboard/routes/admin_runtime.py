@@ -86,6 +86,12 @@ RUNTIME_CONFIG_SECTIONS = (
         ),
     ),
     (
+        "media",
+        "Media Inputs",
+        "Image transfer budgets (MiB)",
+        ("vision_max_image_mb", "vision_max_total_mb"),
+    ),
+    (
         "memory",
         "Memory & Retrieval",
         "Memory access, extraction, lore, and retrieval settings",

@@ -91,6 +91,8 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "runtime_timezone": "현재 시각과 상대 날짜 해석, ambient context에 사용할 IANA timezone입니다.",
     "runtime_locale": "ambient context와 외부 정보 요청에 사용할 locale 식별자입니다.",
     "runtime_default_location": "사용자가 지역을 생략했을 때만 날씨·교통·영업시간 등에 쓰는 fallback 위치입니다. 실제 사용자 위치로 간주하지 않습니다.",
+    "vision_max_image_mb": "시각 입력 한 장의 최대 전송 용량(MiB)입니다. 초과한 정적 이미지는 압축합니다. 다음 요청부터 적용됩니다.",
+    "vision_max_total_mb": "현재·답장·최근 시각 입력의 요청당 총 전송 용량(MiB)입니다. 다음 요청부터 적용됩니다.",
     "empty_call_reply": "호출어·멘션만 있고 본문이 비어 있을 때 보내는 고정 응답입니다.",
     "special_dm_empty_call_reply": "SPECIAL_DM_USER_ID와의 DM에서 빈 호출에만 사용하는 고정 응답입니다. 비우면 EMPTY_CALL_REPLY를 사용합니다.",
     "empty_response_reply": "모델이 빈 문자열을 반환했을 때 Discord에 보내는 최종 fallback 응답입니다.",
@@ -113,6 +115,12 @@ def _runtime_spec(
 
 
 RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
+    "vision_max_image_mb": _runtime_spec(
+        "vision_max_image_mb", "VISION_MAX_IMAGE_MB", "int", minimum=1, maximum=20
+    ),
+    "vision_max_total_mb": _runtime_spec(
+        "vision_max_total_mb", "VISION_MAX_TOTAL_MB", "int", minimum=1, maximum=32
+    ),
     "call_prefixes": _runtime_spec(
         "call_prefixes", "CALL_PREFIXES", "prefixes", maximum=20
     ),
