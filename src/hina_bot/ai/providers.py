@@ -10,7 +10,8 @@ from urllib.parse import urlsplit
 import httpx
 from openai import AsyncOpenAI
 
-from .pdf_transport import GeminiInlinePDF
+from .pdf_transport import GeminiInlinePDF, encode_reference
+from .reference_context_blocks import PDFReferenceText
 
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 GEMINI_GENERATE_CONTENT_URL = (
@@ -781,6 +782,39 @@ class _GeminiResponses:
         self._search_failures = 0
         self._search_circuit_until = 0.0
 
+    async def _reference_transport(self, payload, kwargs, field, convert):
+        if getattr(self.settings, "gemini_pdf_transport", "text") != "pdf" or payload.get("store"):
+            return []
+        messages = kwargs.get("input")
+        if not isinstance(messages, list):
+            return []
+        projected = []
+        metrics = []
+        for message in messages:
+            if (not isinstance(message, dict) or message.get("role") != "user"
+                    or not isinstance(message.get("content"), list)):
+                projected.append(message)
+                continue
+            parts = []
+            for part in message["content"]:
+                if isinstance(part, PDFReferenceText):
+                    document, observation = await encode_reference(part["text"])
+                    metrics.append(observation)
+                    if document:
+                        part = document
+                parts.append(part)
+            projected.append({**message, "content": parts})
+        if any(item["transport"] == "pdf" for item in metrics):
+            converted = convert(projected)
+            candidate = {**payload, field: converted}
+            if len(json.dumps(candidate, ensure_ascii=False).encode()) <= 8_000_000:
+                payload[field] = converted
+            else:
+                for item in metrics:
+                    if item["transport"] == "pdf":
+                        item.update(transport="text", fallback="request_size_limit")
+        return metrics
+
     async def _generate_content(
         self,
         *,
@@ -847,6 +881,7 @@ class _GeminiResponses:
             }
 
         url = GEMINI_GENERATE_CONTENT_URL.format(model=model)
+        metrics = await self._reference_transport(payload, kwargs, "contents", _gemini_generate_content_contents)
         response = await self.http.post(url, json=payload)
         try:
             response.raise_for_status()
@@ -856,6 +891,7 @@ class _GeminiResponses:
             raise error from exc
         normalized = _gemini_generate_content_output(response.json())
         normalized._hina_gemini_api = "generate_content"
+        normalized._hina_reference_transport = metrics
         return normalized
 
     async def _interaction(
@@ -916,6 +952,7 @@ class _GeminiResponses:
             payload["tools"] = payload_tools
 
         payload["generation_config"] = generation_config
+        metrics = await self._reference_transport(payload, kwargs, "input", _gemini_input)
         response = await self.http.post(GEMINI_INTERACTIONS_URL, json=payload)
         try:
             response.raise_for_status()
@@ -926,6 +963,7 @@ class _GeminiResponses:
         data = response.json()
         normalized = _gemini_output(data)
         normalized._hina_gemini_api = "interactions"
+        normalized._hina_reference_transport = metrics
         normalized._hina_interaction_id = (
             str(data.get("id") or "") if payload["store"] else ""
         )
