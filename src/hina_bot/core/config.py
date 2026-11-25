@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 from dataclasses import dataclass
@@ -32,7 +33,6 @@ RAG_MODES = frozenset({"off", "full", "tool"}) | DECISION_MODES
 PERSONAL_MEMORY_READ_MODES = frozenset({"full"}) | DECISION_MODES
 # Provider-facing conversation transport only; independent from memory read policy.
 CONTEXT_INPUT_MODES = frozenset({"legacy", "structured", "structured_with_replay"})
-MEMORY_SESSION_FOLLOWUP_MODES = frozenset({"off", "dm", "all"})
 
 
 def parse_call_prefixes(value: str) -> tuple[str, ...]:
@@ -83,6 +83,31 @@ def canonical_rag_mode(value: str) -> str:
 def canonical_memory_read_mode(value: str) -> str:
     """Read the pre-#508 spelling from startup settings, stored config or historical traces."""
     return "full" if value in {"legacy", "shadow", "tiered_shadow", "tiered", "decision_shadow"} else value
+
+
+def migrate_legacy_env_values(values, *, warn: bool = False) -> dict[str, str]:
+    """Translate retired dotenv keys/values at the input boundary only."""
+    result = dict(values)
+    old_model = result.pop("OPENAI_MODEL", "").strip()
+    if old_model and not result.get("LLM_MODEL", "").strip():
+        result["LLM_MODEL"] = old_model
+    result.pop("MEMORY_SESSION_FOLLOWUP", None)
+    for key, canonical in (
+        ("RAG_MODE", canonical_rag_mode),
+        ("PERSONAL_MEMORY_READ_MODE", canonical_memory_read_mode),
+    ):
+        if key in result:
+            raw = result[key].strip().lower()
+            converted = canonical(raw)
+            if converted != raw:
+                result[key] = converted
+    if warn and any(values.get(key) != result.get(key) for key in (
+        "OPENAI_MODEL", "MEMORY_SESSION_FOLLOWUP", "RAG_MODE", "PERSONAL_MEMORY_READ_MODE",
+    )):
+        logging.getLogger("hina").warning(
+            "Retired configuration migrated on read; update the environment or run hina-env-normalize"
+        )
+    return result
 
 
 def _env_key(provider: str) -> str:
@@ -170,7 +195,6 @@ class Settings:
     personal_memory_cross_scope: str = "on"
     server_memory_read: str = "on"
     personal_memory_read_mode: str = "full"
-    memory_session_followup: str = "dm"
     runtime_locale: str = "ko-KR"
     runtime_default_location: str = ""
     audio_input_enabled: bool = True
@@ -212,21 +236,20 @@ class Settings:
         load_dotenv(Path.cwd() / ".env.local", override=False)
         load_dotenv(Path.cwd() / ".env", override=False)
 
+        migrated_env = migrate_legacy_env_values(os.environ, warn=True)
         token = os.getenv("DISCORD_TOKEN", "").strip()
         if not token:
             raise ValueError(".env.local에 DISCORD_TOKEN을 설정해 주세요.")
 
         provider = _provider(os.getenv("LLM_PROVIDER", "openai"), "LLM_PROVIDER")
 
-        rag_mode = canonical_rag_mode(os.getenv("RAG_MODE", "full").strip().lower() or "full")
+        rag_mode = migrated_env.get("RAG_MODE", "full").strip().lower() or "full"
         if rag_mode not in RAG_MODES:
             allowed = ", ".join(sorted(RAG_MODES))
             raise ValueError(f"RAG_MODE는 {allowed} 중 하나여야 합니다.")
 
 
-        # OPENAI_MODEL remains a backwards-compatible alias for existing deployments.
-        model = (os.getenv("LLM_MODEL", "").strip()
-                 or os.getenv("OPENAI_MODEL", "").strip()
+        model = (migrated_env.get("LLM_MODEL", "").strip()
                  or ("gpt-4.1-mini" if provider == "openai" else ""))
         if not model:
             raise ValueError("LLM_MODEL을 설정해 주세요.")
@@ -445,17 +468,12 @@ class Settings:
         server_memory_read = os.getenv("SERVER_MEMORY_READ", "on").strip().lower()
         if server_memory_read not in {"on", "off"}:
             raise ValueError("SERVER_MEMORY_READ must be on or off")
-        personal_memory_read_mode = canonical_memory_read_mode(
-            os.getenv("PERSONAL_MEMORY_READ_MODE", "full").strip().lower() or "full"
+        personal_memory_read_mode = (
+            migrated_env.get("PERSONAL_MEMORY_READ_MODE", "full").strip().lower() or "full"
         )
         if personal_memory_read_mode not in PERSONAL_MEMORY_READ_MODES:
             allowed = ", ".join(sorted(PERSONAL_MEMORY_READ_MODES))
             raise ValueError(f"PERSONAL_MEMORY_READ_MODE는 {allowed} 중 하나여야 합니다.")
-        memory_session_followup = (
-            os.getenv("MEMORY_SESSION_FOLLOWUP", "dm").strip().lower() or "dm"
-        )
-        if memory_session_followup not in MEMORY_SESSION_FOLLOWUP_MODES:
-            raise ValueError("MEMORY_SESSION_FOLLOWUP은 off, dm, all 중 하나여야 합니다.")
 
         audio_input_enabled = os.getenv("AUDIO_INPUT_ENABLED", "on").strip().lower()
         if audio_input_enabled not in {"on", "off"}:
@@ -533,7 +551,6 @@ class Settings:
             personal_memory_cross_scope=personal_memory_cross_scope,
             server_memory_read=server_memory_read,
             personal_memory_read_mode=personal_memory_read_mode,
-            memory_session_followup=memory_session_followup,
             allowed_guild_ids=frozenset(int(x.strip()) for x in
                                        os.getenv("ALLOWED_GUILD_IDS", "").split(",") if x.strip()),
             cooldown=float(os.getenv("COOLDOWN_SECONDS", "5")),
