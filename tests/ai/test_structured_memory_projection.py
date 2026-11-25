@@ -987,7 +987,7 @@ async def test_real_response_payload_contains_verified_style_annotation():
         memory = _reference(calls[-1])["structured_owner_memory"]
         assert memory[0]["annotation"]["verified"] is True
         assert memory[0]["annotation"]["directive_type"] == "style"
-        assert "지속하기를 요청한 말투" in calls[-1]["instructions"]
+        assert STRUCTURED_MEMORY_POLICY.strip() in calls[-1]["instructions"]
     finally:
         await llm.close()
         store.close()

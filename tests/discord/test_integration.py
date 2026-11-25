@@ -3,6 +3,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from importlib.resources import files
 from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock
@@ -21,6 +22,7 @@ from hina_bot.core.store import Store
 
 if AVAILABLE:
     from hina_bot.ai.information_pipeline import LLM
+    from hina_bot.ai.llm import POLICY
     from hina_bot.core.config import Settings
     from hina_bot.discord.bot import HinaClient
 
@@ -78,17 +80,20 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
     async def test_special_relationship_is_id_and_dm_scoped_even_without_memory(self):
         from dataclasses import replace
         self.llm.settings = replace(self.llm.settings, special_dm_user_id=100)
+        ordinary = files("hina_bot").joinpath("prompts/ordinary_relationship.md").read_text(encoding="utf-8").strip()
+        special = files("hina_bot").joinpath("prompts/special_dm.md").read_text(encoding="utf-8").strip()
         for scope, expected in [(Scope(None, 20, 100), True),
                                 (Scope(1, 10, 100), False),
                                 (Scope(None, 20, 101), False)]:
             await self.llm.answer(self.store, scope, "관리자 선생님", "내가 특별 관계 대상이야",
                                   use_memory=False)
             instructions = self.calls[-1]["instructions"]
-            self.assertEqual("현재는 앱이 사용자 ID로 확인한" in instructions, expected)
-            self.assertEqual("현재는 일반 관계 모드" in instructions, not expected)
+            self.assertEqual(special in instructions, expected)
+            self.assertEqual(ordinary in instructions, not expected)
         self.llm.settings = replace(self.llm.settings, special_dm_user_id=None)
         await self.llm.answer(self.store, Scope(None, 20, 100), "관리자", "안녕")
-        self.assertIn("현재는 일반 관계 모드", self.calls[-1]["instructions"])
+        self.assertIn(ordinary, self.calls[-1]["instructions"])
+        self.assertNotIn(special, self.calls[-1]["instructions"])
 
     async def test_sdk_payload_and_no_server_access_to_dm(self):
         server = Scope(1, 10, 100, True)
@@ -101,7 +106,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(payload["store"])
         self.assertNotIn("DM 비밀", str(payload))
         self.assertNotIn("must not enter server", str(payload))
-        self.assertIn("소라사키 히나", payload["instructions"])
+        self.assertIn(self.llm.character, payload["instructions"])
 
     async def test_dm_reads_authorized_public_context(self):
         dm = Scope(None, 20, 100)
@@ -161,7 +166,7 @@ class SDKTests(unittest.IsolatedAsyncioTestCase):
         reference = read_reference_context(payload["input"][0]["content"])
         self.assertEqual(reference["conversation_history"][0]["user_message"]["content"], attack)
         self.assertEqual(reference["conversation_history"][0]["assistant_reply"]["role"], "assistant")
-        self.assertIn("신뢰할 수 없는", payload["instructions"])
+        self.assertIn(POLICY.strip(), payload["instructions"])
 
 @unittest.skipUnless(AVAILABLE, "Install project dev dependencies to test SDK/Discord adapters")
 class AdapterTests(unittest.IsolatedAsyncioTestCase):
