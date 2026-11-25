@@ -11,7 +11,7 @@ from openai import AsyncOpenAI
 
 import hina_bot.ai.llm as llm_module
 from hina_bot.ai.information_pipeline import LLM
-from hina_bot.core.config import Settings
+from hina_bot.core.config import Settings, migrate_legacy_env_values
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
 from hina_bot.discord.output_safety import DISCORD_MENTION, neutralize_mentions
@@ -68,7 +68,7 @@ async def judge(client, model, case, raw_answer, canary):
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cases", type=Path, default=CASES)
-    parser.add_argument("--model", default=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"))
+    parser.add_argument("--model", default=migrate_legacy_env_values(os.environ, warn=True).get("LLM_MODEL", "gpt-4.1-mini"))
     parser.add_argument("--repeat", type=int, default=2)
     parser.add_argument("--no-judge", action="store_true", help="skip the additional grader request")
     args = parser.parse_args()
