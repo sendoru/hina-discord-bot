@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import re
 from collections import Counter
 from dataclasses import replace
@@ -32,7 +31,6 @@ from zoneinfo import ZoneInfo
 from hina_bot.ai.local_tools import CURRENT_LOCAL_TOOLS, LocalToolRegistry
 from hina_bot.ai.web_search_text import response_text
 from hina_bot.core.admin_db import AdminDatabase
-from hina_bot.core.config import MEMORY_SESSION_FOLLOWUP_MODES
 from hina_bot.core.memory_annotations import (
     Annotator,
     Audience,
@@ -570,9 +568,6 @@ def _settings(args, mode: str):
     from hina_bot.tooling.eval_runner import eval_settings
 
     base = eval_settings(args)
-    followup = os.getenv("MEMORY_SESSION_FOLLOWUP", base.memory_session_followup).strip().lower()
-    if followup not in MEMORY_SESSION_FOLLOWUP_MODES:
-        raise ValueError("MEMORY_SESSION_FOLLOWUP는 off, dm, all 중 하나여야 합니다.")
     # Web search adds cost and noise without touching memory behavior.
     return replace(base, personal_memory_read_mode=mode, memory_session_followup=followup,
                    chat_web_search=False)
