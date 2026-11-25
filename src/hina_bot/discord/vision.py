@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from io import BytesIO
 from urllib.parse import urlsplit
 
 import discord
 import httpx
+from PIL import Image, ImageOps
 
 from hina_bot.ai.vision import VisualInput
 from hina_bot.core.image_mime import sniff_image_mime
@@ -20,6 +23,8 @@ log = logging.getLogger("hina")
 
 MAX_VISUAL_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_VISUAL_BYTES = 12 * 1024 * 1024
+MAX_SOURCE_VISUAL_BYTES = 32 * 1024 * 1024
+MAX_DECODE_PIXELS = 32_000_000
 MAX_CONTEXT_VISUAL_MESSAGES = 3
 _CUSTOM_EMOJI = re.compile(r"<(?P<animated>a?):(?P<name>[^:<>\s]{1,32}):(?P<id>[0-9]{1,20})>")
 
@@ -45,6 +50,8 @@ class VisionLimits:
     emojis: int = 12
     stickers: int = 8
     embeds: int = 2
+    max_image_bytes: int = MAX_VISUAL_BYTES
+    max_total_bytes: int = MAX_TOTAL_VISUAL_BYTES
 
     @classmethod
     def from_settings(cls, settings) -> VisionLimits:
@@ -52,6 +59,8 @@ class VisionLimits:
             attachments=settings.vision_max_attachments,
             emojis=settings.vision_max_emojis,
             stickers=settings.vision_max_stickers,
+            max_image_bytes=settings.vision_max_image_mb * 1024 * 1024,
+            max_total_bytes=settings.vision_max_total_mb * 1024 * 1024,
         )
 
     def for_source(self, source: str) -> int:
@@ -118,10 +127,78 @@ _sniff_image_mime = sniff_image_mime
 
 
 async def _download(url: str) -> bytes:
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-        response = await client.get(url)
+    async with (
+        httpx.AsyncClient(timeout=15, follow_redirects=True) as client,
+        client.stream("GET", url) as response,
+    ):
         response.raise_for_status()
-        return response.content
+        return await _bounded_body(response)
+
+
+async def _bounded_body(response) -> bytes:
+    size = response.headers.get("content-length")
+    if size:
+        try:
+            if int(size) > MAX_SOURCE_VISUAL_BYTES:
+                log.warning("Visual source skipped: reason=source_size_limit")
+                return b""
+        except ValueError:
+            pass
+    body = bytearray()
+    async for chunk in response.aiter_bytes():
+        if len(body) + len(chunk) > MAX_SOURCE_VISUAL_BYTES:
+            log.warning("Visual source skipped: reason=source_size_limit")
+            return b""
+        body.extend(chunk)
+    return bytes(body)
+
+
+def fit_visual_bytes(data: bytes, budget: int) -> tuple[bytes, str, str]:
+    """Fit a static image to the transfer budget; preserve animated originals."""
+    if len(data) > MAX_SOURCE_VISUAL_BYTES:
+        return b"", "", "source_size_limit"
+    mime = _sniff_image_mime(data)
+    if mime is None:
+        return b"", "", "unsupported_image"
+    if len(data) <= budget:
+        return data, mime, "original"
+    if budget <= 0:
+        return b"", "", "total_budget"
+    try:
+        with Image.open(BytesIO(data)) as source:
+            if source.width * source.height > MAX_DECODE_PIXELS:
+                return b"", "", "pixel_limit"
+            if getattr(source, "n_frames", 1) > 1:
+                return b"", "", "animated_over_budget"
+            oriented = ImageOps.exif_transpose(source)
+            image = oriented.convert(
+                "RGBA" if "A" in oriented.getbands() or "transparency" in oriented.info
+                else "RGB"
+            )
+            # WebP has a maximum side length of 16383 pixels.
+            if max(image.size) > 16383:
+                image.thumbnail((16383, 16383), Image.Resampling.LANCZOS)
+            else:
+                output = BytesIO()
+                image.save(output, "WEBP", lossless=True, method=4, exact=True)
+                if output.tell() <= budget:
+                    return output.getvalue(), "image/webp", "lossless"
+            for _ in range(10):
+                for quality in (92, 82, 70):
+                    output = BytesIO()
+                    image.save(output, "WEBP", quality=quality, method=4)
+                    if output.tell() <= budget:
+                        return output.getvalue(), "image/webp", "compressed"
+                width, height = image.size
+                if min(width, height) <= 1 and max(width, height) <= 1:
+                    break
+                image = image.resize(
+                    (max(1, width * 3 // 4), max(1, height * 3 // 4)),
+                    Image.Resampling.LANCZOS,
+                )
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return b"", "", "decode_failed"
+    return b"", "", "compression_budget"
 
 
 def _emoji_candidates(content: str):
@@ -210,19 +287,7 @@ async def _download_embed(url: str) -> bytes:
         client.stream("GET", url) as response,
     ):
         response.raise_for_status()
-        size = response.headers.get("content-length")
-        if size:
-            try:
-                if int(size) > MAX_VISUAL_BYTES:
-                    return b""
-            except ValueError:
-                pass
-        body = bytearray()
-        async for chunk in response.aiter_bytes():
-            if len(body) + len(chunk) > MAX_VISUAL_BYTES:
-                return b""
-            body.extend(chunk)
-        return bytes(body)
+        return await _bounded_body(response)
 
 
 def message_has_visual(message, *, include_inline_emojis: bool = True) -> bool:
@@ -331,7 +396,7 @@ async def collect_visual_inputs(
     seen_message_ids: set[str] = set()
 
     def has_room(source: str) -> bool:
-        return counts[source] < limits.for_source(source) and used < MAX_TOTAL_VISUAL_BYTES
+        return counts[source] < limits.for_source(source) and used < limits.max_total_bytes
 
     async def add_bytes(
         data: bytes,
@@ -342,13 +407,29 @@ async def collect_visual_inputs(
         uri: str = "",
     ):
         nonlocal used
-        if not has_room(source) or not data:
+        if not has_room(source):
+            log.info("Visual skipped: source=%s reason=quota_or_total_budget", source)
             return
-        if len(data) > MAX_VISUAL_BYTES or used + len(data) > MAX_TOTAL_VISUAL_BYTES:
+        if not data:
+            log.warning("Visual skipped: source=%s reason=empty_download", source)
             return
-        mime = _sniff_image_mime(data)
-        if mime is None:
+        budget = min(limits.max_image_bytes, limits.max_total_bytes - used)
+        original_size = len(data)
+        if original_size > budget:
+            data, mime, reason = await asyncio.to_thread(fit_visual_bytes, data, budget)
+        else:
+            data, mime, reason = fit_visual_bytes(data, budget)
+        if not data:
+            log.warning(
+                "Visual skipped: source=%s reason=%s bytes=%d budget=%d",
+                source, reason, original_size, budget,
+            )
             return
+        if reason != "original":
+            log.info(
+                "Visual compressed: source=%s method=%s before_bytes=%d after_bytes=%d",
+                source, reason, original_size, len(data),
+            )
         result.append(VisualInput(
             data=data,
             mime_type=mime,
@@ -376,19 +457,22 @@ async def collect_visual_inputs(
         before = len(result)
         metadata = _message_metadata(target, context_kind, reference_strength)
         for attachment in getattr(target, "attachments", ()):
-            if not has_room("attachment"):
-                break
-            size = int(getattr(attachment, "size", 0) or 0)
-            if size > MAX_VISUAL_BYTES or used + size > MAX_TOTAL_VISUAL_BYTES:
-                continue
             content_type = str(getattr(attachment, "content_type", "") or "").lower()
             filename = str(getattr(attachment, "filename", "") or "")
             if content_type and not content_type.startswith("image/"):
                 continue
+            if not has_room("attachment"):
+                log.info("Visual skipped: source=attachment reason=quota_or_total_budget")
+                break
+            size = int(getattr(attachment, "size", 0) or 0)
+            if size > MAX_SOURCE_VISUAL_BYTES:
+                log.warning("Visual skipped: source=attachment reason=source_size_limit bytes=%d", size)
+                continue
             try:
                 data = await attachment.read()
             except Exception as exc:  # noqa: BLE001 - Discord failures are content-free in logs
-                log.warning("Visual attachment read failed (%s)", type(exc).__name__)
+                log.warning("Visual skipped: source=attachment reason=download_failed error=%s",
+                            type(exc).__name__)
                 continue
             await add_bytes(
                 data,
@@ -410,14 +494,14 @@ async def collect_visual_inputs(
         remote.extend((url, "embed", name) for url, name in _embed_candidates(target))
 
         for url, source, name in remote:
-            if used >= MAX_TOTAL_VISUAL_BYTES:
-                break
             if not has_room(source):
+                log.info("Visual skipped: source=%s reason=quota_or_total_budget", source)
                 continue
             try:
                 data = await (embed_downloader if source == "embed" else downloader)(url)
             except Exception as exc:  # noqa: BLE001 - do not log Discord CDN URLs
-                log.warning("Visual asset read failed (%s)", type(exc).__name__)
+                log.warning("Visual skipped: source=%s reason=download_failed error=%s",
+                            source, type(exc).__name__)
                 continue
             await add_bytes(data, source, name, metadata, uri=url)
         return len(result) - before
@@ -441,7 +525,12 @@ async def collect_visual_inputs(
             # Inline emojis in an explicit reply are included, but passive inline
             # emojis are not. Keep the two payload selections in separate entries.
             inline_emojis = ref.context_kind == "replied_message"
-            key = (getattr(channel, "id", None), ref.message_id, inline_emojis)
+            # Cache a collection only for the same remaining transfer budget and quotas.
+            # Otherwise an already compressed image could outlive a runtime budget increase.
+            key = (
+                getattr(channel, "id", None), ref.message_id, inline_emojis,
+                limits, used, tuple(counts.items()),
+            )
             cached = cache.get(key) if cache is not None else None
             if cached is not None:
                 seen_message_ids.add(ref.message_id)
