@@ -188,6 +188,8 @@ Discord 음성 메시지와 MP3/OGG/Opus/M4A/WAV/FLAC 등 지원되는 일반 �
 VISION_MAX_ATTACHMENTS=4
 VISION_MAX_EMOJIS=12
 VISION_MAX_STICKERS=8
+VISION_MAX_IMAGE_MB=5
+VISION_MAX_TOTAL_MB=12
 ```
 
 각 값은 0~32이고 합계는 32 이하여야 합니다. 0이면 해당 source를 비전 입력에서 끕니다.
