@@ -95,7 +95,6 @@ class HinaClient(BaseHinaClient):
             store=self.store,
             external_context_policy=settings.external_context_policy,
         )
-        self.vision_limits = VisionLimits.from_settings(settings)
         self.audio_limits = AudioLimits.from_settings(settings)
         self.visual_cache = VisionFetchCache()
         install_slash_commands(self)
@@ -469,7 +468,7 @@ class HinaClient(BaseHinaClient):
             await collect_visual_inputs(
                 message,
                 context_refs=visual_refs,
-                limits=self.vision_limits,
+                limits=VisionLimits.from_settings(self.settings),
                 cache=self.visual_cache,
             )
             if text is not None
