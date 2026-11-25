@@ -569,8 +569,7 @@ def _settings(args, mode: str):
 
     base = eval_settings(args)
     # Web search adds cost and noise without touching memory behavior.
-    return replace(base, personal_memory_read_mode=mode, memory_session_followup=followup,
-                   chat_web_search=False)
+    return replace(base, personal_memory_read_mode=mode, chat_web_search=False)
 
 
 async def run(args, make_llm=None) -> tuple[list[dict], dict]:
