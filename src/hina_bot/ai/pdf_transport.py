@@ -88,7 +88,7 @@ async def encode_reference(source):
             return None, "encoder_busy"
         try:
             return _encode(source)
-        except Exception:
+        except Exception:  # noqa: BLE001 - pre-send fallback at renderer boundary
             # Font, renderer and parser errors must never emit source or PDF bytes.
             return None, "encode_error"
         finally:

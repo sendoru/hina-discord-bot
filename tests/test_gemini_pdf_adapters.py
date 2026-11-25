@@ -1,6 +1,6 @@
 import base64
 
-from hina_bot.ai.providers import GeminiInlinePDF, _gemini_input, _gemini_generate_content_contents
+from hina_bot.ai.providers import GeminiInlinePDF, _gemini_generate_content_contents, _gemini_input
 
 
 def test_document_stays_between_reference_and_current_turn():
