@@ -198,3 +198,19 @@ def test_summary_pass_rate_ignores_skipped_runs():
 
     assert summary["pass_rate"] == 0.5
     assert summary["per_case_pass_rate"] == {"a": 0.5, "b": None}
+
+@pytest.mark.asyncio
+async def test_disclosure_constraints_score_and_report_the_item_field():
+    item = {
+        "content": "재즈를 즐겨 들음", "kind": "preference", "disclosure": "global",
+        "confidence": 0.9, "source_message_ids": ["m1"],
+        "evidence": "재즈를 즐겨 들어", "time_scope": "ongoing",
+        "stability": "long", "usage_mode": "ambient", "audience": "owner",
+    }
+    worker = Worker(_response([item]), _response([{**item, "disclosure": "implicit"}]))
+
+    results, _ = await run(_args("extract_disclosure_dm_hobby_global", repeat=2), worker)
+
+    assert [row["status"] for row in results] == ["passed", "failed"]
+    assert results[0]["items"][0]["disclosure"] == "global"
+    assert any("disclosure" in failure for failure in results[1]["failures"])

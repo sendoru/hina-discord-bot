@@ -191,6 +191,8 @@ def constraint_failures(item, constraint: dict, refs: dict[str, int]) -> list[st
             )
         elif key == "relation_absent":
             ok = (item.relation is None) is bool(expected)
+        elif key in {"kind", "disclosure"}:
+            ok = _value(item, key) == expected
         elif key == "confidence_max":
             ok = item.confidence <= float(expected)
         elif key == "visual_grounded":
@@ -233,6 +235,7 @@ def _item_report(item) -> dict:
     return {
         "content": item.content,
         "kind": item.kind.value,
+        "disclosure": item.disclosure.value,
         "confidence": item.confidence,
         **({"relation": {"type": item.relation.relation, "target": item.relation.target_item_id}}
            if item.relation else {}),

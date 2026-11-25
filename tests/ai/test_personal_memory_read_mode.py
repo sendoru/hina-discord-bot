@@ -341,12 +341,22 @@ async def test_cross_scope_policy_precedes_full_decision_and_fallback(default, o
         for origin, content, disclosure in [
             (SERVER, "현재 공간", MemoryDisclosure.LOCAL),
             (DM, "공간 간 취향", MemoryDisclosure.GLOBAL),
+            (Scope(2, 22, DM.user_id, True), "다른 서버에서 시작한 취미 프로젝트", MemoryDisclosure.GLOBAL),
             (DM, "비공개 사실", MemoryDisclosure.LOCAL),
+            (DM, "공간 밖 일반 implicit 사실", MemoryDisclosure.IMPLICIT),
         ]:
             store.add_memory_item(origin, content, kind=MemoryKind.FACT, disclosure=disclosure)
+        sensitive = store.add_memory_item(
+            DM, "민감한 개인 정보", kind=MemoryKind.FACT, disclosure=MemoryDisclosure.GLOBAL,
+        )
+        _annotate(store, sensitive, usage_mode="sensitive")
+        store.add_memory_item(
+            Scope(None, 99, 900), "다른 사용자 취향", kind=MemoryKind.PREFERENCE,
+            disclosure=MemoryDisclosure.GLOBAL,
+        )
         expected = {"현재 공간"}
         if default == "on" or opted_in:
-            expected.add("공간 간 취향")
+            expected.update({"공간 간 취향", "다른 서버에서 시작한 취미 프로젝트"})
 
         for mode, fail in [("full", False), ("decision", False), ("decision", True)]:
             def handler(request, mode=mode, fail=fail):
@@ -365,7 +375,10 @@ async def test_cross_scope_policy_precedes_full_decision_and_fallback(default, o
             store, DM, "뭐 할까?", lore="full", memory="full",
             handler=lambda _: pytest.fail("manual full called Decisions"), personal_memory_cross_scope=default,
         )
-        assert len(reference["structured_owner_memory"]) == 3
+        assert {row["content"] for row in reference["structured_owner_memory"]} == {
+            "현재 공간", "공간 간 취향", "다른 서버에서 시작한 취미 프로젝트",
+            "비공개 사실", "공간 밖 일반 implicit 사실", "민감한 개인 정보",
+        }
         assert store.cross_scope_opt_in(DM.user_id) is opted_in
     finally:
         store.close()

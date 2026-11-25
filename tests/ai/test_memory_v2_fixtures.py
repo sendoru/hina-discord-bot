@@ -235,6 +235,7 @@ CONSTRAINT_KEYS = {
     "event_at", "recurrence_prefix", "usage_mode", "usage_mode_in", "directive_type",
     "audience", "importance_min", "explicit", "slot", "relation", "relation_absent",
     "trust", "subject_users", "subject_users_include", "visual_grounded", "confidence_max",
+    "kind", "disclosure",
 }
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
@@ -245,6 +246,8 @@ def _check_constraint(constraint: dict, refs: set[str]) -> None:
     assert 0 < constraint.get("confidence_max", 1.0) <= 1.0, constraint
     for key in ("match_all", "match_any", "not_match_any"):
         assert all(isinstance(value, str) and value for value in constraint.get(key, ["x"]))
+    assert constraint.get("kind", "fact") in KINDS
+    assert constraint.get("disclosure", "local") in DISCLOSURES
     assert constraint.get("time_scope", "ongoing") in TIME_SCOPES
     assert set(constraint.get("time_scope_in", ())) <= TIME_SCOPES
     assert set(constraint.get("stability_in", ())) <= STABILITIES
@@ -304,6 +307,8 @@ def test_extraction_fixture_contract():
             _check_constraint(constraint, refs)
             if case["target"] == "personal":
                 assert not {"trust", "subject_users", "subject_users_include"} & set(constraint)
+            else:
+                assert not {"kind", "disclosure"} & set(constraint)
 
 
 @pytest.mark.parametrize("path", [SELECTION_PATH, EXTRACTION_PATH], ids=lambda path: path.name)
