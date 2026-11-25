@@ -113,10 +113,11 @@ class SettingsRepository:
             )
 
     def migrate_memory_read_mode(self) -> None:
-        """Canonicalize existing overrides and startup snapshots at bot startup."""
+        """Retire obsolete overrides and canonicalize old modes at bot startup."""
         old_modes = ('"legacy"', '"tiered"', '"tiered_shadow"', '"shadow"', '"decision_shadow"')
         with self.db:
             for table in ("runtime_config", "runtime_config_startup"):
+                self.db.execute(f"DELETE FROM {table} WHERE key='memory_session_followup'")
                 self.db.execute(
                     f"UPDATE {table} SET value=? WHERE key='personal_memory_read_mode' "
                     "AND trim(value) IN (?, ?, ?, ?, ?)",
