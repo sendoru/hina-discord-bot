@@ -24,6 +24,7 @@ from hina_bot.core.memory_selection import (
     effective_annotation,
     effective_status,
     full_memory_items,
+    implicit_behavior,
     selection_provenance,
 )
 from hina_bot.core.relationship_profile import (
@@ -190,6 +191,7 @@ def structured_memory_provenance(
     use_memory: bool,
     allow_cross_space: bool,
     items: Iterable[MemoryItem] | None = None,
+    annotations: Mapping[int, MemoryAnnotation] | None = None,
 ) -> dict:
     """Return content-free provenance for the structured memory admitted to a response."""
 
@@ -243,6 +245,13 @@ def structured_memory_provenance(
 
     if not allow_cross_space:
         return {"items": selected, "relationship_axes": []}
+
+    for item in items:
+        if item.status == "active" and implicit_behavior(item, (annotations or {}).get(item.id), scope):
+            selected.append({
+                "item_id": item.id, "projection": "behavior_signal", "kind": item.kind.value,
+                "disclosure": item.disclosure.value, "access": MemoryAccess.IMPLICIT.value,
+            })
 
     implicit_items = implicit_relationship_profile_contributors(items, scope)
     for item in implicit_items:
@@ -300,7 +309,12 @@ def structured_memory_context(
             else {}
         )
     now = now or datetime.now(ZoneInfo("Asia/Seoul"))
+    signals = sorted({
+        signal for item in items if item.status == "active"
+        and (signal := implicit_behavior(item, annotations.get(item.id), scope))
+    }) if allow_cross_space else []
     return {
+        **({"cross_space_behavior": signals} if signals else {}),
         "structured_owner_memory": owner_dm_memory(
             items, scope, annotations=annotations, now=now,
         ),
@@ -473,7 +487,7 @@ def personal_memory_fields(
         selection=run.selection if run is not None else None,
         trace=structured_memory_provenance(
             store, scope, use_memory=use_memory, allow_cross_space=allow_cross_space,
-            items=items,
+            items=items, annotations=snapshot.annotations if snapshot else None,
         ),
     )
     return result

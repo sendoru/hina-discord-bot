@@ -150,7 +150,7 @@ def test_structured_memory_provenance_matches_owner_and_relationship_projection(
             dm,
             "owner fact",
             kind=MemoryKind.FACT,
-            disclosure=MemoryDisclosure.REFERENCE_GATED,
+            disclosure=MemoryDisclosure.LOCAL,
         )
         full_fact_id = store.add_memory_item(
             guild,

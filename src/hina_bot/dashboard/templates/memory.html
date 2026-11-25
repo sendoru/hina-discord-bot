@@ -56,7 +56,7 @@
         </select></div>
         <div class="filter-field"><label for="filter-memory-disclosure">Disclosure</label><select id="filter-memory-disclosure" name="disclosure">
           <option value="">all disclosure</option>
-          {% for value in ["local","implicit","reference_gated","global"] %}
+          {% for value in ["local","implicit","global"] %}
           <option value="{{ value }}" {% if data.filters.disclosure == value %}selected{% endif %}>{{ value }}</option>
           {% endfor %}
         </select></div>

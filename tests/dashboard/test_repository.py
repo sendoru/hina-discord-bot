@@ -206,7 +206,7 @@ def test_repository_memory_inspection_and_lifecycle_columns(tmp_path):
         scope,
         "first memory",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         source_message_ids=("700",),
         confidence=0.8,
     )
@@ -298,7 +298,7 @@ def test_repository_reconciliation_review_filters_stats_and_source_sets(tmp_path
         scope,
         "old value",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         source_message_ids=("101", "102"),
         confidence=0.8,
     )
@@ -306,7 +306,7 @@ def test_repository_reconciliation_review_filters_stats_and_source_sets(tmp_path
         scope,
         "corrected value",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         source_message_ids=("102", "101"),
         confidence=0.95,
     )
@@ -417,14 +417,14 @@ def test_repository_user_filter_accepts_stored_human_readable_name(tmp_path):
         target,
         "target memory",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         user_name="Dashboard User",
     )
     store.add_memory_item(
         other,
         "other memory",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         user_name="Other User",
     )
     store.close()

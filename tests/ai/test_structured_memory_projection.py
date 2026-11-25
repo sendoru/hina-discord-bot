@@ -69,7 +69,7 @@ def test_owner_dm_memory_contains_every_owner_item_and_no_other_user_item():
     for scope, content, disclosure in (
         (public, "PUBLIC_LOCAL", MemoryDisclosure.LOCAL),
         (private, "PRIVATE_IMPLICIT", MemoryDisclosure.IMPLICIT),
-        (other_guild, "OTHER_GUILD_GATED", MemoryDisclosure.REFERENCE_GATED),
+        (other_guild, "OTHER_GUILD_GATED", MemoryDisclosure.LOCAL),
         (dm, "DM_GLOBAL", MemoryDisclosure.GLOBAL),
     ):
         store.add_memory_item(
@@ -143,7 +143,7 @@ def test_shared_full_memory_contains_only_full_non_relationship_owner_items():
             other_guild,
             "GATED_OTHER_GUILD_FACT",
             kind=MemoryKind.FACT,
-            disclosure=MemoryDisclosure.REFERENCE_GATED,
+            disclosure=MemoryDisclosure.LOCAL,
         )
         store.add_memory_item(
             public_same_guild,
@@ -467,7 +467,7 @@ async def test_dm_response_receives_all_owner_structured_memory_even_when_legacy
             private,
             "PRIVATE_FACT_MARKER",
             kind=MemoryKind.FACT,
-            disclosure=MemoryDisclosure.REFERENCE_GATED,
+            disclosure=MemoryDisclosure.LOCAL,
         )
         store.add_memory_item(
             other_guild,
@@ -571,7 +571,7 @@ async def test_server_receives_numeric_implicit_profile_without_cross_space_raw_
             dm,
             "RAW_FACT_SECRET",
             kind=MemoryKind.FACT,
-            disclosure=MemoryDisclosure.REFERENCE_GATED,
+            disclosure=MemoryDisclosure.LOCAL,
             confidence=0.99,
         )
 

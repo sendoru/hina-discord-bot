@@ -50,14 +50,14 @@ def test_operational_baseline_adds_only_ledger_and_annotations_and_restores_exac
     with closing(open_readonly(path)) as db, closing(open_readonly(backup.path)) as old:
         old_schema = list(old.execute("SELECT type,name,tbl_name,sql FROM sqlite_master"))
         new_schema = [row for row in db.execute("SELECT type,name,tbl_name,sql FROM sqlite_master")
-                      if row[2] not in added]
+                      if row[2] not in added and row[1] not in {"memory_disclosure_insert", "memory_disclosure_update"}]
         assert [tuple(row) for row in new_schema] == [tuple(row) for row in old_schema]
         # Store v2 adds an empty derived table; memory_items itself is not altered.
         assert db.execute("SELECT COUNT(*) FROM memory_item_annotations").fetchone()[0] == 0
         assert [tuple(row) for row in db.execute(
             "SELECT version,name FROM schema_migrations WHERE component='store' ORDER BY version"
         )] == [(1, "store-baseline-v1"), (2, "store-memory-annotations-v2"),
-              (3, "store-server-memory-v3")]
+              (3, "store-server-memory-v3"), (4, "store-disclosure-v4")]
         for table, in old.execute("SELECT name FROM sqlite_master WHERE type='table'"):
             assert [tuple(row) for row in db.execute(f'SELECT * FROM "{table}"')] == [
                 tuple(row) for row in old.execute(f'SELECT * FROM "{table}"')

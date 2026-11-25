@@ -262,7 +262,7 @@ async def test_decision_memory_scope_sensitive_reference_and_opt_out():
         )
         gated = store.add_memory_item(
             DM, "오로라 엔진 프로젝트를 진행 중", kind=MemoryKind.FACT,
-            disclosure=MemoryDisclosure.REFERENCE_GATED,
+            disclosure=MemoryDisclosure.LOCAL,
         )
         deleted = store.add_memory_item(
             SERVER, "철회된 내용", kind=MemoryKind.FACT, disclosure=MemoryDisclosure.LOCAL,
@@ -388,5 +388,32 @@ async def test_opt_in_revoked_while_decision_pending_removes_cross_scope_memory(
         )
         assert not reference.get("structured_full_memory")
         assert trace["retrieval_decisions"]["memory"]["decision_fallback"] == "memory_context_changed"
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("mode", ["full", "decision"])
+def test_cross_space_behavior_never_transports_preference_text(mode):
+    from hina_bot.ai.structured_memory_context import (
+        personal_memory_fields,
+        personal_memory_selection,
+    )
+
+    store = Store.create(":memory:")
+    try:
+        item_id = store.add_memory_item(DM, "private source marker", kind=MemoryKind.PREFERENCE,
+                                        disclosure=MemoryDisclosure.IMPLICIT)
+        _annotate(store, item_id, slot="praise_light", usage_mode="contextual")
+        settings = Settings(discord_token="test", openai_api_key="test", personal_memory_read_mode=mode)
+        run = personal_memory_selection(store, SERVER, message="", settings=settings)
+        kwargs = {"decision_run": run, "decision_scores": {}} if mode == "decision" else {}
+        result = personal_memory_fields(store, SERVER, settings=settings, use_memory=True,
+                                        allow_cross_space=True, **kwargs)
+        assert result["fields"]["cross_space_behavior"] == ["praise_light"]
+        assert "private source marker" not in json.dumps(result["fields"])
+        assert [row["projection"] for row in result["trace"]["items"]] == ["behavior_signal"]
+        _annotate(store, item_id, slot="private source marker", usage_mode="contextual")
+        blocked = personal_memory_fields(store, SERVER, settings=settings, use_memory=True, allow_cross_space=True)
+        assert "cross_space_behavior" not in blocked["fields"]
     finally:
         store.close()

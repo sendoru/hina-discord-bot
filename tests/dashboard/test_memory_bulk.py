@@ -376,7 +376,7 @@ def test_browser_memory_column_layout_with_long_identifiers(memory_browser, widt
                 "guild:1489432315523502251",
                 "1554321651473195059",
                 "relationship",
-                "reference_gated",
+                "local",
                 "A long memory preview with 한국어 content. " * 30,
             ),
         )

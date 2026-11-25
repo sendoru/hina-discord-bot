@@ -364,9 +364,17 @@ SERVER_MEMORY_TABLES = ('server_memory_items', 'server_memory_sources', 'server_
                         'memory_consolidation_runs', 'memory_consolidation_ops')
 
 
+# Keep historical table signatures reproducible while enforcing the current write domain.
+DISCLOSURE_DDL = tuple(
+    f"CREATE TRIGGER memory_disclosure_{event.split()[0].lower()} "
+    f"BEFORE {event} ON memory_items WHEN NEW.disclosure = 'reference_gated' "
+    "BEGIN SELECT RAISE(ABORT, 'retired memory disclosure'); END"
+    for event in ("INSERT", "UPDATE OF disclosure")
+)
+
 # Current DDL for fresh creation: v1 plus every later version's additions.
 DDL = {
-    "store": V1_DDL["store"] + MEMORY_ANNOTATION_DDL + SERVER_MEMORY_DDL,
+    "store": V1_DDL["store"] + MEMORY_ANNOTATION_DDL + SERVER_MEMORY_DDL + DISCLOSURE_DDL,
     "settings": V1_DDL["settings"],
     "admin": V1_DDL["admin"],
 }
@@ -437,4 +445,9 @@ V2_SIGNATURES = {
 V3_STORE_SIGNATURES = {
     "684a93a88361745d659602ea2ab55c6aeb89350b137863e33075b1b7e61a6fec",
     "d314f8a1041e8cad1288198e94a80dbf7446f9e054e916d8707a29b2b60110ce",
+}
+
+V4_STORE_SIGNATURES = {
+    "5972014b98902d4450e3f59f7a755efea07eac85cb154c90d2bb4b1786a0bce2",
+    "6ff0943c5f717556aef1646338c35e0b4dfd10db4593edfab7cb8845bd8875eb",
 }

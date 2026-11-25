@@ -9,6 +9,14 @@ from hina_bot.core.server_memory_repository import ServerSourceRef
 from hina_bot.core.server_memory_selection import select_server_rows
 
 
+def retired_profile_restriction(store, item):
+    """Preserve the former member-profile exclusion when a v3 item was narrowed to local."""
+    return item.disclosure == "local" and item.revision > 0 and store.db.execute(
+        "SELECT 1 FROM memory_item_edit_history WHERE memory_item_id=? AND disclosure='reference_gated' LIMIT 1",
+        (item.id,),
+    ).fetchone() is not None
+
+
 def _profiles(store, scope, related):
     repo = store._server_memories
     for uid in related - {str(scope.user_id)}:
@@ -20,7 +28,7 @@ def _profiles(store, scope, related):
             ann = annotations.get(item.id)
             if (not ann or ann.audience != "server" or ann.usage_mode not in ("contextual", "ambient")
                     or ann.item_revision != item.revision or not ann.evidence or not item.origin_public_at_capture
-                    or item.disclosure == "reference_gated" or not item.source_message_ids):
+                    or retired_profile_restriction(store, item) or not item.source_message_ids):
                 continue
             try:
                 sources = [repo._source(scope.guild_id, ServerSourceRef(mid, "user"))

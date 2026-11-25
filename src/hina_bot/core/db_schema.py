@@ -16,14 +16,16 @@ from .db_ddl import (
     V2_SIGNATURES,
     V2_TABLES,
     V3_STORE_SIGNATURES,
+    V4_STORE_SIGNATURES,
 )
 
 COMPONENTS = tuple(DDL)
 HISTORY = {component: (component + "-baseline-v1",) for component in COMPONENTS}
-HISTORY["store"] += ("store-memory-annotations-v2", "store-server-memory-v3")
+HISTORY["store"] += ("store-memory-annotations-v2", "store-server-memory-v3", "store-disclosure-v4")
 SCHEMA_SIGNATURES = {component: {1: V1_SIGNATURES[component]} for component in COMPONENTS}
 SCHEMA_SIGNATURES["store"][2] = V2_SIGNATURES["store"]
 SCHEMA_SIGNATURES["store"][3] = V3_STORE_SIGNATURES
+SCHEMA_SIGNATURES["store"][4] = V4_STORE_SIGNATURES
 # Tables owned at the version that introduced them; later versions inherit.
 OWNED_TABLES = {component: {1: V1_TABLES[component]} for component in COMPONENTS}
 OWNED_TABLES["store"][2] = V2_TABLES["store"]

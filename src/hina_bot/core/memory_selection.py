@@ -256,6 +256,18 @@ def is_light_chat(message: str) -> bool:
     )
 
 
+BEHAVIOR_SLOTS = frozenset({"tone_gentle", "tone_playful", "tone_reserved", "praise_light"})
+
+
+def implicit_behavior(item, annotation, scope):
+    if (item.kind not in {MemoryKind.PREFERENCE, MemoryKind.BOUNDARY}
+            or memory_access(item, scope) != MemoryAccess.IMPLICIT
+            or not annotation or annotation.item_revision != item.revision
+            or annotation.usage_mode == UsageMode.SENSITIVE or annotation.slot not in BEHAVIOR_SLOTS):
+        return None
+    return annotation.slot
+
+
 def full_memory_items(items, annotations, ctx):
     """Filter the owner's records before choosing a representative for each duplicate."""
     scope = ctx.scope
@@ -269,7 +281,8 @@ def full_memory_items(items, annotations, ctx):
         annotation = annotations.get(item.id)
         if scope.guild_id is not None and annotation and annotation.usage_mode == UsageMode.SENSITIVE:
             continue
-        if access == MemoryAccess.IMPLICIT and item.kind != MemoryKind.RELATIONSHIP:
+        if (access == MemoryAccess.IMPLICIT and item.kind != MemoryKind.RELATIONSHIP
+                and not implicit_behavior(item, annotation, scope)):
             continue
         visible.append(item)
 

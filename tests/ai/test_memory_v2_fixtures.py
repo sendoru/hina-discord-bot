@@ -225,7 +225,6 @@ def test_selection_fixture_contract():
         users += context["member_opt_out"] + context["departed_members"]
         assert all(USER.fullmatch(user) for user in users)
         assert all(CHANNEL.fullmatch(value) for value in context["reader_denied_channels"])
-        assert set(context["authorized_reference_gated"]) <= set(refs)
         assert all(isinstance(text, str) and text.strip()
                    for text in context["recent_own_turns"]), case["id"]
         _check_expect(case["expect"], set(refs))

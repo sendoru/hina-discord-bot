@@ -49,10 +49,10 @@ def visible(store, *, scope=None, channels=(10,), members=(100, 200), related=()
     )
 
 
-def test_strict_schema_v3_is_bootstrapped_and_detects_drift(store):
+def test_strict_schema_is_bootstrapped_and_detects_drift(store):
     assert store.db.execute(
         "SELECT version FROM schema_migrations WHERE component='store' ORDER BY version DESC"
-    ).fetchone()[0] == 3
+    ).fetchone()[0] == 4
     assert {
         row[0] for row in store.db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'server_memory_%'"

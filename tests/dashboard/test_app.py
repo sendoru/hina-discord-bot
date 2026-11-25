@@ -110,7 +110,7 @@ def dashboard_client(tmp_path):
         scope,
         "dashboard memory",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         source_message_ids=("55",),
         confidence=0.95,
     )
@@ -118,7 +118,7 @@ def dashboard_client(tmp_path):
         scope,
         "dashboard memory updated",
         kind="fact",
-        disclosure="reference_gated",
+        disclosure="local",
         source_message_ids=("55",),
         confidence=0.97,
     )

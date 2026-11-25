@@ -19,7 +19,6 @@ class MemoryKind(StrEnum):
 class MemoryDisclosure(StrEnum):
     LOCAL = "local"
     IMPLICIT = "implicit"
-    REFERENCE_GATED = "reference_gated"
     GLOBAL = "global"
 
 
