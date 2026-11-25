@@ -19,7 +19,6 @@
       "recent_own_turns": []
     },
     "settings": {
-      "MEMORY_SESSION_FOLLOWUP": "dm",
       "external_context_policy": "bot_interactions_only",
       "SERVER_MEMORY_READ": "on"
     },
@@ -200,53 +199,6 @@
                         "proactive_status": "upcoming", "proactive_count": 2}}
       ],
       "expect": {"include": ["exam"], "tier": {"exam": "T1"}}
-    },
-    {
-      "id": "t1_suppressed_after_recent_turn_in_other_space",
-      "covers": "§10 선택: DM에서 1시간 전 대화 후 서버 첫 호출 → T1 X",
-      "scope": "g1:c1:public",
-      "message": "히나야 안녕",
-      "settings": {"MEMORY_SESSION_FOLLOWUP": "all"},
-      "context": {"hours_since_last_turn_any_space": 1},
-      "memories": [
-        {"ref": "camping", "kind": "event", "origin": "g1:c1:public", "content": "이번 주말 친구들과 캠핑 예정",
-         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-31",
-                        "importance": 3, "audience": "server", "keywords": ["캠핑", "주말"]}}
-      ],
-      "expect": {"exclude": ["camping"]}
-    },
-    {
-      "id": "t1_server_uses_only_same_space_public_safe_items",
-      "covers": "§10 선택: MEMORY_SESSION_FOLLOWUP=all 서버에서 DM 출처 또는 audience=owner 항목 → T1 X",
-      "scope": "g1:c1:public",
-      "message": "히나야 안녕",
-      "settings": {"MEMORY_SESSION_FOLLOWUP": "all"},
-      "context": {"hours_since_last_turn_any_space": 10},
-      "memories": [
-        {"ref": "camping", "kind": "event", "origin": "g1:c1:public", "content": "이번 주말 친구들과 캠핑 예정",
-         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-31",
-                        "importance": 3, "audience": "server", "keywords": ["캠핑", "주말"]}},
-        {"ref": "exam_dm", "kind": "event", "origin": "dm", "disclosure": "global", "content": "자격증 필기시험",
-         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-25",
-                        "importance": 3, "keywords": ["시험", "자격증"]}},
-        {"ref": "interview_owner", "kind": "event", "origin": "g1:c1:public", "content": "다음 주 월요일 면접 예정",
-         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-11-02",
-                        "importance": 3, "audience": "owner", "keywords": ["면접"]}}
-      ],
-      "expect": {"include": ["camping"], "exclude": ["exam_dm", "interview_owner"], "tier": {"camping": "T1"}}
-    },
-    {
-      "id": "t1_server_off_by_default",
-      "covers": "결정 4: MEMORY_SESSION_FOLLOWUP 기본값 dm",
-      "scope": "g1:c1:public",
-      "message": "히나야 안녕",
-      "context": {"hours_since_last_turn_any_space": 10},
-      "memories": [
-        {"ref": "camping", "kind": "event", "origin": "g1:c1:public", "content": "이번 주말 친구들과 캠핑 예정",
-         "annotation": {"time_scope": "planned", "stability": null, "event_at": "2026-10-31",
-                        "importance": 3, "audience": "server", "keywords": ["캠핑", "주말"]}}
-      ],
-      "expect": {"exclude": ["camping"]}
     },
     {
       "id": "t1_opt_out_directive_from_other_space",
