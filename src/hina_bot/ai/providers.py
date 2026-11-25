@@ -814,7 +814,9 @@ class _GeminiResponses:
         if any(item["transport"] == "pdf" for item in metrics):
             converted = convert(projected)
             candidate = {**payload, field: converted}
-            if len(json.dumps(candidate, ensure_ascii=False).encode()) <= 8_000_000:
+            # Use the HTTP client's JSON serialization, including base64 and tool schemas.
+            body_bytes = len(httpx.Request("POST", GEMINI_INTERACTIONS_URL, json=candidate).content)
+            if body_bytes <= 8_000_000:
                 payload[field] = converted
             else:
                 for item in metrics:

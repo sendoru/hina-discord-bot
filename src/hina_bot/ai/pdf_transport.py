@@ -36,7 +36,10 @@ class GeminiInlinePDF:
 
 @lru_cache(maxsize=1)
 def _font():
-    path = os.getenv("GEMINI_PDF_FONT") or next(
+    configured = os.getenv("GEMINI_PDF_FONT")
+    if configured and not Path(configured).is_file():
+        raise ValueError("Expected an installed local TrueType font")
+    path = configured or next(
         (str(p) for p in (Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
                           Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")) if p.is_file()),
         "Vera.ttf",

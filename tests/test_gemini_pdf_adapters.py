@@ -108,3 +108,31 @@ async def test_multipage_ids_are_atomic_and_unrepresentable_sources_stay_text():
     for source, reason in [("x" * 200, "unbreakable_token"), ("data\x00", "unsupported_glyph")]:
         document, metrics = await encode_reference(source)
         assert document is None and metrics["fallback"] == reason
+
+
+async def test_rejected_pdf_does_not_retry_or_log_echoed_document():
+    import json
+    from types import SimpleNamespace
+
+    import httpx
+    import pytest
+
+    from hina_bot.ai.providers import ProviderAPIError, _GeminiResponses
+    from hina_bot.ai.reference_context_blocks import PDFReferenceText
+
+    bodies = []
+    def reject(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(429, json={"error": {"message": "private-echo-of-request"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(reject)) as http:
+        adapter = _GeminiResponses(http, settings=SimpleNamespace(gemini_pdf_transport="pdf"))
+        with pytest.raises(ProviderAPIError) as error:
+            await adapter.create(model="fixture", tools=[{"type": "web_search"}],
+                                 input=[{"role": "user", "content": [
+                                     PDFReferenceText(type="input_text", text="fixture123")
+                                 ]}])
+    assert len(bodies) == 1
+    assert bodies[0]["input"][0]["content"][0]["type"] == "document"
+    assert error.value.status_code == 429
+    assert "private-echo" not in str(error.value)
