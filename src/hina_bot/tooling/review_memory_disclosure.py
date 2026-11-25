@@ -142,6 +142,9 @@ def inspect_item(store, item_id):
     row = {
         "item_id": item_id, "revision": item["revision"], "kind": item["kind"],
         "old": item["disclosure"], "new": None, "approved": False,
+        "usage_mode": annotation["usage_mode"] if annotation else "missing",
+        "origin_type": ("dm" if item["origin_realm"].startswith("dm:") else
+                        "public" if item["origin_public_at_capture"] else "private"),
         "reason": "operator_review" if not blockers else "blocked",
         "blockers": blockers,
         "duplicate_disclosure_review": [
@@ -276,6 +279,7 @@ async def _preview(database, *, suggest, limit):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", default=os.getenv("DATABASE_PATH", "data/hina.sqlite3"))
+    parser.add_argument("--dry-run", action="store_true", help="explicit read-only preview (default)")
     parser.add_argument("--plan-out", type=Path, help="new owner-only local JSON review file")
     parser.add_argument("--suggest", action="store_true",
                         help="opt in to sending eligible memory text and its sources to the configured model")
@@ -284,7 +288,7 @@ def main(argv=None):
     parser.add_argument("--offline-confirmed", action="store_true")
     parser.add_argument("--backup-dir", type=Path)
     args = parser.parse_args(argv)
-    if args.limit < 0 or (args.apply and (args.plan_out or args.suggest or args.limit)):
+    if args.limit < 0 or (args.apply and (args.dry_run or args.plan_out or args.suggest or args.limit)):
         parser.error("invalid apply/preview options")
     if args.suggest and not args.plan_out:
         parser.error("--suggest requires --plan-out")
@@ -299,6 +303,18 @@ def main(argv=None):
                 "items": len(plan["items"]),
                 "disclosure": dict(Counter(row["old"] for row in plan["items"])),
                 "blocked": sum(bool(row["blockers"]) for row in plan["items"]),
+                "blockers": dict(Counter(
+                    reason for row in plan["items"] for reason in row["blockers"]
+                )),
+                "by_kind": dict(Counter(
+                    (row["kind"] + ":" + row["old"]) for row in plan["items"]
+                )),
+                "by_usage": dict(Counter(
+                    (row["usage_mode"] + ":" + row["old"]) for row in plan["items"]
+                )),
+                "by_origin": dict(Counter(
+                    (row["origin_type"] + ":" + row["old"]) for row in plan["items"]
+                )),
                 "duplicate_review": sum(bool(row["duplicate_disclosure_review"]) for row in plan["items"]),
                 "suggested": dict(Counter(row["new"] for row in plan["items"] if row["new"])),
             }))
