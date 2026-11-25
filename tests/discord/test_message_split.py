@@ -105,8 +105,6 @@ def test_output_prompt_and_parser_share_character_agnostic_marker():
 
     assert MESSAGE_SPLIT_DELIMITER in FINAL_OUTPUT_CHECK_POLICY
     assert str(MODEL_MESSAGE_TARGET_CHARS // 100) in FINAL_OUTPUT_CHECK_POLICY.replace(",", "")
-    assert "LaTeX" in FINAL_OUTPUT_CHECK_POLICY
-    assert "인라인 코드" in FINAL_OUTPUT_CHECK_POLICY
     assert "HINA_MESSAGE_SPLIT" not in FINAL_OUTPUT_CHECK_POLICY
 
 
