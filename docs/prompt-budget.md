@@ -54,10 +54,16 @@ integration policy가 담당하는 규칙과 우회 방식·키워드 예시 나
 ## 회귀 방지
 
 `tests/ai/test_prompt_budget.py`는 base policy와 캐릭터·관계 prompt뿐 아니라 일반 응답에 항상
-주입되는 정적 prompt 묶음의 전체 크기도 확인합니다. 현재 상한은 관계 prompt와 DM/서버 환경 prompt를 포함해 11,000
-characters이며, runtime/capability처럼 요청마다 생성되는 짧은 동적 지침과 memory/search/vision 같은
-조건부 지침은 이 합계에서 제외합니다. 개별 byte 수와 전체 character 수는 provider별 실제 token
-수와 같지는 않지만 tokenizer에 종속되지 않는 간단한 크기 회귀 지표로 사용합니다.
+주입되는 정적 prompt 묶음의 전체 크기를 기록합니다. 고정 상한을 적용하지 않으며, runtime/capability처럼
+요청마다 생성되는 동적 지침과 memory/search/vision 같은 조건부 지침은 이 합계에서 제외합니다.
+개별 byte 수와 전체 character 수는 tokenizer에 종속되지 않는 간단한 관찰 지표입니다.
+
+자연어 문구의 존재/부재를 CI 계약으로 고정하지 않습니다. 말투·성격·상황 판단·대화 연속성의 품질은
+`evals/tone_cases.jsonl` 등 기존 행동 평가에서 확인합니다. 단위/통합 테스트는 비어 있지 않은 리소스,
+placeholder 치환, 실제 조립·조건·순서, 구조화된 데이터와 권한 경계, 도구 및 출력 delimiter처럼
+코드와 공유하는 기계적 계약을 검증합니다. 조립 여부는 가능한 한 로드한 리소스 전체나 상수를
+비교하고, 자연어 문장 일부를 복제하지 않습니다. 보안 지침 자체는 그대로 유지하며 프롬프트
+인젝션 저항성은 실제 요청 경계 테스트와 행동 평가로 별도 확인합니다.
 
 실제 merge 전에는 기존 `evals/character_lore_cases.jsonl`의 캐릭터·관계·몰입 사례를 확인하고,
 특히 일반 서버/일반 DM/특별 DM에서 캐릭터성이나 관계 검색 품질이 떨어지지 않는지 smoke test합니다.
