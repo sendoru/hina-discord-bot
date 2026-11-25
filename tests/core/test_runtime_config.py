@@ -1090,3 +1090,26 @@ def test_vision_transfer_budget_environment_and_live_overrides(monkeypatch, tmp_
     monkeypatch.setenv("VISION_MAX_IMAGE_MB", "21")
     with pytest.raises(ValueError):
         Settings.load()
+
+
+def test_retired_followup_removed_and_all_legacy_writes_rejected():
+    store = Store.create(":memory:")
+    try:
+        store.settings.set_runtime_value("memory_session_followup", '"dm"')
+        store.settings.replace_startup_snapshot([("memory_session_followup", '"all"')])
+        store.settings.migrate_memory_read_mode()
+        assert "memory_session_followup" not in store.settings.runtime_values()
+        assert not store.db.execute(
+            "SELECT 1 FROM runtime_config_startup WHERE key='memory_session_followup'"
+        ).fetchone()
+        settings = RuntimeSettings(_base(), store)
+        for key, values in (
+            ("PERSONAL_MEMORY_READ_MODE", ("legacy", "shadow", "tiered", "tiered_shadow", "decision_shadow")),
+            ("RAG_MODE", ("v1", "decision_shadow")),
+            ("MEMORY_SESSION_FOLLOWUP", ("dm",)),
+        ):
+            for value in values:
+                with pytest.raises(ValueError):
+                    settings.set_text(key, value)
+    finally:
+        store.close()
