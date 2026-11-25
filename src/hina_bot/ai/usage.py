@@ -433,7 +433,7 @@ class UsageLogger:
             row["web_search_calls"] = web_calls
             row["web_search_used"] = web_calls > 0
             row.update(_url_context_fields(responses))
-            row["api_attempts"] = len(responses)
+            row["api_attempts"] = sum(getattr(item, "_hina_gemini_http_attempts", 1) for item in responses)
 
         async def perform_request():
             response = await client.responses.create(**kwargs)
@@ -464,7 +464,7 @@ class UsageLogger:
                 web_search_calls=web_calls,
                 web_search_used=web_calls > 0,
                 **_url_context_fields(responses),
-                api_attempts=len(responses),
+                api_attempts=sum(getattr(item, "_hina_gemini_http_attempts", 1) for item in responses),
             )
             if cumulative_baseline is not None:
                 row["usage_accounting"] = "gemini_interaction_delta"

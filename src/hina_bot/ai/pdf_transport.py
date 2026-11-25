@@ -3,6 +3,7 @@ import asyncio
 import base64
 import io
 import os
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -58,15 +59,19 @@ def _encode(source):
             return None, "empty_line"
         start = 0
         advance = 0
-        for index, char in enumerate(paragraph):
-            if not char.isprintable() or not font.face.charToGlyph.get(ord(char)):
+        # Keep ASCII identifiers, snowflakes and JSON escape sequences readable across lines.
+        for match in re.finditer(r"[A-Za-z0-9_.-]+|\\(?:u[0-9a-fA-F]{4}|.)|.", paragraph):
+            token = match.group()
+            if any(not c.isprintable() or not font.face.charToGlyph.get(ord(c)) for c in token):
                 return None, "unsupported_glyph"
-            glyph_width = font.face.charWidths[ord(char)] * size / 1000
-            if advance + glyph_width > width - 84:
-                rendered.append(paragraph[start:index])
+            token_width = sum(font.face.charWidths[ord(c)] for c in token) * size / 1000
+            if token_width > width - 84:
+                return None, "unbreakable_token"
+            if advance + token_width > width - 84:
+                rendered.append(paragraph[start:match.start()])
                 advance = 0
-                start = index
-            advance += glyph_width
+                start = match.start()
+            advance += token_width
         rendered.append(paragraph[start:])
     for line in rendered:
         if y < 42:

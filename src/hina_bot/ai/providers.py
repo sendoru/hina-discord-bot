@@ -1059,7 +1059,9 @@ class _GeminiResponses:
         except ProviderAPIError as exc:
             if can_fallback and _gemini_interactions_tool_error(exc):
                 self._search_failure("tool_http_error")
-                return await self._generate_content(**tool_kwargs)
+                response = await self._generate_content(**tool_kwargs)
+                response._hina_gemini_http_attempts = 2
+                return response
             raise
 
         broken_builtin = (
@@ -1068,7 +1070,9 @@ class _GeminiResponses:
         )
         if broken_builtin and can_fallback:
             self._search_failure("unexpected_requires_action")
-            return await self._generate_content(**tool_kwargs)
+            response = await self._generate_content(**tool_kwargs)
+            response._hina_gemini_http_attempts = 2
+            return response
         if (web_tools or url_context_tools) and not broken_builtin and response.status in {"completed", "requires_action"}:
             self._search_failures = 0
         return response

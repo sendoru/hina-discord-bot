@@ -88,3 +88,23 @@ async def test_reference_transport_requires_local_marker_and_preserves_original(
             assert second == {"type": "text", "text": "abc123"}
             assert bool(metrics) == expected
     assert messages[0]["content"] == [reference, dict(reference)]
+
+
+async def test_multipage_ids_are_atomic_and_unrepresentable_sources_stay_text():
+    import io
+
+    from pypdf import PdfReader
+
+    from hina_bot.ai.pdf_transport import encode_reference
+
+    ids = [str(10**18 + i) for i in range(360)]
+    source = ",".join(ids)
+    document, _ = await encode_reference(source)
+    again, _ = await encode_reference(source)
+    assert document.pdf == again.pdf and document.pages > 1
+    extracted = "\n".join(page.extract_text() for page in PdfReader(io.BytesIO(document.pdf)).pages)
+    assert extracted.replace("\n", "") == source
+    assert all(identifier in extracted for identifier in ids)
+    for source, reason in [("x" * 200, "unbreakable_token"), ("data\x00", "unsupported_glyph")]:
+        document, metrics = await encode_reference(source)
+        assert document is None and metrics["fallback"] == reason
