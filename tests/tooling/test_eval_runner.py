@@ -513,6 +513,21 @@ def test_tone_cases_include_conversational_baseline_regressions():
     assert "avoid_repetitive_reaction_vocabulary" in ids
 
 
+def test_tone_cases_include_warm_banter_and_negative_context_regressions():
+    cases = {row["id"]: row for row in read_cases(Path("evals/tone_cases.jsonl"))}
+    assert {
+        "banter_shared_fun_not_productivity_policing",
+        "banter_group_join_not_collective_hostility",
+        "banter_repair_after_unfair_assistant_accusation",
+        "banter_boundary_specific_not_generalized",
+        "banter_dm_calm_enjoyment",
+    } <= cases.keys()
+    group = cases["banter_group_join_not_collective_hostility"]
+    assert len(group["channel_context"]) == 4
+    boundary = cases["banter_boundary_specific_not_generalized"]
+    assert boundary["turns"][0]["user_id"] != boundary["turns"][1]["user_id"]
+
+
 def test_tone_cases_include_response_planning_leakage_regressions():
     cases = read_cases(Path("evals/tone_cases.jsonl"))
     by_id = {row["id"]: row for row in cases}
