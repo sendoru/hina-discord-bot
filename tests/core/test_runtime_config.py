@@ -1057,3 +1057,36 @@ def test_cross_scope_default_can_change_without_creating_opt_ins(tmp_path):
         assert not store.cross_scope_opt_in(200)
     finally:
         store.close()
+
+
+def test_vision_transfer_budget_environment_and_live_overrides(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("VISION_MAX_IMAGE_MB", "8")
+    monkeypatch.setenv("VISION_MAX_TOTAL_MB", "16")
+    base = Settings.load()
+    assert (base.vision_max_image_mb, base.vision_max_total_mb) == (8, 16)
+
+    store = Store.create(":memory:")
+    try:
+        runtime = RuntimeSettings(base, store)
+        runtime.set_text("VISION_MAX_IMAGE_MB", "6")
+        runtime.set_text("VISION_MAX_TOTAL_MB", "10")
+        from hina_bot.discord.vision import VisionLimits
+
+        limits = VisionLimits.from_settings(runtime)
+        assert limits.max_image_bytes == 6 * 1024 * 1024
+        assert limits.max_total_bytes == 10 * 1024 * 1024
+        with pytest.raises(ValueError):
+            runtime.set_text("VISION_MAX_IMAGE_MB", "21")
+        with pytest.raises(ValueError):
+            runtime.set_text("VISION_MAX_TOTAL_MB", "0")
+        runtime.reload()
+        assert runtime.vision_max_image_mb == 6
+    finally:
+        store.close()
+
+    monkeypatch.setenv("VISION_MAX_IMAGE_MB", "21")
+    with pytest.raises(ValueError):
+        Settings.load()
