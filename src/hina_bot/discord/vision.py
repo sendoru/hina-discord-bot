@@ -147,7 +147,6 @@ async def _bounded_body(response) -> bytes:
         try:
             if int(size) > MAX_SOURCE_VISUAL_BYTES:
                 raise VisualSourceTooLarge
-
         except VisualSourceTooLarge:
             raise
         except ValueError:
