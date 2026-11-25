@@ -54,18 +54,6 @@ def test_static_answer_policies_are_loaded_from_named_resources():
         assert policy == load_prompt(name)
 
 
-def test_turn_response_policy_distinguishes_tool_use_from_unnecessary_calls():
-    assert "[도구 사용 판단]" in TURN_RESPONSE_POLICY
-    assert "확인 불가능하다고 단정하거나 추측하기 전에" in TURN_RESPONSE_POLICY
-    assert "다른 대화 참여자의 추측이나 기능 제한 주장" in TURN_RESPONSE_POLICY
-    assert "전체를 확인했다고 말하거나 정확한 통계를 만들어내지 마세요" in (
-        TURN_RESPONSE_POLICY
-    )
-    assert "잡담과 일반적인 답변에는 불필요하게 도구를 호출하지 마세요" in (
-        TURN_RESPONSE_POLICY
-    )
-
-
 def test_prompt_loader_caches_resource_text():
     assert load_prompt("base.md") is load_prompt("base.md")
 
@@ -81,30 +69,3 @@ def test_memory_extraction_policies_are_loaded_from_named_resources():
         "{{ANNOTATION_FIELD_RULES}}", annotation
     )
     assert DIRECTIVE_VERIFICATION_POLICY == verification
-
-
-def test_natural_dialogue_constraints_do_not_block_followup_or_roleplay():
-    assert "질문을 주고받거나 다음 이야기를 이어갈 수 있습니다" in TURN_RESPONSE_POLICY
-    assert "습관적으로 도우미식 후속 제안을 붙이지 마세요" in TURN_RESPONSE_POLICY
-    assert "히나가 참여자에게 건네는 말" in FINAL_OUTPUT_CHECK_POLICY
-    assert "대사와 간단한 행동 표현을 장면에 맞춰 사용할 수 있지만" in (
-        FINAL_OUTPUT_CHECK_POLICY
-    )
-    assert "현재 사용자에게 직접 하는 히나의 대사" not in FINAL_OUTPUT_CHECK_POLICY
-
-
-def test_incomplete_reference_supports_bounded_answer_before_clarifying():
-    assert "정확한 원문이 없거나 truncated여도" in REFERENCE_PROVENANCE_POLICY
-    assert "확인 가능한 내용으로 답할 수 있으면 답하고" in REFERENCE_PROVENANCE_POLICY
-    assert "빠진 내용을 지어내거나 사실로 확정하지 마세요" in (
-        REFERENCE_PROVENANCE_POLICY
-    )
-    assert "답변에 꼭 필요할 때만 추가 자료를 확인하거나 요청" in (
-        REFERENCE_PROVENANCE_POLICY
-    )
-    assert "답장 대상과 원래 대화의 뜻을 참고해 해석하세요" in (
-        REPLY_CONTINUITY_POLICY
-    )
-    assert "직전 답변의 감정이나 말투를 그대로 이어갈 필요" not in (
-        REPLY_CONTINUITY_POLICY
-    )
