@@ -20,7 +20,10 @@ OPENAI_API_KEY=...
 MEMORY_MAX_OUTPUT_TOKENS=4096
 ```
 
-기존 설치의 `OPENAI_MODEL`은 호환 alias로 계속 읽지만 새 설정에서는 `LLM_MODEL`을 권장합니다.
+`LLM_MODEL`만 현재 모델 설정으로 사용합니다. 이전 설치의 `OPENAI_MODEL` 및 폐기된 기억/RAG 모드는
+입력 마이그레이션에서만 변환됩니다. `hina-env-normalize --write`로 기존 `.env`를 백업하고 정리하세요.
+`LLM_MODEL`이 비어 있지 않으면 기존 모델 alias보다 우선합니다. 환경변수로 직접 주입하는 배포는
+배포 설정도 직접 갱신하세요. `MEMORY_SESSION_FOLLOWUP`은 제거되며 기존 DB 항목은 시작 시 정리됩니다.
 예전에 사용하던 `MEMORY_PROVIDER`, `MEMORY_MODEL`은 더 이상 읽지 않습니다.
 
 ### Gemini Google Search API fallback
