@@ -609,6 +609,8 @@ class Settings:
                 and 0 <= s.vision_max_emojis <= 32
                 and 0 <= s.vision_max_stickers <= 32
                 and vision_total <= 32
+                and 1 <= s.vision_max_image_mb <= 20
+                and 1 <= s.vision_max_total_mb <= 32
                 and 16 <= s.memory_visual_pending_max_mb <= 4096
                 and 0 <= s.memory_audio_max_attachments <= 2
                 and 1 <= s.memory_audio_max_seconds <= 1800
