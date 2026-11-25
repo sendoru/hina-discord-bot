@@ -1047,7 +1047,9 @@ async def test_oversize_current_attachment_is_compressed_and_total_budget_is_res
     ]
     message = NS(id=123, content="", attachments=attachments, stickers=[])
     limits = VisionLimits(max_image_bytes=8192, max_total_bytes=8192)
-    result = await collect_visual_inputs(message, limits=limits)
+    diagnostics = {}
+    result = await collect_visual_inputs(message, limits=limits, diagnostics=diagnostics)
+    assert diagnostics == {"lossless": 2}
     assert len(result) == 2
     assert all(item.mime_type == "image/webp" for item in result)
     assert all(item.reference_strength == "current_message" for item in result)
@@ -1075,3 +1077,33 @@ async def test_historical_visual_cache_respects_changed_runtime_byte_budget():
     assert low[0].mime_type == "image/webp"
     assert high[0].data == data
     assert channel.fetch_message.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_visual_diagnostics_distinguish_source_limit_and_invalid_image():
+    from hina_bot.discord.vision import MAX_SOURCE_VISUAL_BYTES
+
+    oversize = NS(size=MAX_SOURCE_VISUAL_BYTES + 1, content_type="image/png",
+                  read=AsyncMock())
+    invalid = NS(size=12, content_type="image/png",
+                 read=AsyncMock(return_value=b"invalid image"))
+    message = NS(content="", attachments=[oversize, invalid], stickers=[])
+    diagnostics = {}
+    assert await collect_visual_inputs(message, diagnostics=diagnostics) == []
+    assert diagnostics == {"source_size_limit": 1, "unsupported_image": 1}
+    oversize.read.assert_not_awaited()
+
+
+def test_fit_visual_bytes_reduces_resolution_only_if_needed():
+    import random
+
+    pixels = random.Random(19).randbytes(256 * 256 * 3)
+    image = Image.frombytes("RGB", (256, 256), pixels)
+    stream = BytesIO()
+    image.save(stream, "PNG")
+    data, mime, reason = fit_visual_bytes(stream.getvalue(), 4096)
+    assert 0 < len(data) <= 4096
+    assert (mime, reason) == ("image/webp", "compressed")
+    with Image.open(BytesIO(data)) as restored:
+        assert restored.width < image.width
+        assert restored.height < image.height
