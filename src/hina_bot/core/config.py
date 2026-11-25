@@ -182,6 +182,7 @@ class Settings:
     channel_context_chars: int = 6000
     recent_context_window_minutes: int = 60
     conversation_session_gap_minutes: int = 240
+    gemini_pdf_transport: str = "text"
     context_input_mode: str = "legacy"
     special_dm_user_id: int | None = None
     bot_admin_ids: frozenset[int] = frozenset()
@@ -455,6 +456,9 @@ class Settings:
                 or any(c in runtime_default_location for c in "\r\n\0")):
             raise ValueError("RUNTIME_LOCALE은 32자, RUNTIME_DEFAULT_LOCATION은 100자 이하여야 합니다.")
 
+        pdf_mode = os.getenv("GEMINI_PDF_TRANSPORT", "text").strip().lower() or "text"
+        if pdf_mode not in {"text", "auto", "pdf"}:
+            raise ValueError("GEMINI_PDF_TRANSPORT must be text, auto or pdf")
         context_input_mode = (
             os.getenv("CONTEXT_INPUT_MODE", "legacy").strip().lower() or "legacy"
         )
@@ -568,6 +572,7 @@ class Settings:
             recent_context_window_minutes=int(os.getenv("RECENT_CONTEXT_WINDOW_MINUTES", "60")),
             conversation_session_gap_minutes=int(os.getenv("CONVERSATION_SESSION_GAP_MINUTES", "240")),
             context_input_mode=context_input_mode,
+            gemini_pdf_transport=pdf_mode,
             history_turns=int(os.getenv("HISTORY_TURNS", "12")),
             raw_retention_turns=int(os.getenv("RAW_RETENTION_TURNS", "1000")),
             history_max_chars=int(os.getenv("HISTORY_MAX_CHARS", "12000")),

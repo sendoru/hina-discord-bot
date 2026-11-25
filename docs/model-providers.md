@@ -357,3 +357,37 @@ provider 선택은 실제 Discord 답변, 장기 기억 요약, runtime knowledg
 웹 검색은 각 provider의 기능과 과금 정책을 따릅니다. `CHAT_WEB_SEARCH=false`로 공통 검색 사용을 끌 수
 있습니다. provider나 모델을 바꾼 뒤에는 주요 eval과 실제 Discord smoke test를 다시 실행하는 것을
 권장합니다.
+
+## Gemini PDF context transport
+
+GEMINI_PDF_TRANSPORT defaults to text. Runtime Config → Conversation & Privacy
+changes it for subsequent requests. Auto currently chooses text for every model
+and API. No production cost or fidelity evidence has been collected. An operator
+may opt in with pdf for normal traffic and roll back with text. Changing
+GEMINI_PDF_FONT (local TrueType file) requires a restart. Use an installed font
+covering the deployment languages. Unsupported glyphs retain the original text.
+
+The encoder embeds visible 11 pt text on A4, checks extraction against the
+ordered rendered lines, and never writes document bytes to disk. Its local guard
+limits a block to 60,000 characters and 512,000 PDF bytes. Answer requests have
+an additional conservative 8 MB body guard. Decisions keeps its 240,000-byte
+cap and 1,000-question cap. Font metrics can be reused, documents cannot.
+Stored interactions retain native text. A local failure retains the original
+input. There is no new remote retry or shadow request.
+
+| Input | Opt-in scope |
+|---|---|
+| Decisions | Already eligible candidates only. Query, rules and questions stay native. |
+| Answer references | Local reference blocks only. Current speaker, active reply, current message and role replay stay native. |
+| Memory extraction and shared summaries | Existing authorized payload only. Images and their provenance stay in place. |
+| Persona and style | Native instructions. Model-level authority and quality unverified. |
+| Knowledge and tool results | Retrieved Lore in marked answer references is eligible. Tool envelopes and continuations stay native. |
+| Classifier, directive verification, output repair | Text. No measured cost benefit. |
+
+Use existing usage and trace records for normal production requests. Compare by
+operation, model, API, cache usage, attempts and input size. Selection bias in
+ordinary traffic limits comparisons. Token counts and estimates are not invoice
+amounts. No fixed saving or per-page token price is assumed. The offline
+benchmark in scripts/pdf_context_benchmark.py uses synthetic examples and mock
+HTTP only. See Google's [document guide](https://aistudio.google.com/docs/document-processing)
+and [Decisions input schema](https://aistudio.google.com/docs/decisions-api#input).

@@ -83,6 +83,8 @@ def _response_diagnostic_fields(response, *, has_visible_text: bool | None = Non
     if has_visible_text is None:
         has_visible_text = bool(_visible_text(response).strip())
     return {
+        **({"reference_transport": response._hina_reference_transport}
+           if getattr(response, "_hina_reference_transport", None) else {}),
         "response_has_visible_text": bool(has_visible_text),
         "response_output_types": _response_output_types(response),
         **(

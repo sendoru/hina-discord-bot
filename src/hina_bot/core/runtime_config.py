@@ -44,6 +44,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
+    "gemini_pdf_transport": "Gemini 참조 문서 전송 방식. text가 기본이며 auto는 비용 검증 전까지 text를 사용합니다.",
     "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. decision은 Gemini Decisions 선택을 적용하고, off는 지식 검색을 끕니다.",
     "personal_memory_cross_scope": "서버에서 본인의 다른 공간 기억을 읽는 기본값입니다. off이면 직접 동의한 사용자만 허용합니다.",
     "server_memory_read": "서버 공유 기억의 응답 주입과 조회를 제어합니다.",
@@ -140,6 +141,9 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         choices=tuple(sorted(EXTERNAL_CONTEXT_POLICIES)),
     ),
     "chat_web_search": _runtime_spec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
+    "gemini_pdf_transport": _runtime_spec(
+        "gemini_pdf_transport", "GEMINI_PDF_TRANSPORT", "string", choices=("text", "auto", "pdf"),
+    ),
     "rag_mode": _runtime_spec(
         "rag_mode",
         "RAG_MODE",

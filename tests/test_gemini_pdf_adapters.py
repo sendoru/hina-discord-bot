@@ -1,6 +1,6 @@
 import base64
 
-from hina_bot.ai.providers import GeminiInlinePDF, _gemini_input, _gemini_generate_content_contents
+from hina_bot.ai.providers import GeminiInlinePDF, _gemini_generate_content_contents, _gemini_input
 
 
 def test_document_stays_between_reference_and_current_turn():
@@ -32,3 +32,59 @@ def test_direct_reply_current_speaker_and_role_replay_remain_native():
     })
     assert [isinstance(block, PDFReferenceText) for block in blocks] == [False, False, True]
     assert all(block["type"] == "input_text" for block in blocks)
+
+
+async def test_pdf_decisions_send_once_with_native_control_and_exact_candidate_map():
+    import io
+    import json
+
+    import httpx
+    from pypdf import PdfReader
+
+    from hina_bot.ai.decisions import DecisionsClient
+
+    sent = []
+    def capture(request):
+        body = json.loads(request.content)
+        sent.append(len(request.content))
+        control, document = body["input"]
+        assert json.loads(control["text"])["turn"] == {"message": "now"}
+        pdf = PdfReader(io.BytesIO(base64.b64decode(document["data"])))
+        assert json.loads(pdf.pages[0].extract_text()) == {"candidates": {"c1": {"id": "123"}}}
+        assert list(body["questions"]) == ["c1"]
+        return httpx.Response(200, json={"answers": {"c1": {"type": "noul", "noul": 0.8}}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(capture)) as http:
+        result = await DecisionsClient(http).evaluate(
+            api_key="synthetic", domain="lore", query={"message": "now"},
+            candidates={"original": {"id": "123"}}, pdf_transport=True,
+        )
+    assert result.scores == {"original": 0.8}
+    assert sent == [result.request_bytes]
+    assert result.transport_metrics["transport"] == "pdf"
+
+
+async def test_reference_transport_requires_local_marker_and_preserves_original():
+    from types import SimpleNamespace
+
+    import httpx
+
+    from hina_bot.ai.providers import _GeminiResponses
+    from hina_bot.ai.reference_context_blocks import PDFReferenceText
+
+    reference = PDFReferenceText(type="input_text", text="abc123")
+    messages = [{"role": "user", "content": [reference, dict(reference)]}]
+    kwargs = {"input": messages}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: None)) as http:
+        settings = SimpleNamespace(gemini_pdf_transport="pdf")
+        adapter = _GeminiResponses(http, settings=settings)
+        for mode, stored, expected in [("pdf", False, True), ("auto", False, False),
+                                       ("text", False, False), ("pdf", True, False)]:
+            settings.gemini_pdf_transport = mode
+            payload = {"input": _gemini_input(messages), "store": stored}
+            metrics = await adapter._reference_transport(payload, kwargs, "input", _gemini_input)
+            first, second = payload["input"][0]["content"]
+            assert (first["type"] == "document") == expected
+            assert second == {"type": "text", "text": "abc123"}
+            assert bool(metrics) == expected
+    assert messages[0]["content"] == [reference, dict(reference)]

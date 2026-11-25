@@ -422,6 +422,11 @@
     {% for item in data.timeline %}
     <details class="timeline-item" {% if item.source == "event" %}open{% endif %}>
       <summary><span class="source {{ item.source }}">{{ item.source }}</span> {{ item.at | localtime }}</summary>
+      {% for observation in item.row.get("reference_transport", []) %}
+      <p>Gemini {{ observation.transport }} · {{ observation.source_chars }} chars ·
+        {{ observation.pages }} pages · {{ observation.pdf_bytes }} bytes ·
+        {{ observation.encode_ms }} ms{% if observation.fallback %} · {{ observation.fallback }}{% endif %}</p>
+      {% endfor %}
       <pre>{{ item.row | tojson(indent=2) }}</pre>
     </details>
     {% endfor %}
