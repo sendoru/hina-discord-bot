@@ -15,7 +15,9 @@ from dotenv import load_dotenv
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS, VisualInput
 from hina_bot.core.admin_db import AdminDatabase
-from hina_bot.core.config import GEMINI_THINKING_LEVELS, SUPPORTED_MODEL_PROVIDERS, Settings
+from hina_bot.core.config import (
+    GEMINI_THINKING_LEVELS, SUPPORTED_MODEL_PROVIDERS, Settings, migrate_legacy_env_values,
+)
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -254,8 +256,7 @@ def eval_settings(args) -> Settings:
     )
     model = (
         args.model
-        or os.getenv("LLM_MODEL", "").strip()
-        or os.getenv("OPENAI_MODEL", "").strip()
+        or migrate_legacy_env_values(os.environ, warn=True).get("LLM_MODEL", "").strip()
         or (fast_model if routing_mode == "adaptive" else "")
         or ("gpt-4.1-mini" if provider == "openai" else "")
     )
