@@ -83,6 +83,10 @@ def _response_diagnostic_fields(response, *, has_visible_text: bool | None = Non
     if has_visible_text is None:
         has_visible_text = bool(_visible_text(response).strip())
     return {
+        **({"gemini_api": response._hina_gemini_api,
+            "context_transport": "pdf" if any(
+                item["transport"] == "pdf" for item in getattr(response, "_hina_reference_transport", ())
+            ) else "text"} if getattr(response, "_hina_gemini_api", None) else {}),
         **({"reference_transport": response._hina_reference_transport}
            if getattr(response, "_hina_reference_transport", None) else {}),
         "response_has_visible_text": bool(has_visible_text),
@@ -405,7 +409,7 @@ class UsageLogger:
         if provider == "gemini" and operation in {
             "extract_memory_items_shadow", "summarize_shared", "knowledge_ingest",
         }:
-            kwargs["_hina_operation_reference"] = True
+            kwargs["_hina_operation_reference"] = "knowledge" if operation == "knowledge_ingest" else "memory"
         responses = []
         previous_interaction_id = str(kwargs.get("previous_interaction_id") or "")
         cumulative_baseline = (
@@ -531,6 +535,8 @@ class UsageLogger:
             "operation": operation,
             "provider": "gemini",
             "model": MODEL,
+            "gemini_api": "decisions",
+            "context_transport": metrics.get("decision_transport", {}).get("transport", "text"),
             "elapsed_ms": metrics["decision_request_ms"],
             "input_tokens": tokens,
             "output_tokens": 0,

@@ -362,7 +362,7 @@ provider 선택은 실제 Discord 답변, 장기 기억 요약, runtime knowledg
 
 GEMINI_PDF_TRANSPORT defaults to text. Runtime Config → Conversation & Privacy
 changes it for subsequent requests. Auto currently chooses text for every model
-and API. No production cost or fidelity evidence has been collected. An operator
+and API. GEMINI_PDF_SCOPE limits opt-in to decisions, answer, memory, knowledge, or all. No production cost or fidelity evidence has been collected. An operator
 may opt in with pdf for normal traffic and roll back with text. Changing
 GEMINI_PDF_FONT (local TrueType file) requires a restart. Use an installed font
 covering the deployment languages. Unsupported glyphs retain the original text.
@@ -381,7 +381,7 @@ input. There is no new remote retry or shadow request.
 | Answer references | Local reference blocks only. Current speaker, active reply, current message and role replay stay native. |
 | Memory extraction and shared summaries | Existing authorized payload only. Images and their provenance stay in place. |
 | Persona and style | Native instructions. Model-level authority and quality unverified. |
-| Knowledge and tool results | Retrieved Lore in marked answer references is eligible. Tool envelopes and continuations stay native. |
+| Knowledge and tool results | Authorized knowledge-ingest data and retrieved Lore in marked answer references are eligible. Tool envelopes and continuations stay native. |
 | Classifier, directive verification, output repair | Text. No measured cost benefit. |
 
 Use existing usage and trace records for normal production requests. Compare by
@@ -391,3 +391,11 @@ amounts. No fixed saving or per-page token price is assumed. The offline
 benchmark in scripts/pdf_context_benchmark.py uses synthetic examples and mock
 HTTP only. See Google's [document guide](https://aistudio.google.com/docs/document-processing)
 and [Decisions input schema](https://aistudio.google.com/docs/decisions-api#input).
+
+For a manual offline cost comparison, run scripts/pdf_usage_report.py against an
+existing usage JSONL with --model, --api, --input-per-million and
+--cached-per-million. Supply applicable prices in a single currency. The report
+groups by operation and actual transport. Its estimate covers reported input
+only. Missing cache counts, failed or multiple attempts are excluded from the
+priced count. Output, thinking, taxes, other fees and invoice totals require
+separate reconciliation. Use trace timing and counts alongside this report.

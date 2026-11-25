@@ -163,6 +163,10 @@ class DecisionsClient:
             self.http = httpx.AsyncClient()
         request_started = perf_counter()
         deadline = TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+        if pdf_transport:
+            deadline -= perf_counter() - started
+            if deadline <= 0:
+                return result("timeout", **request_meta)
         try:
             async with asyncio.timeout(deadline):
                 response = await self.http.post(

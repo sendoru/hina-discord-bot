@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 import httpx
 from openai import AsyncOpenAI
 
-from .pdf_transport import GeminiInlinePDF, encode_reference
+from .pdf_transport import GeminiInlinePDF, encode_reference, pdf_enabled
 from .reference_context_blocks import PDFReferenceText
 
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
@@ -783,7 +783,8 @@ class _GeminiResponses:
         self._search_circuit_until = 0.0
 
     async def _reference_transport(self, payload, kwargs, field, convert):
-        if getattr(self.settings, "gemini_pdf_transport", "text") != "pdf" or payload.get("store"):
+        domain = kwargs.get("_hina_operation_reference", "answer")
+        if not pdf_enabled(self.settings, domain) or payload.get("store"):
             return []
         messages = kwargs.get("input")
         if kwargs.get("_hina_operation_reference") and isinstance(messages, str):
@@ -892,7 +893,9 @@ class _GeminiResponses:
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            error = _gemini_http_error(response)
+            error = (ProviderAPIError("gemini", response.status_code, code="document_request_failed")
+                     if any(item["transport"] == "pdf" for item in metrics)
+                     else _gemini_http_error(response))
             log.warning("Provider request failed (%s)", error.safe_diagnostic)
             raise error from exc
         normalized = _gemini_generate_content_output(response.json())
@@ -963,7 +966,9 @@ class _GeminiResponses:
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            error = _gemini_http_error(response)
+            error = (ProviderAPIError("gemini", response.status_code, code="document_request_failed")
+                     if any(item["transport"] == "pdf" for item in metrics)
+                     else _gemini_http_error(response))
             log.warning("Provider request failed (%s)", error.safe_diagnostic)
             raise error from exc
         data = response.json()

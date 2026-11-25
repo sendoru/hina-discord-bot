@@ -18,6 +18,11 @@ from reportlab.pdfgen.canvas import Canvas
 _LOCK = Lock()
 
 
+def pdf_enabled(settings, domain):
+    return (getattr(settings, "gemini_pdf_transport", "text") == "pdf"
+            and getattr(settings, "gemini_pdf_scope", "all") in {"all", domain})
+
+
 @dataclass(frozen=True, repr=False)
 class GeminiInlinePDF:
     pdf: bytes
