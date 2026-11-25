@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 import httpx
 from openai import AsyncOpenAI
 
+from .pdf_transport import GeminiInlinePDF
+
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 GEMINI_GENERATE_CONTENT_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -115,17 +117,6 @@ def _gemini_image_block(image_url: str, resolution: str = ""):
     if resolution in {"low", "medium", "high", "ultra_high"}:
         image["resolution"] = resolution
     return image
-
-
-class GeminiInlinePDF:
-    """An in-memory document created after Gemini routing and egress filtering."""
-
-    __slots__ = ("data",)
-
-    def __init__(self, pdf: bytes):
-        import base64
-
-        self.data = base64.b64encode(pdf).decode("ascii")
 
 
 def _gemini_content(value):
