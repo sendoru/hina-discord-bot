@@ -20,3 +20,15 @@ def test_document_stays_between_reference_and_current_turn():
     assert (before["text"], after["text"]) == ("before", "after")
     assert document["inline_data"]["mime_type"] == "application/pdf"
     assert base64.b64decode(document["inline_data"]["data"]) == pdf
+
+
+def test_direct_reply_current_speaker_and_role_replay_remain_native():
+    from hina_bot.ai.reference_context_blocks import PDFReferenceText, reference_context_blocks
+
+    blocks = reference_context_blocks({
+        "current_speaker": {"id": "speaker123"},
+        "active_reply_chain": [{"role": "user", "content": "reply456"}],
+        "lore_reference": ["lore789"],
+    })
+    assert [isinstance(block, PDFReferenceText) for block in blocks] == [False, False, True]
+    assert all(block["type"] == "input_text" for block in blocks)
