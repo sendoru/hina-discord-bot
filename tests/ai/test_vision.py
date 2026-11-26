@@ -706,3 +706,30 @@ async def test_prepared_vision_policy_is_not_appended_twice():
     kwargs = create.await_args.kwargs
     assert kwargs["instructions"].count(VISION_INPUT_POLICY.strip()) == 1
     assert any(block["type"] == "input_image" for block in kwargs["input"][-1]["content"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prepared", [False, True])
+async def test_stored_gemini_continuation_does_not_replay_visuals(prepared):
+    create = AsyncMock(return_value=NS(status="completed"))
+    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="gemini")
+    client = VisionClient(raw)
+    visual = VisualInput(b"image", "image/png", "attachment", "test.png")
+    input_items = [{"type": "function_call_output", "call_id": "call1", "output": "42"}]
+    visual_token = CURRENT_VISUAL_INPUTS.set((visual,))
+    active_token = VISION_REQUEST_ACTIVE.set(True)
+    try:
+        await client.responses.create(
+            model="gemini-test",
+            input=input_items,
+            previous_interaction_id="stored-id",
+            instructions="native policy",
+            _hina_vision_policy_prepared=prepared,
+        )
+    finally:
+        VISION_REQUEST_ACTIVE.reset(active_token)
+        CURRENT_VISUAL_INPUTS.reset(visual_token)
+    kwargs = create.await_args.kwargs
+    assert kwargs["input"] == input_items
+    assert kwargs["previous_interaction_id"] == "stored-id"
+    assert (VISION_INPUT_POLICY.strip() in kwargs["instructions"]) is not prepared

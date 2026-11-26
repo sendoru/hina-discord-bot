@@ -265,3 +265,18 @@ async def test_large_synthetic_answer_uses_single_real_pdf():
     assert len(documents) == 1
     assert documents[0].pdf.startswith(b"%PDF")
     assert transport_coverage([obs for item in prepared for _, _, obs in item.segments])["eligible_coverage"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_executor_submission_failure_does_not_leak_encoder_lock(monkeypatch):
+    loop = asyncio.get_running_loop()
+
+    def reject(*args):
+        raise RuntimeError("executor unavailable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(loop, "run_in_executor", reject)
+        document, obs = await pdf_transport.encode_reference("first")
+        assert document is None and obs["fallback"] == "encode_error"
+    document, obs = await pdf_transport.encode_reference("second")
+    assert document is not None and obs["transport"] == "pdf"

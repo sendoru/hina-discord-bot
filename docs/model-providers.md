@@ -435,6 +435,7 @@ wire-size guard retains the original full native system. Stored continuations
 use the previous interaction ID without resending the document; only successfully
 moved app components may be omitted from the continuation system text.
 Stateless continuations reuse the prepared document and original logical input.
+Stored continuations do not reattach the original images or audio.
 Changing runtime config affects subsequent requests.
 
 With CODE_EXECUTION_BACKEND=auto, enabling PDF for Answer selects delegated

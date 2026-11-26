@@ -1,6 +1,5 @@
 import base64
 import json
-from dataclasses import dataclass
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
@@ -15,12 +14,6 @@ from hina_bot.ai.reference_context_blocks import PDFReferenceText
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
-
-
-@dataclass(frozen=True, kw_only=True)
-class PDFSettings(Settings):
-    gemini_pdf_transport: str = "pdf"
-    gemini_pdf_scope: str = "all"
 
 
 def mock_encoder(monkeypatch, success):
@@ -55,7 +48,8 @@ async def test_pdf_answer_prepares_before_tools_and_preserves_wire_compatibility
     tmp_path, monkeypatch, mode, success, expected, api,
 ):
     encoder = mock_encoder(monkeypatch, success)
-    config = PDFSettings(
+    config = Settings(
+        gemini_pdf_transport="pdf", gemini_pdf_scope="all",
         discord_token="test", provider="gemini", gemini_api_key="test",
         model="gemini-test", fast_model="gemini-test", smart_model="gemini-test",
         code_execution_backend=mode, db_path=str(tmp_path / "admin.sqlite3"),
@@ -107,7 +101,7 @@ async def test_pdf_answer_prepares_before_tools_and_preserves_wire_compatibility
         assert load_prompt(name).strip() in system
     if moved:
         assert pdf_transport.DOCUMENT_GUIDANCE in system
-    if moved:
+
         def documents(value):
             if isinstance(value, dict):
                 if value.get("mime_type", value.get("mimeType")) == "application/pdf":

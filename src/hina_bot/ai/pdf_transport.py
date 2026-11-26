@@ -237,12 +237,18 @@ async def encode_reference(source):
             # Shield the single lock-owning job so cancellation cannot prevent
             # its finally block from releasing the lock. Request cooperative
             # cancellation; noninterruptible library calls may finish first.
-            worker = asyncio.get_running_loop().run_in_executor(None, render)
             try:
-                document, reason = await asyncio.shield(worker)
-            except asyncio.CancelledError:
-                cancelled.set()
-                raise
+                worker = asyncio.get_running_loop().run_in_executor(None, render)
+            except RuntimeError:
+                # Executor shutdown/rejection occurs before render owns cleanup.
+                _LOCK.release()
+                document, reason = None, "encode_error"
+            else:
+                try:
+                    document, reason = await asyncio.shield(worker)
+                except asyncio.CancelledError:
+                    cancelled.set()
+                    raise
 
     return document, {
         "transport": "pdf" if document else "text",
@@ -263,10 +269,6 @@ class PreparedPDFReference(PDFReferenceText):
         self.document = document
         self.observation = dict(observation)
         self.segments = segments or [(part, document, observation)]
-
-
-def answer_pdf_enabled(settings, *, store=False):
-    return pdf_enabled(settings, "answer")
 
 
 def text_reference_observation(source, reason):
@@ -338,7 +340,7 @@ def _split_part(rows, ranges, *, candidates=False):
     return []
 
 
-async def plan_reference(part, *, native_only=False, encoder=None):
+async def plan_reference(part, *, encoder=None):
     """Return original mapping plus bounded, ordered PDF/text fragments.
 
     Repeated list keys in fragments are explicitly labelled with absolute record
@@ -347,10 +349,6 @@ async def plan_reference(part, *, native_only=False, encoder=None):
     encoder = encoder or encode_reference
     source = part["text"]
     label = reference_label(part)
-    if native_only:
-        observation = text_reference_observation(source, "code_execution_incompatible")
-        observation.update(section=label, eligible=True)
-        return PreparedPDFReference(part, None, observation)
     document, observation = await encoder(source)
     observation = {**observation, "section": label, "eligible": True}
     if document is not None or observation["fallback"] not in _SPLIT_REASONS:

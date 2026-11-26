@@ -494,9 +494,9 @@ class Settings:
                 or any(c in runtime_default_location for c in "\r\n\0")):
             raise ValueError("RUNTIME_LOCALE은 32자, RUNTIME_DEFAULT_LOCATION은 100자 이하여야 합니다.")
 
-        pdf_scope = parse_pdf_scope(migrated_env.get("GEMINI_PDF_SCOPE", "all").strip() or "all")
-        pdf_mode = parse_pdf_transport(migrated_env.get("GEMINI_PDF_TRANSPORT", "text").strip() or "text",
-                                       legacy=True)
+        # The environment migration boundary has already parsed these values.
+        pdf_scope = migrated_env.get("GEMINI_PDF_SCOPE", "all")
+        pdf_mode = migrated_env.get("GEMINI_PDF_TRANSPORT", "text")
         context_input_mode = (
             os.getenv("CONTEXT_INPUT_MODE", "legacy").strip().lower() or "legacy"
         )
