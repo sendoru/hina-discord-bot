@@ -6,7 +6,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from threading import Event, Lock
 from time import perf_counter
@@ -121,7 +121,22 @@ class _UnsupportedGlyph(Exception):
     pass
 
 
-def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
+class _RequestLayoutCache:
+    """Bounded intermediate layouts, owned by one consolidation only."""
+
+    def __init__(self):
+        self.paragraphs = {}
+        self.chars = 0
+
+    def remember(self, key, lines):
+        paragraph = key[0]
+        if len(paragraph) > 240_000 - self.chars:
+            return
+        self.paragraphs[key] = tuple(lines)
+        self.chars += len(paragraph)
+
+
+def _encode(source, *, size=10, margin=30, leading=13, cancelled=None, layout_cache=None):
     font = _font()
     by_char = {}
     widths = {}
@@ -155,6 +170,21 @@ def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
     for paragraph in source.split("\n"):
         if not paragraph:
             return None, "empty_line"
+        if cancelled is not None and cancelled.is_set():
+            return None, "encode_deadline"
+        key = (paragraph, font, size, margin)
+        cached = layout_cache.paragraphs.get(key) if layout_cache is not None else None
+        if cached is not None:
+            # Resolve each distinct glyph for this render; no per-paragraph font
+            # maps or document artifacts are retained.
+            try:
+                for char in set(paragraph):
+                    width_for(char)
+            except _UnsupportedGlyph:
+                return None, "unsupported_glyph"
+            rendered.extend(cached)
+            continue
+        line_start = len(rendered)
         start = 0
         advance = 0
         # Keep ASCII identifiers, snowflakes and JSON escape sequences readable across lines.
@@ -174,6 +204,8 @@ def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
                 start = match.start()
             advance += token_width
         rendered.append(paragraph[start:])
+        if layout_cache is not None:
+            layout_cache.remember(key, rendered[line_start:])
     for line in rendered:
         if cancelled is not None and cancelled.is_set():
             return None, "encode_deadline"
@@ -216,7 +248,7 @@ def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
 ENCODER_LOCK_POLL_SECONDS = 0.02
 
 
-async def encode_reference(source):
+async def encode_reference(source, *, layout_cache=None):
     started = perf_counter()
     cancelled = Event()
 
@@ -224,7 +256,9 @@ async def encode_reference(source):
         try:
             if cancelled.is_set():
                 return None, "encode_deadline"
-            return _encode(source, cancelled=cancelled)
+            if layout_cache is None:
+                return _encode(source, cancelled=cancelled)
+            return _encode(source, cancelled=cancelled, layout_cache=layout_cache)
         except Exception:  # noqa: BLE001 - pre-send fallback at renderer boundary
             # Font, renderer and parser errors must never emit source or PDF bytes.
             return None, "encode_error"
@@ -267,6 +301,11 @@ async def encode_reference(source):
         "encode_ms": round((perf_counter() - started) * 1000),
         "fallback": reason,
     }
+
+
+# The public single-argument encoder injection seam remains supported; only the
+# built-in renderer can consume internal layout state.
+_BUILTIN_ENCODER = encode_reference
 
 
 class PreparedPDFReference(PDFReferenceText):
@@ -349,7 +388,7 @@ def _split_part(rows, ranges, *, candidates=False):
     return []
 
 
-async def plan_reference(part, *, encoder=None):
+async def plan_reference(part, *, encoder=None, initial_result=None):
     """Return original mapping plus bounded, ordered PDF/text fragments.
 
     Repeated list keys in fragments are explicitly labelled with absolute record
@@ -358,7 +397,7 @@ async def plan_reference(part, *, encoder=None):
     encoder = encoder or encode_reference
     source = part["text"]
     label = reference_label(part)
-    document, observation = await encoder(source)
+    document, observation = initial_result if initial_result is not None else await encoder(source)
     observation = {**observation, "section": label, "eligible": True}
     if document is not None or observation["fallback"] not in _SPLIT_REASONS:
         return PreparedPDFReference(part, document, observation)
@@ -543,6 +582,8 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
     verified standalone fragment and keep every other fragment native.
     """
     encoder = encoder or encode_reference
+    if encoder is _BUILTIN_ENCODER:
+        encoder = partial(encoder, layout_cache=_RequestLayoutCache())
     if not parts:
         return []
     started = perf_counter()
@@ -594,13 +635,18 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
         if initial_reason not in _SPLIT_REASONS:
             return native(initial_reason)
         for part in parts:
+            # A single part was already attempted verbatim above; its deterministic
+            # split failure is sufficient to start the existing fragment planner.
+            initial = (document, obs) if len(parts) == 1 else None
             if instruction_original(part) is not None:
-                candidate, item_obs = await bounded(document_source(part))
+                candidate, item_obs = (
+                    initial if initial is not None else await bounded(document_source(part))
+                )
                 groups.append([(
                     part, candidate, original_observation(part, item_obs["fallback"]),
                 )])
             else:
-                prepared = await plan_reference(part, encoder=bounded)
+                prepared = await plan_reference(part, encoder=bounded, initial_result=initial)
                 groups.append(list(prepared.segments))
         selected = [
             fragment for group in groups for fragment, doc, _ in group if doc is not None
