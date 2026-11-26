@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -27,6 +28,8 @@ def _runtime_to_env(attr: str, encoded: str) -> str | None:
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid DB runtime setting {attr}: {exc}") from exc
 
+    if spec.kind == "provider_preferences":
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     if spec.kind == "optional_bool":
         return None if value is None else str(value).lower()
     if spec.kind == "bool":
