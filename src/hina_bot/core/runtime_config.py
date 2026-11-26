@@ -9,6 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config import (
+    CODE_EXECUTION_BACKENDS,
     CONTEXT_INPUT_MODES,
     EXTERNAL_CONTEXT_POLICIES,
     GEMINI_SEARCH_API_MODES,
@@ -72,6 +73,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "gemini_store_output_repair_interactions": "출력 후처리 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
     "gemini_store_knowledge_interactions": "지식 등록 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
     "gemini_search_api_mode": "Gemini 검색에 사용할 API 선택입니다. auto는 Interactions 우선·특정 도구 오류 시 GenerateContent 폴백, interactions/generate_content는 강제 모드입니다.",
+    "code_execution_backend": "Gemini 코드 실행 방식입니다. auto: 호환 입력은 native, 오디오 등 비호환 입력은 delegated. native: 내장 도구만 사용(비호환 입력에서는 미제공). delegated: 필요할 때 별도 Gemini 계산 호출. 다른 provider는 기존 방식 유지.",
     "gemini_store_classifier_interactions": "semantic/web routing classifier 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
     "model_routing_smart_threshold": "채팅 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
     "memory_routing_smart_threshold": "장기 기억 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
@@ -245,6 +247,12 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "string",
         choices=tuple(sorted(GEMINI_SEARCH_API_MODES)),
     ),
+    "code_execution_backend": _runtime_spec(
+        "code_execution_backend",
+        "CODE_EXECUTION_BACKEND",
+        "string",
+        choices=tuple(sorted(CODE_EXECUTION_BACKENDS)),
+    ),
     "gemini_store_classifier_interactions": _runtime_spec(
         "gemini_store_classifier_interactions",
         "GEMINI_STORE_CLASSIFIER_INTERACTIONS",
@@ -399,7 +407,7 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
     if spec.kind == "string":
         if spec.attr == "external_context_policy":
             return parse_external_context_policy(text)
-        if spec.attr == "gemini_search_api_mode":
+        if spec.attr in {"gemini_search_api_mode", "code_execution_backend"}:
             text = text.lower()
         if spec.empty_allowed and text.lower() in {"none", "null", "off", "-"}:
             text = ""
