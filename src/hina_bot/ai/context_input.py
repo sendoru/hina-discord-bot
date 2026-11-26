@@ -5,11 +5,43 @@ Synthetic DM replay is not an original Gemini Interaction transcript.
 """
 from __future__ import annotations
 
+import json
+
 from .dialogue_context import project_dialogue_context
 from .reference_context_blocks import reference_context_blocks
 
 _CURRENT_FIELDS = ("current_speaker", "current_interaction", "active_reply_chain")
 _MODES = frozenset({"legacy", "structured", "structured_with_replay"})
+EMPTY_CURRENT_TURN_PREFIX = "현재 Discord 발화(JSON · 앱 생성 표기, content만 사용자 본문):"
+EMPTY_CURRENT_TURN_POLICY = (
+    "[본문 없는 현재 발화]\n"
+    "현재 Discord 발화 JSON의 content가 비어 있으면 실제로 발언한 본문이 없는 상호작용입니다. "
+    "공식 외형 참조 안내, 미디어 설명과 기타 앱 생성 표기를 사용자 발언으로 취급하지 마세요. "
+    "호출 전용 발화에 명시적 답장 대상이나 현재 첨부 자료가 실제 제공되었다면 "
+    "그 대상에 주의를 환기한 것으로 자연스럽게 반응할 수 있습니다. "
+    "구체적인 질문이나 의도를 지어내지 말고, 자료가 없으면 단순 호출로 응답하세요."
+)
+
+
+def _current_turn_text(context: dict, content: str, current_media: tuple[str, ...]) -> str:
+    """Keep a textless turn explicit without inventing a user's utterance."""
+    if content.strip():
+        return content
+    interaction = context.get("current_interaction") or {}
+    trigger_kind = interaction.get("trigger_kind")
+    metadata = {
+        "content": content,
+        "trigger_kind": trigger_kind,
+        "has_reply_reference": bool(interaction.get("reply_target")) or any(
+            row.get("context_kind") == "replied_message"
+            for row in context.get("active_reply_chain", ()) or ()
+            if isinstance(row, dict)
+        ),
+        "current_media": list(current_media),
+    }
+    return EMPTY_CURRENT_TURN_PREFIX + "\n" + json.dumps(
+        metadata, ensure_ascii=False, separators=(",", ":"),
+    )
 
 
 def _replayable_exchange(row: dict) -> bool:
@@ -66,16 +98,18 @@ def build_context_input(
     mode: str = "legacy",
     provider: str = "gemini",
     is_dm: bool = False,
+    current_media: tuple[str, ...] = (),
 ) -> list[dict]:
     """Serialize already-authorized context; never retrieve or select new rows."""
     if mode not in _MODES:
         raise ValueError(f"Unsupported context input mode: {mode}")
 
     projected = project_dialogue_context(context)
+    current_text = _current_turn_text(projected, current_content, current_media)
     if mode == "legacy":
         return [
             {"role": "user", "content": reference_context_blocks(projected)},
-            {"role": "user", "content": current_content},
+            {"role": "user", "content": current_text},
         ]
 
     background = dict(projected)
@@ -95,7 +129,7 @@ def build_context_input(
     # Preserve the existing untrusted-reference boundary. Only the position of
     # the trusted Discord interaction metadata and direct reply chain changes.
     current_parts = reference_context_blocks(current)
-    current_parts.append({"type": "input_text", "text": current_content})
+    current_parts.append({"type": "input_text", "text": current_text})
     return [
         {"role": "user", "content": reference_context_blocks(background)},
         *replay,
