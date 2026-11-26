@@ -1,10 +1,16 @@
+import json
 import re
 from pathlib import Path
 
 import pytest
 
-from hina_bot.core.config import Settings
-from hina_bot.core.runtime_config import RUNTIME_SETTING_SPECS, RuntimeSettings
+from hina_bot.core.config import Settings, parse_openrouter_preferences
+from hina_bot.core.runtime_config import (
+    RUNTIME_SETTING_SPECS,
+    RuntimeSettings,
+    decode_runtime_value,
+    parse_runtime_value,
+)
 from hina_bot.core.store import Store
 
 
@@ -1190,3 +1196,40 @@ def test_pdf_scope_and_legacy_transport_migration(monkeypatch, tmp_path):
         assert runtime.reset("GEMINI_PDF_SCOPE") == "answer,memory"
     finally:
         store.close()
+
+
+@pytest.mark.parametrize("preferences", [
+    {"sort": "latency", "ignore": ["slow"], "preferred_max_latency": 3.5},
+    {"sort": {"by": "price", "partition": "none"},
+     "preferred_max_latency": {"p90": 3, "p99": 8},
+     "preferred_min_throughput": {"p50": 100, "p90": 50},
+     "max_price": {"prompt": 0.1, "completion": 0.6, "request": 0}},
+    {"sort": "throughput", "preferred_min_throughput": 40},
+    {"sort": {"by": "latency"}, "zdr": True, "data_collection": "deny"},
+    {},
+])
+def test_openrouter_preferences_valid_and_runtime_roundtrip(preferences):
+    raw = json.dumps(preferences)
+    spec = RUNTIME_SETTING_SPECS["openrouter_provider_preferences"]
+    assert parse_openrouter_preferences(raw) == preferences
+    assert parse_runtime_value(spec, raw) == preferences
+    assert decode_runtime_value(spec, raw) == preferences
+
+
+@pytest.mark.parametrize("preferences", [
+    {"sort": "fastest"}, {"sort": {"partition": "none"}},
+    {"sort": {"by": "price", "partition": "invalid"}},
+    {"sort": {"by": "price", "extra": True}}, {"ignore": "slow"},
+    {"preferred_max_latency": {"p95": 3}}, {"preferred_max_latency": {}},
+    {"preferred_max_latency": True}, {"preferred_max_latency": -1},
+    {"preferred_max_latency": float("inf")},
+    {"preferred_min_throughput": {"p90": float("nan")}},
+    {"preferred_min_throughput": {"p50": "50"}},
+    {"preferred_min_throughput": 0},
+    {"max_price": {"prompt": True}}, {"max_price": {"completion": -1}},
+    {"max_price": {"unknown": 1}}, {"max_price": {}},
+    {"max_price": {"prompt": float("inf")}}, {"unexpected": True},
+])
+def test_openrouter_preferences_reject_invalid_values(preferences):
+    with pytest.raises(ValueError, match="Invalid"):
+        parse_openrouter_preferences(json.dumps(preferences))

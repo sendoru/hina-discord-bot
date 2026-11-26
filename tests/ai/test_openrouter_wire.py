@@ -71,7 +71,11 @@ def wire(monkeypatch):
 async def test_all_operations(wire, tmp_path):
     posts, gets, outputs = wire
     preferences = {"only": ["fixture"], "order": ["fixture"], "allow_fallbacks": False,
-                   "require_parameters": True, "data_collection": "deny", "zdr": True}
+                   "require_parameters": True, "data_collection": "deny", "zdr": True,
+                   "ignore": ["slow"], "sort": {"by": "price", "partition": "none"},
+                   "preferred_max_latency": {"p90": 3, "p99": 8},
+                   "preferred_min_throughput": {"p90": 50},
+                   "max_price": {"prompt": 0.1, "completion": 0.6}}
     path = tmp_path / "usage.jsonl"
     settings = Settings(discord_token="fixture", provider="openrouter", model=MODEL, fast_model=MODEL,
                         openrouter_provider_preferences=preferences, openrouter_affinity_secret="fixture",

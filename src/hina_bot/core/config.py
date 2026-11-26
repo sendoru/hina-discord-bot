@@ -24,17 +24,47 @@ def parse_openrouter_effort(value: str, *, inherit=False) -> str:
     return effort
 
 
+def _valid_openrouter_number(value, *, allow_zero=False) -> bool:
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value) and (value >= 0 if allow_zero else value > 0)
+    except OverflowError:
+        return False
+
+
 def parse_openrouter_preferences(value: str) -> dict:
     preferences = json.loads(value)
-    allowed = {"only", "order", "allow_fallbacks", "require_parameters", "data_collection", "zdr"}
+    allowed = {
+        "only", "order", "ignore", "allow_fallbacks", "require_parameters", "data_collection", "zdr",
+        "sort", "preferred_max_latency", "preferred_min_throughput", "max_price",
+    }
+    sorts = ("price", "latency", "throughput")
+    percentiles = {"p50", "p75", "p90", "p99"}
     if not isinstance(preferences, dict) or preferences.keys() - allowed:
         raise ValueError("Invalid OPENROUTER_PROVIDER_PREFERENCES fields")
     for key, item in preferences.items():
-        if key in {"only", "order"}:
+        if key in {"only", "order", "ignore"}:
             valid = (isinstance(item, list) and 0 < len(item) <= 64
                      and all(isinstance(name, str) and 0 < len(name.strip()) <= 128 for name in item))
         elif key == "data_collection":
             valid = item in ("allow", "deny")
+        elif key == "sort":
+            valid = item in sorts if isinstance(item, str) else (
+                isinstance(item, dict) and not item.keys() - {"by", "partition"}
+                and item.get("by") in sorts and item.get("partition", "model") in ("model", "none")
+            )
+        elif key in {"preferred_max_latency", "preferred_min_throughput"}:
+            valid = _valid_openrouter_number(item) or (
+                isinstance(item, dict) and bool(item) and not item.keys() - percentiles
+                and all(_valid_openrouter_number(number) for number in item.values())
+            )
+        elif key == "max_price":
+            valid = (
+                isinstance(item, dict) and bool(item)
+                and not item.keys() - {"prompt", "completion", "request"}
+                and all(_valid_openrouter_number(number, allow_zero=True) for number in item.values())
+            )
         else:
             valid = isinstance(item, bool)
         if not valid:
