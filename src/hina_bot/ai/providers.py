@@ -795,6 +795,10 @@ class _GeminiResponses:
                 messages = [{**messages[0], "content": [PDFReferenceText(content[0]), *content[1:]]}]
         if not isinstance(messages, list):
             return []
+        code_execution = any(
+            tool.get("type") == "code_execution" or "code_execution" in tool
+            for tool in payload.get("tools", ())
+        )
         projected = []
         metrics = []
         for message in messages:
@@ -805,6 +809,12 @@ class _GeminiResponses:
             parts = []
             for part in message["content"]:
                 if isinstance(part, PDFReferenceText):
+                    if code_execution:
+                        metrics.append({"transport": "text", "source_chars": len(part["text"]),
+                                        "pages": 0, "pdf_bytes": 0, "encode_ms": 0,
+                                        "fallback": "code_execution_incompatible"})
+                        parts.append(part)
+                        continue
                     document, observation = await encode_reference(part["text"])
                     metrics.append(observation)
                     if document:
@@ -898,6 +908,8 @@ class _GeminiResponses:
             error = (ProviderAPIError("gemini", response.status_code, code="document_request_failed")
                      if any(item["transport"] == "pdf" for item in metrics)
                      else _gemini_http_error(response))
+            error.gemini_api = "generate_content"
+            error.reference_transport = metrics
             log.warning("Provider request failed (%s)", error.safe_diagnostic)
             raise error from exc
         normalized = _gemini_generate_content_output(response.json())
@@ -971,6 +983,8 @@ class _GeminiResponses:
             error = (ProviderAPIError("gemini", response.status_code, code="document_request_failed")
                      if any(item["transport"] == "pdf" for item in metrics)
                      else _gemini_http_error(response))
+            error.gemini_api = "interactions"
+            error.reference_transport = metrics
             log.warning("Provider request failed (%s)", error.safe_diagnostic)
             raise error from exc
         data = response.json()

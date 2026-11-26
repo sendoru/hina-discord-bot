@@ -102,6 +102,12 @@ def _response_diagnostic_fields(response, *, has_visible_text: bool | None = Non
 def _provider_error_fields(exc: BaseException) -> dict:
     """Return only adapter-approved diagnostics; never serialize arbitrary exception strings."""
     fields = {}
+    if getattr(exc, "gemini_api", None) in {"generate_content", "interactions"}:
+        fields["gemini_api"] = exc.gemini_api
+        observations = getattr(exc, "reference_transport", ())
+        fields["context_transport"] = "pdf" if any(o["transport"] == "pdf" for o in observations) else "text"
+        if observations:
+            fields["reference_transport"] = observations
     provider = getattr(exc, "provider", None)
     status_code = getattr(exc, "status_code", None)
     response_status = getattr(exc, "response_status", None)

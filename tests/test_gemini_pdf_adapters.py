@@ -161,3 +161,38 @@ async def test_stored_pdf_answer_preserves_wire_flag_and_continuation_id():
     assert len(calls) == 1 and calls[0]["store"] is True
     assert calls[0]["input"][0]["content"][0]["type"] == "document"
     assert response._hina_interaction_id == "fixture-id"
+
+
+async def test_code_execution_preserves_native_references_on_both_apis(monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    import httpx
+
+    from hina_bot.ai import providers
+    from hina_bot.ai.reference_context_blocks import PDFReferenceText
+
+    async def unexpected_encode(source):
+        raise AssertionError("incompatible tools must be detected before encoding")
+
+    monkeypatch.setattr(providers, "encode_reference", unexpected_encode)
+    bodies = []
+    def capture(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"steps": [], "candidates": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(capture)) as http:
+        adapter = providers._GeminiResponses(http, settings=SimpleNamespace(gemini_pdf_transport="pdf"))
+        for api in ("interactions", "generate_content"):
+            response = await adapter.create(
+                model="fixture", _hina_gemini_api=api, store=True,
+                input=[{"role": "user", "content": [PDFReferenceText(type="input_text", text="record123")]}],
+                tools=[{"type": "code_execution"}],
+            )
+            assert response._hina_reference_transport[0]["fallback"] == "code_execution_incompatible"
+    first, second = bodies
+    assert first["input"][0]["content"] == [{"type": "text", "text": "record123"}]
+    assert second["contents"][0]["parts"] == [{"text": "record123"}]
+    assert first["tools"] == [{"type": "code_execution"}]
+    assert second["tools"] == [{"code_execution": {}}]
+    assert first["store"] and second["store"]
