@@ -657,3 +657,13 @@ pytest -q tests/dashboard/test_memory_bulk.py
 
 CI의 `dashboard-browser` job은 Chromium으로 선택·모바일 동기화·확인 취소·부분 실패·
 완료 갱신·페이지 경계를 검사합니다.
+
+### Delegated code execution latency
+
+Analytics → Runtime performance의 Code execution performance 표는 `code_execution.delegated` usage를
+기존 turn_id로 결합합니다. 호출별/턴별 누적 worker 시간과 Discord reply delivered(사전 처리 포함),
+generation, total turn의 평균/p50/p95 및 관측 범위를 표시합니다. Native 결과 관측 턴과 실행 미관측 턴을
+별도 비교군으로 표시하고, 실패/timeout 호출도 worker 집계에 포함합니다. 모델/provider 필터는 답변 턴
+기준으로 적용합니다. 연결되지 않은 호출 및 누락된 이벤트는 별도로 표시하며, 관측되지 않은 실행을
+실행하지 않았다고 단정하지 않습니다. 그룹 간 차이는 작업 난이도 차이가 포함된 관측값이며 인과적인
+위임 오버헤드 측정이 아닙니다. Worker API 시간은 generation residual에서 제외합니다. 추가 API 호출은 없습니다.
