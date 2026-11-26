@@ -656,7 +656,19 @@ class RequestAssembler(BaseLLM):
             )
         code_backend = code_execution_backend(
             self.settings.provider, has_audio=bool(CURRENT_AUDIO_INPUTS.get()),
+            requested=self.settings.code_execution_backend,
         )
+        if code_backend == "none" and self.settings.code_execution_backend != "auto":
+            requested = self.settings.code_execution_backend
+            reason = "unsupported_provider"
+            if requested == "local":
+                reason = "runner_unavailable"
+            elif requested == "native" and self.settings.provider == "gemini":
+                reason = "incompatible_audio"
+            self.usage.routing_event(
+                "code_execution.selection", code_backend_requested=requested,
+                code_backend_selected="none", code_backend_reason=reason,
+            )
         if code_backend == "delegated":
             worker_model, worker_thinking_level = delegated_model_settings(self.settings)
             local_tool_registry = attach_delegated_code_execution(

@@ -9,6 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config import (
+    CODE_EXECUTION_BACKENDS,
     CONTEXT_INPUT_MODES,
     EXTERNAL_CONTEXT_POLICIES,
     GEMINI_SEARCH_API_MODES,
@@ -38,6 +39,7 @@ class RuntimeSettingSpec:
 
 
 _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
+    "code_execution_backend": "코드 실행 방식을 선택합니다. local은 검증된 runner가 필요합니다.",
     "call_prefixes": "메시지 시작에서 히나 호출로 인식할 접두어 목록입니다. 순서가 유지되며 각 접두어는 최대 32자입니다.",
     "dm_always_reply": "DM에서 호출어·멘션 없이 보낸 일반 메시지에도 항상 답할지 정합니다.",
     "always_reply_channel_ids": "호출어 없이도 사람의 일반 메시지에 답하는 서버 채널 ID 목록입니다.",
@@ -157,6 +159,10 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         choices=tuple(sorted(PERSONAL_MEMORY_READ_MODES)),
     ),
     "community_lore": _runtime_spec("community_lore", "COMMUNITY_LORE", "bool"),
+    "code_execution_backend": _runtime_spec(
+        "code_execution_backend", "CODE_EXECUTION_BACKEND", "string",
+        choices=tuple(sorted(CODE_EXECUTION_BACKENDS)),
+    ),
     "model_routing_mode": _runtime_spec(
         "model_routing_mode",
         "MODEL_ROUTING_MODE",

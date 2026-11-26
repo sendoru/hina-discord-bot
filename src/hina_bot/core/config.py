@@ -27,6 +27,7 @@ def gemini_store_enabled(settings, domain: str, *, provider: str | None = None) 
     return bool(getattr(settings, "gemini_store_interactions", False))
 EXTERNAL_CONTEXT_POLICIES = frozenset({"full", "bot_interactions_only"})
 MODEL_ROUTING_MODES = frozenset({"fixed", "adaptive"})
+CODE_EXECUTION_BACKENDS = frozenset({"auto", "native", "delegated", "local"})
 ROUTING_CLASSIFIER_MODES = frozenset({"off", "shadow", "active"})
 DECISION_MODES = frozenset({"decision"})
 RAG_MODES = frozenset({"off", "full", "tool"}) | DECISION_MODES
@@ -123,6 +124,7 @@ class Settings:
     discord_token: str
     model: str = "gpt-4.1-mini"
     model_routing_mode: str = "fixed"
+    code_execution_backend: str = "auto"
     model_routing_smart_threshold: float = 2.0
     memory_routing_smart_threshold: float = 2.0
     fast_model: str = "gpt-4.1-mini"
@@ -255,6 +257,9 @@ class Settings:
             raise ValueError("LLM_MODEL을 설정해 주세요.")
 
         model_routing_mode = os.getenv("MODEL_ROUTING_MODE", "fixed").strip().lower()
+        code_backend = os.getenv("CODE_EXECUTION_BACKEND", "auto").strip().lower()
+        if code_backend not in CODE_EXECUTION_BACKENDS:
+            raise ValueError("CODE_EXECUTION_BACKEND must be auto, native, delegated or local")
         if model_routing_mode not in MODEL_ROUTING_MODES:
             allowed = ", ".join(sorted(MODEL_ROUTING_MODES))
             raise ValueError(f"MODEL_ROUTING_MODE은 {allowed} 중 하나여야 합니다.")
@@ -501,6 +506,7 @@ class Settings:
             discord_token=token,
             provider=provider,
             model_routing_mode=model_routing_mode,
+            code_execution_backend=code_backend,
             model_routing_smart_threshold=model_routing_smart_threshold,
             memory_routing_smart_threshold=memory_routing_smart_threshold,
             fast_model=fast_model, smart_model=smart_model,

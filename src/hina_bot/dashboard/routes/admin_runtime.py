@@ -56,6 +56,7 @@ RUNTIME_CONFIG_SECTIONS = (
         "Model selection, routing, tokens, and thinking levels",
         (
             "model_routing_mode",
+            "code_execution_backend",
             "model",
             "answer_timeout_seconds",
             "decision_timeout_seconds",

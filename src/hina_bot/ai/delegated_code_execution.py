@@ -46,9 +46,17 @@ COMPUTATION_SPEC = LocalToolSpec(
 )
 
 
-def code_execution_backend(provider: str, *, has_audio=False, has_pdf=False) -> str:
+def code_execution_backend(provider: str, *, has_audio=False, has_pdf=False, requested="auto") -> str:
     """Choose one backend from actual input capabilities, never from semantic guesses."""
-    if provider == "gemini" and (has_audio or has_pdf):
+    if requested == "local":
+        return "none"  # No verified runner is installed.
+    if requested == "delegated":
+        return "delegated" if provider == "gemini" else "none"
+    if requested == "native" and provider == "gemini" and has_audio:
+        return "none"
+    if requested not in {"auto", "native"}:
+        return "none"
+    if requested == "auto" and provider == "gemini" and (has_audio or has_pdf):
         return "delegated"
     if provider in {"gemini", "openai"}:
         return "native"

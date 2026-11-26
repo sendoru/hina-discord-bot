@@ -542,6 +542,7 @@ class UsageLogger:
         """Write a content-free routing/lifecycle event that is not a second API usage row."""
         allowed = {
             "status", "semantic_route_mode", "semantic_route_status",
+            "code_backend_requested", "code_backend_selected", "code_backend_reason",
             "output_repair_mode", "output_repair_model",
             "output_repair_original_chars", "output_repair_candidate_chars",
             "output_repair_changed", "output_repair_elapsed_ms", "output_markers_removed",
