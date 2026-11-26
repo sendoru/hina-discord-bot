@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import io
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 
-from .reference_context_blocks import PDFReferenceText
+from .reference_context_blocks import REFERENCE_PREFIX, PDFReferenceText
 
 _LOCK = Lock()
 
@@ -53,14 +54,13 @@ def _font():
     return font
 
 
-def _encode(source):
+def _encode(source, *, size=11, margin=42, leading=16):
     font = _font()
     width, height = A4
-    size = 11
     stream = io.BytesIO()
     canvas = Canvas(stream, pagesize=A4, pageCompression=1, invariant=1)
     rendered = []
-    y = height - 42
+    y = height - margin
     for paragraph in source.split("\n"):
         if not paragraph:
             return None, "empty_line"
@@ -72,21 +72,21 @@ def _encode(source):
             if any(not c.isprintable() or not font.face.charToGlyph.get(ord(c)) for c in token):
                 return None, "unsupported_glyph"
             token_width = sum(font.face.charWidths[ord(c)] for c in token) * size / 1000
-            if token_width > width - 84:
+            if token_width > width - 2 * margin:
                 return None, "unbreakable_token"
-            if advance + token_width > width - 84:
+            if advance + token_width > width - 2 * margin:
                 rendered.append(paragraph[start:match.start()])
                 advance = 0
                 start = match.start()
             advance += token_width
         rendered.append(paragraph[start:])
     for line in rendered:
-        if y < 42:
+        if y < margin:
             canvas.showPage()
-            y = height - 42
+            y = height - margin
         canvas.setFont(font.fontName, size)
-        canvas.drawString(42, y, line)
-        y -= 16
+        canvas.drawString(margin, y, line)
+        y -= leading
     canvas.save()
     data = stream.getvalue()
     if len(data) > 512_000:
@@ -128,10 +128,11 @@ async def encode_reference(source):
 class PreparedPDFReference(PDFReferenceText):
     """Keep the original text mapping while caching a request-local encoding result."""
 
-    def __init__(self, part, document, observation):
+    def __init__(self, part, document, observation, *, segments=None):
         super().__init__(part)
         self.document = document
         self.observation = dict(observation)
+        self.segments = segments or [(part, document, observation)]
 
 
 def answer_pdf_enabled(settings, *, store=False):
@@ -142,6 +143,151 @@ def text_reference_observation(source, reason):
     return {
         "transport": "text", "source_chars": len(source), "pages": 0,
         "pdf_bytes": 0, "encode_ms": 0, "fallback": reason,
+    }
+
+
+
+# Split only already-authorized JSON reference data; never split instruction or role steps.
+# Limit failed encode attempts as well as the number of resulting wire parts.
+MAX_FRAGMENT_ATTEMPTS = 15
+_SPLIT_REASONS = {"unsupported_glyph", "unbreakable_token", "source_size_limit",
+                  "pdf_size_limit", "roundtrip", "empty_line"}
+
+
+def reference_label(part):
+    source = part.get("text", "")
+    if not isinstance(source, str) or not source.startswith(REFERENCE_PREFIX):
+        return "reference"
+    header = source.partition("\n")[0]
+    # Fixed labels only: never export arbitrary content as a telemetry key.
+    for label in ("화자·상호작용", "직접 답장 문맥", "기억·설정", "대화 문맥",
+                  "세계관·참고 지식", "커스텀 이모지"):
+        if header == f"{REFERENCE_PREFIX} · {label}):":
+            return label
+    return "reference"
+
+
+def _fragment(part, rows, suffix=""):
+    header = part["text"].partition("\n")[0]
+    if suffix:
+        header += " " + suffix
+    return PDFReferenceText(
+        type="input_text",
+        text=header + "\n" + json.dumps(rows, ensure_ascii=False, separators=(",", ":")),
+    )
+
+
+def _split_part(rows, ranges):
+    # First split by complete fields; then by contiguous list records.
+    fields = list(rows.items())
+    if len(fields) > 1:
+        middle = len(fields) // 2
+        return [(dict(group), {}) for group in (fields[:middle], fields[middle:])]
+    if len(fields) == 1:
+        key, records = fields[0]
+        if isinstance(records, list) and len(records) > 1:
+            start, total = ranges.get(key, (0, len(records)))
+            middle = len(records) // 2
+            return [
+                ({key: records[:middle]}, {key: (start, total)}),
+                ({key: records[middle:]}, {key: (start + middle, total)}),
+            ]
+    return []
+
+
+async def plan_reference(part, *, native_only=False, encoder=None):
+    """Return original mapping plus bounded, ordered PDF/text fragments.
+
+    Repeated list keys in fragments are explicitly labelled with absolute record
+    ranges; no candidate IDs, records or scalar values are rewritten.
+    """
+    encoder = encoder or encode_reference
+    source = part["text"]
+    label = reference_label(part)
+    if native_only:
+        observation = text_reference_observation(source, "code_execution_incompatible")
+        observation.update(section=label, eligible=True)
+        return PreparedPDFReference(part, None, observation)
+    document, observation = await encoder(source)
+    observation = {**observation, "section": label, "eligible": True}
+    if document is not None or observation["fallback"] not in _SPLIT_REASONS:
+        return PreparedPDFReference(part, document, observation)
+    if not source.startswith(REFERENCE_PREFIX):
+        return PreparedPDFReference(part, document, observation)
+    try:
+        rows = json.loads(source.partition("\n")[2])
+    except ValueError:
+        return PreparedPDFReference(part, document, observation)
+    if not isinstance(rows, dict):
+        return PreparedPDFReference(part, document, observation)
+    attempts = 1
+
+    async def visit(fragment_rows, ranges):
+        nonlocal attempts
+        suffix = ""
+        if ranges:
+            key, (start, total) = next(iter(ranges.items()))
+            suffix = f"[records {start + 1}-{start + len(fragment_rows[key])} of {total}; ordered fragment]"
+        fragment = _fragment(part, fragment_rows, suffix)
+        if attempts >= MAX_FRAGMENT_ATTEMPTS:
+            obs = text_reference_observation(fragment["text"], "fragment_budget")
+            doc = None
+        else:
+            attempts += 1
+            doc, obs = await encoder(fragment["text"])
+        obs = {**obs, "section": label, "eligible": True}
+        if doc is None and obs["fallback"] in _SPLIT_REASONS and attempts + 2 <= MAX_FRAGMENT_ATTEMPTS:
+            children = _split_part(fragment_rows, ranges)
+            if children:
+                left = await visit(*children[0])
+                right = await visit(*children[1])
+                return left + right
+        return [(fragment, doc, obs)]
+
+    children = _split_part(rows, {})
+    if not children:
+        return PreparedPDFReference(part, document, observation)
+    segments = []
+    for child in children:
+        segments.extend(await visit(*child))
+    first_pdf = next((doc for _, doc, _ in segments if doc is not None), None)
+    if first_pdf is None:
+        # No useful conversion: retain the exact original wire text.
+        observation["encode_ms"] += sum(obs["encode_ms"] for _, _, obs in segments)
+        return PreparedPDFReference(part, None, observation)
+    segments[0][2]["encode_ms"] += observation["encode_ms"]
+    return PreparedPDFReference(part, first_pdf, observation, segments=segments)
+
+
+def native_reference_observation(part):
+    """Content-free explanation for intentionally native input."""
+    if not isinstance(part, dict) or part.get("type") != "input_text":
+        return None
+    source = part.get("text")
+    if not isinstance(source, str):
+        return None
+    label = reference_label(part)
+    reason = "current_or_native_text"
+    if label in {"화자·상호작용", "직접 답장 문맥"}:
+        reason = "protected_reference"
+    obs = text_reference_observation(source, reason)
+    obs.update(section=label if label != "reference" else "native_text", eligible=False)
+    return obs
+
+
+def transport_coverage(observations):
+    eligible = sum(o["source_chars"] for o in observations if o.get("eligible", True))
+    converted = sum(o["source_chars"] for o in observations if o["transport"] == "pdf")
+    total = sum(o["source_chars"] for o in observations)
+    return {
+        "source_chars": total,
+        "eligible_chars": eligible,
+        "pdf_chars": converted,
+        "pages": sum(o["pages"] for o in observations if o["transport"] == "pdf"),
+        "pdf_bytes": sum(o["pdf_bytes"] for o in observations if o["transport"] == "pdf"),
+        "encode_ms": sum(o["encode_ms"] for o in observations),
+        "eligible_coverage": round(converted / eligible, 4) if eligible else None,
+        "total_coverage": round(converted / total, 4) if total else None,
     }
 
 
@@ -159,15 +305,8 @@ async def prepare_answer_references(messages, *, native_only=False):
         parts = []
         for part in message["content"]:
             if isinstance(part, PDFReferenceText):
-                if native_only:
-                    document = None
-                    observation = text_reference_observation(
-                        part["text"], "code_execution_incompatible",
-                    )
-                else:
-                    document, observation = await encode_reference(part["text"])
-                part = PreparedPDFReference(part, document, observation)
-                has_pdf = has_pdf or document is not None
+                part = await plan_reference(part, native_only=native_only)
+                has_pdf = has_pdf or part.document is not None
             parts.append(part)
         projected.append({**message, "content": parts})
     return projected, has_pdf

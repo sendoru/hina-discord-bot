@@ -432,3 +432,7 @@ groups by operation and actual transport. Its estimate covers reported input
 only. Missing cache counts, failed or multiple attempts are excluded from the
 priced count. Output, thinking, taxes, other fees and invoice totals require
 separate reconciliation. Use trace timing and counts alongside this report.
+
+### P7 transport hardening
+
+Direct replies and current speaker metadata are intentionally native and separated from history. An empty reply chain no longer prevents history encoding. The shared planner attempts bounded partial conversion only for already-authorized answer JSON reference records; ordered list fragments retain their original key and absolute record ranges. Unsupported records remain text; if no fragment converts, the original block is used. Memory and knowledge generic payloads remain whole-block fallback to avoid changing their schema. Provider-native tool envelopes, instructions, and role replay remain unchanged. Trace usage includes per-section reasons and coverage over observed text (not tokens; excludes media and tool schema bytes). On body-size fallback, attempted sizes are retained separately from transmitted PDF sizes. The encoder density experiment is offline only; the production default remains 11pt until fidelity is verified.

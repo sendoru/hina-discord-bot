@@ -422,8 +422,16 @@
     {% for item in data.timeline %}
     <details class="timeline-item" {% if item.source == "event" %}open{% endif %}>
       <summary><span class="source {{ item.source }}">{{ item.source }}</span> {{ item.at | localtime }}</summary>
+      {% set coverage = item.row.get("pdf_coverage") %}
+      {% if coverage %}
+      <p><strong>PDF coverage:</strong>
+        {% if coverage.eligible_coverage is not none %}{{ (coverage.eligible_coverage * 100)|round(1) }}% eligible{% else %}— eligible{% endif %}
+        / {% if coverage.total_coverage is not none %}{{ (coverage.total_coverage * 100)|round(1) }}% all observed text{% else %}—{% endif %}
+        · {{ coverage.pages }} pages · {{ coverage.pdf_bytes }} bytes · {{ coverage.encode_ms }} ms
+      </p>
+      {% endif %}
       {% for observation in item.row.get("reference_transport", []) %}
-      <p>Gemini {{ observation.transport }} · {{ observation.source_chars }} chars ·
+      <p>{{ observation.get("section", "reference") }} · Gemini {{ observation.transport }} · {{ observation.source_chars }} chars ·
         {{ observation.pages }} pages · {{ observation.pdf_bytes }} bytes ·
         {{ observation.encode_ms }} ms{% if observation.fallback %} · {{ observation.fallback }}{% endif %}</p>
       {% endfor %}

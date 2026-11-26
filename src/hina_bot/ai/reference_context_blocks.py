@@ -15,8 +15,9 @@ _GROUP_FIELDS = (
     ("기억·설정", frozenset({
         "server_note", "user_note",
     })),
+    ("직접 답장 문맥", frozenset({"active_reply_chain"})),
     ("대화 문맥", frozenset({
-        "active_reply_chain", "channel_recent_messages",
+        "channel_recent_messages",
         "personal_recent_conversation", "conversation_history",
         "public_server_context",
     })),
@@ -55,7 +56,7 @@ def reference_context_blocks(context: dict) -> list[dict]:
                 + json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
             ),
         }
-        if name != _GROUP_NAMES[0] and "active_reply_chain" not in rows:
+        if name not in {"화자·상호작용", "직접 답장 문맥"}:
             block = PDFReferenceText(block)
         blocks.append(block)
     return blocks

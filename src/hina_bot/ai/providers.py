@@ -14,7 +14,9 @@ from .pdf_transport import (
     GeminiInlinePDF,
     PreparedPDFReference,
     encode_reference,
+    native_reference_observation,
     pdf_enabled,
+    plan_reference,
     text_reference_observation,
 )
 from .reference_context_blocks import PDFReferenceText
@@ -815,21 +817,22 @@ class _GeminiResponses:
             parts = []
             for part in message["content"]:
                 if isinstance(part, PDFReferenceText):
-                    if isinstance(part, PreparedPDFReference) and part.document is None:
-                        document, observation = None, dict(part.observation)
-                    elif code_execution:
-                        document = None
-                        observation = text_reference_observation(
-                            part["text"], "code_execution_incompatible",
-                        )
+                    if code_execution:
+                        prepared = await plan_reference(part, native_only=True)
+                        if isinstance(part, PreparedPDFReference) and part.document is None:
+                            prepared = part
                     elif isinstance(part, PreparedPDFReference):
-                        document, observation = part.document, dict(part.observation)
+                        prepared = part
                     else:
-                        document, observation = await encode_reference(part["text"])
-                    metrics.append(observation)
-                    if document:
-                        part = document
-                parts.append(part)
+                        prepared = await plan_reference(part, encoder=encode_reference)
+                    for source_part, document, observation in prepared.segments:
+                        metrics.append(dict(observation))
+                        parts.append(document if document is not None else source_part)
+                else:
+                    observation = native_reference_observation(part)
+                    if observation:
+                        metrics.append(observation)
+                    parts.append(part)
             projected.append({**message, "content": parts})
         if any(item["transport"] == "pdf" for item in metrics):
             converted = convert(projected)
@@ -841,7 +844,20 @@ class _GeminiResponses:
             else:
                 for item in metrics:
                     if item["transport"] == "pdf":
-                        item.update(transport="text", fallback="request_size_limit")
+                        item.update(
+                            transport="text", fallback="request_size_limit",
+                            attempted_pages=item["pages"], attempted_pdf_bytes=item["pdf_bytes"],
+                            pages=0, pdf_bytes=0,
+                        )
+        # Native role replay/current strings and instructions are counted once, never converted.
+        for message in messages:
+            if isinstance(message, dict) and isinstance(message.get("content"), str):
+                observation = text_reference_observation(message["content"], "native_role_text")
+                metrics.append({**observation, "section": "native_role_text", "eligible": False})
+        instructions = kwargs.get("instructions")
+        if isinstance(instructions, str) and instructions:
+            observation = text_reference_observation(instructions, "trusted_instruction")
+            metrics.append({**observation, "section": "system_instruction", "eligible": False})
         return metrics
 
     async def _generate_content(

@@ -82,7 +82,11 @@ def _response_error_codes(response) -> list[str]:
 def _response_diagnostic_fields(response, *, has_visible_text: bool | None = None) -> dict:
     if has_visible_text is None:
         has_visible_text = bool(_visible_text(response).strip())
+    from .pdf_transport import transport_coverage
+
+    observations = getattr(response, "_hina_reference_transport", ()) or ()
     return {
+        **({"pdf_coverage": transport_coverage(observations)} if observations else {}),
         **({"gemini_api": response._hina_gemini_api,
             "context_transport": "pdf" if any(
                 item["transport"] == "pdf" for item in getattr(response, "_hina_reference_transport", ())
@@ -107,7 +111,10 @@ def _provider_error_fields(exc: BaseException) -> dict:
         observations = getattr(exc, "reference_transport", ())
         fields["context_transport"] = "pdf" if any(o["transport"] == "pdf" for o in observations) else "text"
         if observations:
+            from .pdf_transport import transport_coverage
+
             fields["reference_transport"] = observations
+            fields["pdf_coverage"] = transport_coverage(observations)
     provider = getattr(exc, "provider", None)
     status_code = getattr(exc, "status_code", None)
     response_status = getattr(exc, "response_status", None)
