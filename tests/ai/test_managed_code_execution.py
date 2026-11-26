@@ -1,3 +1,4 @@
+from dataclasses import replace
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
@@ -5,6 +6,7 @@ import pytest
 
 from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS
 from hina_bot.ai.information_pipeline import InformationPipeline
+from hina_bot.ai.model_routing import fixed_model_plan
 from hina_bot.ai.managed_tools import (
     CODE_EXECUTION_POLICY,
     ManagedToolCapability,
@@ -205,7 +207,7 @@ async def test_gemini_without_audio_keeps_code_execution_after_audio_turn(tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_audio_delegates_only_on_function_call_and_resumes_answer(tmp_path):
+async def test_audio_delegates_only_on_function_call_and_resumes_answer(tmp_path, monkeypatch):
     fake = client("unused")
     fake.responses.create.side_effect = [
         NS(
@@ -224,7 +226,20 @@ async def test_audio_delegates_only_on_function_call_and_resumes_answer(tmp_path
         ),
         NS(status="completed", output_text="42야.", usage=None, output=[NS(type="message")]),
     ]
-    llm = InformationPipeline(settings(tmp_path), client=fake)
+    config = replace(
+        settings(tmp_path),
+        model_routing_mode="adaptive",
+        model="gemini-smart",
+        smart_model="gemini-smart",
+        fast_model="gemini-fast",
+        gemini_fast_thinking_level="minimal",
+        gemini_smart_thinking_level="medium",
+    )
+    plan = replace(fixed_model_plan(config), thinking_level="medium")
+    monkeypatch.setattr(
+        "hina_bot.ai.information_pipeline.build_model_plan", lambda *args, **kwargs: plan,
+    )
+    llm = InformationPipeline(config, client=fake)
     store = Store.create(":memory:")
     scope = Scope(None, 10, 100)
     token = CURRENT_AUDIO_INPUTS.set((object(),))
@@ -237,6 +252,11 @@ async def test_audio_delegates_only_on_function_call_and_resumes_answer(tmp_path
         ]
         assert {"type": "code_execution"} not in first["tools"]
         assert worker["tools"] == [{"type": "code_execution"}]
+        assert first["model"] == continuation["model"] == "gemini-smart"
+        assert first["thinking_level"] == continuation["thinking_level"] == "medium"
+        assert worker["model"] == "gemini-fast"
+        assert worker["thinking_level"] == "minimal"
+        assert worker["max_output_tokens"] == 4096
         assert isinstance(worker["input"], str)
         assert worker["store"] is False
         assert {"type": "code_execution"} not in continuation["tools"]
