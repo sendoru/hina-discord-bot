@@ -175,6 +175,10 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
     key = llm.settings.api_key_for(llm.decisions_client.provider)
     evaluate = llm.decisions_client.evaluate
     transport_options = {"pdf_transport": True} if pdf_enabled(llm.settings, "decisions") else {}
+    decision_model = llm.decisions_client.model
+    if llm.decisions_client.provider == "openai":
+        decision_model = llm.settings.model
+        transport_options = {"model": decision_model}
     use_memory = memory_kwargs["use_memory"]
     mode_reader = getattr(store, "memory_mode", None)
     now = memory_kwargs["now"]
@@ -309,7 +313,7 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
             fallback=fallback, elapsed_ms=round((perf_counter() - started) * 1000),
         ), ids
     for domain, (metrics, _) in observations.items():
-        metrics.update(provider=llm.decisions_client.provider, model=llm.decisions_client.model)
+        metrics.update(provider=llm.decisions_client.provider, model=decision_model)
         llm.usage.record_decision(domain, metrics)
     return personal, compact, {
         domain: {**metrics, "selected_ids": ids}

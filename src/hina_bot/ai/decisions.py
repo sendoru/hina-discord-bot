@@ -227,7 +227,7 @@ class DecisionsClient:
     async def evaluate(
         self, *, api_key: str, domain: str, query: dict, candidates: dict[str, dict],
         timeout_seconds: float | None = None,
-        pdf_transport: bool = False,
+        pdf_transport: bool = False, model: str | None = None,
     ) -> DecisionResult:
         started = perf_counter()
         count = len(candidates)
@@ -265,7 +265,7 @@ class DecisionsClient:
             },
         }
         if self.provider == "openai":
-            payload = _openai_payload(self.model, shared, ids)
+            payload = _openai_payload(model or self.model, shared, ids)
             url = "https://api.openai.com/v1/responses"
             headers = {"Authorization": f"Bearer {api_key}"}
         else:

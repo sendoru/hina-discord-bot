@@ -2,14 +2,19 @@ import json
 
 import httpx
 import pytest
+from openai import APIStatusError, APITimeoutError
 
+from hina_bot.ai.audio import CURRENT_AUDIO_UNAVAILABLE
 from hina_bot.ai.decisions import DecisionsClient
 from hina_bot.ai.local_tools import LocalToolExecutor, LocalToolRegistry, LocalToolSpec
 from hina_bot.ai.openai_capabilities import reasoning_options
 from hina_bot.ai.providers import OpenAIClient
+from hina_bot.ai.runtime_llm import LLM
 from hina_bot.ai.usage import UsageLogger
 from hina_bot.core.config import Settings
+from hina_bot.core.routing import Scope
 from hina_bot.core.runtime_config import RUNTIME_SETTING_SPECS, parse_runtime_value
+from hina_bot.core.store import Store
 
 
 @pytest.mark.parametrize(("text", "reason"), [
@@ -91,3 +96,33 @@ async def test_stateless_sdk_tool_loop_and_token_accounting(tmp_path):
     assert len(rows) == 2
     assert all((r["provider"], r["cached_tokens"], r["reasoning_tokens"],
                 r["requested_reasoning_effort"]) == ("openai", 4, 2, "low") for r in rows)
+
+@pytest.mark.parametrize(("failure", "attempts"), [("timeout", 1), (400, 1), (503, 2)])
+async def test_answer_error_budget_and_audio_wire(failure, attempts):
+    requests = []
+
+    def wire(req):
+        body = json.loads(req.content)
+        requests.append(body)
+        assert body["store"] is False and body["reasoning"] == {"effort": "low"}
+        assert not any(block.get("type") == "input_audio" for item in body["input"]
+                       if isinstance(item.get("content"), list) for block in item["content"])
+        if failure == "timeout":
+            raise httpx.ReadTimeout("fixture", request=req)
+        return httpx.Response(failure, json={"error": {"message": "synthetic"}})
+
+    client = OpenAIClient(api_key="fixture", max_retries=0, http_client=httpx.AsyncClient(
+        transport=httpx.MockTransport(wire),
+    ))
+    llm = LLM(Settings(discord_token="fixture", model="gpt-5.4-mini", openai_reasoning_effort="low"),
+              client=client)
+    store = Store.create(":memory:")
+    token = CURRENT_AUDIO_UNAVAILABLE.set(True)
+    try:
+        with pytest.raises(APITimeoutError if failure == "timeout" else APIStatusError):
+            await llm.answer(store, Scope(None, 1, 2), "test", "hello")
+    finally:
+        CURRENT_AUDIO_UNAVAILABLE.reset(token)
+        await llm.close()
+        store.close()
+    assert len(requests) == attempts
