@@ -182,3 +182,23 @@ async def test_unrepresentable_controls_remain_exact_native_text(char):
     assert fragment is part
     assert fragment["text"] == f"A{char}B"
     assert observation["fallback"] == "unsupported_glyph"
+
+
+@pytest.mark.asyncio
+async def test_installed_ipa_gothic_covers_japanese_reference(monkeypatch):
+    path = "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf"
+    if not Path(path).is_file():
+        pytest.skip("install fonts-ipafont-gothic for Japanese coverage")
+    primary = pdf._PDFUnicodeFont("HinaPDFPerfJapanesePrimary", "Vera.ttf")
+    pdfmetrics.registerFont(primary)
+    index = pdf._FALLBACK_FONT_PATHS.index(path)
+    fallback = pdf._fallback_font(index)
+    assert fallback is not None
+    assert fallback.face.charToGlyph.get(ord("参"))
+    monkeypatch.setattr(pdf, "_font", lambda: primary)
+    monkeypatch.setattr(pdf, "_fallback_font", lambda i: fallback if i == index else None)
+    source = "A参照B"
+    document, obs = await pdf.encode_reference(source)
+    assert document is not None, obs
+    (page,) = PdfReader(io.BytesIO(document.pdf)).pages
+    assert page.extract_text().rstrip("\n") == source
