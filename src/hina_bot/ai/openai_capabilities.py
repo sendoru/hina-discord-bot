@@ -29,7 +29,7 @@ def supports_reference_image(model: str) -> bool:
 
 
 def reasoning_options(settings, model: str, tier: str, *, provider=None) -> dict:
-    if (provider or settings.provider) != "openai":
+    if (provider or getattr(settings, "provider", None)) != "openai":
         return {}
     supported = _REASONING.get(model_family(model))
     if supported is None:
