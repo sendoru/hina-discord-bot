@@ -536,6 +536,18 @@ fallback. These settings apply to the selected model. Set `require_parameters`
 to true to request endpoint filtering, `data_collection` to `deny` to restrict
 data collection, and `zdr` to true to request zero-retention endpoints.
 An empty object makes no retention guarantee.
+Use `ignore` to exclude providers, and `sort` (price, latency, throughput,
+or an object with `by` and optional `partition`: model/none) to set ordering.
+`preferred_max_latency` (seconds) and `preferred_min_throughput` (tokens/sec)
+accept a positive number or an object with p50/p75/p90/p99 cutoffs. These are
+preferences, not hard limits. `max_price` accepts nonnegative numeric prompt
+and completion caps in USD per million tokens and a request cap in USD per request.
+Explicit sorting replaces OpenRouter's default balancing. For example:
+
+```dotenv
+OPENROUTER_PROVIDER_PREFERENCES='{"sort":"price","preferred_max_latency":{"p90":3,"p99":8},"preferred_min_throughput":{"p90":50}}'
+```
+
 See [provider routing](https://openrouter.ai/docs/guides/routing/provider-selection).
 
 `OPENROUTER_REASONING_EFFORT` accepts default, none, minimal, low, medium, high
