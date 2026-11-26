@@ -255,7 +255,7 @@ def fit_visual_bytes(data: bytes, budget: int) -> tuple[bytes, str, str]:
                 else "RGB"
             )
             return _encode_static(image, budget)
-    except (OSError, ValueError, Image.DecompressionBombError, EOFError):
+    except (OSError, ValueError, Image.DecompressionBombError, EOFError, SyntaxError):
         return b"", "", "decode_failed"
 
 
@@ -686,6 +686,7 @@ def memory_visuals_for_turn(visuals, *, user_id, message_id) -> list[MemoryVisua
     mine = [
         visual for visual in visuals
         if visual.source == "attachment"
+        and visual.representation != "animation_frames"
         and visual.context_kind == "current_message"
         and str(visual.author_user_id) == str(user_id)
         and str(visual.message_id) == str(message_id)
