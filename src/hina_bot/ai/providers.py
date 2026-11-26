@@ -804,7 +804,9 @@ class _GeminiResponses:
             parts = []
             for part in message["content"]:
                 if isinstance(part, PDFReferenceText):
-                    if code_execution:
+                    if isinstance(part, PreparedPDFReference) and part.document is None:
+                        document, observation = None, dict(part.observation)
+                    elif code_execution:
                         document = None
                         observation = text_reference_observation(
                             part["text"], "code_execution_incompatible",
