@@ -140,7 +140,7 @@ async def test_whole_memory_and_vision_resources_preserve_native_boundaries(succ
     memory = load_prompt("structured_memory.md")
     vision = load_prompt("vision_input.md").strip()
     output = load_prompt("final_output.md")
-    instructions = "\n".join(("native policy", memory, output, vision))
+    instructions = f"native policy\n{memory}\n{output}\n{vision}"
     parts = [
         InstructionReferenceText("structured_memory", memory),
         InstructionReferenceText("vision_input", vision),

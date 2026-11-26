@@ -64,6 +64,8 @@ async def test_decision_pdf_preserves_question_and_candidate_ids_and_sends_once(
     assert result.scores == {"original.a": 0.1, "original.b": 0.9}
     assert result.metrics()["decision_transport"]["transport"] == ("pdf" if mode == "pdf" else "text")
     assert result.input_tokens == 42
+    if mode == "timeout":
+        assert result.transport["fallback"] == "encode_deadline"
 
 
 @pytest.mark.asyncio

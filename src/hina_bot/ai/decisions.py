@@ -99,14 +99,14 @@ def _input_tokens(response: dict) -> int | None:
 
 
 
-PDF_PREP_TIMEOUT = 0.25
+PDF_PREP_TIMEOUT = 2.0
 
 
 def _json(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-async def _candidate_pdf_input(shared):
+async def _candidate_pdf_input(shared, *, deadline_seconds=None):
     control = {key: value for key, value in shared.items() if key != "candidates"}
     blocks = [{
         "type": "text",
@@ -116,7 +116,7 @@ async def _candidate_pdf_input(shared):
     # Try the complete map first; if it cannot be represented, split by intact
     # candidate records and render only the successful pieces into one document.
     whole = DecisionCandidateReference(type="input_text", text=_json({"candidates": shared["candidates"]}))
-    prepared = await consolidate_references([whole], encoder=encode_reference)
+    prepared = await consolidate_references([whole], encoder=encode_reference, deadline_seconds=deadline_seconds)
     observations = []
     for part in prepared:
         for fragment, document, obs in part.segments:
@@ -131,19 +131,18 @@ async def _candidate_pdf_input(shared):
 async def _prepare_decision_body(payload, shared, original_body, deadline):
     """Pre-send opt-in only; never make a second provider call."""
     started = perf_counter()
-    try:
-        async with asyncio.timeout(min(PDF_PREP_TIMEOUT, deadline / 4)):
-            blocks, observations = await _candidate_pdf_input(shared)
-    except TimeoutError:
-        return original_body, {
-            "transport": "text", "fallback": "encode_deadline",
-            "encode_ms": round((perf_counter() - started) * 1000),
-        }
+    # The planner owns the deadline so a verified partial document can survive
+    # expiry. Keep the existing separate HTTP timeout for the actual Decision.
+    blocks, observations = await _candidate_pdf_input(
+        shared, deadline_seconds=min(PDF_PREP_TIMEOUT, deadline),
+    )
     coverage = transport_coverage(observations)
     meta = {
         **coverage,
         "transport": "pdf" if coverage["pages"] else "text",
-        "fallback": "" if coverage["pages"] else "no_eligible_document",
+        "fallback": "" if coverage["pages"] else next(
+            (obs["fallback"] for obs in observations if obs["fallback"]), "no_eligible_document",
+        ),
         "encode_ms": round((perf_counter() - started) * 1000),
         "reference_transport": observations,
     }

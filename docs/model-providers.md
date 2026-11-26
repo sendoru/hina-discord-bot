@@ -423,7 +423,7 @@ the exact original native input is retained. No extra remote request.
 | Answer references | History, direct reply, memories, lore, emoji metadata in the consolidated document. Native current speaker and current utterance. Direct replies remain native when preserving a replay role boundary requires it. |
 | App-owned prompt components | Explicit continuity, world core, character, selected compact lore; moved only after successful document creation and exact component validation. Native system retains policy, privacy, identity/provenance, relationship, runtime, administrator, tool and output rules. |
 | Memory and knowledge | Authorized existing operation input, with native image/audio and metadata preserved. |
-| Decisions | Candidate map in a single document; native selection rules, current turn and questions. Exact original IDs and 240,000-byte logical and wire guards, 1,000 questions, existing local prep budget and selection fallback. |
+| Decisions | Candidate map in a single document; native selection rules, current turn and questions. Exact original IDs and 240,000-byte logical and wire guards, 1,000 questions, bounded local prep budget and selection fallback. |
 | DM replay and local tool results | Native roles, call IDs and provider envelopes remain unchanged; no unsafe relocation of result data. |
 
 The system explicitly distinguishes app_guidance from app_reference and
@@ -435,7 +435,7 @@ moved app components may be omitted from the continuation system text.
 Stateless continuations reuse the prepared document and original logical input.
 Changing runtime config affects subsequent requests.
 
-With CODE_EXECUTION_BACKEND=auto, actual prepared PDF presence selects delegated
+With CODE_EXECUTION_BACKEND=auto, enabling PDF for Answer selects delegated even on local encoding fallback; audio also selects delegated. Explicit native retains native-compatible text transport. Actual prepared PDF presence also selects delegated
 computation; explicit native preserves text. Explicit delegated keeps its
 existing meaning. A late body guard fallback retains the selected backend for
 that turn to preserve continuation consistency. No extra classifier or paid
@@ -474,3 +474,13 @@ pre-send fallback. The vision policy is included before PDF preparation only
 when vision augmentation is active; the wrapper does not append it again.
 Actual images/audio stay native. No additional config or remote API call.
 Live model adherence and cost savings still require normal-traffic validation.
+
+Answer PDF preparation allows up to 10 seconds. Decisions preparation allows up to
+2 seconds, capped by its configured timeout, separate from the existing HTTP
+timeout. Lock wait occurs asynchronously and is subject to the planner deadline;
+cancellation requests cooperative renderer shutdown without queueing additional
+worker threads. If a combined render times out or fails after verified fragments
+were obtained, the largest completed fragment is transmitted as the single PDF
+and the rest remains native. If no verified fragment exists, the complete original
+native request is retained. Telemetry records initial failure, attempt count and
+consolidation failure without exposing source text.

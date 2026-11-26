@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock
 from time import perf_counter
 
 from pypdf import PdfReader
@@ -117,7 +117,7 @@ def _fallback_font(index):
         return None
 
 
-def _encode(source, *, size=10, margin=30, leading=13):
+def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
     font = _font()
     by_char = {}
 
@@ -147,6 +147,8 @@ def _encode(source, *, size=10, margin=30, leading=13):
         advance = 0
         # Keep ASCII identifiers, snowflakes and JSON escape sequences readable across lines.
         for match in re.finditer(r"[A-Za-z0-9_.-]+|\\(?:u[0-9a-fA-F]{4}|.)|.", paragraph):
+            if cancelled is not None and cancelled.is_set():
+                return None, "encode_deadline"
             token = match.group()
             fonts = [font_for(c) for c in token]
             if any(selected is None for selected in fonts):
@@ -164,6 +166,8 @@ def _encode(source, *, size=10, margin=30, leading=13):
             advance += token_width
         rendered.append(paragraph[start:])
     for line in rendered:
+        if cancelled is not None and cancelled.is_set():
+            return None, "encode_deadline"
         if y < margin:
             canvas.showPage()
             y = height - margin
@@ -181,6 +185,8 @@ def _encode(source, *, size=10, margin=30, leading=13):
             start = stop
         canvas.drawText(text)
         y -= leading
+    if cancelled is not None and cancelled.is_set():
+        return None, "encode_deadline"
     canvas.save()
     data = stream.getvalue()
     if len(data) > 1_500_000:
@@ -188,19 +194,28 @@ def _encode(source, *, size=10, margin=30, leading=13):
     pages = PdfReader(io.BytesIO(data)).pages
     if len(pages) > 100:
         return None, "pdf_page_limit"
-    recovered = [line for page in pages for line in page.extract_text().splitlines()]
+    recovered = []
+    for page in pages:
+        if cancelled is not None and cancelled.is_set():
+            return None, "encode_deadline"
+        recovered.extend(page.extract_text().splitlines())
     if recovered != rendered:
         return None, "roundtrip"
     return GeminiInlinePDF(data, len(pages)), ""
 
 
+ENCODER_LOCK_POLL_SECONDS = 0.02
+
+
 async def encode_reference(source):
     started = perf_counter()
-    def bounded():
-        if not _LOCK.acquire(blocking=False):
-            return None, "encoder_busy"
+    cancelled = Event()
+
+    def render():
         try:
-            return _encode(source)
+            if cancelled.is_set():
+                return None, "encode_deadline"
+            return _encode(source, cancelled=cancelled)
         except Exception:  # noqa: BLE001 - pre-send fallback at renderer boundary
             # Font, renderer and parser errors must never emit source or PDF bytes.
             return None, "encode_error"
@@ -210,7 +225,25 @@ async def encode_reference(source):
     if not 1 <= len(source) <= 240_000:
         document, reason = None, "source_size_limit"
     else:
-        document, reason = await asyncio.to_thread(bounded)
+        # Wait in the event loop, not in executor threads. Cancellation while
+        # waiting cannot enqueue orphan render jobs or acquire the lock later.
+        try:
+            async with asyncio.timeout(CONSOLIDATED_DEADLINE):
+                while not _LOCK.acquire(blocking=False):
+                    await asyncio.sleep(ENCODER_LOCK_POLL_SECONDS)
+        except TimeoutError:
+            document, reason = None, "encoder_busy"
+        else:
+            # Shield the single lock-owning job so cancellation cannot prevent
+            # its finally block from releasing the lock. Request cooperative
+            # cancellation; noninterruptible library calls may finish first.
+            worker = asyncio.create_task(asyncio.to_thread(render))
+            try:
+                document, reason = await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
     return document, {
         "transport": "pdf" if document else "text",
         "pages": document.pages if document else 0,
@@ -460,7 +493,7 @@ DOCUMENT_GUIDANCE = (
     "제공되지 않은 자료를 확인했다고 주장하지 말고 도구의 조회 범위와 결과의 완전성을 구분하세요."
 )
 MAX_CONSOLIDATED_ATTEMPTS = 24
-CONSOLIDATED_DEADLINE = 1.5
+CONSOLIDATED_DEADLINE = 10.0
 
 
 def instruction_original(part):
@@ -495,17 +528,22 @@ def strip_document_instructions(instructions, sources):
     return result.rstrip() + "\n\n" + DOCUMENT_GUIDANCE
 
 
-async def consolidate_references(parts, *, native_only=False, encoder=None):
-    """Prepare at most one document; fragments that cannot join it remain native.
+async def consolidate_references(parts, *, native_only=False, encoder=None, deadline_seconds=None):
+    """Prepare at most one verified document, retaining a completed partial on deadline.
 
-    The original dicts are preserved for full wire-size or configuration fallback.
-    One physical PDF is attributed to its first selected fragment only.
+    The original mappings remain available for full wire-size or configuration
+    fallback. If the final combined render fails, select the largest already
+    verified standalone fragment and keep every other fragment native.
     """
     encoder = encoder or encode_reference
     if not parts:
         return []
     started = perf_counter()
     attempts = 0
+    initial_reason = ""
+    groups = []
+    document = None
+    failure = ""
 
     async def bounded(source):
         nonlocal attempts
@@ -519,49 +557,68 @@ async def consolidate_references(parts, *, native_only=False, encoder=None):
         for part in parts:
             obs = original_observation(part, reason)
             result.append(PreparedPDFReference(part, None, obs))
-        result[0].segments[0][2]["encode_ms"] = round((perf_counter() - started) * 1000)
+        first = result[0].segments[0][2]
+        first.update(encode_ms=round((perf_counter() - started) * 1000),
+                     encode_attempts=attempts, initial_fallback=initial_reason)
         return result
 
     if native_only:
         return native("code_execution_incompatible")
 
     try:
-        async with asyncio.timeout(CONSOLIDATED_DEADLINE):
+        async with asyncio.timeout(CONSOLIDATED_DEADLINE if deadline_seconds is None else deadline_seconds):
             source = "\n".join(document_source(part) for part in parts)
             document, obs = await bounded(source)
-            # A single successful pass is the normal path, including tiny sections.
+            initial_reason = obs["fallback"]
             if document is not None:
-                groups = [[(part, True, original_observation(part, ""))] for part in parts]
+                groups = [[(part, document, original_observation(part, ""))] for part in parts]
             else:
-                if obs["fallback"] not in _SPLIT_REASONS | {"pdf_page_limit"}:
-                    return native(obs["fallback"])
-                groups = []
+                if initial_reason not in _SPLIT_REASONS:
+                    return native(initial_reason)
                 for part in parts:
                     if instruction_original(part) is not None:
                         candidate, item_obs = await bounded(document_source(part))
                         groups.append([(
-                            part, candidate is not None,
-                            original_observation(part, item_obs["fallback"]),
+                            part, candidate, original_observation(part, item_obs["fallback"]),
                         )])
                     else:
                         prepared = await plan_reference(part, encoder=bounded)
-                        groups.append([
-                            (fragment, doc is not None, dict(item_obs))
-                            for fragment, doc, item_obs in prepared.segments
-                        ])
+                        groups.append(list(prepared.segments))
                 selected = [
-                    (fragment, item_obs) for group in groups
-                    for fragment, ok, item_obs in group if ok
+                    fragment for group in groups for fragment, doc, _ in group if doc is not None
                 ]
                 if not selected:
-                    return native(obs["fallback"])
-                # Reserve the final attempt for the one physical document.
-                document, obs = await encoder("\n".join(document_source(fragment) for fragment, _ in selected))
-                if document is None:
-                    # No partial PDF is transmitted if final consolidation is unsafe.
-                    return native(obs["fallback"])
+                    return native(initial_reason)
+                # Reuse a single verified artifact rather than render it twice.
+                if len(selected) == 1:
+                    document = next(doc for group in groups for _, doc, _ in group if doc is not None)
+                else:
+                    attempts += 1
+                    document, obs = await encoder("\n".join(document_source(fragment) for fragment in selected))
+                    if document is None:
+                        failure = obs["fallback"]
     except TimeoutError:
-        return native("encode_deadline")
+        failure = "encode_deadline"
+        document = None
+
+    if document is None:
+        # A completed fragment has already passed the exact extraction check.
+        # Never send several PDFs, or claim an unfinished combined render succeeded.
+        candidates = [
+            (obs["source_chars"], i, j, doc)
+            for i, group in enumerate(groups)
+            for j, (_, doc, obs) in enumerate(group) if doc is not None
+        ]
+        if not candidates:
+            return native(failure or initial_reason or "no_eligible_document")
+        _, best_i, best_j, document = max(candidates, key=lambda item: item[0])
+        for i, group in enumerate(groups):
+            for j, (fragment, doc, obs) in enumerate(group):
+                if doc is not None and (i, j) != (best_i, best_j):
+                    group[j] = (fragment, None, {**obs, "transport": "text",
+                                                 "fallback": failure or "consolidation_failed"})
+        for part in parts[len(groups):]:
+            groups.append([(part, None, original_observation(part, failure or "encode_deadline"))])
 
     result = []
     attached = False
@@ -569,17 +626,16 @@ async def consolidate_references(parts, *, native_only=False, encoder=None):
     for original, group in zip(parts, groups, strict=True):
         segments = []
         any_pdf = False
-        for fragment, ok, observation in group:
+        for fragment, completed, observation in group:
             obs = dict(observation)
             obs.update(pages=0, pdf_bytes=0, documents=0, encode_ms=0)
-            if ok:
+            if completed is not None:
                 any_pdf = True
                 obs.update(transport="pdf", fallback="")
                 physical = None
                 if not attached:
                     physical = document
-                    obs.update(pages=document.pages, pdf_bytes=len(document.pdf),
-                               documents=1, encode_ms=elapsed)
+                    obs.update(pages=document.pages, pdf_bytes=len(document.pdf), documents=1)
                     attached = True
                 segments.append((None, physical, obs))
             else:
@@ -587,6 +643,10 @@ async def consolidate_references(parts, *, native_only=False, encoder=None):
         result.append(PreparedPDFReference(
             original, document if any_pdf else None, segments[0][2], segments=segments,
         ))
+    result[0].segments[0][2].update(
+        encode_ms=elapsed, encode_attempts=attempts, initial_fallback=initial_reason,
+        consolidation_fallback=failure,
+    )
     return result
 
 

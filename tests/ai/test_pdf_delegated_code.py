@@ -45,7 +45,7 @@ def mock_encoder(monkeypatch, success):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("mode", "success", "expected"), [
     ("auto", True, "delegated"),
-    ("auto", False, "native"),
+    ("auto", False, "delegated"),
     ("native", True, "native"),
     ("delegated", True, "delegated"),
     ("delegated", False, "delegated"),

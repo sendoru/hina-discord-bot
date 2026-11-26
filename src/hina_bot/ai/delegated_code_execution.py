@@ -49,14 +49,14 @@ COMPUTATION_SPEC = LocalToolSpec(
 
 
 def code_execution_backend(
-    provider: str, *, mode: str = "auto", has_audio=False, has_pdf=False,
+    provider: str, *, mode: str = "auto", has_audio=False, has_pdf=False, pdf_requested=False,
 ) -> str:
     """Choose one backend; explicit Gemini modes never switch to another backend."""
     if mode not in CODE_EXECUTION_BACKENDS:
         raise ValueError("Unsupported code execution backend")
     if provider != "gemini":
         return "native" if provider == "openai" else "none"
-    if mode == "delegated":
+    if mode == "delegated" or (mode == "auto" and pdf_requested):
         return "delegated"
     if has_audio or has_pdf:
         return "none" if mode == "native" else "delegated"

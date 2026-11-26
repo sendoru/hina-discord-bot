@@ -716,7 +716,7 @@ class RequestAssembler(BaseLLM):
             )
         code_backend = code_execution_backend(
             self.settings.provider, mode=code_mode,
-            has_audio=bool(CURRENT_AUDIO_INPUTS.get()), has_pdf=has_pdf,
+            has_audio=bool(CURRENT_AUDIO_INPUTS.get()), has_pdf=has_pdf, pdf_requested=pdf_active,
         )
         if code_backend == "delegated":
             worker_model, worker_thinking_level = delegated_model_settings(self.settings)
