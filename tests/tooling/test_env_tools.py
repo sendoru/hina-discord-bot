@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -136,6 +137,7 @@ def test_export_db_precedence_and_startup_only_env(tmp_path):
         settings.capture_startup_snapshot()
         settings.set_text("LLM_MODEL", "db-model")
         settings.set_text("OUTPUT_REPAIR_MODE", "conservative")
+        settings.set_text("OPENROUTER_PROVIDER_PREFERENCES", '{"only":["fixture"],"zdr":true}')
     finally:
         store.close()
 
@@ -151,7 +153,10 @@ def test_export_db_precedence_and_startup_only_env(tmp_path):
     assert "# GEMINI_STORE_ANSWER_INTERACTIONS=false" in rendered
     assert not dropped
     assert count > 0
-    assert override_count == 2
+    assert override_count == 3
+    assert json.loads(exported["OPENROUTER_PROVIDER_PREFERENCES"]) == {
+        "only": ["fixture"], "zdr": True,
+    }
 
     output = tmp_path / ".env.exported"
     argv = [
