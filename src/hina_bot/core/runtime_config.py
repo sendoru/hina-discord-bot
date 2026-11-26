@@ -23,6 +23,8 @@ from .config import (
     parse_call_prefixes,
     parse_discord_id_set,
     parse_external_context_policy,
+    parse_pdf_scope,
+    parse_pdf_transport,
 )
 
 
@@ -45,8 +47,8 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
-    "gemini_pdf_scope": "PDF 전송 범위입니다. all은 answer, memory, knowledge, decisions를 포함합니다.",
-    "gemini_pdf_transport": "Gemini 참조 문서 전송 방식. text가 기본이며 auto는 비용 검증 전까지 text를 사용합니다.",
+    "gemini_pdf_scope": "PDF 전송 범위: all 또는 answer,memory,knowledge,decisions 중 쉼표로 구분한 선택.",
+    "gemini_pdf_transport": "Gemini 입력 전송 방식. text가 기본, pdf는 통합 문서 변환을 사용합니다.",
     "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. decision은 Gemini Decisions 선택을 적용하고, off는 지식 검색을 끕니다.",
     "personal_memory_cross_scope": "서버에서 본인의 다른 공간 기억을 읽는 기본값입니다. off이면 직접 동의한 사용자만 허용합니다.",
     "server_memory_read": "서버 공유 기억의 응답 주입과 조회를 제어합니다.",
@@ -146,10 +148,9 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "chat_web_search": _runtime_spec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
     "gemini_pdf_scope": _runtime_spec(
         "gemini_pdf_scope", "GEMINI_PDF_SCOPE", "string",
-        choices=("all", "decisions", "answer", "memory", "knowledge"),
     ),
     "gemini_pdf_transport": _runtime_spec(
-        "gemini_pdf_transport", "GEMINI_PDF_TRANSPORT", "string", choices=("text", "auto", "pdf"),
+        "gemini_pdf_transport", "GEMINI_PDF_TRANSPORT", "string", choices=("text", "pdf"),
     ),
     "rag_mode": _runtime_spec(
         "rag_mode",
@@ -416,6 +417,10 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
     if spec.kind == "string":
         if spec.attr == "external_context_policy":
             return parse_external_context_policy(text)
+        if spec.attr == "gemini_pdf_scope":
+            return parse_pdf_scope(text)
+        if spec.attr == "gemini_pdf_transport":
+            return parse_pdf_transport(text)
         if spec.attr in {"gemini_search_api_mode", "code_execution_backend"}:
             text = text.lower()
         if spec.empty_allowed and text.lower() in {"none", "null", "off", "-"}:
@@ -482,6 +487,8 @@ def decode_runtime_value(spec: RuntimeSettingSpec, encoded: str, *, settings=Non
             value = canonical_memory_read_mode(value)
         elif spec.attr == "rag_mode":
             value = canonical_rag_mode(value)
+        elif spec.attr == "gemini_pdf_transport":
+            value = parse_pdf_transport(value, legacy=True)
         return parse_runtime_value(spec, value or "none", settings=settings)
     raise ValueError(f"unsupported runtime setting kind: {spec.kind}")
 
@@ -555,6 +562,10 @@ class RuntimeSettings:
                 continue
             try:
                 loaded[attr] = decode_runtime_value(spec, encoded, settings=self._base)
+                if attr in {"gemini_pdf_transport", "gemini_pdf_scope"}:
+                    canonical = encode_runtime_value(loaded[attr])
+                    if canonical != encoded:
+                        self._store.settings.set_runtime_value(attr, canonical)
             except (TypeError, ValueError, json.JSONDecodeError):
                 # Fail closed to the startup value if the DB contains an old or malformed value.
                 continue

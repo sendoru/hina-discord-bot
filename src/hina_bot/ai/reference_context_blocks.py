@@ -56,7 +56,7 @@ def reference_context_blocks(context: dict) -> list[dict]:
                 + json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
             ),
         }
-        if name not in {"화자·상호작용", "직접 답장 문맥"}:
+        if name != "화자·상호작용":
             block = PDFReferenceText(block)
         blocks.append(block)
     return blocks

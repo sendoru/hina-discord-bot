@@ -17,15 +17,18 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 
+from hina_bot.core.config import GEMINI_PDF_SCOPES
+
 from .reference_context_blocks import REFERENCE_PREFIX, PDFReferenceText
 
 _LOCK = Lock()
 
 
 def pdf_enabled(settings, domain):
-    return (domain in {"answer", "memory", "knowledge", "decisions"}
+    scope = getattr(settings, "gemini_pdf_scope", "all").split(",")
+    return (domain in GEMINI_PDF_SCOPES
             and getattr(settings, "gemini_pdf_transport", "text") == "pdf"
-            and getattr(settings, "gemini_pdf_scope", "all") in {"all", domain})
+            and ("all" in scope or domain in scope))
 
 
 @dataclass(frozen=True, repr=False)
@@ -78,7 +81,7 @@ def _fallback_font(index):
         return None
 
 
-def _encode(source, *, size=11, margin=42, leading=16):
+def _encode(source, *, size=10, margin=30, leading=13):
     font = _font()
     by_char = {}
 
@@ -144,9 +147,11 @@ def _encode(source, *, size=11, margin=42, leading=16):
         y -= leading
     canvas.save()
     data = stream.getvalue()
-    if len(data) > 512_000:
+    if len(data) > 1_500_000:
         return None, "pdf_size_limit"
     pages = PdfReader(io.BytesIO(data)).pages
+    if len(pages) > 100:
+        return None, "pdf_page_limit"
     recovered = [line for page in pages for line in page.extract_text().splitlines()]
     if recovered != rendered:
         return None, "roundtrip"
@@ -166,7 +171,7 @@ async def encode_reference(source):
         finally:
             _LOCK.release()
 
-    if not 1 <= len(source) <= 60_000:
+    if not 1 <= len(source) <= 240_000:
         document, reason = None, "source_size_limit"
     else:
         document, reason = await asyncio.to_thread(bounded)

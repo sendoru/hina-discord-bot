@@ -86,6 +86,30 @@ def canonical_memory_read_mode(value: str) -> str:
     return "full" if value in {"legacy", "shadow", "tiered_shadow", "tiered", "decision_shadow"} else value
 
 
+GEMINI_PDF_SCOPES = ("answer", "memory", "knowledge", "decisions")
+
+
+def parse_pdf_scope(value: str) -> str:
+    parts = [part.strip().lower() for part in value.split(",")]
+    if parts == ["all"]:
+        return "all"
+    if not parts or any(part not in GEMINI_PDF_SCOPES for part in parts):
+        raise ValueError("Invalid GEMINI_PDF_SCOPE")
+    selected = set(parts)
+    return "all" if selected == set(GEMINI_PDF_SCOPES) else ",".join(
+        domain for domain in GEMINI_PDF_SCOPES if domain in selected
+    )
+
+
+def parse_pdf_transport(value: str, *, legacy=False) -> str:
+    mode = value.strip().lower()
+    if legacy and mode == "auto":
+        return "text"
+    if mode not in {"text", "pdf"}:
+        raise ValueError("GEMINI_PDF_TRANSPORT must be text or pdf")
+    return mode
+
+
 def migrate_legacy_env_values(values, *, warn: bool = False) -> dict[str, str]:
     """Translate retired dotenv keys/values at the input boundary only."""
     result = dict(values)
@@ -96,14 +120,18 @@ def migrate_legacy_env_values(values, *, warn: bool = False) -> dict[str, str]:
     for key, canonical in (
         ("RAG_MODE", canonical_rag_mode),
         ("PERSONAL_MEMORY_READ_MODE", canonical_memory_read_mode),
+        ("GEMINI_PDF_TRANSPORT", lambda value: parse_pdf_transport(value, legacy=True) if value else "text"),
     ):
         if key in result:
             raw = result[key].strip().lower()
             converted = canonical(raw)
             if converted != raw:
                 result[key] = converted
+    if "GEMINI_PDF_SCOPE" in result:
+        result["GEMINI_PDF_SCOPE"] = parse_pdf_scope(result["GEMINI_PDF_SCOPE"].strip() or "all")
     if warn and any(values.get(key) != result.get(key) for key in (
         "OPENAI_MODEL", "MEMORY_SESSION_FOLLOWUP", "RAG_MODE", "PERSONAL_MEMORY_READ_MODE",
+        "GEMINI_PDF_TRANSPORT", "GEMINI_PDF_SCOPE",
     )):
         logging.getLogger("hina").warning(
             "Retired configuration migrated on read; update the environment or run hina-env-normalize"
@@ -463,12 +491,9 @@ class Settings:
                 or any(c in runtime_default_location for c in "\r\n\0")):
             raise ValueError("RUNTIME_LOCALE은 32자, RUNTIME_DEFAULT_LOCATION은 100자 이하여야 합니다.")
 
-        pdf_scope = os.getenv("GEMINI_PDF_SCOPE", "all").strip().lower() or "all"
-        if pdf_scope not in {"all", "decisions", "answer", "memory", "knowledge"}:
-            raise ValueError("Invalid GEMINI_PDF_SCOPE")
-        pdf_mode = os.getenv("GEMINI_PDF_TRANSPORT", "text").strip().lower() or "text"
-        if pdf_mode not in {"text", "auto", "pdf"}:
-            raise ValueError("GEMINI_PDF_TRANSPORT must be text, auto or pdf")
+        pdf_scope = parse_pdf_scope(migrated_env.get("GEMINI_PDF_SCOPE", "all").strip() or "all")
+        pdf_mode = parse_pdf_transport(migrated_env.get("GEMINI_PDF_TRANSPORT", "text").strip() or "text",
+                                       legacy=True)
         context_input_mode = (
             os.getenv("CONTEXT_INPUT_MODE", "legacy").strip().lower() or "legacy"
         )
