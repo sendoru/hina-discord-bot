@@ -7,8 +7,16 @@ import httpx
 import pytest
 
 from hina_bot.ai import providers
-from hina_bot.ai.context_input import EMPTY_CURRENT_TURN_POLICY, EMPTY_CURRENT_TURN_PREFIX, build_context_input
-from hina_bot.ai.pdf_transport import GeminiInlinePDF, prepare_answer_references, text_reference_observation
+from hina_bot.ai.context_input import (
+    EMPTY_CURRENT_TURN_POLICY,
+    EMPTY_CURRENT_TURN_PREFIX,
+    build_context_input,
+)
+from hina_bot.ai.pdf_transport import (
+    GeminiInlinePDF,
+    prepare_answer_references,
+    text_reference_observation,
+)
 from hina_bot.ai.vision import VisualInput, _augment_input, _with_hina_visual_reference
 
 MODES = ["legacy", "structured", "structured_with_replay"]

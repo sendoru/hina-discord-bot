@@ -1,6 +1,10 @@
 from hina_bot.ai.vision import VisualInput
 from hina_bot.core.routing import Scope
-from hina_bot.discord.bot import _bare_call_reply, _has_explicit_text_reply, _has_strong_visual_context
+from hina_bot.discord.bot import (
+    _bare_call_reply,
+    _has_explicit_text_reply,
+    _has_strong_visual_context,
+)
 
 
 def _visual(reference_strength: str) -> VisualInput:
