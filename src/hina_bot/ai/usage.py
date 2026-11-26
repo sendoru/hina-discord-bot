@@ -391,6 +391,7 @@ class UsageLogger:
                 "model_route_margin", "model_route_reasons", "model_route_policy",
                 "model_route_components", "requested_max_output_tokens",
                 "requested_thinking_level", "requested_total_output_tokens",
+                "code_execution_backend", "code_execution_mode",
                 "semantic_route_mode", "semantic_route_status", "semantic_route_level",
                 "semantic_route_codes", "model_route_decision_source",
                 "model_route_baseline_tier", "routing_classifier_provider",
