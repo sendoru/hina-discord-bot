@@ -202,3 +202,52 @@ async def test_gemini_without_audio_keeps_code_execution_after_audio_turn(tmp_pa
     finally:
         await llm.close()
         store.close()
+
+
+@pytest.mark.asyncio
+async def test_audio_delegates_only_on_function_call_and_resumes_answer(tmp_path):
+    fake = client("unused")
+    fake.responses.create.side_effect = [
+        NS(
+            status="requires_action", output_text="", usage=None,
+            output=[NS(
+                type="function_call", call_id="compute1", name="request_computation",
+                arguments='{"task":"compute 6*7","input_data":""}',
+            )],
+        ),
+        NS(
+            status="completed", output_text="42", usage=None,
+            output=[
+                NS(type="code_execution_call", id="code1"),
+                NS(type="code_execution_result", call_id="code1", result="42", is_error=False),
+            ],
+        ),
+        NS(status="completed", output_text="42야.", usage=None, output=[NS(type="message")]),
+    ]
+    llm = InformationPipeline(settings(tmp_path), client=fake)
+    store = Store.create(":memory:")
+    scope = Scope(None, 10, 100)
+    token = CURRENT_AUDIO_INPUTS.set((object(),))
+    try:
+        answer = await llm.answer(store, scope, "사용자", "6*7 계산해 줘", channel_context=[])
+        assert answer == "42야."
+        assert fake.responses.create.await_count == 3
+        first, worker, continuation = [
+            entry.kwargs for entry in fake.responses.create.await_args_list
+        ]
+        assert {"type": "code_execution"} not in first["tools"]
+        assert worker["tools"] == [{"type": "code_execution"}]
+        assert isinstance(worker["input"], str)
+        assert worker["store"] is False
+        assert {"type": "code_execution"} not in continuation["tools"]
+        outputs = [
+            item for item in continuation["input"]
+            if item.get("type") == "function_call_output"
+        ]
+        assert len(outputs) == 1
+        assert outputs[0]["call_id"] == "compute1"
+        assert '"executed":true' in outputs[0]["output"]
+    finally:
+        CURRENT_AUDIO_INPUTS.reset(token)
+        await llm.close()
+        store.close()
