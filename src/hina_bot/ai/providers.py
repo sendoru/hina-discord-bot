@@ -784,7 +784,7 @@ class _GeminiResponses:
 
     async def _reference_transport(self, payload, kwargs, field, convert):
         domain = kwargs.get("_hina_operation_reference", "answer")
-        if not pdf_enabled(self.settings, domain) or payload.get("store"):
+        if not pdf_enabled(self.settings, domain):
             return []
         messages = kwargs.get("input")
         if kwargs.get("_hina_operation_reference") and isinstance(messages, str):

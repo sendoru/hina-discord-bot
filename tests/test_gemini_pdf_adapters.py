@@ -79,7 +79,7 @@ async def test_reference_transport_requires_local_marker_and_preserves_original(
         settings = SimpleNamespace(gemini_pdf_transport="pdf")
         adapter = _GeminiResponses(http, settings=settings)
         for mode, stored, expected in [("pdf", False, True), ("auto", False, False),
-                                       ("text", False, False), ("pdf", True, False)]:
+                                       ("text", False, False), ("pdf", True, True)]:
             settings.gemini_pdf_transport = mode
             payload = {"input": _gemini_input(messages), "store": stored}
             metrics = await adapter._reference_transport(payload, kwargs, "input", _gemini_input)
@@ -136,3 +136,28 @@ async def test_rejected_pdf_does_not_retry_or_log_echoed_document():
     assert bodies[0]["input"][0]["content"][0]["type"] == "document"
     assert error.value.status_code == 429
     assert "private-echo" not in str(error.value)
+
+
+async def test_stored_pdf_answer_preserves_wire_flag_and_continuation_id():
+    import json
+    from types import SimpleNamespace
+
+    import httpx
+
+    from hina_bot.ai.providers import _GeminiResponses
+    from hina_bot.ai.reference_context_blocks import PDFReferenceText
+
+    calls = []
+    def capture(request):
+        body = json.loads(request.content)
+        calls.append(body)
+        return httpx.Response(200, json={"id": "fixture-id", "status": "completed", "steps": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(capture)) as http:
+        adapter = _GeminiResponses(http, settings=SimpleNamespace(gemini_pdf_transport="pdf"))
+        response = await adapter.create(model="fixture", store=True, input=[
+            {"role": "user", "content": [PDFReferenceText(type="input_text", text="sample")]},
+        ])
+    assert len(calls) == 1 and calls[0]["store"] is True
+    assert calls[0]["input"][0]["content"][0]["type"] == "document"
+    assert response._hina_interaction_id == "fixture-id"

@@ -372,7 +372,7 @@ ordered rendered lines, and never writes document bytes to disk. Its local guard
 limits a block to 60,000 characters and 512,000 PDF bytes. Answer requests have
 an additional conservative 8 MB body guard. Decisions keeps its 240,000-byte
 cap and 1,000-question cap. Font metrics can be reused, documents cannot.
-Stored interactions retain native text. A local failure retains the original
+PDF transport preserves the configured store flag. When storage is enabled, the PDF is part of the stored interaction. A local failure retains the original
 input. There is no new remote retry or shadow request.
 
 | Input | Opt-in scope |
