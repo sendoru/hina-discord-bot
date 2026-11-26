@@ -7,6 +7,7 @@ from hina_bot.ai.delegated_code_execution import (
     MAX_INPUT_BYTES,
     attach_delegated_code_execution,
     code_execution_backend,
+    delegated_model_settings,
 )
 from hina_bot.ai.local_tools import LocalToolCall, LocalToolRegistry, LocalToolSpec
 from hina_bot.ai.vision import VISION_REQUEST_ACTIVE
@@ -79,6 +80,8 @@ async def test_only_minimum_text_and_managed_tool_are_sent():
     assert kwargs["store"] is False
     assert kwargs["retry_empty"] is False
     assert kwargs["deadline_seconds"] == 7.0
+    assert kwargs["route_metadata"]["requested_thinking_level"] == "minimal"
+    assert kwargs["route_metadata"]["requested_max_output_tokens"] == 4096
     assert isinstance(kwargs["input"], str)
     assert "compute 6*7" in kwargs["input"]
     assert "previous_interaction_id" not in kwargs
@@ -111,3 +114,19 @@ async def test_budget_and_failure():
     third = await registry.execute(call("compute 3+4"))
     assert third.output["error"] == "computation_limit_exceeded"
     assert worker.await_count == 2
+
+
+@pytest.mark.parametrize(("mode", "fixed_level", "fast_level", "expected"), [
+    ("adaptive", "high", "minimal", ("gemini-fast", "minimal")),
+    ("adaptive", "minimal", "medium", ("gemini-fast", "low")),
+    ("adaptive", "high", "low", ("gemini-fast", "low")),
+    ("adaptive", "low", "high", ("gemini-fast", "low")),
+    ("fixed", "medium", "minimal", ("gemini-fixed", "low")),
+    ("fixed", "minimal", "high", ("gemini-fixed", "minimal")),
+])
+def test_delegated_model_settings(mode, fixed_level, fast_level, expected):
+    config = NS(
+        model_routing_mode=mode, model="gemini-fixed", fast_model="gemini-fast",
+        gemini_thinking_level=fixed_level, gemini_fast_thinking_level=fast_level,
+    )
+    assert delegated_model_settings(config) == expected
