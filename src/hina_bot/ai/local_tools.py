@@ -260,9 +260,10 @@ def continuation_request(
                 result.provider_input(include_name=True)
                 for result in results
             )
-        elif provider == "openai" and isinstance(response, Response):
+        elif provider in {"openai", "openrouter"} and isinstance(response, Response):
             # Replay the original interleaving, encrypted reasoning, and hosted tool outputs.
-            next_input.extend(item.model_dump(exclude_none=True) for item in response.output)
+            next_input.extend(dict(item) if isinstance(item, dict) else item.model_dump(exclude_none=True)
+                              for item in response.output)
             next_input.extend(result.provider_input() for result in results)
         else:
             next_input.extend(_reasoning_replay_items(response))

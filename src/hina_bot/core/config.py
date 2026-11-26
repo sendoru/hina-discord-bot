@@ -1,7 +1,8 @@
+import json
 import logging
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -9,6 +10,34 @@ from dotenv import load_dotenv
 
 SUPPORTED_MODEL_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
 OPENAI_REASONING_EFFORTS = ("default", "none", "minimal", "low", "medium", "high", "xhigh", "max")
+
+
+OPENROUTER_REASONING_EFFORTS = ("default", "none", "minimal", "low", "medium", "high", "xhigh", "max")
+
+
+def parse_openrouter_effort(value: str) -> str:
+    effort = value.strip().lower()
+    if effort not in OPENROUTER_REASONING_EFFORTS:
+        raise ValueError("Invalid OPENROUTER_REASONING_EFFORT")
+    return effort
+
+
+def parse_openrouter_preferences(value: str) -> dict:
+    preferences = json.loads(value)
+    allowed = {"only", "order", "allow_fallbacks", "require_parameters", "data_collection", "zdr"}
+    if not isinstance(preferences, dict) or preferences.keys() - allowed:
+        raise ValueError("Invalid OPENROUTER_PROVIDER_PREFERENCES fields")
+    for key, item in preferences.items():
+        if key in {"only", "order"}:
+            valid = (isinstance(item, list) and 0 < len(item) <= 64
+                     and all(isinstance(name, str) and 0 < len(name.strip()) <= 128 for name in item))
+        elif key == "data_collection":
+            valid = item in ("allow", "deny")
+        else:
+            valid = isinstance(item, bool)
+        if not valid:
+            raise ValueError(f"Invalid OpenRouter provider preference {key}")
+    return preferences
 
 
 def parse_openai_effort(value: str) -> str:
@@ -190,7 +219,10 @@ class Settings:
     provider: str = "openai"
     openai_api_key: str = ""
     gemini_api_key: str = ""
+    openrouter_affinity_secret: str = field(default="", repr=False)
     openrouter_api_key: str = ""
+    openrouter_provider_preferences: dict = field(default_factory=dict)
+    openrouter_reasoning_effort: str = "default"
     openai_reasoning_effort: str = "default"
     openai_fast_reasoning_effort: str = "default"
     openai_smart_reasoning_effort: str = "default"
@@ -576,7 +608,11 @@ class Settings:
             routing_classifier_timeout_seconds=routing_classifier_timeout_seconds,
             routing_classifier_max_output_tokens=routing_classifier_max_output_tokens,
             openai_api_key=keys["openai"], gemini_api_key=keys["gemini"],
+            openrouter_affinity_secret=os.getenv("OPENROUTER_AFFINITY_SECRET", "").strip(),
             openrouter_api_key=keys["openrouter"],
+            openrouter_provider_preferences=parse_openrouter_preferences(
+                os.getenv("OPENROUTER_PROVIDER_PREFERENCES", "{}")),
+            openrouter_reasoning_effort=parse_openrouter_effort(os.getenv("OPENROUTER_REASONING_EFFORT", "default")),
             openai_reasoning_effort=parse_openai_effort(os.getenv("OPENAI_REASONING_EFFORT", "default")),
             openai_fast_reasoning_effort=parse_openai_effort(os.getenv("OPENAI_FAST_REASONING_EFFORT", "default")),
             openai_smart_reasoning_effort=parse_openai_effort(os.getenv("OPENAI_SMART_REASONING_EFFORT", "default")),

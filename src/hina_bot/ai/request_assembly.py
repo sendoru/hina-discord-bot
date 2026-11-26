@@ -1,5 +1,6 @@
 """Assemble model context, policies, tools, and the final Responses API request."""
 
+import hmac
 import json
 import re
 from datetime import UTC, datetime
@@ -64,6 +65,8 @@ from .web_search_text import response_text
 def _transient_answer_failure(provider: str, exc: BaseException) -> bool:
     # A request timeout already consumed the interactive latency budget. Replaying the
     # whole provider/tool turn can double the stall and repeat expensive managed-tool work.
+    if provider == "openrouter":
+        return False
     if isinstance(exc, APIStatusError) and provider != "openai":
         return False
     return isinstance(exc, (ProviderAPIError, APIStatusError)) and exc.status_code == 503
@@ -875,6 +878,11 @@ class RequestAssembler(BaseLLM):
             "input": messages,
             "max_output_tokens": model_plan.max_output_tokens,
         }
+        if self.settings.provider == "openrouter":
+            secret = getattr(self.settings, "openrouter_affinity_secret", "")
+            if secret:
+                digest = hmac.digest(secret.encode(), scope.conversation.encode(), "sha256").hex()
+                request["extra_body"] = {"session_id": digest}
         if self.settings.provider == "gemini" and vision_policy_prepared:
             request["_hina_vision_policy_prepared"] = True
         tools = list(tool_config(search_mode) or ())

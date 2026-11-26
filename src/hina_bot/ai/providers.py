@@ -8,10 +8,11 @@ from types import SimpleNamespace as NS
 from urllib.parse import urlsplit
 
 import httpx
-from openai import AsyncOpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
 from hina_bot.core.config import SUPPORTED_MODEL_PROVIDERS
 
+from .openrouter_capabilities import EndpointCatalog, validate_request
 from .pdf_transport import (
     GeminiInlinePDF,
     PreparedPDFReference,
@@ -1222,11 +1223,20 @@ class GeminiClient:
 
 
 class _OpenRouterResponses:
-    def __init__(self, responses):
+    def __init__(self, responses, settings=None, catalog=None):
+        self._catalog = catalog
         self._responses = responses
+        self._settings = settings
 
     async def create(self, **kwargs):
         request = dict(kwargs)
+        if request.get("model") == "openrouter/auto":
+            raise ValueError("OpenRouter automatic model routing is unavailable")
+        preferences = getattr(self._settings, "openrouter_provider_preferences", {})
+        if self._catalog is not None:
+            await validate_request(self._catalog, request, preferences)
+        if preferences:
+            request["extra_body"] = {**(request.get("extra_body") or {}), "provider": preferences}
         tools = list(request.get("tools") or [])
         unknown_tools = [
             tool for tool in tools
@@ -1235,23 +1245,32 @@ class _OpenRouterResponses:
         if unknown_tools:
             raise ValueError("OpenRouter provider가 지원하지 않는 tool type입니다.")
 
-        web_tools = [tool for tool in tools if tool.get("type") == "web_search"]
-        function_tools = [tool for tool in tools if tool.get("type") == "function"]
-        if web_tools:
-            extra_body = dict(request.pop("extra_body", {}) or {})
-            plugins = list(extra_body.get("plugins") or [])
-            plugins.append({"id": "web", "max_results": 3})
-            extra_body["plugins"] = plugins
-            request["extra_body"] = extra_body
-            if function_tools:
-                request["tools"] = function_tools
-                # Mixed local/server tools must remain model-selectable. Search-required policy
-                # continues to be expressed by the caller's instruction layer.
-                request["tool_choice"] = "auto"
-            else:
-                request.pop("tools", None)
-                request.pop("tool_choice", None)
-        return await self._responses.create(**request)
+        if tools:
+            wire_tools = []
+            for tool in tools:
+                if tool["type"] == "function":
+                    wire_tools.append(tool)
+                    continue
+                parameters = {"max_results": 3, "max_uses": 1}
+                if tool.get("search_context_size"):
+                    parameters["search_context_size"] = tool["search_context_size"]
+                wire_tools.append({"type": "openrouter:web_search", "parameters": parameters})
+            request["tools"] = wire_tools
+            if request.get("tool_choice") == "required" and any(
+                tool["type"] == "openrouter:web_search" for tool in wire_tools
+            ) and len(wire_tools) > 1:
+                request["tool_choice"] = {
+                    "type": "allowed_tools", "mode": "required",
+                    "tools": [{"type": "openrouter:web_search"}],
+                }
+        try:
+            return await self._responses.create(**request)
+        except APITimeoutError:
+            raise ProviderAPIError("openrouter", 408, code="timeout") from None
+        except APIConnectionError:
+            raise ProviderAPIError("openrouter", 502, code="connection_error") from None
+        except APIStatusError as exc:
+            raise ProviderAPIError("openrouter", exc.status_code, code="upstream_error") from None
 
 
 class OpenAIClient(AsyncOpenAI):
@@ -1263,16 +1282,21 @@ class OpenAIClient(AsyncOpenAI):
 class OpenRouterClient:
     provider_name = "openrouter"
 
-    def __init__(self, credential: str, *, timeout: float = 45, max_retries: int = 2):
+    def __init__(self, credential: str, *, timeout: float = 45, max_retries: int = 0, settings=None):
         self._client = AsyncOpenAI(
             api_key=credential,
             base_url=OPENROUTER_BASE_URL,
+            default_headers={"X-OpenRouter-Metadata": "enabled"},
             timeout=timeout,
             max_retries=max_retries,
         )
-        self.responses = _OpenRouterResponses(self._client.responses)
+        self._metadata_http = httpx.AsyncClient(base_url=OPENROUTER_BASE_URL + "/", timeout=3)
+        self.responses = _OpenRouterResponses(
+            self._client.responses, settings, EndpointCatalog(self._metadata_http),
+        )
 
     async def close(self):
+        await self._metadata_http.aclose()
         await self._client.close()
 
 
@@ -1297,5 +1321,5 @@ def create_provider_client(
             settings=settings,
         )
     if provider == "openrouter":
-        return OpenRouterClient(credential, timeout=timeout, max_retries=2 if max_retries is None else max_retries)
+        return OpenRouterClient(credential, timeout=timeout, max_retries=max_retries or 0, settings=settings)
     return OpenAIClient(api_key=credential, timeout=timeout, max_retries=max_retries or 0)

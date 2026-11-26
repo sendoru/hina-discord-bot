@@ -365,7 +365,7 @@ class _VisionResponses:
 
     async def create(self, **kwargs):
         visuals = CURRENT_VISUAL_INPUTS.get()
-        audios = CURRENT_AUDIO_INPUTS.get() if self._provider_name == "gemini" else ()
+        audios = CURRENT_AUDIO_INPUTS.get() if self._provider_name in {"gemini", "openrouter"} else ()
         if not VISION_REQUEST_ACTIVE.get() or not (visuals or audios):
             return await self._responses.create(**kwargs)
 
@@ -387,7 +387,9 @@ class _VisionResponses:
                 include_media_resolution=include_media_resolution,
             )
         if audios and not stored_continuation:
-            request["input"] = augment_audio_input(request.get("input"), audios)
+            request["input"] = augment_audio_input(
+                request.get("input"), audios, provider=self._provider_name,
+            )
         # Passive recent images alone do not activate the fixed reference.
         if (
             (self._provider_name == "gemini" or

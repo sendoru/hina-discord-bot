@@ -20,8 +20,8 @@ def test_options_follow_operation_provider(domain, provider):
         expected["thinking_level"] = "minimal"
     elif provider == "openai":
         expected["reasoning"] = {"effort": "low"}
-        if domain == "answer":
-            expected["include"] = ["reasoning.encrypted_content"]
+    if provider in {"openai", "openrouter"} and domain == "answer":
+        expected["include"] = ["reasoning.encrypted_content"]
     assert options == expected
 
 

@@ -30,6 +30,10 @@ def _chat_web_search_enabled() -> bool:
 
 
 def _web_search_calls(response) -> int:
+    details = getattr(getattr(response, "usage", None), "server_tool_use_details", None)
+    reported = details.get("web_search_requests") if isinstance(details, dict) else None
+    if type(reported) is int and reported >= 0:
+        return reported
     count = 0
     for item in getattr(response, "output", None) or []:
         item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
@@ -391,8 +395,10 @@ class UsageLogger:
         provider = getattr(client, "provider_name", "")
         if isinstance(provider, str) and provider:
             row["provider"] = provider
-        if provider == "openai" and kwargs.get("reasoning"):
-            row["requested_reasoning_effort"] = kwargs["reasoning"].get("effort")
+        if provider in {"openai", "openrouter"} and kwargs.get("reasoning"):
+            row["requested_reasoning_effort"] = (
+                "none" if kwargs["reasoning"].get("enabled") is False else kwargs["reasoning"].get("effort")
+            )
         turn_id = current_turn_id()
         if turn_id:
             row["turn_id"] = turn_id
@@ -475,6 +481,21 @@ class UsageLogger:
             if cumulative_baseline is not None:
                 row["usage_accounting"] = "gemini_interaction_delta"
                 row.update(_cumulative_usage_fields(response))
+            if provider == "openrouter":
+                usage = getattr(response, "usage", None)
+                details = getattr(usage, "input_tokens_details", None)
+                metadata = getattr(response, "openrouter_metadata", None)
+                endpoints = metadata.get("endpoints") if isinstance(metadata, dict) else None
+                available = endpoints.get("available") if isinstance(endpoints, dict) else None
+                selected = next((item for item in available if isinstance(item, dict)
+                                 and item.get("selected") is True), {}) if isinstance(available, list) else {}
+                row.update(
+                    actual_model=getattr(response, "model", None),
+                    upstream_provider=selected.get("provider") or getattr(response, "provider", None),
+                    generation_id=getattr(response, "id", None),
+                    cost_usd=getattr(usage, "cost", None),
+                    cache_write_tokens=getattr(details, "cache_write_tokens", None),
+                )
             if previous_interaction_id:
                 self._interaction_usage.pop(previous_interaction_id, None)
             interaction_id = stored_interaction_id(response)

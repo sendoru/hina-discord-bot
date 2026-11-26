@@ -108,7 +108,12 @@
           {% for call in data.latency.generation.calls %}
           <tr>
             <td><code>{{ call.operation }}</code></td>
-            <td>{{ call.model or "—" }}</td>
+            <td>{{ call.model or "—" }}
+              {% if call.provider == "openrouter" %}
+              <div>Returned model {{ call.actual_model or "—" }} · upstream {{ call.upstream_provider or "—" }}</div>
+              <div>Generation <code>{{ call.generation_id or "—" }}</code> · USD {{ observed(call.cost_usd) }} · cache write {{ observed(call.cache_write_tokens) }}</div>
+              {% endif %}
+            </td>
             <td>{{ call.status or "—" }}</td>
             <td class="numeric">{{ call.elapsed_ms ~ " ms" if call.elapsed_ms is not none else "—" }}</td>
           </tr>

@@ -121,7 +121,7 @@ Freshness routing은 기존 Blue Archive lore 정책을 대체하지 않습니�
 
 - OpenAI: Responses API `web_search`
 - Gemini: Google Search
-- OpenRouter: web plugin
+- OpenRouter: `openrouter:web_search` server tool
 
 `auto`에서는 tool만 제공하고 `tool_choice=required`를 보내지 않습니다. `required`에서만 강제
 선택합니다. 검색 context는 현재 `low`를 사용합니다.

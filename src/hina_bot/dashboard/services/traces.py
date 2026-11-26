@@ -96,6 +96,12 @@ def _trace_latency_breakdown(
             "residual_ms": residual_ms,
             "calls": [
                 {
+                    "provider": row.get("provider"),
+                    "actual_model": row.get("actual_model"),
+                    "upstream_provider": row.get("upstream_provider"),
+                    "generation_id": row.get("generation_id"),
+                    "cost_usd": row.get("cost_usd"),
+                    "cache_write_tokens": row.get("cache_write_tokens"),
                     "operation": str(row.get("operation") or ""),
                     "model": str(row.get("model") or ""),
                     "status": str(row.get("status") or ""),

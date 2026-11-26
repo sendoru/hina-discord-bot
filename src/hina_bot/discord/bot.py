@@ -430,7 +430,7 @@ class HinaClient(discord.Client):
 
     def _keep_pending_audio(self, scope: Scope, message_id: int, scope_kind: str) -> None:
         """Hold current-turn own audio only. Never claim the uploader is its speaker."""
-        if not self.settings.memory_audio_input:
+        if not self.settings.memory_audio_input or getattr(self.settings, "provider", None) == "openrouter":
             return
         audios = memory_audios_for_turn(
             CURRENT_AUDIO_INPUTS.get(), user_id=scope.user_id, message_id=message_id,

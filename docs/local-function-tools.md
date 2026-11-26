@@ -59,7 +59,7 @@ timeouts, and invalid/empty final responses still follow existing error handling
 
 - OpenAI: standard Responses function tool shape passes through natively.
 - Gemini: function declarations, calls, and results are translated to/from Interactions API steps.
-- OpenRouter: web search remains a provider plugin while local function declarations remain model
+- OpenRouter: web search uses the OpenRouter server tool while local function declarations remain model
   tools, so both may coexist in an auto-selection request.
 
 ## Current rollout

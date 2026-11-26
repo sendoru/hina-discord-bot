@@ -1,6 +1,6 @@
 """Shared operation options. Native payloads and replay remain adapter-owned."""
 
-from hina_bot.core.config import gemini_store_enabled
+from hina_bot.core.config import gemini_store_enabled, parse_openrouter_effort
 
 from .openai_capabilities import reasoning_options
 
@@ -9,6 +9,12 @@ def operation_options(settings, domain, model, tier, *, provider=None, thinking_
     provider = provider or getattr(settings, "provider", None)
     options = reasoning_options(settings, model, tier, provider=provider)
     options["store"] = gemini_store_enabled(settings, domain, provider=provider)
+    if provider == "openrouter":
+        effort = parse_openrouter_effort(getattr(settings, "openrouter_reasoning_effort", "default"))
+        if effort != "default":
+            options["reasoning"] = {"enabled": False} if effort == "none" else {"effort": effort}
+        if domain == "answer":
+            options["include"] = ["reasoning.encrypted_content"]
     if provider == "gemini" and thinking_level is not None:
         options["thinking_level"] = thinking_level
     if provider == "openai" and domain == "answer":
