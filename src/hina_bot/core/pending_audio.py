@@ -1,8 +1,8 @@
-"""Opt-in pending native audio files for structured-memory extraction (#548 P1).
+"""Opt-in pending audio files for personal-memory extraction (#548).
 
-The original uploader is not necessarily the speaker. Audio is stored only for an
-own, current Discord turn, never used as independent identity evidence. P1 stores
-and deletes media but does not yet inject it into the extractor (P2).
+Media is staged by Discord message owner, not by acoustic speaker. P2 verifies
+first-person spoken claims independently; a third-party recording does not qualify.
+Raw media stays outside SQLite and is deleted after extraction, purge or expiry.
 """
 
 from __future__ import annotations

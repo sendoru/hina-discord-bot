@@ -6,10 +6,16 @@ import logging
 import re
 
 from hina_bot.core.config import gemini_store_enabled
-from hina_bot.core.memory_annotations import LINT_VISUAL_GROUNDED
+from hina_bot.core.memory_annotations import LINT_AUDIO_GROUNDED, LINT_VISUAL_GROUNDED
 from hina_bot.core.store import SharedSummaryConflict
 
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
+from .memory_audio import (
+    audio_message_ids,
+    select_memory_audios,
+    verification_candidates,
+    verified_audio_evidence,
+)
 from .memory_extraction import (
     DIRECTIVE_VERIFICATION_POLICY,
     SHADOW_EXTRACTION_POLICY,
@@ -26,7 +32,9 @@ from .memory_extraction import (
 )
 from .memory_model_routing import build_memory_model_plan
 from .memory_visual import extraction_input, select_memory_visuals, visual_message_ids
+from .prompts import load_prompt
 
+AUDIO_VERIFICATION_POLICY = load_prompt("audio_verification.md", section="memory")
 NO_MEMORY = "<NO_MEMORY>"
 log = logging.getLogger("hina")
 
@@ -133,7 +141,7 @@ class MemorySummaryMixin:
     """Provide structured-memory extraction and the remaining shared-summary path."""
 
     async def _memory_request(
-        self, operation: str, instructions: str, payload: dict, plan, *, images=(),
+        self, operation: str, instructions: str, payload: dict, plan, *, images=(), audios=(),
     ):
         include_media_resolution = (
             self.settings.provider == "gemini" and str(plan.model).lower().startswith("gemini-3")
@@ -145,6 +153,7 @@ class MemorySummaryMixin:
             "input": extraction_input(
                 json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
                 images,
+                audios=audios,
                 include_media_resolution=include_media_resolution,
             ),
             "max_output_tokens": plan.max_output_tokens,
@@ -210,6 +219,35 @@ class MemorySummaryMixin:
             visual for message_id in message_ids for visual in held.get(message_id, ())
         )
 
+    def _pending_audios_for(self, store, scope, message_ids) -> list:
+        """Retrieve only own pending audio, never references from other conversations."""
+        if (not getattr(self.settings, "memory_audio_input", False)
+                or self.settings.provider != "gemini"):
+            return []
+        getter = getattr(getattr(store, "pending_audio", None), "get", None)
+        if not callable(getter):
+            return []
+        try:
+            held = getter(
+                scope.realm, str(scope.channel_id), str(scope.user_id), list(message_ids),
+            )
+        except Exception as exc:  # noqa: BLE001 - optional media must not break text memories
+            log.warning("Pending audio read failed (%s)", type(exc).__name__)
+            return []
+        return select_memory_audios(
+            audio for mid in message_ids for audio in held.get(mid, ())
+        )
+
+    def _discard_extracted_audios(self, store, scope, message_ids) -> None:
+        """Delete committed audio even when opt-in has since been disabled."""
+        discard = getattr(getattr(store, "pending_audio", None), "discard_messages", None)
+        if not callable(discard):
+            return
+        try:
+            discard(scope.realm, str(scope.channel_id), str(scope.user_id), list(message_ids))
+        except Exception as exc:  # noqa: BLE001 - after successful DB commit
+            log.warning("Pending audio cleanup failed (%s)", type(exc).__name__)
+
     def _discard_extracted_visuals(self, store, scope, message_ids) -> None:
         """Delete the photos of turns whose extraction has just been committed.
 
@@ -225,32 +263,62 @@ class MemorySummaryMixin:
         except Exception as exc:  # noqa: BLE001 - the batch is committed
             log.warning("Pending visual cleanup failed (%s)", type(exc).__name__)
 
-    async def _extraction_response(self, plan, payload, visuals):
-        """Run the extraction request; return ``(response, fell_back_to_text)``.
+    async def _verify_audio_claims(self, response_text, audios):
+        """Re-listen to every audio-derived proposal before allowing it into memory.
 
-        A request that carries photos and fails, or comes back empty, is repeated once with the
-        text alone: a photo may only enrich a memory, never block one.
+        A failed verifier produces no audio approvals; text-derived items can still commit.
+        This is independent of the answer model, and does not keep a transcript.
         """
+        candidates = verification_candidates(response_text, audios)
+        if not candidates:
+            return {}
+        used_refs = {mid for row in candidates for mid in row["audio_refs"]}
+        cited_audios = [audio for audio in audios if audio.message_id in used_refs]
+        payload = {"items": candidates}
+        plan = build_memory_model_plan(self.settings, "", payload, shared=False)
+        try:
+            verified = await self._memory_request(
+                "verify_memory_audio", AUDIO_VERIFICATION_POLICY, payload, plan,
+                audios=cited_audios,
+            )
+            if verified.status != "completed" or not verified.output_text.strip():
+                return {}
+            return verified_audio_evidence(verified.output_text, candidates)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - validation failure must never store audio claims
+            log.warning("Memory audio verification failed (%s)", type(exc).__name__)
+            return {}
 
+    async def _extraction_response(self, plan, payload, visuals, audios=()):
+        """Run multimodal extraction, dropping audio first and then images on failure.
+
+        Returns the response and the *actual* image and audio lists the model saw.
+        A malformed completed response is not silently repaired: the cursor stays pending.
+        """
+        attempts = [(list(visuals), list(audios))]
+        if audios:
+            attempts.append((list(visuals), []))
         if visuals:
+            attempts.append(([], []))
+        for index, (images, sounds) in enumerate(attempts):
             try:
                 response = await self._memory_request(
                     "extract_memory_items_shadow", SHADOW_EXTRACTION_POLICY, payload, plan,
-                    images=visuals,
+                    images=images, audios=sounds,
                 )
                 if response.status == "completed" and response.output_text.strip():
-                    return response, False
+                    return response, images, sounds
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001 - retried below without photos
-                log.warning(
-                    "Memory extraction with photos failed (%s); retrying on text",
-                    type(exc).__name__,
-                )
-        response = await self._memory_request(
-            "extract_memory_items_shadow", SHADOW_EXTRACTION_POLICY, payload, plan,
-        )
-        return response, bool(visuals)
+            except Exception as exc:
+                if index == len(attempts) - 1:
+                    raise
+                log.warning("Memory extraction with media failed (%s)", type(exc).__name__)
+            # If the plain-text request fails, do not hide the error or advance the cursor.
+            if index == len(attempts) - 1:
+                return response, images, sounds
+        raise RuntimeError("Memory extraction exhausted all media attempts")
 
     async def _extract_memory_items_shadow(
         self, store, scope, pending, *, expected_cursor: int
@@ -329,27 +397,41 @@ class MemorySummaryMixin:
         )
         metrics["candidate_items"] = len(reconciliation_candidates)
         metrics["evidence_turns"] = len(evidence_context)
-        visuals = self._pending_visuals_for(
-            store, scope, [turn["message_id"] for turn in turns]
+        message_ids = [turn["message_id"] for turn in turns]
+        visuals = self._pending_visuals_for(store, scope, message_ids)
+        audios = self._pending_audios_for(store, scope, message_ids)
+        audio_sources = audio_message_ids(audios) | frozenset(
+            turn["message_id"] for turn in turns
+            if "[첨부 오디오:" in str(turn.get("user", ""))
         )
         metrics["visual_images"] = len(visuals)
         metrics["visual_bytes"] = sum(len(visual.data) for visual in visuals)
+        metrics["audio_files"] = len(audios)
+        metrics["audio_bytes"] = sum(len(audio.data) for audio in audios)
         _record_shadow_extraction(self.usage, "requested", **metrics)
         try:
-            response, fell_back = await self._extraction_response(plan, payload, visuals)
-            if fell_back:
-                visuals = []
+            response, used_visuals, used_audios = await self._extraction_response(
+                plan, payload, visuals, audios,
+            )
+            if visuals and not used_visuals:
                 metrics["visual_fallback"] = True
+            if audios and not used_audios:
+                metrics["audio_fallback"] = True
             if response.status != "completed" or not response.output_text.strip():
                 _record_shadow_extraction(self.usage, "empty", **metrics)
                 return False
             source_turns = {turn["message_id"]: turn for turn in turns}
+            audio_quotes = await self._verify_audio_claims(response.output_text, used_audios)
+            metrics["audio_verified_candidates"] = len(audio_quotes)
             parsed = parse_shadow_extraction(
                 response.output_text,
                 allowed_source_ids=allowed_source_ids,
                 allowed_target_item_ids={item.id for item in candidate_items},
                 source_turns=source_turns,
-                visual_message_ids=visual_message_ids(visuals),
+                visual_message_ids=visual_message_ids(used_visuals),
+                audio_message_ids=audio_message_ids(used_audios),
+                audio_source_message_ids=audio_sources,
+                verified_audio_quotes=audio_quotes,
             )
             if not parsed.valid:
                 _record_shadow_extraction(self.usage, "invalid", **metrics)
@@ -398,12 +480,18 @@ class MemorySummaryMixin:
                     reconfirmed_items += reconciliation.reconfirmed
                     reinforced_annotations = reconciliation.reinforced
             self._discard_extracted_visuals(store, scope, allowed_source_ids)
+            self._discard_extracted_audios(store, scope, allowed_source_ids)
             completed_metrics = {
                 **metrics,
                 "visual_grounded_items": sum(
                     1 for item in items
                     if item.annotation is not None
                     and LINT_VISUAL_GROUNDED in item.annotation.lint_flags
+                ),
+                "audio_grounded_items": sum(
+                    1 for item in items
+                    if item.annotation is not None
+                    and LINT_AUDIO_GROUNDED in item.annotation.lint_flags
                 ),
                 "accepted_items": len(parsed.items),
                 "stored_items": persisted.stored,

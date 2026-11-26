@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 
+from hina_bot.core.pending_audio import MemoryAudio
 from hina_bot.core.pending_visuals import MemoryVisual
 
 # One extraction call covers a four-turn batch. Keep the request small enough for inline
@@ -58,12 +59,14 @@ def extraction_input(
     payload_text: str,
     visuals: Iterable[MemoryVisual] = (),
     *,
+    audios: Iterable[MemoryAudio] = (),
     include_media_resolution: bool = False,
 ):
     """Return the extractor ``input``: the payload string, or blocks when images exist."""
 
     images = list(visuals)
-    if not images:
+    sounds = list(audios)
+    if not images and not sounds:
         return payload_text
     content: list[dict] = [{"type": "input_text", "text": payload_text}]
     for visual in images:
@@ -78,6 +81,14 @@ def extraction_input(
         if include_media_resolution:
             block["resolution"] = "medium"
         content.append(block)
+    for audio in sounds:
+        descriptor = {"message_id": audio.message_id, "index": audio.index}
+        content.append({
+            "type": "input_text",
+            "text": "Untrusted audio evidence metadata(JSON):"
+            + json.dumps(descriptor, ensure_ascii=False, separators=(",", ":")),
+        })
+        content.append({"type": "input_audio", "audio_url": audio.data_url()})
     return [{"role": "user", "content": content}]
 
 

@@ -13,10 +13,12 @@ import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 
+from hina_bot.ai.memory_audio import MEMORY_AUDIO_CONFIDENCE_CAP
 from hina_bot.ai.memory_visual import MEMORY_VISUAL_CONFIDENCE_CAP
 from hina_bot.ai.prompts import load_prompt
 from hina_bot.core.memory_annotations import (
     EVIDENCE_MAX_CHARS,
+    LINT_AUDIO_GROUNDED,
     LINT_DEFAULTED,
     LINT_DIRECTIVE_REJECTED,
     LINT_DIRECTIVE_UNVERIFIED,
@@ -286,7 +288,9 @@ def _legacy_item_fields(raw: dict) -> tuple[MemoryKind | None, MemoryDisclosure,
     return kind, disclosure, tuple(flags)
 
 
-def parse_annotation(raw: dict, kind: MemoryKind, cited: list[dict]) -> MemoryAnnotation:
+def parse_annotation(
+    raw: dict, kind: MemoryKind, cited: list[dict], *, audio_evidence: str | None = None,
+) -> MemoryAnnotation:
     """Normalize one item's judgments; never widens usage beyond what validation supports.
 
     ``cited`` holds the source turns ({"user", "at"}) the item quotes. Missing or invalid
@@ -328,9 +332,19 @@ def parse_annotation(raw: dict, kind: MemoryKind, cited: list[dict]) -> MemoryAn
     explicit = raw.get("explicit") is True
 
     utterances = [str(turn.get("user", "")) for turn in cited]
-    evidence = raw.get("evidence") if isinstance(raw.get("evidence"), str) else ""
+    evidence = (
+        audio_evidence if audio_evidence is not None
+        else raw.get("evidence") if isinstance(raw.get("evidence"), str) else ""
+    )
     evidence = evidence.strip()[:EVIDENCE_MAX_CHARS]
-    if not evidence_matches(evidence, utterances):
+    if audio_evidence is not None:
+        # Only a separately verified direct spoken quote may bypass text-substring checks.
+        # The acoustic speaker is not independently identifiable: avoid proactive broadcast.
+        flags.append(LINT_AUDIO_GROUNDED)
+        audience = Audience.OWNER
+        if usage == UsageMode.AMBIENT:
+            usage = UsageMode.CONTEXTUAL
+    if audio_evidence is None and not evidence_matches(evidence, utterances):
         # Unquoted judgments cannot justify proactive use. Directives are not demoted here:
         # boundaries must persist (principle 6) and the verification pass checks them.
         evidence = ""
@@ -387,6 +401,9 @@ def parse_shadow_extraction(
     allowed_target_item_ids: set[int] | None = None,
     source_turns: dict[str, dict] | None = None,
     visual_message_ids: frozenset[str] | set[str] = frozenset(),
+    audio_message_ids: frozenset[str] | set[str] = frozenset(),
+    audio_source_message_ids: frozenset[str] | set[str] = frozenset(),
+    verified_audio_quotes: dict[int, str] | None = None,
 ) -> ExtractionParseResult:
     """Validate model output without repairing or widening its provenance.
 
@@ -412,7 +429,7 @@ def parse_shadow_extraction(
     rejected = 0
     rejected_relations = 0
     rejected_relationship_evidence = 0
-    for raw in rows[:_MAX_ITEMS_PER_BATCH]:
+    for index, raw in enumerate(rows[:_MAX_ITEMS_PER_BATCH]):
         if not isinstance(raw, dict):
             rejected += 1
             continue
@@ -446,9 +463,48 @@ def parse_shadow_extraction(
         if not valid_sources:
             rejected += 1
             continue
+        audio_refs = raw.get("audio_refs")
+        audio_quote = None
+        if audio_refs is not None:
+            # Audio claims require a single source, actual attached audio, and an
+            # independent verdict. Never promote missing media to a text claim.
+            if (kind == MemoryKind.RELATIONSHIP or not isinstance(audio_refs, list)
+                    or len(audio_refs) != 1 or not isinstance(audio_refs[0], str)
+                    or audio_refs[0] not in source_ids
+                    or audio_refs[0] not in audio_message_ids):
+                rejected += 1
+                continue
+            audio_quote = (verified_audio_quotes or {}).get(index)
+            if not isinstance(audio_quote, str) or not 0 < len(audio_quote.strip()) <= EVIDENCE_MAX_CHARS:
+                rejected += 1
+                continue
+            # Audio is the independently verified source of the claim, not a
+            # context-only turn that the model happened to cite alongside it.
+            source_ids = (audio_refs[0],)
+            confidence = min(confidence, MEMORY_AUDIO_CONFIDENCE_CAP)
+            disclosure = MemoryDisclosure.LOCAL
+        elif source_turns is not None and set(source_ids) & set(audio_source_message_ids):
+            # A spoken claim with no valid audio_refs cannot be laundered through
+            # the metadata-only text saved for the original Discord attachment.
+            quote = raw.get("evidence") if isinstance(raw.get("evidence"), str) else ""
+            textual = [str(source_turns[mid].get("user", "")) for mid in source_ids
+                       if mid in source_turns]
+            textual = [
+                "\n".join(line for line in utterance.splitlines()
+                          if not line.lstrip().startswith("[첨부 오디오:"))
+                for utterance in textual
+            ]
+            if kind == MemoryKind.RELATIONSHIP or not evidence_matches(quote, textual):
+                rejected += 1
+                continue
         visual_grounded = kind != MemoryKind.RELATIONSHIP and _cites_visual(
             raw.get("visual_refs"), source_ids, visual_message_ids
         )
+        if audio_quote is not None and visual_grounded:
+            # The audio quote is authoritative for this item; avoid mixing
+            # image-only attributes into an uncheckable spoken claim.
+            rejected += 1
+            continue
         if visual_grounded:
             if source_turns is not None:
                 quote = raw.get("evidence") if isinstance(raw.get("evidence"), str) else ""
@@ -481,14 +537,15 @@ def parse_shadow_extraction(
                 relation = MemoryRelationProposal(
                     relation=relation_type,
                     target_item_id=target_item_id,
-                    confidence=relation_confidence,
+                    confidence=min(relation_confidence, MEMORY_AUDIO_CONFIDENCE_CAP)
+                    if audio_quote is not None else relation_confidence,
                 )
             else:
                 rejected_relations += 1
         annotation = None
         if source_turns is not None and kind != MemoryKind.RELATIONSHIP:
             cited = [source_turns[value] for value in source_ids if value in source_turns]
-            annotation = parse_annotation(raw, kind, cited)
+            annotation = parse_annotation(raw, kind, cited, audio_evidence=audio_quote)
             if LINT_DISCLOSURE_DEFAULTED in defaulted_flags:
                 annotation = replace(annotation, audience=Audience.OWNER)
             if defaulted_flags:
@@ -533,8 +590,12 @@ def directive_verification_payload(
             "content": item.content,
             "directive_type": annotation.directive_type.value if annotation.directive_type else "",
             "evidence": annotation.evidence,
+            **({"audio_verified": True} if LINT_AUDIO_GROUNDED in annotation.lint_flags else {}),
             "source_turns": [
-                {"user": str(source_turns[value].get("user", "")),
+                {"user": (annotation.evidence if LINT_AUDIO_GROUNDED in annotation.lint_flags
+                          else str(source_turns[value].get("user", ""))),
+                 **({"audio_verified_evidence": annotation.evidence}
+                    if LINT_AUDIO_GROUNDED in annotation.lint_flags else {}),
                  **({"at_local": source_turns[value]["at_local"]}
                     if source_turns[value].get("at_local") else {})}
                 for value in item.source_message_ids if value in source_turns

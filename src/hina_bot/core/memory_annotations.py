@@ -95,6 +95,8 @@ LINT_AUDIENCE_NARROWED = "audience_narrowed"
 # A detail the extractor read from a user photo (#472); the quoted user utterance still
 # carries the claim, so this marks an attribute that came from the image.
 LINT_VISUAL_GROUNDED = "visual_grounded"
+# Independently checked utterance heard in uploaded audio; bytes are deleted on commit.
+LINT_AUDIO_GROUNDED = "audio_grounded"
 
 
 @dataclass(frozen=True)
