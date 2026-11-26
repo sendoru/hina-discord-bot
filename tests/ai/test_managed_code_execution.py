@@ -1,3 +1,4 @@
+from dataclasses import replace
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 
@@ -10,6 +11,7 @@ from hina_bot.ai.managed_tools import (
     ManagedToolCapability,
     managed_tool_config,
 )
+from hina_bot.ai.model_routing import fixed_model_plan
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
@@ -161,7 +163,7 @@ async def test_normal_openai_chat_exposes_code_interpreter_in_one_model_call(tmp
 
 
 @pytest.mark.asyncio
-async def test_gemini_audio_disables_only_code_execution_not_other_tools(tmp_path):
+async def test_gemini_audio_delegates_code_execution_and_keeps_other_tools(tmp_path):
     """Audio + code_execution is a Gemini API 400 even when code execution isn't used."""
     fake = client("음악이 들리네.")
     llm = InformationPipeline(settings(tmp_path), client=fake)
@@ -177,6 +179,10 @@ async def test_gemini_audio_disables_only_code_execution_not_other_tools(tmp_pat
         request = fake.responses.create.await_args.kwargs
         assert {"type": "code_execution"} not in request.get("tools", [])
         assert {"type": "url_context"} in request.get("tools", [])
+        assert any(
+            tool.get("name") == "request_computation" for tool in request.get("tools", [])
+        )
+        assert fake.responses.create.await_count == 1
         assert CODE_EXECUTION_POLICY not in request["instructions"]
     finally:
         CURRENT_AUDIO_INPUTS.reset(token)
@@ -196,5 +202,106 @@ async def test_gemini_without_audio_keeps_code_execution_after_audio_turn(tmp_pa
         assert {"type": "code_execution"} in request["tools"]
         assert CODE_EXECUTION_POLICY in request["instructions"]
     finally:
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_audio_delegates_only_on_function_call_and_resumes_answer(tmp_path, monkeypatch):
+    fake = client("unused")
+    fake.responses.create.side_effect = [
+        NS(
+            status="requires_action", output_text="", usage=None,
+            output=[NS(
+                type="function_call", call_id="compute1", name="request_computation",
+                arguments='{"task":"compute 6*7","input_data":""}',
+            )],
+        ),
+        NS(
+            status="completed", output_text="42", usage=None,
+            output=[
+                NS(type="code_execution_call", id="code1"),
+                NS(type="code_execution_result", call_id="code1", result="42", is_error=False),
+            ],
+        ),
+        NS(status="completed", output_text="42야.", usage=None, output=[NS(type="message")]),
+    ]
+    config = replace(
+        settings(tmp_path),
+        model_routing_mode="adaptive",
+        model="gemini-smart",
+        smart_model="gemini-smart",
+        fast_model="gemini-fast",
+        gemini_fast_thinking_level="minimal",
+        gemini_smart_thinking_level="medium",
+    )
+    plan = replace(fixed_model_plan(config), thinking_level="medium")
+    monkeypatch.setattr(
+        "hina_bot.ai.information_pipeline.build_model_plan", lambda *args, **kwargs: plan,
+    )
+    llm = InformationPipeline(config, client=fake)
+    store = Store.create(":memory:")
+    scope = Scope(None, 10, 100)
+    token = CURRENT_AUDIO_INPUTS.set((object(),))
+    try:
+        answer = await llm.answer(store, scope, "사용자", "6*7 계산해 줘", channel_context=[])
+        assert answer == "42야."
+        assert fake.responses.create.await_count == 3
+        first, worker, continuation = [
+            entry.kwargs for entry in fake.responses.create.await_args_list
+        ]
+        assert {"type": "code_execution"} not in first["tools"]
+        assert worker["tools"] == [{"type": "code_execution"}]
+        assert first["model"] == continuation["model"] == "gemini-smart"
+        assert first["thinking_level"] == continuation["thinking_level"] == "medium"
+        assert worker["model"] == "gemini-fast"
+        assert worker["thinking_level"] == "minimal"
+        assert worker["max_output_tokens"] == 4096
+        assert isinstance(worker["input"], str)
+        assert worker["store"] is False
+        assert {"type": "code_execution"} not in continuation["tools"]
+        outputs = [
+            item for item in continuation["input"]
+            if item.get("type") == "function_call_output"
+        ]
+        assert len(outputs) == 1
+        assert outputs[0]["call_id"] == "compute1"
+        assert '"executed":true' in outputs[0]["output"]
+    finally:
+        CURRENT_AUDIO_INPUTS.reset(token)
+        await llm.close()
+        store.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("mode", "audio", "expected"), [
+    ("native", False, "native"),
+    ("native", True, "none"),
+    ("delegated", False, "delegated"),
+    ("delegated", True, "delegated"),
+    ("auto", False, "native"),
+    ("auto", True, "delegated"),
+])
+async def test_configured_code_backend_controls_actual_tools(tmp_path, mode, audio, expected):
+    fake = client("알겠어.")
+    config = replace(settings(tmp_path), code_execution_backend=mode)
+    llm = InformationPipeline(config, client=fake)
+    store = Store.create(":memory:")
+    token = CURRENT_AUDIO_INPUTS.set((object(),) if audio else ())
+    try:
+        await llm.answer(
+            store, Scope(None, 10, 100), "사용자",
+            "https://example.com/docs 확인해 줘", channel_context=[],
+        )
+        request = fake.responses.create.await_args.kwargs
+        tools = request.get("tools", [])
+        assert ({"type": "code_execution"} in tools) == (expected == "native")
+        assert any(
+            tool.get("name") == "request_computation" for tool in tools
+        ) == (expected == "delegated")
+        assert {"type": "url_context"} in tools
+        assert fake.responses.create.await_count == 1
+    finally:
+        CURRENT_AUDIO_INPUTS.reset(token)
         await llm.close()
         store.close()

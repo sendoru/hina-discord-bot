@@ -27,6 +27,7 @@ _MEMORY_OPERATIONS = {
     "backfill_memory_annotations",
 }
 _NEAR_THRESHOLD = 0.25
+_DELEGATED_CODE_OPERATION = "code_execution.delegated"
 
 # Shared stage definitions for aggregate analytics and per-trace diagnostics.
 PREFLIGHT_LATENCY_STAGES = (
@@ -61,7 +62,7 @@ def critical_generation_api_rows(
     return [
         row
         for row in rows
-        if row.get("operation") == "answer"
+        if row.get("operation") in {"answer", _DELEGATED_CODE_OPERATION}
         or (
             row.get("operation") == "model_route_classify"
             and row.get("semantic_route_mode") != "shadow"
@@ -337,6 +338,81 @@ def _daily(
         )
     result.sort(key=lambda row: (str(row["day"]), str(row["provider"]), str(row["model"])), reverse=True)
     return result
+
+
+def _code_execution_performance(
+    answer_rows: list[dict[str, object]],
+    api_rows: list[dict[str, object]],
+    preflight_by_turn: dict[str, dict[str, object]],
+    reply_by_turn: dict[str, dict[str, object]],
+    completed_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    """Group observed Gemini code execution by turn, not by continuation count."""
+    delegated_rows = [
+        row for row in api_rows if row.get("operation") == _DELEGATED_CODE_OPERATION
+    ]
+    delegated_by_turn = _by_turn(delegated_rows)
+    answers_by_turn = _by_turn([
+        row for row in answer_rows if row.get("provider") == "gemini"
+    ])
+    delegated = set(delegated_by_turn) & answers_by_turn.keys()
+    native = {
+        turn_id for turn_id, rows in answers_by_turn.items()
+        if turn_id not in delegated and any(
+            isinstance(types := row.get("response_output_types"), list)
+            and "code_execution_result" in types
+            for row in rows
+        )
+    }
+    other = set(answers_by_turn) - delegated - native
+    completed_by_turn = {
+        turn_id: rows[-1] for turn_id, rows in _by_turn(completed_rows).items()
+    }
+
+    def elapsed_values(turn_ids, events):
+        values = []
+        for turn_id in turn_ids:
+            preflight = preflight_by_turn.get(turn_id, {})
+            event = events.get(turn_id, {})
+            parts = (preflight.get("preflight_ms"), event.get("elapsed_ms"))
+            if all(type(value) is int and value >= 0 for value in parts):
+                values.append(sum(parts))
+        return _distribution(values, total=len(turn_ids))
+
+    def group(turn_ids):
+        generation = [
+            value for turn_id in turn_ids
+            if type(value := completed_by_turn.get(turn_id, {}).get("generation_ms")) is int
+            and value >= 0
+        ]
+        return {
+            "turns": len(turn_ids),
+            "reply_latency": elapsed_values(turn_ids, reply_by_turn),
+            "turn_latency": elapsed_values(turn_ids, completed_by_turn),
+            "generation_latency": _distribution(generation, total=len(turn_ids)),
+        }
+
+    per_turn = []
+    for turn_id in delegated:
+        rows = delegated_by_turn[turn_id]
+        durations = [row.get("elapsed_ms") for row in rows]
+        if all(type(value) is int and value >= 0 for value in durations):
+            per_turn.append(sum(durations))
+
+    return {
+        "calls": len(delegated_rows),
+        "call_statuses": _counter(delegated_rows, "status"),
+        "call_latency": _latency(delegated_rows),
+        "unmatched_calls": sum(
+            1 for row in delegated_rows if row.get("turn_id") not in delegated
+        ),
+        "worker_time_per_turn": _distribution(per_turn, total=len(delegated)),
+        "groups": {
+            "delegated": group(delegated),
+            "native_result_observed": group(native),
+            "no_execution_observed": group(other),
+        },
+    }
 
 
 def build_analytics(
@@ -617,8 +693,15 @@ def build_analytics(
         "api_categories": {
             "answer": _category_usage(answer_rows),
             "routing": _category_usage(performance_classifier_rows),
+            "delegated_code": _category_usage([
+                row for row in performance_api_rows
+                if row.get("operation") == _DELEGATED_CODE_OPERATION
+            ]),
             "memory": _category_usage(performance_memory_rows),
         },
+        "code_execution": _code_execution_performance(
+            answer_rows, performance_api_rows, preflight_by_turn, reply_by_turn, completed_rows,
+        ),
         "context_chars": {
             field: _field_latency(context_size_rows, field)
             for field in context_fields
