@@ -369,6 +369,7 @@ class UsageLogger:
         route_metadata=None,
         accumulate: bool = True,
         deadline_seconds: float | None = None,
+        retry_empty: bool = True,
         **kwargs,
     ):
         started = perf_counter()
@@ -390,6 +391,7 @@ class UsageLogger:
                 "model_route_margin", "model_route_reasons", "model_route_policy",
                 "model_route_components", "requested_max_output_tokens",
                 "requested_thinking_level", "requested_total_output_tokens",
+                "code_execution_backend", "code_execution_mode",
                 "semantic_route_mode", "semantic_route_status", "semantic_route_level",
                 "semantic_route_codes", "model_route_decision_source",
                 "model_route_baseline_tier", "routing_classifier_provider",
@@ -439,7 +441,7 @@ class UsageLogger:
                 and not _has_function_call(response)
                 and not _visible_text(response).strip()
             )
-            if completed_empty:
+            if completed_empty and retry_empty:
                 response = await client.responses.create(**kwargs)
                 responses.append(response)
                 row["empty_response_retries"] = 1
@@ -477,7 +479,7 @@ class UsageLogger:
             error_codes = []
             for item in responses:
                 error_codes.extend(getattr(item, "_hina_error_codes", None) or [])
-            if completed_empty:
+            if completed_empty and retry_empty:
                 error_codes.append("empty_response_retried")
             if error_codes:
                 row["response_error_codes"] = list(dict.fromkeys(error_codes))
