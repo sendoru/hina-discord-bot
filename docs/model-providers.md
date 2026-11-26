@@ -395,7 +395,7 @@ provider 선택은 실제 Discord 답변, 장기 기억 요약, runtime knowledg
 
 GEMINI_PDF_TRANSPORT defaults to text. Runtime Config → Conversation & Privacy
 changes it for subsequent requests. Auto currently chooses text for every model
-and API. GEMINI_PDF_SCOPE limits opt-in to answer, memory, knowledge, or all three. The legacy decisions-only scope remains accepted and enables no PDF conversions. No production cost or fidelity evidence has been collected. An operator
+and API. GEMINI_PDF_SCOPE limits opt-in to answer, memory, knowledge, decisions, or all four. No production cost or fidelity evidence has been collected. An operator
 may opt in with pdf for normal traffic and roll back with text. Changing
 GEMINI_PDF_FONT (local TrueType file) requires a restart. Use an installed font
 covering the deployment languages. Unsupported glyphs retain the original text.
@@ -410,7 +410,7 @@ input. There is no new remote retry or shadow request.
 
 | Input | Opt-in scope |
 |---|---|
-| Decisions | Always text, including candidates, even when PDF scope is all. |
+| Decisions | Candidate JSON documents when scope is decisions or all; rules, current turn and questions stay text. |
 | Answer references | Local reference blocks only. Current speaker, active reply, current message and role replay stay native. |
 | Memory extraction and shared summaries | Existing authorized payload only. Images and their provenance stay in place. |
 | Persona and style | Native instructions. Model-level authority and quality unverified. |
@@ -438,3 +438,9 @@ separate reconciliation. Use trace timing and counts alongside this report.
 Direct replies and current speaker metadata are intentionally native and separated from history. An empty reply chain no longer prevents history encoding. The shared planner attempts bounded partial conversion only for already-authorized answer JSON reference records; ordered list fragments retain their original key and absolute record ranges. Unsupported records remain text; if no fragment converts, the original block is used. Memory and knowledge generic payloads remain whole-block fallback to avoid changing their schema. Provider-native tool envelopes, instructions, and role replay remain unchanged. Trace usage includes per-section reasons and coverage over observed text (not tokens; excludes media and tool schema bytes). On body-size fallback, attempted sizes are retained separately from transmitted PDF sizes. The encoder density experiment is offline only; the production default remains 11pt until fidelity is verified.
 
 The renderer tries known installed local fallback TrueType fonts per glyph, validates the extracted runs, and still retains unsupported data as text. No font downloads. The density script now imports the production renderer (install the project dev dependencies first) and compares 9/10/11 pt by default without a network request. Partial-fragment original character counts are apportioned by serialized record length, while actual fragment character counts are logged separately. This is a coverage estimate rather than billed tokens.
+
+### P8 Decisions and remaining authority boundaries
+
+The official [Decisions API guide](https://aistudio.google.com/docs/decisions-api#documents) supports ordered text/document content blocks. P8 opts in via the existing PDF settings (including all). The question map, selection rules, current turn, source ID mapping and original 240,000-byte logical request guard remain unchanged. Candidate records are grouped under the same candidates key across ordered JSON blocks, with bounded local partial encoding and a 250 ms maximum preparation budget (or a quarter of the configured HTTP timeout, whichever is smaller). If encoding times out, no documents are eligible, or the actual base64 request exceeds the cap, send the original text body once. Never retry a rejected document request as text. Failed remote decisions keep the existing full-selection fallback. The original cap remains to avoid changing eligible candidate pools. Both coverage and actual wire bytes are logged. Cost, probability calibration and selection recall in PDF mode remain unmeasured.
+
+Review outcome for the other P8 items: persona, relationship and policy instructions are trusted system text, and converting them to a user document changes their authority. Existing world-fact/lore references are already eligible. Do not move trusted instructions without a dedicated instruction-authority regression and live fidelity check. DM replay has user/model roles and deliberately preserves them; do not turn model output into an input document. Local tool results retain their provider-native function-result/functionResponse envelope and call ID across both APIs, including stored continuations. Large result documents require a separate schema-compatible adapter and egress review rather than moving results into an unrelated user step. No new PDF conversions are enabled for these three paths in P8.

@@ -23,7 +23,7 @@ _LOCK = Lock()
 
 
 def pdf_enabled(settings, domain):
-    return (domain in {"answer", "memory", "knowledge"}
+    return (domain in {"answer", "memory", "knowledge", "decisions"}
             and getattr(settings, "gemini_pdf_transport", "text") == "pdf"
             and getattr(settings, "gemini_pdf_scope", "all") in {"all", domain})
 

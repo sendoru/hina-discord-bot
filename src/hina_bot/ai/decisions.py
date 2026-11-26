@@ -9,6 +9,7 @@ from time import perf_counter
 
 import httpx
 
+from .pdf_transport import encode_reference, text_reference_observation, transport_coverage
 from .prompts import load_prompt
 
 MODEL = "gemini-decision-1"
@@ -32,12 +33,13 @@ class DecisionResult:
     request_ms: int | None = None
     http_status: int | None = None
     elapsed_ms: int = 0
+    transport: dict | None = None
 
     def metrics(self) -> dict:
         scores = list((self.scores or {}).values())
         return {
             "decision_candidates": self.candidate_count,
-            "decision_transport": {"transport": "text"},
+            "decision_transport": self.transport or {"transport": "text"},
             "decision_questions": self.question_count,
             "decision_request_bytes": self.request_bytes,
             "decision_request_ms": self.request_ms,
@@ -91,6 +93,113 @@ def _input_tokens(response: dict) -> int | None:
     return tokens if type(tokens) is int and tokens >= 0 else None
 
 
+
+PDF_BATCH_CHARS = 50_000
+PDF_MAX_ATTEMPTS = 12
+PDF_PREP_TIMEOUT = 0.25
+
+
+def _json(value):
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _candidate_batches(candidates):
+    """Partition by complete candidate records; no ID may be split or dropped."""
+    batch = {}
+    chars = len('{"candidates":{}}')
+    for key, candidate in candidates.items():
+        size = len(_json(key)) + 1 + len(_json(candidate)) + 1
+        if batch and chars + size > PDF_BATCH_CHARS:
+            yield batch
+            batch = {}
+            chars = len('{"candidates":{}}')
+        batch[key] = candidate
+        chars += size
+    if batch:
+        yield batch
+
+
+async def _candidate_pdf_input(shared):
+    control = {key: value for key, value in shared.items() if key != "candidates"}
+    blocks = [{
+        "type": "text",
+        "text": _json(control) + "\nCandidate records follow in ordered JSON blocks. "
+        "All blocks belong to the same candidates map; use the exact candidate IDs.",
+    }]
+    observations = []
+    attempts = 0
+
+    async def append_batch(batch):
+        nonlocal attempts
+        source = _json({"candidates": batch})
+        if attempts < PDF_MAX_ATTEMPTS:
+            attempts += 1
+            doc, obs = await encode_reference(source)
+        else:
+            doc, obs = None, text_reference_observation(source, "fragment_budget")
+        if (doc is None and len(batch) > 1 and attempts + 2 <= PDF_MAX_ATTEMPTS
+                and obs["fallback"] in {"unsupported_glyph", "unbreakable_token",
+                                        "source_size_limit", "pdf_size_limit", "roundtrip"}):
+            pairs = list(batch.items())
+            middle = len(pairs) // 2
+            # Keep time spent on the failed parent visible without counting its
+            # source twice.
+            before = len(observations)
+            await append_batch(dict(pairs[:middle]))
+            await append_batch(dict(pairs[middle:]))
+            observations[before]["encode_ms"] += obs["encode_ms"]
+            return
+        observations.append({**obs, "section": "decision_candidates", "eligible": True})
+        if doc is not None:
+            blocks.append({"type": "document", "mime_type": "application/pdf", "data": doc.data})
+        else:
+            blocks.append({"type": "text", "text": source})
+
+    for batch in _candidate_batches(shared["candidates"]):
+        await append_batch(batch)
+    return blocks, observations
+
+
+async def _prepare_decision_body(payload, shared, original_body, deadline):
+    """Pre-send opt-in only; never make a second provider call."""
+    started = perf_counter()
+    try:
+        async with asyncio.timeout(min(PDF_PREP_TIMEOUT, deadline / 4)):
+            blocks, observations = await _candidate_pdf_input(shared)
+    except TimeoutError:
+        return original_body, {
+            "transport": "text", "fallback": "encode_deadline",
+            "encode_ms": round((perf_counter() - started) * 1000),
+        }
+    coverage = transport_coverage(observations)
+    meta = {
+        **coverage,
+        "transport": "pdf" if coverage["pages"] else "text",
+        "fallback": "" if coverage["pages"] else "no_eligible_document",
+        "encode_ms": round((perf_counter() - started) * 1000),
+        "reference_transport": observations,
+    }
+    if not coverage["pages"]:
+        return original_body, meta
+    body = _json({**payload, "input": blocks}).encode()
+    if len(body) > MAX_REQUEST_BYTES:
+        meta.update(
+            transport="text", fallback="request_size_limit",
+            attempted_pages=meta["pages"], attempted_pdf_bytes=meta["pdf_bytes"],
+            pages=0, pdf_bytes=0, pdf_chars=0, eligible_coverage=0.0,
+            total_coverage=0.0,
+        )
+        for item in observations:
+            if item["transport"] == "pdf":
+                item.update(
+                    transport="text", fallback="request_size_limit",
+                    attempted_pages=item["pages"], attempted_pdf_bytes=item["pdf_bytes"],
+                    pages=0, pdf_bytes=0,
+                )
+        return original_body, meta
+    return body, meta
+
+
 @dataclass
 class DecisionsClient:
     http: httpx.AsyncClient | None = None
@@ -102,6 +211,7 @@ class DecisionsClient:
     async def evaluate(
         self, *, api_key: str, domain: str, query: dict, candidates: dict[str, dict],
         timeout_seconds: float | None = None,
+        pdf_transport: bool = False,
     ) -> DecisionResult:
         started = perf_counter()
         count = len(candidates)
@@ -141,10 +251,13 @@ class DecisionsClient:
         if len(body) > MAX_REQUEST_BYTES:
             return result("request_size_limit", **request_meta)
 
+        deadline = TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
+        if pdf_transport:
+            body, transport = await _prepare_decision_body(payload, shared, body, deadline)
+            request_meta.update(request_bytes=len(body), transport=transport)
         if self.http is None:
             self.http = httpx.AsyncClient()
         request_started = perf_counter()
-        deadline = TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
         try:
             async with asyncio.timeout(deadline):
                 response = await self.http.post(

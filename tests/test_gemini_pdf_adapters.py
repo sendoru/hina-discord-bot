@@ -43,7 +43,8 @@ async def test_text_decisions_send_once_with_native_control_and_exact_candidate_
     from hina_bot.ai.decisions import DecisionsClient
     from hina_bot.ai.pdf_transport import pdf_enabled
 
-    assert not pdf_enabled(SimpleNamespace(gemini_pdf_transport="pdf", gemini_pdf_scope="all"), "decisions")
+    assert pdf_enabled(SimpleNamespace(gemini_pdf_transport="pdf", gemini_pdf_scope="all"), "decisions")
+    assert not pdf_enabled(SimpleNamespace(gemini_pdf_transport="pdf", gemini_pdf_scope="answer"), "decisions")
     sent = []
     def capture(request):
         body = json.loads(request.content)
