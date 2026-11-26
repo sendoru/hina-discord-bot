@@ -1,4 +1,6 @@
+import asyncio
 import json
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -170,3 +172,96 @@ async def test_whole_memory_and_vision_resources_preserve_native_boundaries(succ
     else:
         assert system == instructions
         assert transport_coverage(metrics)["documents"] == 0
+
+
+@pytest.mark.asyncio
+async def test_deadline_keeps_largest_verified_fragment_and_original_instruction():
+    parts = [
+        InstructionReferenceText("persona", "good persona"),
+        PDFReferenceText(type="input_text", text="bad_record"),
+        PDFReferenceText(type="input_text", text="good longer reference"),
+    ]
+
+    async def encode(source):
+        if "good persona" in source and "good longer reference" in source and "bad_record" not in source:
+            await asyncio.sleep(60)
+        return fixture_encoder(source)
+
+    prepared = await consolidate_references(parts, encoder=encode, deadline_seconds=0.1)
+    wire = [(fragment, doc, obs) for part in prepared for fragment, doc, obs in part.segments]
+    (document,) = [doc for _, doc, _ in wire if doc is not None]
+    assert document.pdf == b"good longer reference"
+    assert prepared[0].original is parts[0]
+    assert prepared[0].document is None
+    assert wire[0][0] is parts[0]
+    assert wire[0][2]["fallback"] == "encode_deadline"
+    assert wire[1][0] is parts[1]
+    assert transport_coverage([obs for _, _, obs in wire])["documents"] == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_encoder_waiter_does_not_start_render(monkeypatch):
+    entered = Event()
+    release = Event()
+    calls = []
+
+    def render(source, *, cancelled):
+        calls.append(source)
+        entered.set()
+        release.wait(timeout=2)
+        return fixture_encoder(source)[0], ""
+
+    monkeypatch.setattr(pdf_transport, "_encode", render)
+    owner = asyncio.create_task(pdf_transport.encode_reference("owner"))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        waiter = asyncio.create_task(pdf_transport.encode_reference("cancelled waiter"))
+        await asyncio.sleep(0.03)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+    finally:
+        release.set()
+        await owner
+    next_doc, _ = await pdf_transport.encode_reference("next")
+    assert next_doc is not None
+    assert calls == ["owner", "next"]
+
+
+@pytest.mark.asyncio
+async def test_cancelled_active_renderer_releases_lock_cooperatively(monkeypatch):
+    entered = Event()
+    exited = Event()
+
+    def render(source, *, cancelled):
+        if source == "slow":
+            entered.set()
+            cancelled.wait(timeout=2)
+            exited.set()
+            return None, "encode_deadline"
+        return fixture_encoder(source)[0], ""
+
+    monkeypatch.setattr(pdf_transport, "_encode", render)
+    owner = asyncio.create_task(pdf_transport.encode_reference("slow"))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+    finally:
+        owner.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await owner
+    assert await asyncio.to_thread(exited.wait, 1)
+    document, observation = await pdf_transport.encode_reference("next")
+    assert document is not None and observation["transport"] == "pdf"
+
+
+@pytest.mark.asyncio
+async def test_large_synthetic_answer_uses_single_real_pdf():
+    # ASCII fixture avoids requiring a specific OS font; no remote model calls.
+    source = ("Static lore record: an ordinary reference with stable identifiers. " * 800).strip()
+    part = InstructionReferenceText("static_lore", source, guidance=False)
+    reference = PDFReferenceText(type="input_text", text="conversation context")
+    prepared = await consolidate_references([part, reference])
+    documents = [doc for item in prepared for _, doc, _ in item.segments if doc]
+    assert len(documents) == 1
+    assert documents[0].pdf.startswith(b"%PDF")
+    assert transport_coverage([obs for item in prepared for _, _, obs in item.segments])["eligible_coverage"] == 1.0

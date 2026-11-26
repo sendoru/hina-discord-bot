@@ -237,7 +237,7 @@ async def encode_reference(source):
             # Shield the single lock-owning job so cancellation cannot prevent
             # its finally block from releasing the lock. Request cooperative
             # cancellation; noninterruptible library calls may finish first.
-            worker = asyncio.create_task(asyncio.to_thread(render))
+            worker = asyncio.get_running_loop().run_in_executor(None, render)
             try:
                 document, reason = await asyncio.shield(worker)
             except asyncio.CancelledError:
@@ -544,13 +544,26 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
     groups = []
     document = None
     failure = ""
+    loop = asyncio.get_running_loop()
+    expires = loop.time() + (CONSOLIDATED_DEADLINE if deadline_seconds is None else deadline_seconds)
 
-    async def bounded(source):
-        nonlocal attempts
-        if attempts >= MAX_CONSOLIDATED_ATTEMPTS - 1:
+    async def bounded(source, *, final=False):
+        nonlocal attempts, failure
+        if loop.time() >= expires:
+            failure = "encode_deadline"
+            return None, text_reference_observation(source, failure)
+        limit = MAX_CONSOLIDATED_ATTEMPTS if final else MAX_CONSOLIDATED_ATTEMPTS - 1
+        if attempts >= limit:
             return None, text_reference_observation(source, "fragment_budget")
         attempts += 1
-        return await encoder(source)
+        try:
+            async with asyncio.timeout_at(expires):
+                return await encoder(source)
+        except TimeoutError:
+            # Return a failed fragment rather than cancelling the whole planner:
+            # already verified siblings inside plan_reference must survive.
+            failure = "encode_deadline"
+            return None, text_reference_observation(source, failure)
 
     def native(reason):
         result = []
@@ -565,41 +578,37 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
     if native_only:
         return native("code_execution_incompatible")
 
-    try:
-        async with asyncio.timeout(CONSOLIDATED_DEADLINE if deadline_seconds is None else deadline_seconds):
-            source = "\n".join(document_source(part) for part in parts)
-            document, obs = await bounded(source)
-            initial_reason = obs["fallback"]
-            if document is not None:
-                groups = [[(part, document, original_observation(part, ""))] for part in parts]
+    source = "\n".join(document_source(part) for part in parts)
+    document, obs = await bounded(source)
+    initial_reason = obs["fallback"]
+    if document is not None:
+        groups = [[(part, document, original_observation(part, ""))] for part in parts]
+    else:
+        if initial_reason not in _SPLIT_REASONS:
+            return native(initial_reason)
+        for part in parts:
+            if instruction_original(part) is not None:
+                candidate, item_obs = await bounded(document_source(part))
+                groups.append([(
+                    part, candidate, original_observation(part, item_obs["fallback"]),
+                )])
             else:
-                if initial_reason not in _SPLIT_REASONS:
-                    return native(initial_reason)
-                for part in parts:
-                    if instruction_original(part) is not None:
-                        candidate, item_obs = await bounded(document_source(part))
-                        groups.append([(
-                            part, candidate, original_observation(part, item_obs["fallback"]),
-                        )])
-                    else:
-                        prepared = await plan_reference(part, encoder=bounded)
-                        groups.append(list(prepared.segments))
-                selected = [
-                    fragment for group in groups for fragment, doc, _ in group if doc is not None
-                ]
-                if not selected:
-                    return native(initial_reason)
-                # Reuse a single verified artifact rather than render it twice.
-                if len(selected) == 1:
-                    document = next(doc for group in groups for _, doc, _ in group if doc is not None)
-                else:
-                    attempts += 1
-                    document, obs = await encoder("\n".join(document_source(fragment) for fragment in selected))
-                    if document is None:
-                        failure = obs["fallback"]
-    except TimeoutError:
-        failure = "encode_deadline"
-        document = None
+                prepared = await plan_reference(part, encoder=bounded)
+                groups.append(list(prepared.segments))
+        selected = [
+            fragment for group in groups for fragment, doc, _ in group if doc is not None
+        ]
+        if not selected:
+            return native(failure or initial_reason)
+        # Reuse a single verified artifact rather than render it twice.
+        if len(selected) == 1:
+            document = next(doc for group in groups for _, doc, _ in group if doc is not None)
+        else:
+            document, obs = await bounded(
+                "\n".join(document_source(fragment) for fragment in selected), final=True,
+            )
+            if document is None:
+                failure = obs["fallback"]
 
     if document is None:
         # A completed fragment has already passed the exact extraction check.
@@ -617,8 +626,6 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
                 if doc is not None and (i, j) != (best_i, best_j):
                     group[j] = (fragment, None, {**obs, "transport": "text",
                                                  "fallback": failure or "consolidation_failed"})
-        for part in parts[len(groups):]:
-            groups.append([(part, None, original_observation(part, failure or "encode_deadline"))])
 
     result = []
     attached = False

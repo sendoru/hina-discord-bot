@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -15,8 +16,6 @@ async def test_decision_pdf_preserves_question_and_candidate_ids_and_sends_once(
 
     async def encode(source):
         if mode == "timeout":
-            import asyncio
-
             await asyncio.sleep(5)
         encoded.extend(json.loads(line) for line in source.splitlines())
         if mode == "failed":
@@ -123,3 +122,25 @@ async def test_partial_candidates_keep_one_document_and_exact_candidate_records(
     assert set(merged) == {"c1", "c2", "c3"}
     assert sum(block["type"] == "document" for block in blocks) == 1
     assert sum(obs.get("documents", 0) for obs in observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_decision_deadline_preserves_verified_sibling(monkeypatch):
+    async def encode(source):
+        keys = json.loads(source)["candidates"]
+        if "c1" in keys and "c2" in keys:
+            return None, text_reference_observation(source, "unsupported_glyph")
+        if "c2" in keys:
+            await asyncio.sleep(60)
+        obs = text_reference_observation(source, "")
+        obs.update(transport="pdf", pages=1, pdf_bytes=len(source))
+        return GeminiInlinePDF(source.encode(), 1), obs
+
+    monkeypatch.setattr(decisions, "encode_reference", encode)
+    blocks, observations = await decisions._candidate_pdf_input(
+        {"selection_rules": "rules", "candidates": {"c1": {"text": "one"}, "c2": {"text": "two"}}},
+        deadline_seconds=0.1,
+    )
+    assert [block["type"] for block in blocks] == ["text", "document", "text"]
+    assert json.loads(blocks[2]["text"]) == {"candidates": {"c2": {"text": "two"}}}
+    assert observations[1]["fallback"] == "encode_deadline"

@@ -435,8 +435,9 @@ moved app components may be omitted from the continuation system text.
 Stateless continuations reuse the prepared document and original logical input.
 Changing runtime config affects subsequent requests.
 
-With CODE_EXECUTION_BACKEND=auto, enabling PDF for Answer selects delegated even on local encoding fallback; audio also selects delegated. Explicit native retains native-compatible text transport. Actual prepared PDF presence also selects delegated
-computation; explicit native preserves text. Explicit delegated keeps its
+With CODE_EXECUTION_BACKEND=auto, enabling PDF for Answer selects delegated
+computation even on local encoding fallback; audio also selects delegated.
+Explicit native preserves compatible text transport. Explicit delegated keeps its
 existing meaning. A late body guard fallback retains the selected backend for
 that turn to preserve continuation consistency. No extra classifier or paid
 shadow traffic. Other providers are unchanged.
