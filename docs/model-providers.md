@@ -261,12 +261,24 @@ OpenRouter에서는 OpenAI-compatible Responses API를 사용하고, 일반 답�
 
 ## Gemini 코드 실행 위임
 
-일반 Gemini 요청은 기존 native `code_execution`을 유지합니다. 오디오를 포함한
+기본 auto 모드에서 일반 Gemini 요청은 기존 native `code_execution`을 유지합니다. 오디오를 포함한
 답변 요청에서는 해당 도구 대신 `request_computation` 로컬 함수를 제공합니다.
 이 함수는 봇 호스트에서 Python을 실행하지 않고, 실제 함수 호출이 발생할 때만
 adaptive에서는 기존 fast 모델, fixed에서는 기존 고정 모델에 최소한의 계산용 텍스트를 보내
 Google managed code execution을 실행합니다. thinking은 해당 모델의 기존 설정이 minimal이면
-minimal, 그 외에는 low로 제한합니다. 별도의 사전 분류/Decision 호출이나 신규 환경변수는 없습니다.
+minimal, 그 외에는 low로 제한합니다. 별도의 사전 분류/Decision 호출은 없습니다.
+
+런타임 `CODE_EXECUTION_BACKEND` (.env 또는 Dashboard → Runtime → Search & Tools):
+
+| 값 | Gemini 동작 |
+| --- | --- |
+| auto (기본) | 호환 입력은 native, 비호환 미디어는 delegated |
+| native | 내장 도구만 제공. 오디오 등 비호환 입력에서는 코드 실행만 제외 |
+| delegated | 호환 여부와 무관하게 별도 계산 호출 함수만 제공. 실제 호출 시에만 추가 비용 발생 |
+
+명시적 backend는 다른 backend로 자동 강등하지 않습니다. 설정은 다음 답변부터 적용되고,
+OpenAI/OpenRouter에는 영향을 주지 않습니다. 로컬 실행은 별도 후속 작업으로, 현재 local은
+허용값이 아닙니다. usage에는 선택된 답변 backend와 설정 mode가 기록됩니다.
 
 위임 호출은 원래 미디어, 전체 대화 문맥, 다른 도구, interaction ID를 전달하지 않고
 저장 설정을 false로 지정합니다. 답변당 최대 2회, 동시 최대 4회, 20초와 기존 답변
