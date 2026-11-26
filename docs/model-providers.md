@@ -13,6 +13,14 @@ Discord, SQLite 기억, lore 검색, 캐릭터 프롬프트 조립은 provider�
 
 ### OpenAI
 
+답변과 기억 요청은 fixed/fast/smart에 맞춰 `OPENAI_REASONING_EFFORT`,
+`OPENAI_FAST_REASONING_EFFORT`, `OPENAI_SMART_REASONING_EFFORT`를 사용합니다.
+값은 default, low, medium, high입니다. default와 미확인 모델에는 필드를 생략합니다.
+classifier와 repair에는 fast 설정을 사용합니다. 별도 classifier provider를 활성화하면
+해당 provider에 분류 입력을 전송합니다. Decision은 메인 provider만 사용합니다.
+검색 off에서는 주어진 URL을 직접 열지 않습니다. 검색 활성화 시 Responses web_search,
+native 계산 시 code_interpreter를 사용합니다.
+
 ```dotenv
 LLM_PROVIDER=openai
 LLM_MODEL=gpt-4.1-mini
@@ -488,3 +496,20 @@ were obtained, the largest completed fragment is transmitted as the single PDF
 and the rest remains native. If no verified fragment exists, the complete original
 native request is retained. Telemetry records initial failure, attempt count and
 consolidation failure without exposing source text.
+
+## OpenAI P0 호출 경로와 검증 범위 (#620)
+
+| 호출 경로 | 실제 요청 및 회귀 근거 |
+|---|---|
+| Discord 답변 → request_assembly → VisionClient → usage | 공통 권한 필터와 문맥 조립 후 Responses로 요청. test_egress_request_boundary, test_chat_web_search, test_vision |
+| Lore / 개인 기억 → retrieval_decisions → DecisionsClient | 현재 provider에만 요청. OpenAI는 텍스트와 strict schema, Gemini는 기존 Decisions API. 후보 재조회, full fallback은 test_personal_memory_read_mode |
+| 로컬 도구 및 계산 → LocalToolExecutor / managed_tools | OpenAI의 stateless 응답 output을 순서대로 재전송하며 call_id로 결과를 연결. native code_interpreter는 OpenAI 관리 컨테이너 사용. test_openai_parity, test_managed_code_execution |
+| 개인 기억 추출 / directive 검증 / reconciliation / 공유 요약 → memory_summary | 동일한 memory plan과 요청을 사용. test_memory_extraction_v2, test_memory_store_logging, test_shared_summary_consistency |
+| 서버 기억 → server_memory_extraction → _memory_request | 응답 후 원본 메시지 및 대상 재검증. test_server_memory_p4 |
+| knowledge ingest / classifier / repair → usage | ingest strict schema 및 로컬 검증, classifier 별도 지정 provider, repair의 미완료 응답은 원문 유지. test_runtime_knowledge, test_semantic_model_routing, test_output_repair |
+| 운영 설정 → Settings / RuntimeSettings / admin_runtime | 환경 변수와 런타임 선택값 검증. test_openai_parity, test_runtime_config, test_admin_runtime |
+
+모델 지원 여부는 공식 [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini),
+[GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) 및
+[stateless reasoning](https://developers.openai.com/api/docs/guides/reasoning) 문서를 기준으로 확인했다.
+실모델 품질·비용은 이 회귀 테스트의 측정 대상에서 제외한다.
