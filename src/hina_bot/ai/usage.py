@@ -402,6 +402,8 @@ class UsageLogger:
         provider = getattr(client, "provider_name", "")
         if isinstance(provider, str) and provider:
             row["provider"] = provider
+        if provider == "openai" and kwargs.get("reasoning"):
+            row["requested_reasoning_effort"] = kwargs["reasoning"].get("effort")
         turn_id = current_turn_id()
         if turn_id:
             row["turn_id"] = turn_id
@@ -550,14 +552,16 @@ class UsageLogger:
             **metrics,
             "at": datetime.now(UTC).isoformat(),
             "operation": operation,
-            "provider": "gemini",
-            "model": MODEL,
-            "gemini_api": "decisions",
+            "provider": metrics.get("provider", "gemini"),
+            "model": metrics.get("model", MODEL),
+            **({"gemini_api": "decisions"} if metrics.get("provider", "gemini") == "gemini" else {}),
             "context_transport": metrics.get("decision_transport", {}).get("transport", "text"),
             "elapsed_ms": metrics["decision_request_ms"],
             "input_tokens": tokens,
-            "output_tokens": 0,
-            "total_tokens": tokens,
+            "cached_tokens": metrics.get("decision_cached_tokens"),
+            "reasoning_tokens": metrics.get("decision_reasoning_tokens"),
+            "output_tokens": metrics.get("decision_output_tokens") or 0,
+            "total_tokens": tokens + (metrics.get("decision_output_tokens") or 0) if tokens is not None else None,
             **self.build,
         }
         if turn_id := current_turn_id():

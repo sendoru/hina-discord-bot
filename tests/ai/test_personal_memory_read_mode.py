@@ -95,9 +95,7 @@ async def _decision_answer(
         rag_mode=lore, personal_memory_read_mode=memory, **settings,
     ), client=_client(calls))
     await llm.decisions_client.close()
-    llm.decisions_client = DecisionsClient(
-        httpx.AsyncClient(transport=httpx.MockTransport(handler)),
-    )
+    llm.decisions_client.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
         await llm.answer(store, scope, "사용자", message)
         payload = calls[-1]
@@ -113,6 +111,16 @@ async def _decision_answer(
 
 def _decisions_reply(body, choose):
     candidates = json.loads(body["input"])["candidates"]
+    if "questions" not in body:
+        schema = body["text"]["format"]["schema"]
+        assert set(schema["required"]) == candidates.keys()
+        assert body["store"] is False
+        scores = {key: 0.99 if choose(row) else 0.01 for key, row in candidates.items()}
+        return httpx.Response(200, json={
+            "status": "completed", "output": [{"type": "message", "content": [
+                {"type": "output_text", "text": json.dumps(scores)},
+            ]}], "usage": {"input_tokens": 8000, "output_tokens": len(scores)},
+        })
     assert set(body["questions"]) == candidates.keys()
     return httpx.Response(200, json={
         "answers": {

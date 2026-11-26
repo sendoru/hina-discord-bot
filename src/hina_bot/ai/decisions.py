@@ -39,6 +39,9 @@ class DecisionResult:
     http_status: int | None = None
     elapsed_ms: int = 0
     transport: dict | None = None
+    output_tokens: int | None = None
+    cached_tokens: int | None = None
+    reasoning_tokens: int | None = None
 
     def metrics(self) -> dict:
         scores = list((self.scores or {}).values())
@@ -52,6 +55,9 @@ class DecisionResult:
             "decision_http_status": self.http_status,
             "decision_reason": self.reason,
             "decision_input_tokens": self.input_tokens,
+            "decision_output_tokens": self.output_tokens,
+            "decision_cached_tokens": self.cached_tokens,
+            "decision_reasoning_tokens": self.reasoning_tokens,
             "decision_score_bands": {
                 "below_half": sum(score < 0.5 for score in scores),
                 "below_threshold": sum(0.5 <= score < MIN_PROBABILITY for score in scores),
@@ -92,11 +98,52 @@ def _parse_scores(response: dict, keys: set[str]) -> dict[str, float]:
     return scores
 
 
+def _usage_count(usage, key):
+    value = usage.get(key) if isinstance(usage, dict) else None
+    return value if type(value) is int and value >= 0 else None
+
+
 def _input_tokens(response: dict) -> int | None:
     usage = response.get("usage")
     tokens = usage.get("total_input_tokens") if isinstance(usage, dict) else None
     return tokens if type(tokens) is int and tokens >= 0 else None
 
+
+
+def _openai_payload(model, shared, ids):
+    return {
+        "model": model, "store": False,
+        "instructions": load_prompt("openai_decision.md").strip(),
+        "input": _json(shared),
+        "text": {"format": {
+            "type": "json_schema", "name": "candidate_scores", "strict": True,
+            "schema": {
+                "type": "object", "additionalProperties": False,
+                "properties": {key: {"type": "number"} for key in ids},
+                "required": list(ids),
+            },
+        }},
+    }
+
+
+def _openai_scores(data, keys):
+    if data.get("status") != "completed":
+        raise InvalidDecisionResponse("incomplete_response")
+    texts = []
+    for item in data.get("output") or []:
+        if item["type"] == "message":
+            for block in item["content"]:
+                if block["type"] != "output_text":
+                    raise InvalidDecisionResponse("invalid_response")
+                texts.append(block["text"])
+    if len(texts) != 1:
+        raise InvalidDecisionResponse("invalid_response")
+    scores = json.loads(texts[0], object_pairs_hook=_unique_keys)
+    if not isinstance(scores, dict) or scores.keys() != keys:
+        raise InvalidDecisionResponse("invalid_candidate_ids")
+    if any(type(score) not in {int, float} or not 0 <= score <= 1 for score in scores.values()):
+        raise InvalidDecisionResponse("invalid_probability")
+    return scores
 
 
 PDF_PREP_TIMEOUT = 2.0
@@ -170,6 +217,8 @@ async def _prepare_decision_body(payload, shared, original_body, deadline):
 @dataclass
 class DecisionsClient:
     http: httpx.AsyncClient | None = None
+    provider: str = "gemini"
+    model: str = MODEL
 
     async def close(self) -> None:
         if self.http is not None:
@@ -193,6 +242,8 @@ class DecisionsClient:
             return result("no_candidates", scores={})
         if count > MAX_QUESTIONS:
             return result("question_limit")
+        if self.provider not in {"openai", "gemini"}:
+            return result("unsupported_provider")
         if not api_key:
             return result("missing_api_key")
 
@@ -213,13 +264,20 @@ class DecisionsClient:
                 for key in ids
             },
         }
+        if self.provider == "openai":
+            payload = _openai_payload(self.model, shared, ids)
+            url = "https://api.openai.com/v1/responses"
+            headers = {"Authorization": f"Bearer {api_key}"}
+        else:
+            url = URL
+            headers = {"x-goog-api-key": api_key}
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
         request_meta = {"request_bytes": len(body), "question_count": count}
         if len(body) > MAX_REQUEST_BYTES:
             return result("request_size_limit", **request_meta)
 
         deadline = TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds
-        if pdf_transport:
+        if pdf_transport and self.provider == "gemini":
             body, transport = await _prepare_decision_body(payload, shared, body, deadline)
             request_meta.update(request_bytes=len(body), transport=transport)
         if self.http is None:
@@ -228,8 +286,8 @@ class DecisionsClient:
         try:
             async with asyncio.timeout(deadline):
                 response = await self.http.post(
-                    URL, content=body,
-                    headers={"x-goog-api-key": api_key, "content-type": "application/json"},
+                    url, content=body,
+                    headers={**headers, "content-type": "application/json"},
                 )
         except (TimeoutError, httpx.TimeoutException):
             reason = "timeout"
@@ -260,7 +318,20 @@ class DecisionsClient:
             return result("invalid_response", **request_meta)
         request_meta["input_tokens"] = _input_tokens(data)
         try:
-            scores = _parse_scores(data, set(ids))
+            if self.provider == "openai":
+                usage = data.get("usage")
+                if isinstance(usage, dict):
+                    request_meta.update(
+                        input_tokens=_usage_count(usage, "input_tokens"),
+                        output_tokens=_usage_count(usage, "output_tokens"),
+                        cached_tokens=_usage_count(usage.get("input_tokens_details"), "cached_tokens"),
+                        reasoning_tokens=_usage_count(usage.get("output_tokens_details"), "reasoning_tokens"),
+                    )
+                scores = _openai_scores(data, set(ids))
+            else:
+                scores = _parse_scores(data, set(ids))
         except InvalidDecisionResponse as exc:
             return result(str(exc), **request_meta)
+        except (ValueError, TypeError, KeyError, AttributeError, RecursionError):
+            return result("invalid_response", **request_meta)
         return result(scores={ids[key]: score for key, score in scores.items()}, **request_meta)

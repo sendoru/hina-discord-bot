@@ -1,4 +1,4 @@
-# Gemini Decisions for Lore and personal memory
+# Retrieval decisions for Lore and personal memory
 
 Select `decision` independently for lore and personal memory. Both default to `full`.
 Only active Decision selection makes billable Decisions requests.
@@ -7,9 +7,10 @@ Only active Decision selection makes billable Decisions requests.
 
 - The selector sends the domain's relevance rules and all eligible candidates once in the
   shared input. One short `noul` question per candidate references its ID and the shared rules.
-  Lore and memory requests run concurrently when both are enabled. The client uses
-  `GEMINI_API_KEY` and `gemini-decision-1` on the Gemini Developer API. The answer provider is
-  configured independently.
+  Lore and memory requests run concurrently when both are enabled. Gemini uses `GEMINI_API_KEY` and `gemini-decision-1`. OpenAI sends the same eligible records
+  to its Responses endpoint with the configured primary model, strict JSON Schema and `store=false`.
+  The selector follows the main provider. Unsupported providers use the existing full fallback locally.
+  Enabling decision mode authorizes these extra same-provider requests.
 - Lore uses every reviewed static entry allowed by the current community and awareness settings.
   Selection keeps the source wording and awareness, timeline and uncertainty labels. An inference
   with explicit evidence dependencies is packed together with those sources when they fit.
