@@ -159,52 +159,104 @@ async def _bounded_body(response) -> bytes:
     return bytes(body)
 
 
+# Keep one bounded vision input per animated asset. This is a chronological
+# sample, not native video input. Cap decode work independently of transfer size.
+MAX_ANIMATION_FRAMES = 240
+MAX_ANIMATION_DECODE_PIXELS = 256_000_000
+ANIMATION_SAMPLE_FRAMES = 6
+ANIMATION_TILE_EDGE = 512
+
+
+def _needs_animation_decode(data: bytes, mime: str | None) -> bool:
+    if mime == "image/gif":
+        return True
+    if mime == "image/webp":
+        return len(data) > 20 and data[12:16] == b"VP8X" and bool(data[20] & 2)
+    if mime == "image/png":
+        return b"acTL" in data
+    return False
+
+
+def _animation_sheet(source, frame_count: int) -> Image.Image:
+    count = min(frame_count, ANIMATION_SAMPLE_FRAMES)
+    indices = [i * (frame_count - 1) // (count - 1) for i in range(count)]
+    width, height = source.size
+    scale = min(1.0, ANIMATION_TILE_EDGE / max(width, height))
+    tile_size = (max(1, int(width * scale)), max(1, int(height * scale)))
+    cols = min(3, count)
+    rows = (count + cols - 1) // cols
+    # Separate frames with a narrow neutral gutter so adjacent scenes aren't
+    # mistaken for a single image. Reading order is left-to-right, top-to-bottom.
+    gap = 4
+    sheet = Image.new("RGB", (cols * (tile_size[0] + gap) - gap,
+                             rows * (tile_size[1] + gap) - gap), (225, 225, 225))
+    for position, index in enumerate(indices):
+        source.seek(index)
+        frame = source.convert("RGBA")
+        frame = frame.resize(tile_size, Image.Resampling.LANCZOS)
+        x = (position % cols) * (tile_size[0] + gap)
+        y = (position // cols) * (tile_size[1] + gap)
+        sheet.paste(frame, (x, y), frame)
+    return sheet
+
+
+def _encode_static(image: Image.Image, budget: int) -> tuple[bytes, str, str]:
+    # WebP has a maximum side length of 16383 pixels.
+    if max(image.size) > 16383:
+        image.thumbnail((16383, 16383), Image.Resampling.LANCZOS)
+    else:
+        output = BytesIO()
+        image.save(output, "WEBP", lossless=True, method=4, exact=True)
+        if output.tell() <= budget:
+            return output.getvalue(), "image/webp", "lossless"
+    for _ in range(10):
+        for quality in (92, 82, 70):
+            output = BytesIO()
+            image.save(output, "WEBP", quality=quality, method=4)
+            if output.tell() <= budget:
+                return output.getvalue(), "image/webp", "compressed"
+        width, height = image.size
+        if max(width, height) <= 1:
+            break
+        image = image.resize(
+            (max(1, width * 3 // 4), max(1, height * 3 // 4)),
+            Image.Resampling.LANCZOS,
+        )
+    return b"", "", "compression_budget"
+
+
 def fit_visual_bytes(data: bytes, budget: int) -> tuple[bytes, str, str]:
-    """Fit a static image to the transfer budget; preserve animated originals."""
+    """Fit an image to the transfer budget, sampling animated sources into a still."""
     if len(data) > MAX_SOURCE_VISUAL_BYTES:
         return b"", "", "source_size_limit"
     mime = _sniff_image_mime(data)
     if mime is None:
         return b"", "", "unsupported_image"
-    if len(data) <= budget:
-        return data, mime, "original"
     if budget <= 0:
         return b"", "", "total_budget"
+    if len(data) <= budget and not _needs_animation_decode(data, mime):
+        return data, mime, "original"
     try:
         with Image.open(BytesIO(data)) as source:
-            if source.width * source.height > MAX_DECODE_PIXELS:
+            pixels = source.width * source.height
+            if pixels > MAX_DECODE_PIXELS:
                 return b"", "", "pixel_limit"
-            if getattr(source, "n_frames", 1) > 1:
-                return b"", "", "animated_over_budget"
+            frame_count = getattr(source, "n_frames", 1)
+            if frame_count > 1:
+                if (frame_count > MAX_ANIMATION_FRAMES
+                        or frame_count * pixels > MAX_ANIMATION_DECODE_PIXELS):
+                    return b"", "", "animation_decode_limit"
+                image = _animation_sheet(source, frame_count)
+                encoded, mime, reason = _encode_static(image, budget)
+                return encoded, mime, "animation_frames" if encoded else reason
             oriented = ImageOps.exif_transpose(source)
             image = oriented.convert(
                 "RGBA" if "A" in oriented.getbands() or "transparency" in oriented.info
                 else "RGB"
             )
-            # WebP has a maximum side length of 16383 pixels.
-            if max(image.size) > 16383:
-                image.thumbnail((16383, 16383), Image.Resampling.LANCZOS)
-            else:
-                output = BytesIO()
-                image.save(output, "WEBP", lossless=True, method=4, exact=True)
-                if output.tell() <= budget:
-                    return output.getvalue(), "image/webp", "lossless"
-            for _ in range(10):
-                for quality in (92, 82, 70):
-                    output = BytesIO()
-                    image.save(output, "WEBP", quality=quality, method=4)
-                    if output.tell() <= budget:
-                        return output.getvalue(), "image/webp", "compressed"
-                width, height = image.size
-                if min(width, height) <= 1 and max(width, height) <= 1:
-                    break
-                image = image.resize(
-                    (max(1, width * 3 // 4), max(1, height * 3 // 4)),
-                    Image.Resampling.LANCZOS,
-                )
-    except (OSError, ValueError, Image.DecompressionBombError):
+            return _encode_static(image, budget)
+    except (OSError, ValueError, Image.DecompressionBombError, EOFError):
         return b"", "", "decode_failed"
-    return b"", "", "compression_budget"
 
 
 def _fit_visual_in_worker(data: bytes, budget: int) -> tuple[bytes, str, str]:
@@ -422,6 +474,7 @@ async def collect_visual_inputs(
         metadata: dict[str, str],
         *,
         uri: str = "",
+        representation: str = "",
     ):
         nonlocal used
         if not has_room(source):
@@ -434,7 +487,7 @@ async def collect_visual_inputs(
             return
         budget = min(limits.max_image_bytes, limits.max_total_bytes - used)
         original_size = len(data)
-        if original_size > budget:
+        if original_size > budget or _needs_animation_decode(data, _sniff_image_mime(data)):
             data, mime, reason = await asyncio.to_thread(_fit_visual_in_worker, data, budget)
         else:
             data, mime, reason = fit_visual_bytes(data, budget)
@@ -446,6 +499,7 @@ async def collect_visual_inputs(
             )
             return
         if reason != "original":
+            representation = representation or reason
             note(reason)
             log.info(
                 "Visual compressed: source=%s method=%s before_bytes=%d after_bytes=%d",
@@ -457,6 +511,7 @@ async def collect_visual_inputs(
             source=source,
             name=name,
             uri=uri,
+            representation=representation,
             **metadata,
         ))
         counts[source] += 1
@@ -580,6 +635,7 @@ async def collect_visual_inputs(
                             "at": item.at,
                         },
                         uri=item.uri,
+                        representation=item.representation,
                     )
                 if len(result) > before:
                     accepted_context_messages += 1
