@@ -26,6 +26,7 @@ from .memory_extraction import (
 )
 from .memory_model_routing import build_memory_model_plan
 from .memory_visual import extraction_input, select_memory_visuals, visual_message_ids
+from .openai_capabilities import reasoning_options
 
 NO_MEMORY = "<NO_MEMORY>"
 log = logging.getLogger("hina")
@@ -140,6 +141,7 @@ class MemorySummaryMixin:
         )
         request = {
             "model": plan.model,
+            **reasoning_options(self.settings, plan.model, getattr(plan, "tier", "fixed")),
             "instructions": instructions,
             # With no images this stays the plain payload string, as before.
             "input": extraction_input(

@@ -15,6 +15,7 @@ from .config import (
     GEMINI_SEARCH_API_MODES,
     GEMINI_THINKING_LEVELS,
     MODEL_ROUTING_MODES,
+    OPENAI_REASONING_EFFORTS,
     PERSONAL_MEMORY_READ_MODES,
     RAG_MODES,
     Settings,
@@ -23,6 +24,7 @@ from .config import (
     parse_call_prefixes,
     parse_discord_id_set,
     parse_external_context_policy,
+    parse_openai_effort,
     parse_pdf_scope,
     parse_pdf_transport,
 )
@@ -68,6 +70,9 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "smart_output_tokens": "adaptive smart tier와 명시적 장문 요청에 사용할 최대 출력 토큰 예산입니다.",
     "memory_output_tokens": "장기 기억 요약·추출 요청에 사용할 최대 출력 토큰 예산입니다.",
     "routing_classifier_max_output_tokens": "semantic/web routing classifier 응답에 허용할 최대 출력 토큰 예산입니다.",
+    "openai_reasoning_effort": "OpenAI fixed 추론 강도입니다. default는 모델 기본값을 사용합니다.",
+    "openai_fast_reasoning_effort": "OpenAI fast 추론 강도입니다. default는 모델 기본값을 사용합니다.",
+    "openai_smart_reasoning_effort": "OpenAI smart 추론 강도입니다. default는 모델 기본값을 사용합니다.",
     "gemini_thinking_level": "Gemini fixed routing에서 사용할 추론 강도입니다.",
     "gemini_fast_thinking_level": "Gemini adaptive fast tier에서 사용할 추론 강도입니다.",
     "gemini_smart_thinking_level": "Gemini adaptive smart tier에서 사용할 추론 강도입니다.",
@@ -215,6 +220,15 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "int",
         minimum=32,
         maximum=1024,
+    ),
+    "openai_reasoning_effort": _runtime_spec(
+        "openai_reasoning_effort", "OPENAI_REASONING_EFFORT", "string", choices=OPENAI_REASONING_EFFORTS,
+    ),
+    "openai_fast_reasoning_effort": _runtime_spec(
+        "openai_fast_reasoning_effort", "OPENAI_FAST_REASONING_EFFORT", "string", choices=OPENAI_REASONING_EFFORTS,
+    ),
+    "openai_smart_reasoning_effort": _runtime_spec(
+        "openai_smart_reasoning_effort", "OPENAI_SMART_REASONING_EFFORT", "string", choices=OPENAI_REASONING_EFFORTS,
     ),
     "gemini_thinking_level": _runtime_spec(
         "gemini_thinking_level",
@@ -419,6 +433,8 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             return parse_external_context_policy(text)
         if spec.attr == "gemini_pdf_scope":
             return parse_pdf_scope(text)
+        if spec.attr.startswith("openai_") and spec.attr.endswith("reasoning_effort"):
+            return parse_openai_effort(text)
         if spec.attr == "gemini_pdf_transport":
             return parse_pdf_transport(text)
         if spec.attr in {"gemini_search_api_mode", "code_execution_backend"}:

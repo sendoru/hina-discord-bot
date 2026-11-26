@@ -1252,6 +1252,12 @@ class _OpenRouterResponses:
         return await self._responses.create(**request)
 
 
+class OpenAIClient(AsyncOpenAI):
+    """Native Responses client with attribution for metered operations."""
+
+    provider_name = "openai"
+
+
 class OpenRouterClient:
     provider_name = "openrouter"
 
@@ -1274,7 +1280,7 @@ def create_provider_client(
     *,
     credential: str | None = None,
     timeout: float = 45,
-    max_retries: int = 2,
+    max_retries: int | None = None,
     thinking_level: str | None = None,
 ):
     provider = normalize_provider(provider)
@@ -1289,5 +1295,5 @@ def create_provider_client(
             settings=settings,
         )
     if provider == "openrouter":
-        return OpenRouterClient(credential, timeout=timeout, max_retries=max_retries)
-    return AsyncOpenAI(api_key=credential, timeout=timeout, max_retries=max_retries)
+        return OpenRouterClient(credential, timeout=timeout, max_retries=2 if max_retries is None else max_retries)
+    return OpenAIClient(api_key=credential, timeout=timeout, max_retries=max_retries or 0)

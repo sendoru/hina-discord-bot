@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from hina_bot.core.config import gemini_store_enabled
 
 from .model_routing import ModelPlan, build_model_plan
+from .openai_capabilities import reasoning_options
 
 _CLASSIFIER_POLICY = """You classify two independent properties of one user request:
 1) semantic reasoning difficulty, and
@@ -309,6 +310,8 @@ class SemanticModelRouter:
         }
         request = {
             "model": self.settings.routing_classifier_model,
+            **reasoning_options(self.settings, self.settings.routing_classifier_model, "fast",
+                                provider=self.settings.routing_classifier_provider),
             "instructions": _CLASSIFIER_POLICY,
             "input": _classifier_input(payload, visual_inputs),
             "max_output_tokens": self.settings.routing_classifier_max_output_tokens,

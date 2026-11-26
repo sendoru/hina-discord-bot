@@ -8,6 +8,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
 
 SUPPORTED_MODEL_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
+OPENAI_REASONING_EFFORTS = ("default", "low", "medium", "high")
+
+
+def parse_openai_effort(value: str) -> str:
+    effort = value.strip().lower()
+    if effort not in OPENAI_REASONING_EFFORTS:
+        raise ValueError(f"OpenAI reasoning effort must be one of {OPENAI_REASONING_EFFORTS}")
+    return effort
+
+
 GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
 GEMINI_SEARCH_API_MODES = frozenset({"auto", "interactions", "generate_content"})
 CODE_EXECUTION_BACKENDS = frozenset({"auto", "native", "delegated"})
@@ -113,6 +123,9 @@ def parse_pdf_transport(value: str, *, legacy=False) -> str:
 def migrate_legacy_env_values(values, *, warn: bool = False) -> dict[str, str]:
     """Translate retired dotenv keys/values at the input boundary only."""
     result = dict(values)
+    for key in ("OPENAI_REASONING_EFFORT", "OPENAI_FAST_REASONING_EFFORT", "OPENAI_SMART_REASONING_EFFORT"):
+        if key in result:
+            result[key] = parse_openai_effort(result[key])
     old_model = result.pop("OPENAI_MODEL", "").strip()
     if old_model and not result.get("LLM_MODEL", "").strip():
         result["LLM_MODEL"] = old_model
@@ -178,6 +191,9 @@ class Settings:
     openai_api_key: str = ""
     gemini_api_key: str = ""
     openrouter_api_key: str = ""
+    openai_reasoning_effort: str = "default"
+    openai_fast_reasoning_effort: str = "default"
+    openai_smart_reasoning_effort: str = "default"
     gemini_thinking_level: str = "low"
     gemini_fast_thinking_level: str = "minimal"
     gemini_smart_thinking_level: str = "medium"
@@ -561,6 +577,9 @@ class Settings:
             routing_classifier_max_output_tokens=routing_classifier_max_output_tokens,
             openai_api_key=keys["openai"], gemini_api_key=keys["gemini"],
             openrouter_api_key=keys["openrouter"],
+            openai_reasoning_effort=parse_openai_effort(os.getenv("OPENAI_REASONING_EFFORT", "default")),
+            openai_fast_reasoning_effort=parse_openai_effort(os.getenv("OPENAI_FAST_REASONING_EFFORT", "default")),
+            openai_smart_reasoning_effort=parse_openai_effort(os.getenv("OPENAI_SMART_REASONING_EFFORT", "default")),
             gemini_thinking_level=gemini_thinking_level,
             gemini_fast_thinking_level=gemini_fast_thinking_level,
             gemini_smart_thinking_level=gemini_smart_thinking_level,
