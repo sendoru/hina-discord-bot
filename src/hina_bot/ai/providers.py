@@ -507,7 +507,7 @@ def _gemini_generate_content_output(data: dict):
                 type="code_execution_result",
                 call_id=call_id,
                 result=code_result.get("output") or "",
-                is_error=bool(outcome and outcome != "OUTCOME_OK"),
+                is_error=outcome != "OUTCOME_OK",
             ))
             final_text_pieces = []
             last_text_part = None

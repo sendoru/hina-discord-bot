@@ -91,6 +91,9 @@ async def test_only_minimum_text_and_managed_tool_are_sent():
 @pytest.mark.parametrize("response", [
     result(failed=True),
     result(executed=False),
+    NS(status="completed", output_text="42", output=[
+        *result().output, NS(type="code_execution_call", id="unfinished"),
+    ]),
     NS(status="incomplete", output=[], output_text="42"),
 ])
 async def test_unverified_execution_never_claims_success(response):

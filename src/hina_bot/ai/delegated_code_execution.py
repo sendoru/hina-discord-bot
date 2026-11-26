@@ -84,18 +84,19 @@ def _field(value, name, default=None):
 def _verified_result(response):
     if _field(response, "status") != "completed":
         raise LocalToolError("computation_incomplete")
-    calls = set()
+    latest_call_id = None
     last = None
     for item in _field(response, "output", ()) or ():
         kind = _field(item, "type")
         if kind == "code_execution_call":
-            calls.add(_field(item, "id"))
+            latest_call_id = _field(item, "id")
+            last = None
         elif kind == "code_execution_result":
             last = item
     if (
         last is None
         or not _field(last, "call_id")
-        or _field(last, "call_id") not in calls
+        or _field(last, "call_id") != latest_call_id
         or _field(last, "is_error", True)
     ):
         raise LocalToolError("computation_not_verified")
