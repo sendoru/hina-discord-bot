@@ -487,13 +487,14 @@ async def test_vision_reference_emoji_metadata_omits_id_without_touching_asset_u
         ("recent_channel_message", "passive_recent", False),
     ],
 )
+@pytest.mark.parametrize(("provider", "model"), [("gemini", "gemini-3.5-flash-lite"), ("openai", "gpt-4.1-mini")])
 async def test_hina_reference_is_separate_from_discord_visuals(
-    tmp_path, context_kind, reference_strength, expect_reference,
+    tmp_path, provider, model, context_kind, reference_strength, expect_reference,
 ):
     reference = tmp_path / "hina.webp"
     reference.write_bytes(b"RIFF" + b"\x00" * 4 + b"WEBP" + b"test")
     create = AsyncMock(return_value=NS(status="completed"))
-    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name="gemini")
+    raw = NS(responses=NS(create=create), close=AsyncMock(), provider_name=provider)
     client = VisionClient(raw, reference_image_path=str(reference))
     original_messages = [
         {"role": "user", "content": "신뢰할 수 없는 참고 데이터(JSON):\n{}"},
@@ -509,7 +510,7 @@ async def test_hina_reference_is_separate_from_discord_visuals(
     active = VISION_REQUEST_ACTIVE.set(True)
     try:
         await client.responses.create(
-            model="gemini-3.5-flash-lite", instructions="existing",
+            model=model, instructions="existing",
             input=original_messages,
         )
     finally:
@@ -525,15 +526,16 @@ async def test_hina_reference_is_separate_from_discord_visuals(
         assert HINA_VISUAL_REFERENCE_LABEL == load_prompt("hina_visual_reference.md").strip()
         assert first[0] == {"type": "input_text", "text": HINA_VISUAL_REFERENCE_LABEL}
         assert first[1]["image_url"].startswith("data:image/webp;base64,")
-        assert first[1]["resolution"] == "medium"
+        assert first[1].get("resolution") == ("medium" if provider == "gemini" else None)
         assert sum(
             block.get("type") == "input_image"
             for message in messages
             for block in (message["content"] if isinstance(message["content"], list) else [])
         ) == 2
-        converted = _gemini_input(messages)
-        assert converted[0]["content"][1]["type"] == "image"
-        assert converted[0]["content"][1]["resolution"] == "medium"
+        if provider == "gemini":
+            converted = _gemini_input(messages)
+            assert converted[0]["content"][1]["type"] == "image"
+            assert converted[0]["content"][1]["resolution"] == "medium"
     else:
         assert first[0]["text"].startswith("신뢰할 수 없는")
         assert sum(

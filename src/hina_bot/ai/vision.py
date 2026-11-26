@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .audio import AUDIO_INPUT_POLICY, CURRENT_AUDIO_INPUTS, augment_audio_input
 from .discord_emoji_input import normalize_custom_emoji_text
+from .openai_capabilities import supports_reference_image
 from .prompts import load_prompt
 
 VISION_INPUT_POLICY = load_prompt("vision_input.md")
@@ -389,7 +390,8 @@ class _VisionResponses:
             request["input"] = augment_audio_input(request.get("input"), audios)
         # Passive recent images alone do not activate the fixed reference.
         if (
-            self._provider_name == "gemini"
+            (self._provider_name == "gemini" or
+             (self._provider_name == "openai" and supports_reference_image(model)))
             and not stored_continuation
             and self._reference_image_urls
             and any(
@@ -424,7 +426,7 @@ class VisionClient:
         self.provider_name = getattr(client, "provider_name", "openai")
         reference_image_urls = (
             _load_hina_reference_images(reference_image_path)
-            if self.provider_name == "gemini" else ()
+            if self.provider_name in {"gemini", "openai"} else ()
         )
         self.responses = _VisionResponses(
             client.responses,
