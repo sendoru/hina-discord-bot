@@ -409,7 +409,9 @@ Supplementary Unicode characters (including emoji) use UTF-16BE ToUnicode
 mappings, correcting ReportLab's raw scalar hex output in the local PDF font
 subclass before serialization. Unsupported glyphs still fall back to the
 original text; no warnings are suppressed. The Docker image includes DejaVu
-Sans as a fallback font, in addition to Nanum.
+Sans and DejaVu Math TeX Gyre as fallback fonts, in addition to Nanum. The
+renderer also discovers Noto Sans Math when installed, preserving mathematical
+alphanumeric symbols without normalizing them into ordinary Latin letters.
 The new per-document guard is 240,000 source characters, 1.5 MB PDF bytes
 and 100 pages; the wire body guard remains 8 MB for answer operations.
 A bounded planner may render temporary fragments locally to isolate failures,

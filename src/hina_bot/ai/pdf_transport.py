@@ -97,6 +97,8 @@ _FALLBACK_FONT_PATHS = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuMathTeXGyre.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansMath-Regular.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.ttf",
 )
