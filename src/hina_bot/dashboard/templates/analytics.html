@@ -142,6 +142,54 @@
   </section>
 </div>
 
+<section class="panel" id="code-execution-performance">
+  <h2>Code execution performance</h2>
+  {% set code = data.performance.code_execution %}
+  <p class="muted">Gemini 답변 턴 기준. 위임 호출은 실제 API 요청(실패·timeout 포함)이며,
+    native는 실행 결과가 usage에 관측된 턴만 집계합니다. 그룹 간 차이는 작업 난이도 등의 영향을
+    받으므로 위임의 순수 추가 지연으로 해석하지 않습니다.</p>
+  <p>Delegated API calls: <strong>{{ code.calls }}</strong>
+    / unmatched: {{ code.unmatched_calls }}
+    {% for status, count in code.call_statuses.items() %} · {{ status }}: {{ count }}{% endfor %}
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Worker latency</th><th>Avg (ms)</th><th>p50</th><th>p95</th><th>Coverage</th></tr></thead>
+      <tbody>
+      {% for name, metric in [("Per call", code.call_latency), ("Sum per delegated turn", code.worker_time_per_turn)] %}
+      <tr>
+        <td>{{ name }}</td>
+        <td class="numeric">{{ metric.average if metric.average is not none else "—" }}</td>
+        <td class="numeric">{{ metric.p50 if metric.p50 is not none else "—" }}</td>
+        <td class="numeric">{{ metric.p95 if metric.p95 is not none else "—" }}</td>
+        <td>{{ metric.known }} / {{ metric.known + metric.missing }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Turn group</th><th>Turns</th><th>Latency</th><th>Avg (ms)</th><th>p50</th><th>p95</th><th>Coverage</th></tr></thead>
+      <tbody>
+      {% for name, group in code.groups.items() %}
+      {% for label, metric in [("Reply delivered", group.reply_latency), ("Generation", group.generation_latency), ("Total turn", group.turn_latency)] %}
+      <tr>
+        <td>{{ name }}</td>
+        <td class="numeric">{{ group.turns }}</td>
+        <td>{{ label }}</td>
+        <td class="numeric">{{ metric.average if metric.average is not none else "—" }}</td>
+        <td class="numeric">{{ metric.p50 if metric.p50 is not none else "—" }}</td>
+        <td class="numeric">{{ metric.p95 if metric.p95 is not none else "—" }}</td>
+        <td>{{ metric.known }} / {{ metric.known + metric.missing }}</td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="panel">
   <h2>Request size attribution</h2>
   <p class="muted">직렬화된 문자 수는 본문을 저장하지 않는 기여도 추정치입니다. 입력 토큰은 공급자 보고값이 기준입니다.</p>

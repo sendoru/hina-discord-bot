@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from hina_bot.dashboard.analytics import build_analytics
 from hina_bot.dashboard.telemetry import TelemetrySnapshot
 
@@ -344,3 +346,79 @@ def test_analytics_exposes_api_categories_and_context_char_attribution():
     assert data["performance"]["context_chars"]["instruction_search_chars"]["average"] == 60
     assert data["performance"]["context_chars"]["request_input_chars"]["average"] == 900
     assert data["performance"]["context_chars"]["request_chars_total"]["average"] == 2300
+
+
+def test_code_execution_latency_groups_join_once_per_turn():
+    original = snapshot()
+    rows = (
+        *original.usage,
+        {
+            "turn_id": "a", "operation": "answer", "provider": "gemini",
+            "model": "smart-model", "elapsed_ms": 30,
+        },
+        {
+            "turn_id": "a", "operation": "code_execution.delegated",
+            "provider": "gemini", "model": "worker", "elapsed_ms": 40,
+            "status": "completed", "total_tokens": 10,
+        },
+        {
+            "turn_id": "a", "operation": "code_execution.delegated",
+            "provider": "gemini", "model": "worker", "elapsed_ms": 20,
+            "status": "timeout",
+        },
+        {
+            "turn_id": "b", "operation": "answer", "provider": "gemini",
+            "model": "fast-model", "elapsed_ms": 5,
+            "response_output_types": ["code_execution_result"],
+        },
+        {
+            "operation": "code_execution.delegated",
+            "provider": "gemini", "model": "worker", "elapsed_ms": 12,
+            "status": "completed",
+        },
+    )
+    data = build_analytics(replace(original, usage=rows))
+    code = data["performance"]["code_execution"]
+    assert code["calls"] == 3
+    assert code["unmatched_calls"] == 1
+    assert code["call_statuses"] == {"completed": 2, "timeout": 1}
+    assert code["call_latency"]["p95"] == 40
+    assert code["worker_time_per_turn"]["average"] == 60
+    delegated = code["groups"]["delegated"]
+    assert delegated["turns"] == 1
+    assert delegated["reply_latency"]["p50"] == 1600
+    assert delegated["turn_latency"]["p50"] == 1900
+    assert delegated["generation_latency"]["p50"] == 1200
+    native = code["groups"]["native_result_observed"]
+    assert native["turns"] == 1
+    assert native["reply_latency"]["p95"] == 450
+    assert code["groups"]["no_execution_observed"]["turns"] == 0
+    assert data["performance"]["api_categories"]["delegated_code"]["calls"] == 3
+    # Delegated worker API time is no longer hidden in generation residual.
+    assert data["performance"]["generation"]["residual"]["average"] == 28
+
+    filtered = build_analytics(replace(original, usage=rows), model="smart-model")
+    code = filtered["performance"]["code_execution"]
+    assert code["calls"] == 2  # worker model differs, but belongs to the selected answer
+    assert code["groups"]["native_result_observed"]["turns"] == 0
+
+
+def test_code_execution_latency_preserves_missing_coverage():
+    original = snapshot()
+    rows = (
+        *original.usage,
+        {
+            "turn_id": "a", "operation": "code_execution.delegated",
+            "provider": "gemini", "model": "worker", "status": "error",
+        },
+    )
+    events = tuple(row for row in original.events if row.get("turn_id") != "a")
+    code = build_analytics(replace(original, usage=rows, events=events))[
+        "performance"
+    ]["code_execution"]
+    assert code["worker_time_per_turn"]["missing"] == 1
+    assert code["worker_time_per_turn"]["average"] is None
+    assert code["groups"]["delegated"]["reply_latency"]["missing"] == 1
+    assert code["groups"]["delegated"]["turn_latency"]["missing"] == 1
+    assert code["groups"]["delegated"]["generation_latency"]["missing"] == 1
+    assert code["groups"]["no_execution_observed"]["turns"] == 1
