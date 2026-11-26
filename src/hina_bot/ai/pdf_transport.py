@@ -58,7 +58,7 @@ def _repair_supplementary_cmap(cmap, subset):
 class _PDFUnicodeFont(TTFont):
     """Fix ToUnicode before serialization without monkeypatching ReportLab globally."""
 
-    def addObjects(self, doc):  # noqa: N802 - ReportLab's font hook
+    def addObjects(self, doc):  # ReportLab's font hook
         state = self.state.get(doc)
         supplementary_subsets = [
             (self.getSubsetInternalName(index, doc)[1:], tuple(subset))
