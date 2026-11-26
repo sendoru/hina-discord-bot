@@ -117,24 +117,36 @@ def _fallback_font(index):
         return None
 
 
+class _UnsupportedGlyph(Exception):
+    pass
+
+
 def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
     font = _font()
     by_char = {}
+    widths = {}
 
-    def font_for(char):
-        if char in by_char:
-            return by_char[char]
+    def width_for(char):
+        try:
+            return widths[char]
+        except KeyError:
+            pass
         if not char.isprintable():
-            return None
-        selected = font if font.face.charToGlyph.get(ord(char)) else None
+            raise _UnsupportedGlyph
+        codepoint = ord(char)
+        selected = font if font.face.charToGlyph.get(codepoint) else None
         if selected is None:
             for index in range(len(_FALLBACK_FONT_PATHS)):
                 alternative = _fallback_font(index)
-                if alternative is not None and alternative.face.charToGlyph.get(ord(char)):
+                if alternative is not None and alternative.face.charToGlyph.get(codepoint):
                     selected = alternative
                     break
+        if selected is None:
+            raise _UnsupportedGlyph
+        glyph_width = selected.face.charWidths[codepoint]
         by_char[char] = selected
-        return selected
+        widths[char] = glyph_width
+        return glyph_width
     width, height = A4
     stream = io.BytesIO()
     canvas = Canvas(stream, pagesize=A4, pageCompression=1, invariant=1)
@@ -150,13 +162,10 @@ def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
             if cancelled is not None and cancelled.is_set():
                 return None, "encode_deadline"
             token = match.group()
-            fonts = [font_for(c) for c in token]
-            if any(selected is None for selected in fonts):
+            try:
+                token_width = sum(map(width_for, token)) * size / 1000
+            except _UnsupportedGlyph:
                 return None, "unsupported_glyph"
-            token_width = sum(
-                selected.face.charWidths[ord(c)]
-                for c, selected in zip(token, fonts, strict=True)
-            ) * size / 1000
             if token_width > width - 2 * margin:
                 return None, "unbreakable_token"
             if advance + token_width > width - 2 * margin:
