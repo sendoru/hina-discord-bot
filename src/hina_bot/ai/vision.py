@@ -103,6 +103,7 @@ class VisualInput:
     message_content: str = ""
     at: str = ""
     uri: str = ""
+    representation: str = ""
 
     def data_url(self) -> str:
         encoded = base64.b64encode(self.data).decode("ascii")
@@ -110,7 +111,7 @@ class VisualInput:
 
     def input_url(self) -> str:
         # Discord proxy links can expire; use the validated bytes already fetched.
-        if self.source == "embed":
+        if self.source == "embed" or self.representation:
             return self.data_url()
         return self.uri if self.uri.startswith("https://") else self.data_url()
 
@@ -154,6 +155,8 @@ class VisualInput:
         suffix = f" · {' · '.join(details)}" if details else ""
         if name:
             suffix += f" · {name}"
+        if self.representation == "animation_frames":
+            suffix += " · 애니메이션의 일부 프레임을 시간순(왼쪽→오른쪽, 위→아래)으로 배열한 정지 이미지; 전체 영상이 아님"
         return f"{context}의 {source} {index}{suffix}"
 
 
