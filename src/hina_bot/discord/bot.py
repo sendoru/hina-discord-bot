@@ -35,6 +35,7 @@ from .emoji_commands import EmojiRegistry
 from .forward_context import message_context_text, message_turn_text
 from .message_split import prepare_discord_answer
 from .output_safety import neutralize_mentions
+from .reply_context import REPLY_CONTEXT
 from .target_recent import CURRENT_CHANNEL_CONTEXT
 from .vision import memory_visuals_for_turn, message_has_visual
 
@@ -885,14 +886,25 @@ class HinaClient(discord.Client):
                             for visual in visuals
                         )
                     )
+                    reply_visual_ids = {
+                        str(row.get("message_id")) for row in REPLY_CONTEXT.get()
+                        if row.get("has_visual")
+                    }
+                    reply_visual_missing = bool(reply_visual_ids) and not any(
+                        visual.reference_strength == "current_message"
+                        or (visual.reference_strength == "explicit_reply"
+                            and visual.message_id in reply_visual_ids)
+                        for visual in visuals
+                    )
                     if (not text and not message_embed_text(message)
-                            and (current_visual_missing or (
+                            and (current_visual_missing or reply_visual_missing or (
                                 not _has_strong_visual_context(visuals)
                                 and not _has_strong_visual_context(CURRENT_AUDIO_INPUTS.get())
                             ))):
                         raw_turn_persistence = "skipped"
                         raw_turn_persistence_reason = (
                             "current_visual_unavailable" if current_visual_missing
+                            else "reply_visual_unavailable" if reply_visual_missing
                             else "fixed_reply_no_raw_turn"
                         )
                         stage = "delivery"
@@ -901,7 +913,9 @@ class HinaClient(discord.Client):
                         await self.send_text(
                             message.channel,
                             "첨부한 이미지를 읽지 못했어. 다시 보내 줄래?"
-                            if current_visual_missing else _bare_call_reply(
+                            if current_visual_missing else
+                            "답장한 메시지의 이미지를 읽지 못했어. 다시 보내 줄래?"
+                            if reply_visual_missing else _bare_call_reply(
                                 scope,
                                 self.settings.special_dm_user_id,
                                 self.settings.empty_call_reply,
