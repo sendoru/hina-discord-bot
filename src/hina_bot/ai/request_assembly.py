@@ -654,8 +654,9 @@ class RequestAssembler(BaseLLM):
                 event=self.usage.routing_event,
                 trace=lore_trace,
             )
+        code_mode = self.settings.code_execution_backend
         code_backend = code_execution_backend(
-            self.settings.provider, has_audio=bool(CURRENT_AUDIO_INPUTS.get()),
+            self.settings.provider, mode=code_mode, has_audio=bool(CURRENT_AUDIO_INPUTS.get()),
         )
         if code_backend == "delegated":
             worker_model, worker_thinking_level = delegated_model_settings(self.settings)
@@ -846,6 +847,9 @@ class RequestAssembler(BaseLLM):
                 request["tool_choice"] = tool_choice
 
         route_metadata = model_plan.telemetry()
+        route_metadata["code_execution_backend"] = code_backend
+        if self.settings.provider == "gemini":
+            route_metadata["code_execution_mode"] = code_mode
         if self.settings.provider != "gemini":
             route_metadata.pop("requested_thinking_level", None)
         transient_retry_used = False
