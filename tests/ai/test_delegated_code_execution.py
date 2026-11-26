@@ -50,6 +50,18 @@ def test_backend(provider, audio, pdf, expected):
     assert code_execution_backend(provider, has_audio=audio, has_pdf=pdf) == expected
 
 
+@pytest.mark.parametrize(("provider", "requested", "audio", "expected"), [
+    ("gemini", "native", True, "none"),
+    ("gemini", "delegated", False, "delegated"),
+    ("openai", "delegated", False, "none"),
+    ("openai", "native", True, "native"),
+    ("openrouter", "native", False, "none"),
+    ("gemini", "local", False, "none"),
+])
+def test_explicit_backend_never_switches(provider, requested, audio, expected):
+    assert code_execution_backend(provider, requested=requested, has_audio=audio) == expected
+
+
 @pytest.mark.asyncio
 async def test_only_minimum_text_and_managed_tool_are_sent():
     async def run(*args, **kwargs):
