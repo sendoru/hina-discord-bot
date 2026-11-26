@@ -1,3 +1,4 @@
+import base64
 import json
 from dataclasses import dataclass
 from types import SimpleNamespace as NS
@@ -9,6 +10,7 @@ import pytest
 from hina_bot.ai import pdf_transport, providers
 from hina_bot.ai.information_pipeline import InformationPipeline
 from hina_bot.ai.pdf_transport import GeminiInlinePDF, PreparedPDFReference
+from hina_bot.ai.prompts import document_prompt_components, prompt_components
 from hina_bot.ai.reference_context_blocks import PDFReferenceText
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
@@ -23,7 +25,7 @@ class PDFSettings(Settings):
 
 def mock_encoder(monkeypatch, success):
     async def encode(source):
-        document = GeminiInlinePDF(b"%PDF-fixture", 1) if success else None
+        document = GeminiInlinePDF(source.encode(), 1) if success else None
         observation = pdf_transport.text_reference_observation(
             source, "" if success else "unsupported_glyph",
         )
@@ -90,6 +92,35 @@ async def test_pdf_answer_prepares_before_tools_and_preserves_wire_compatibility
     serialized = json.dumps(body)
     assert serialized.count("application/pdf") == int(success and mode != "native")
     assert ("app_guidance" in serialized) == (success and mode != "native")
+    system = body["system_instruction"]
+    if isinstance(system, dict):
+        system = system["parts"][0]["text"]
+    moved = success and mode != "native"
+    for name in ("dialogue_context.md", "turn_response.md", "final_output.md"):
+        for _, guidance in document_prompt_components(name):
+            assert (guidance in system) == (not moved)
+        for label, policy in prompt_components(name):
+            if label is None:
+                assert policy.strip() in system
+    if moved:
+        def documents(value):
+            if isinstance(value, dict):
+                if value.get("mime_type", value.get("mimeType")) == "application/pdf":
+                    yield base64.b64decode(value["data"]).decode()
+                for item in value.values():
+                    yield from documents(item)
+            elif isinstance(value, list):
+                for item in value:
+                    yield from documents(item)
+
+        (source,) = documents(body)
+        for name in ("dialogue_context.md", "turn_response.md", "final_output.md"):
+            for label, guidance in document_prompt_components(name):
+                assert json.loads(next(
+                    line for line in source.splitlines()
+                    if line.startswith('{"app_guidance":') and label in line
+                ))["app_guidance"][label] == guidance
+
     assert ("request_computation" in serialized) == (expected == "delegated")
     if api == "generate_content":
         native = any("code_execution" in tool for tool in body.get("tools", []))
