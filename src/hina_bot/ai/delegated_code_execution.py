@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from threading import BoundedSemaphore
 
+from hina_bot.core.config import CODE_EXECUTION_BACKENDS
+
 from .local_tools import LocalToolError, LocalToolRegistry, LocalToolSpec
 from .vision import VISION_REQUEST_ACTIVE
 
@@ -46,13 +48,19 @@ COMPUTATION_SPEC = LocalToolSpec(
 )
 
 
-def code_execution_backend(provider: str, *, has_audio=False, has_pdf=False) -> str:
-    """Choose one backend from actual input capabilities, never from semantic guesses."""
-    if provider == "gemini" and (has_audio or has_pdf):
+def code_execution_backend(
+    provider: str, *, mode: str = "auto", has_audio=False, has_pdf=False,
+) -> str:
+    """Choose one backend; explicit Gemini modes never switch to another backend."""
+    if mode not in CODE_EXECUTION_BACKENDS:
+        raise ValueError("Unsupported code execution backend")
+    if provider != "gemini":
+        return "native" if provider == "openai" else "none"
+    if mode == "delegated":
         return "delegated"
-    if provider in {"gemini", "openai"}:
-        return "native"
-    return "none"
+    if has_audio or has_pdf:
+        return "none" if mode == "native" else "delegated"
+    return "native"
 
 
 def delegated_model_settings(settings) -> tuple[str, str]:
