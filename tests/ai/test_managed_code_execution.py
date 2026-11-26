@@ -6,12 +6,12 @@ import pytest
 
 from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS
 from hina_bot.ai.information_pipeline import InformationPipeline
-from hina_bot.ai.model_routing import fixed_model_plan
 from hina_bot.ai.managed_tools import (
     CODE_EXECUTION_POLICY,
     ManagedToolCapability,
     managed_tool_config,
 )
+from hina_bot.ai.model_routing import fixed_model_plan
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
 from hina_bot.core.store import Store
