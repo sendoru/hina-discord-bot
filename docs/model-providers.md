@@ -416,12 +416,14 @@ The new per-document guard is 240,000 source characters, 1.5 MB PDF bytes
 and 100 pages; the wire body guard remains 8 MB for answer operations.
 A bounded planner may render temporary fragments locally to isolate failures,
 but never sends multiple generated PDF documents. If final consolidation fails,
-the exact original native input is retained. No extra remote request.
+the largest already verified fragment is retained as the sole document when
+available; remaining fragments stay native. If none is verified, the exact
+original native input is retained. No extra remote request.
 
 | Input | PDF policy |
 |---|---|
 | Answer references | History, direct reply, memories, lore, emoji metadata in the consolidated document. Native current speaker and current utterance. Direct replies remain native when preserving a replay role boundary requires it. |
-| App-owned prompt components | Explicit continuity, world core, character, selected compact lore; moved only after successful document creation and exact component validation. Native system retains policy, privacy, identity/provenance, relationship, runtime, administrator, tool and output rules. |
+| App-owned prompt components | Continuity, world core, character, dialogue context, turn response, conversation-space policy, applicable structured memory and vision guidance, and compact lore; moved only after successful document creation and exact component validation. Native system retains policy, privacy, identity/provenance, relationship, runtime, administrator, tool and output rules. |
 | Memory and knowledge | Authorized existing operation input, with native image/audio and metadata preserved. |
 | Decisions | Candidate map in a single document; native selection rules, current turn and questions. Exact original IDs and 240,000-byte logical and wire guards, 1,000 questions, bounded local prep budget and selection fallback. |
 | DM replay and local tool results | Native roles, call IDs and provider envelopes remain unchanged; no unsafe relocation of result data. |
