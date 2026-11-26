@@ -1038,11 +1038,13 @@ def test_fit_visual_bytes_keeps_small_originals_and_rejects_invalid_oversize():
     assert fit_visual_bytes(PNG, 8) == (b"", "", "decode_failed")
 
 
-@pytest.mark.parametrize("budget", [8192, 256])
+@pytest.mark.parametrize("budget", [8192, 128])
 def test_fit_visual_bytes_samples_animation_in_chronological_order(budget):
     data, mime, reason = fit_visual_bytes(GIF, budget)
     assert (mime, reason) == ("image/webp", "animation_frames")
     assert len(data) <= budget
+    if budget == 128:
+        assert len(GIF) > budget
     with Image.open(BytesIO(data)) as sheet:
         assert sheet.n_frames == 1
         assert sheet.size == (68, 32)
@@ -1203,3 +1205,16 @@ async def test_transformed_cached_visual_uses_inline_bytes_and_keeps_representat
         assert "전체 영상이 아님" in items[0].label(1)
         assert items[0].input_url().startswith("data:image/webp;base64,")
     attachment.read.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_compressed_static_attachment_sends_actual_bytes_not_original_cdn():
+    data = _large_png()
+    attachment = NS(size=len(data), content_type="image/png", filename="large.png",
+                    url="https://cdn.discordapp.com/attachments/10/1/large.png",
+                    read=AsyncMock(return_value=data))
+    message = NS(id=1, content="", attachments=[attachment], stickers=[])
+    result = await collect_visual_inputs(message, limits=VisionLimits(max_image_bytes=8192))
+    assert len(result) == 1
+    assert result[0].representation == "lossless"
+    assert result[0].input_url() == result[0].data_url()
