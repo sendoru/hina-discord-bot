@@ -271,3 +271,37 @@ async def test_audio_delegates_only_on_function_call_and_resumes_answer(tmp_path
         CURRENT_AUDIO_INPUTS.reset(token)
         await llm.close()
         store.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("mode", "audio", "expected"), [
+    ("native", False, "native"),
+    ("native", True, "none"),
+    ("delegated", False, "delegated"),
+    ("delegated", True, "delegated"),
+    ("auto", False, "native"),
+    ("auto", True, "delegated"),
+])
+async def test_configured_code_backend_controls_actual_tools(tmp_path, mode, audio, expected):
+    fake = client("알겠어.")
+    config = replace(settings(tmp_path), code_execution_backend=mode)
+    llm = InformationPipeline(config, client=fake)
+    store = Store.create(":memory:")
+    token = CURRENT_AUDIO_INPUTS.set((object(),) if audio else ())
+    try:
+        await llm.answer(
+            store, Scope(None, 10, 100), "사용자",
+            "https://example.com/docs 확인해 줘", channel_context=[],
+        )
+        request = fake.responses.create.await_args.kwargs
+        tools = request.get("tools", [])
+        assert ({"type": "code_execution"} in tools) == (expected == "native")
+        assert any(
+            tool.get("name") == "request_computation" for tool in tools
+        ) == (expected == "delegated")
+        assert {"type": "url_context"} in tools
+        assert fake.responses.create.await_count == 1
+    finally:
+        CURRENT_AUDIO_INPUTS.reset(token)
+        await llm.close()
+        store.close()
