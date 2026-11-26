@@ -12,6 +12,7 @@ from hina_bot.core.lore_tool_search import LoreKeywordIndex
 from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
 from .decisions import MODEL as GEMINI_DECISION_MODEL
+from .decisions import OPENAI_MODEL as OPENAI_DECISION_MODEL
 from .decisions import DecisionsClient
 from .output_repair import OutputRepair
 from .prompts import load_prompt
@@ -67,7 +68,7 @@ class LLM:
         )
         self.decisions_client = DecisionsClient(
             provider=settings.provider,
-            model=settings.model if settings.provider == "openai" else GEMINI_DECISION_MODEL,
+            model=OPENAI_DECISION_MODEL if settings.provider == "openai" else GEMINI_DECISION_MODEL,
         )
         self.usage = UsageLogger(settings.usage_log_path)
         self.output_repair = OutputRepair(settings, client, self.usage)

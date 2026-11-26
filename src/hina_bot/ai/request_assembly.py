@@ -870,6 +870,8 @@ class RequestAssembler(BaseLLM):
             "max_output_tokens": model_plan.max_output_tokens,
             "store": gemini_store_enabled(self.settings, "answer"),
         }
+        if self.settings.provider == "openai":
+            request["include"] = ["reasoning.encrypted_content"]
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
             if vision_policy_prepared:

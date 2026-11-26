@@ -7,7 +7,7 @@ from openai import APIStatusError, APITimeoutError
 from hina_bot.ai.audio import CURRENT_AUDIO_UNAVAILABLE
 from hina_bot.ai.decisions import DecisionsClient
 from hina_bot.ai.local_tools import LocalToolExecutor, LocalToolRegistry, LocalToolSpec
-from hina_bot.ai.openai_capabilities import reasoning_options
+from hina_bot.ai.openai_capabilities import reasoning_options, supports_reference_image
 from hina_bot.ai.providers import OpenAIClient
 from hina_bot.ai.runtime_llm import LLM
 from hina_bot.ai.usage import UsageLogger
@@ -17,29 +17,64 @@ from hina_bot.core.runtime_config import RUNTIME_SETTING_SPECS, parse_runtime_va
 from hina_bot.core.store import Store
 
 
-@pytest.mark.parametrize(("text", "reason"), [
-    ('{"c1":0.1,"c1":0.3}', "duplicate_response_key"),
-    ('{"other":1}', "invalid_candidate_ids"), ('{}', "invalid_candidate_ids"),
-    ('{"c1":true}', "invalid_probability"), ('{"c1":1.1}', "invalid_probability"),
-    ('{"c1":NaN}', "invalid_probability"),
+@pytest.mark.parametrize(("answers", "reason"), [
+    ([{"type": "predicate", "name": "c1", "probability": 0.1},
+      {"type": "predicate", "name": "c1", "probability": 0.3}], "duplicate_response_key"),
+    ([{"type": "predicate", "name": "other", "probability": 1}], "unexpected_answers"),
+    ([], "missing_answers"),
+    ([{"type": "predicate", "name": "c1", "probability": True}], "invalid_probability"),
+    ([{"type": "predicate", "name": "c1", "probability": 1.1}], "invalid_probability"),
+    ([{"type": "refusal", "name": "c1"}], "invalid_answer_type"),
 ])
-async def test_invalid_openai_selection_fails_closed(text, reason):
+async def test_invalid_openai_selection_fails_closed(answers, reason):
     def wire(req):
-        assert str(req.url) == "https://api.openai.com/v1/responses"
+        assert str(req.url) == "https://api.openai.com/v1/decisions"
         assert "x-goog-api-key" not in req.headers
         assert req.headers["Authorization"] == "Bearer fixture"
         body = json.loads(req.content)
-        assert body["store"] is False and body["text"]["format"]["strict"]
-        assert body["text"]["format"]["schema"]["required"] == ["c1"]
-        return httpx.Response(200, json={"status": "completed", "output": [
-            {"type": "message", "content": [{"type": "output_text", "text": text}]},
-        ]})
+        assert body["model"] == "gpt-6-luna"
+        assert set(body) == {"model", "input", "questions"}
+        assert [(q["name"], q["type"]) for q in body["questions"]] == [("c1", "predicate")]
+        return httpx.Response(200, json={"answers": answers})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(wire)) as http:
-        result = await DecisionsClient(http, "openai", "gpt-4.1-mini").evaluate(
+        result = await DecisionsClient(http, "openai", "gpt-6-luna").evaluate(
             api_key="fixture", domain="memory", candidates={"memory.7": {}}, query={},
         )
     assert result.reason == reason and result.scores is None
+
+
+@pytest.mark.parametrize("fail", [False, True])
+async def test_native_decision_batches_and_partial_usage(fail):
+    batches = []
+
+    def wire(req):
+        body = json.loads(req.content)
+        ids = [q["name"] for q in body["questions"]]
+        assert set(ids) == json.loads(body["input"])["candidates"].keys()
+        batches.append(ids)
+        if fail and len(batches) == 2:
+            return httpx.Response(503)
+        return httpx.Response(200, json={
+            "answers": [{"type": "predicate", "name": key, "probability": 0.8} for key in ids],
+            "usage": {"input_tokens": 100, "output_tokens": 0,
+                      "input_tokens_details": {"cached_tokens": 20, "cache_write_tokens": 3},
+                      "output_tokens_details": {"reasoning_tokens": 0}},
+        })
+
+    candidates = {f"memory.{i}": {} for i in range(401)}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(wire)) as http:
+        result = await DecisionsClient(http, "openai", "gpt-6-luna").evaluate(
+            api_key="fixture", domain="memory", candidates=candidates, query={}, timeout_seconds=5,
+        )
+    assert [len(batch) for batch in batches] == [400, 1]
+    assert result.request_count == 2
+    assert result.input_tokens == (100 if fail else 200)
+    assert result.cache_write_tokens == (3 if fail else 6)
+    if fail:
+        assert result.reason == "provider_error" and result.scores is None
+    else:
+        assert result.reason == "" and result.scores == dict.fromkeys(candidates, 0.8)
 
 
 def test_openai_runtime_effort_and_model_capability():
@@ -51,6 +86,11 @@ def test_openai_runtime_effort_and_model_capability():
     assert reasoning_options(settings, "gpt-5.4-mini", "fast") == {"reasoning": {"effort": "low"}}
     assert reasoning_options(settings, "gpt-4.1-mini", "fast") == {}
     assert reasoning_options(settings, "gpt-5.4-mini", "smart") == {}
+    assert supports_reference_image("gpt-6-luna")
+    settings = Settings(discord_token="fixture", openai_fast_reasoning_effort="none")
+    assert reasoning_options(settings, "gpt-6-luna", "fast") == {"reasoning": {"effort": "none"}}
+    with pytest.raises(ValueError, match="does not support"):
+        reasoning_options(settings, "gpt-6.2-sol", "fast")
 
 
 async def test_stateless_sdk_tool_loop_and_token_accounting(tmp_path):

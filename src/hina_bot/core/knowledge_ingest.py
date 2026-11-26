@@ -1,6 +1,8 @@
 import json
 import re
 
+from hina_bot.ai.openai_capabilities import reasoning_options
+
 from .config import gemini_store_enabled
 from .runtime_knowledge import KNOWLEDGE_LEVELS, RuntimeKnowledgeRegistry
 
@@ -219,6 +221,7 @@ class KnowledgeIngestor:
             self.llm.client,
             "knowledge_ingest",
             model=self.llm.settings.model,
+            **reasoning_options(self.llm.settings, self.llm.settings.model, "fixed"),
             instructions=INGEST_INSTRUCTIONS,
             input=json.dumps(input_payload, ensure_ascii=False, separators=(",", ":")),
             text={"format": {

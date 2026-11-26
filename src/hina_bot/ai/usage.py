@@ -559,6 +559,7 @@ class UsageLogger:
             "elapsed_ms": metrics["decision_request_ms"],
             "input_tokens": tokens,
             "cached_tokens": metrics.get("decision_cached_tokens"),
+            "cache_write_tokens": metrics.get("decision_cache_write_tokens"),
             "reasoning_tokens": metrics.get("decision_reasoning_tokens"),
             "output_tokens": metrics.get("decision_output_tokens") or 0,
             "total_tokens": tokens + (metrics.get("decision_output_tokens") or 0) if tokens is not None else None,

@@ -177,8 +177,7 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
     transport_options = {"pdf_transport": True} if pdf_enabled(llm.settings, "decisions") else {}
     decision_model = llm.decisions_client.model
     if llm.decisions_client.provider == "openai":
-        decision_model = llm.settings.model
-        transport_options = {"model": decision_model}
+        transport_options = {}
     use_memory = memory_kwargs["use_memory"]
     mode_reader = getattr(store, "memory_mode", None)
     now = memory_kwargs["now"]
