@@ -10,9 +10,9 @@ from hina_bot.core.memory_annotations import normalize_text
 from hina_bot.core.memory_selection import SelectedMemory, decision_memory_candidates
 
 from .decisions import MIN_PROBABILITY, DecisionResult
-from .pdf_transport import pdf_enabled
 from .discord_emoji_input import normalize_custom_emoji_text
 from .egress_policy import filter_channel_context
+from .pdf_transport import pdf_enabled
 from .structured_memory_context import (
     REPLY_CHAIN_KINDS,
     personal_memory_fields,
