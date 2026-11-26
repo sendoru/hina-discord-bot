@@ -42,6 +42,7 @@ from .managed_tools import (
     search_tool_choice,
 )
 from .model_routing import ModelPlan, fixed_model_plan
+from .pdf_transport import answer_pdf_enabled, prepare_answer_references
 from .prompts import load_prompt
 from .providers import ProviderAPIError
 from .retrieval_decisions import select_with_decisions
@@ -655,8 +656,16 @@ class RequestAssembler(BaseLLM):
                 trace=lore_trace,
             )
         code_mode = self.settings.code_execution_backend
+        has_pdf = False
+        if self.settings.provider == "gemini" and answer_pdf_enabled(
+            self.settings, store=gemini_store_enabled(self.settings, "answer"),
+        ):
+            messages, has_pdf = await prepare_answer_references(
+                messages, native_only=code_mode == "native",
+            )
         code_backend = code_execution_backend(
-            self.settings.provider, mode=code_mode, has_audio=bool(CURRENT_AUDIO_INPUTS.get()),
+            self.settings.provider, mode=code_mode,
+            has_audio=bool(CURRENT_AUDIO_INPUTS.get()), has_pdf=has_pdf,
         )
         if code_backend == "delegated":
             worker_model, worker_thinking_level = delegated_model_settings(self.settings)
