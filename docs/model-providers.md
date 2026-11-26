@@ -454,3 +454,19 @@ mock tests or extraction alone.
 
 See Google's [document guide](https://aistudio.google.com/docs/document-processing)
 and [Decisions input schema](https://aistudio.google.com/docs/decisions-api#input).
+
+#### Additional P9 app guidance split
+
+Prompt resources for dialogue context, structured memory, turn response, vision
+input and final response style are explicitly partitioned in
+`ai/prompts.py`; their original complete text and order are reconstructed
+for text mode and all pre-send fallbacks. Conversation-space guidance and
+selected descriptive components are eligible for the existing single PDF.
+Core identity and mention rules, disclosure and sensitive-memory rules,
+relationship mode, image source/identity restrictions, tool policy, and
+Discord output protocol stay native. The request assembler makes the vision
+policy available before encoding only when vision augmentation is active;
+the wrapper avoids appending it twice. Actual images/audio remain native.
+PDF-only native guidance retains a concise priority and privacy/safety anchor.
+No additional configuration or API call; live instruction adherence is not
+established by local extraction or mocked requests.

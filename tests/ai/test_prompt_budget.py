@@ -7,6 +7,7 @@ to these static-resource measurements.  Run with --junitxml to collect the prope
 from importlib.resources import files
 
 from hina_bot.ai.llm import POLICY
+from hina_bot.ai.prompts import load_prompt
 
 
 def _prompt(name: str) -> str:
@@ -14,9 +15,7 @@ def _prompt(name: str) -> str:
 
 
 def _integration_prompt(name: str) -> str:
-    return files("hina_bot").joinpath(
-        "prompts", "integration", name
-    ).read_text(encoding="utf-8")
+    return load_prompt(name)
 
 
 def test_static_prompt_sizes_are_reported_without_hard_limits(record_property):

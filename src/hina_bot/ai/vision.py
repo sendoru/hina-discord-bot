@@ -402,7 +402,8 @@ class _VisionResponses:
             )
         request["instructions"] = (
             (request.get("instructions") or "").rstrip()
-            + ("\n\n" + VISION_INPUT_POLICY if visuals else "")
+            + ("\n\n" + VISION_INPUT_POLICY
+               if visuals and not request.get("_hina_vision_policy_prepared") else "")
             + ("\n\n" + AUDIO_INPUT_POLICY if audios else "")
         ).strip()
         return await self._responses.create(**request)

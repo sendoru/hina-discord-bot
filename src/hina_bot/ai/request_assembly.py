@@ -43,7 +43,7 @@ from .managed_tools import (
 )
 from .model_routing import ModelPlan, fixed_model_plan
 from .pdf_transport import InstructionReferenceText, answer_pdf_enabled, prepare_answer_references
-from .prompts import load_prompt
+from .prompts import document_prompt_components, load_prompt
 from .providers import ProviderAPIError
 from .retrieval_decisions import select_with_decisions
 from .rp_output_policy import hide_web_citations, provenance_instruction
@@ -53,7 +53,7 @@ from .structured_memory_context import (
     personal_memory_fields,
 )
 from .usage import ModelResponseError
-from .vision import CURRENT_VISUAL_INPUTS
+from .vision import CURRENT_VISUAL_INPUTS, VISION_INPUT_POLICY, VISION_REQUEST_ACTIVE
 from .web_search_runtime import tool_config
 from .web_search_text import response_text
 
@@ -678,17 +678,33 @@ class RequestAssembler(BaseLLM):
             )
         code_mode = self.settings.code_execution_backend
         has_pdf = False
-        if self.settings.provider == "gemini" and answer_pdf_enabled(
+        pdf_active = self.settings.provider == "gemini" and answer_pdf_enabled(
             self.settings, store=gemini_store_enabled(self.settings, "answer"),
-        ):
+        )
+        vision_policy_prepared = pdf_active and bool(
+            VISION_REQUEST_ACTIVE.get() and CURRENT_VISUAL_INPUTS.get()
+        )
+        memory_policy = STRUCTURED_MEMORY_POLICY if personal_memory["policy"] else None
+        if pdf_active:
             # Explicit prompt components, not heuristics on the assembled string.
-            # Keep policy, identity/provenance, relationship, memory privacy, tools,
-            # dynamic admin rules, current time and output requirements native.
+            # Keep core policy, identity/provenance, relationship mode, disclosure,
+            # tools, dynamic admin rules, runtime facts and output protocol native.
             document_instructions = [
                 InstructionReferenceText("continuity", reference_policies[0]),
                 InstructionReferenceText("world_core", WORLD_CORE_POLICY),
                 InstructionReferenceText("character", self.character),
+                InstructionReferenceText("conversation_space", space_policy),
             ]
+            guidance_resources = ["dialogue_context.md", "turn_response.md", "final_output.md"]
+            if memory_policy:
+                guidance_resources.append("structured_memory.md")
+            if vision_policy_prepared:
+                guidance_resources.append("vision_input.md")
+            document_instructions.extend(
+                InstructionReferenceText(label, source)
+                for name in guidance_resources
+                for label, source in document_prompt_components(name)
+            )
             if compact_lore is not None and compact_lore.text:
                 document_instructions.append(InstructionReferenceText(
                     "static_lore", compact_lore.text, guidance=False,
@@ -749,7 +765,6 @@ class RequestAssembler(BaseLLM):
             "instruction_dynamic_chars": 0,
             "instruction_response_chars": 0,
         }
-        memory_policy = STRUCTURED_MEMORY_POLICY if personal_memory["policy"] else None
         if memory_policy:
             instruction_parts.append(memory_policy)
             instruction_group_chars["instruction_memory_chars"] += len(memory_policy)
@@ -825,6 +840,11 @@ class RequestAssembler(BaseLLM):
         )
 
         instructions = "\n".join(instruction_parts)
+        if vision_policy_prepared:
+            # The wrapper normally appends this policy at send time. For PDF
+            # preparation we need the same source in the logical request so a
+            # stored continuation can safely remove exactly the moved components.
+            instructions = (instructions.rstrip() + "\n\n" + VISION_INPUT_POLICY).strip()
         instruction_separator_chars = max(0, len(instruction_parts) - 1)
         request_input_chars = _serialized_chars(messages)
         self.usage.routing_event(
@@ -847,6 +867,8 @@ class RequestAssembler(BaseLLM):
         }
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
+            if vision_policy_prepared:
+                request["_hina_vision_policy_prepared"] = True
         tools = list(tool_config(search_mode) or ())
         managed_tools = (
             managed_tool_config(self.settings.provider) if code_backend == "native" else []
