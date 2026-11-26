@@ -14,9 +14,12 @@ from .pdf_transport import (
     GeminiInlinePDF,
     PreparedPDFReference,
     encode_reference,
+    instruction_original,
     native_reference_observation,
+    original_observation,
     pdf_enabled,
-    plan_reference,
+    prepare_answer_references,
+    strip_document_instructions,
     text_reference_observation,
 )
 from .reference_context_blocks import PDFReferenceText
@@ -807,57 +810,82 @@ class _GeminiResponses:
             tool.get("type") == "code_execution" or "code_execution" in tool
             for tool in payload.get("tools", ())
         )
+        messages, _ = await prepare_answer_references(
+            messages, native_only=code_execution, encoder=encode_reference,
+        )
         projected = []
         metrics = []
+        sources = []
+        instruction_chars = 0
         for message in messages:
-            if (not isinstance(message, dict) or message.get("role") != "user"
-                    or not isinstance(message.get("content"), list)):
+            if not isinstance(message, dict):
+                projected.append(message)
+                continue
+            content = message.get("content")
+            if message.get("role") != "user" or not isinstance(content, list):
+                if isinstance(content, str):
+                    obs = text_reference_observation(content, "native_role_text")
+                    metrics.append({**obs, "section": "native_role_text", "eligible": False})
                 projected.append(message)
                 continue
             parts = []
-            for part in message["content"]:
-                if isinstance(part, PDFReferenceText):
-                    if code_execution:
-                        prepared = await plan_reference(part, native_only=True)
-                        if isinstance(part, PreparedPDFReference) and part.document is None:
-                            prepared = part
-                    elif isinstance(part, PreparedPDFReference):
-                        prepared = part
-                    else:
-                        prepared = await plan_reference(part, encoder=encode_reference)
-                    for source_part, document, observation in prepared.segments:
+            for part in content:
+                if isinstance(part, PreparedPDFReference):
+                    instruction = instruction_original(part)
+                    if instruction is not None:
+                        instruction_chars += len(instruction.source)
+                    if code_execution and part.document is not None:
+                        obs = original_observation(part, "code_execution_incompatible")
+                        metrics.append(obs)
+                        parts.append(part.original)
+                        continue
+                    if instruction is not None and part.document is not None:
+                        sources.append(instruction.source)
+                    for source_part, document, observation in part.segments:
                         metrics.append(dict(observation))
-                        parts.append(document if document is not None else source_part)
+                        if document is not None:
+                            parts.append(document)
+                        elif source_part is not None:
+                            parts.append(source_part)
                 else:
                     observation = native_reference_observation(part)
                     if observation:
                         metrics.append(observation)
                     parts.append(part)
             projected.append({**message, "content": parts})
+        instructions = payload.get("system_instruction", "")
+        if isinstance(instructions, dict):
+            instructions = instructions["parts"][0]["text"]
+        if not isinstance(instructions, str):
+            instructions = ""
+        native_chars = max(0, len(instructions) - instruction_chars)
+        if instructions:
+            obs = text_reference_observation(instructions, "trusted_instruction")
+            obs.update(section="system_instruction", eligible=False, source_chars=native_chars)
+            metrics.append(obs)
         if any(item["transport"] == "pdf" for item in metrics):
-            converted = convert(projected)
-            candidate = {**payload, field: converted}
-            # Use the HTTP client's JSON serialization, including base64 and tool schemas.
-            body_bytes = len(httpx.Request("POST", GEMINI_INTERACTIONS_URL, json=candidate).content)
-            if body_bytes <= 8_000_000:
-                payload[field] = converted
+            candidate = {**payload, field: convert(projected)}
+            reduced = strip_document_instructions(instructions, sources)
+            if reduced is not None and sources:
+                candidate["system_instruction"] = (
+                    {"parts": [{"text": reduced}]} if field == "contents" else reduced
+                )
+            # Use the actual HTTP JSON body (including media, schemas and Base64).
+            reason = "instruction_boundary" if reduced is None else ""
+            if not reason:
+                body_bytes = len(httpx.Request("POST", GEMINI_INTERACTIONS_URL, json=candidate).content)
+                if body_bytes > 8_000_000:
+                    reason = "request_size_limit"
+            if not reason:
+                payload.update(candidate)
             else:
                 for item in metrics:
                     if item["transport"] == "pdf":
                         item.update(
-                            transport="text", fallback="request_size_limit",
+                            transport="text", fallback=reason, documents=0,
                             attempted_pages=item["pages"], attempted_pdf_bytes=item["pdf_bytes"],
                             pages=0, pdf_bytes=0,
                         )
-        # Native role replay/current strings and instructions are counted once, never converted.
-        for message in messages:
-            if isinstance(message, dict) and isinstance(message.get("content"), str):
-                observation = text_reference_observation(message["content"], "native_role_text")
-                metrics.append({**observation, "section": "native_role_text", "eligible": False})
-        instructions = kwargs.get("instructions")
-        if isinstance(instructions, str) and instructions:
-            observation = text_reference_observation(instructions, "trusted_instruction")
-            metrics.append({**observation, "section": "system_instruction", "eligible": False})
         return metrics
 
     async def _generate_content(
@@ -1017,6 +1045,19 @@ class _GeminiResponses:
         normalized = _gemini_output(data)
         normalized._hina_gemini_api = "interactions"
         normalized._hina_reference_transport = metrics
+        # Only the initial stored interaction may authorize moving prompt components
+        # out of subsequent native system text; rejected/full-fallback calls cannot.
+        if any(o["transport"] == "pdf" for o in metrics):
+            moved_labels = {o["section"] for o in metrics if o["transport"] == "pdf"}
+            normalized._hina_pdf_moved_sources = tuple(
+                instruction.source
+                for message in kwargs.get("input", ()) if isinstance(message, dict)
+                and isinstance(message.get("content"), list)
+                for part in message["content"]
+                if isinstance(part, PreparedPDFReference)
+                and (instruction := instruction_original(part)) is not None
+                and instruction.section in moved_labels
+            )
         normalized._hina_interaction_id = (
             str(data.get("id") or "") if payload["store"] else ""
         )

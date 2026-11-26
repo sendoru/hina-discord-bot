@@ -42,7 +42,7 @@ from .managed_tools import (
     search_tool_choice,
 )
 from .model_routing import ModelPlan, fixed_model_plan
-from .pdf_transport import answer_pdf_enabled, prepare_answer_references
+from .pdf_transport import InstructionReferenceText, answer_pdf_enabled, prepare_answer_references
 from .prompts import load_prompt
 from .providers import ProviderAPIError
 from .retrieval_decisions import select_with_decisions
@@ -655,34 +655,6 @@ class RequestAssembler(BaseLLM):
                 event=self.usage.routing_event,
                 trace=lore_trace,
             )
-        code_mode = self.settings.code_execution_backend
-        has_pdf = False
-        if self.settings.provider == "gemini" and answer_pdf_enabled(
-            self.settings, store=gemini_store_enabled(self.settings, "answer"),
-        ):
-            messages, has_pdf = await prepare_answer_references(
-                messages, native_only=code_mode == "native",
-            )
-        code_backend = code_execution_backend(
-            self.settings.provider, mode=code_mode,
-            has_audio=bool(CURRENT_AUDIO_INPUTS.get()), has_pdf=has_pdf,
-        )
-        if code_backend == "delegated":
-            worker_model, worker_thinking_level = delegated_model_settings(self.settings)
-            local_tool_registry = attach_delegated_code_execution(
-                local_tool_registry,
-                client=self.client,
-                usage=self.usage,
-                model=worker_model,
-                timeout=self.settings.answer_timeout_seconds,
-                thinking_level=worker_thinking_level,
-            )
-        local_tool_schemas = (
-            local_tool_registry.schemas()
-            if local_tool_registry is not None
-            else []
-        )
-
         relationship_policy = self.relationship_instructions(scope)
         space_policy = DM_SPACE_POLICY if scope.guild_id is None else GUILD_SPACE_POLICY
         runtime_policy = runtime_instruction(runtime)
@@ -704,6 +676,47 @@ class RequestAssembler(BaseLLM):
                 rag_full_chars=compact_lore.chars,
                 rag_full_audience_excluded=compact_lore.excluded_audience_items,
             )
+        code_mode = self.settings.code_execution_backend
+        has_pdf = False
+        if self.settings.provider == "gemini" and answer_pdf_enabled(
+            self.settings, store=gemini_store_enabled(self.settings, "answer"),
+        ):
+            # Explicit prompt components, not heuristics on the assembled string.
+            # Keep policy, identity/provenance, relationship, memory privacy, tools,
+            # dynamic admin rules, current time and output requirements native.
+            document_instructions = [
+                InstructionReferenceText("continuity", reference_policies[0]),
+                InstructionReferenceText("world_core", WORLD_CORE_POLICY),
+                InstructionReferenceText("character", self.character),
+            ]
+            if compact_lore is not None and compact_lore.text:
+                document_instructions.append(InstructionReferenceText(
+                    "static_lore", compact_lore.text, guidance=False,
+                ))
+            messages, has_pdf = await prepare_answer_references(
+                messages, native_only=code_mode == "native",
+                instruction_parts=[part for part in document_instructions if part.source],
+            )
+        code_backend = code_execution_backend(
+            self.settings.provider, mode=code_mode,
+            has_audio=bool(CURRENT_AUDIO_INPUTS.get()), has_pdf=has_pdf,
+        )
+        if code_backend == "delegated":
+            worker_model, worker_thinking_level = delegated_model_settings(self.settings)
+            local_tool_registry = attach_delegated_code_execution(
+                local_tool_registry,
+                client=self.client,
+                usage=self.usage,
+                model=worker_model,
+                timeout=self.settings.answer_timeout_seconds,
+                thinking_level=worker_thinking_level,
+            )
+        local_tool_schemas = (
+            local_tool_registry.schemas()
+            if local_tool_registry is not None
+            else []
+        )
+
         instruction_parts = [
             POLICY,
             reference_policies[0],
