@@ -21,6 +21,11 @@ from hina_bot.core.server_memory_selection import CURRENT_SERVER_READER
 from .audio import CURRENT_AUDIO_INPUTS
 from .context_input import build_context_input
 from .context_provenance import build_context_provenance
+from .delegated_code_execution import (
+    DELEGATED_CODE_POLICY,
+    attach_delegated_code_execution,
+    code_execution_backend,
+)
 from .discord_emoji_input import normalize_custom_emoji_text, normalized_message_context
 from .egress_policy import apply_context_policy
 from .freshness import FreshnessMode
@@ -648,6 +653,18 @@ class RequestAssembler(BaseLLM):
                 event=self.usage.routing_event,
                 trace=lore_trace,
             )
+        code_backend = code_execution_backend(
+            self.settings.provider, has_audio=bool(CURRENT_AUDIO_INPUTS.get()),
+        )
+        if code_backend == "delegated":
+            local_tool_registry = attach_delegated_code_execution(
+                local_tool_registry,
+                client=self.client,
+                usage=self.usage,
+                model=model_plan.model,
+                timeout=self.settings.answer_timeout_seconds,
+                thinking_level=model_plan.thinking_level,
+            )
         local_tool_schemas = (
             local_tool_registry.schemas()
             if local_tool_registry is not None
@@ -759,16 +776,12 @@ class RequestAssembler(BaseLLM):
         if lore_mode == "tool":
             instruction_parts.append(LORE_TOOL_POLICY)
             instruction_group_chars["instruction_tools_chars"] += len(LORE_TOOL_POLICY)
-        # Gemini currently rejects audio-bearing requests when code execution is enabled.
-        # Audio stays native; omit only code execution, not search or local functions.
-        native_audio_request = (
-            self.settings.provider == "gemini" and bool(CURRENT_AUDIO_INPUTS.get())
-        )
-        if managed_tool_config(self.settings.provider) and not native_audio_request:
-            instruction_parts.append(CODE_EXECUTION_POLICY)
-            instruction_group_chars["instruction_tools_chars"] += len(
-                CODE_EXECUTION_POLICY
+        if code_backend != "none":
+            code_policy = (
+                DELEGATED_CODE_POLICY if code_backend == "delegated" else CODE_EXECUTION_POLICY
             )
+            instruction_parts.append(code_policy)
+            instruction_group_chars["instruction_tools_chars"] += len(code_policy)
         instruction_parts.append(TURN_RESPONSE_POLICY)
         instruction_group_chars["instruction_response_chars"] += len(
             TURN_RESPONSE_POLICY
@@ -811,7 +824,7 @@ class RequestAssembler(BaseLLM):
             request["thinking_level"] = model_plan.thinking_level
         tools = list(tool_config(search_mode) or ())
         managed_tools = (
-            [] if native_audio_request else managed_tool_config(self.settings.provider)
+            managed_tool_config(self.settings.provider) if code_backend == "native" else []
         )
         if url_context_enabled:
             managed_tools.extend(managed_tool_config(
