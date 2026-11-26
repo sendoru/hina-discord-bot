@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 import httpx
 from openai import AsyncOpenAI
 
+from hina_bot.core.config import SUPPORTED_MODEL_PROVIDERS
+
 from .pdf_transport import (
     GeminiInlinePDF,
     PreparedPDFReference,
@@ -29,7 +31,7 @@ GEMINI_GENERATE_CONTENT_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-SUPPORTED_PROVIDERS = frozenset({"openai", "gemini", "openrouter"})
+SUPPORTED_PROVIDERS = SUPPORTED_MODEL_PROVIDERS
 GEMINI_SEARCH_API_MODES = frozenset({"auto", "interactions", "generate_content"})
 SEARCH_CIRCUIT_FAILURES = 2
 SEARCH_CIRCUIT_COOLDOWN_SECONDS = 300

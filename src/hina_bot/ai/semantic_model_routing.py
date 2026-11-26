@@ -5,10 +5,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, replace
 
-from hina_bot.core.config import gemini_store_enabled
-
 from .model_routing import ModelPlan, build_model_plan
-from .openai_capabilities import reasoning_options
+from .provider_contract import operation_options
 
 _CLASSIFIER_POLICY = """You classify two independent properties of one user request:
 1) semantic reasoning difficulty, and
@@ -310,18 +308,14 @@ class SemanticModelRouter:
         }
         request = {
             "model": self.settings.routing_classifier_model,
-            **reasoning_options(self.settings, self.settings.routing_classifier_model, "fast",
-                                provider=self.settings.routing_classifier_provider),
+            **operation_options(
+                self.settings, "classifier", self.settings.routing_classifier_model, "fast",
+                provider=self.settings.routing_classifier_provider, thinking_level="minimal",
+            ),
             "instructions": _CLASSIFIER_POLICY,
             "input": _classifier_input(payload, visual_inputs),
             "max_output_tokens": self.settings.routing_classifier_max_output_tokens,
-            "store": gemini_store_enabled(
-                self.settings, "classifier",
-                provider=self.settings.routing_classifier_provider,
-            ),
         }
-        if self.settings.routing_classifier_provider == "gemini":
-            request["thinking_level"] = "minimal"
         classifier_visuals = _classifier_visuals(visual_inputs)
         visual_context_kinds = {}
         for visual in classifier_visuals:

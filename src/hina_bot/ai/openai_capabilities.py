@@ -24,8 +24,18 @@ _VISION = (set(_REASONING) - {"o3-mini"}) | {
 }
 
 
+def reference_image_support(model: str) -> bool | None:
+    """None denotes an unlisted model. Only affirmative support permits a reference."""
+    family = model_family(model)
+    if family in _VISION:
+        return True
+    if family == "o3-mini":
+        return False
+    return None
+
+
 def supports_reference_image(model: str) -> bool:
-    return model_family(model) in _VISION
+    return reference_image_support(model) is True
 
 
 def reasoning_options(settings, model: str, tier: str, *, provider=None) -> dict:

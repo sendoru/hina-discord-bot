@@ -29,6 +29,14 @@ _PROVIDER_BINDINGS = {
 }
 
 
+def managed_tool_support(provider: str, capability: ManagedToolCapability) -> bool | None:
+    """Adapter-level support. Model-level availability is unknown without evidence."""
+    bindings = _PROVIDER_BINDINGS.get(provider)
+    if bindings is None:
+        return False if provider == "openrouter" else None
+    return capability in bindings
+
+
 def managed_tool_config(
     provider: str,
     capabilities: tuple[ManagedToolCapability, ...] = (
@@ -41,7 +49,7 @@ def managed_tool_config(
     return [
         dict(bindings[capability])
         for capability in capabilities
-        if capability in bindings
+        if managed_tool_support(provider, capability) is True
     ]
 
 

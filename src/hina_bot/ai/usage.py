@@ -14,6 +14,8 @@ from time import perf_counter
 from hina_bot.core.build_info import build_metadata
 from hina_bot.core.observability import current_turn_id
 
+from .provider_contract import response_usage, stored_interaction_id
+
 _TOKEN_FIELDS = ("input_tokens", "output_tokens", "total_tokens", "cached_tokens", "reasoning_tokens")
 
 
@@ -150,21 +152,8 @@ def _provider_error_fields(exc: BaseException) -> dict:
     return fields
 
 
-def _usage_fields(response) -> dict:
-    usage = getattr(response, "usage", None)
-    return {
-        "input_tokens": getattr(usage, "input_tokens", None),
-        "output_tokens": getattr(usage, "output_tokens", None),
-        "total_tokens": getattr(usage, "total_tokens", None),
-        "cached_tokens": getattr(
-            getattr(usage, "input_tokens_details", None), "cached_tokens", None),
-        "reasoning_tokens": getattr(
-            getattr(usage, "output_tokens_details", None), "reasoning_tokens", None),
-    }
-
-
 def _usage_delta_fields(response, baseline: dict | None = None) -> dict:
-    values = _usage_fields(response)
+    values = response_usage(response)
     if not baseline:
         return values
 
@@ -199,7 +188,7 @@ def _combined_attempt_fields(responses, *, baseline: dict | None = None) -> dict
 def _cumulative_usage_fields(response) -> dict:
     return {
         f"provider_cumulative_{field}": value
-        for field, value in _usage_fields(response).items()
+        for field, value in response_usage(response).items()
         if isinstance(value, int)
     }
 
@@ -228,7 +217,7 @@ class EmptyProviderResponseError(RuntimeError):
         self.response_error_codes = tuple(_response_error_codes(response))
         self.output_types = tuple(_response_output_types(response))
         self.has_visible_text = False
-        for field, value in _usage_fields(response).items():
+        for field, value in response_usage(response).items():
             if isinstance(value, int):
                 setattr(self, field, value)
         super().__init__(f"{provider} returned no visible response text")
@@ -247,7 +236,7 @@ class ModelResponseError(RuntimeError):
         self.response_error_codes = tuple(_response_error_codes(response))
         self.output_types = tuple(_response_output_types(response))
         self.has_visible_text = bool(has_visible_text)
-        for field, value in _usage_fields(response).items():
+        for field, value in response_usage(response).items():
             if isinstance(value, int):
                 setattr(self, field, value)
         super().__init__("provider response is not a completed visible answer")
@@ -456,7 +445,6 @@ class UsageLogger:
         async def perform_request():
             response = await client.responses.create(**kwargs)
             responses.append(response)
-            provider = getattr(client, "provider_name", "")
             completed_empty = (
                 provider == "gemini"
                 and getattr(response, "status", None) == "completed"
@@ -489,7 +477,7 @@ class UsageLogger:
                 row.update(_cumulative_usage_fields(response))
             if previous_interaction_id:
                 self._interaction_usage.pop(previous_interaction_id, None)
-            interaction_id = str(getattr(response, "_hina_interaction_id", "") or "")
+            interaction_id = stored_interaction_id(response)
             if (
                 provider == "gemini"
                 and interaction_id
@@ -497,7 +485,7 @@ class UsageLogger:
             ):
                 if len(self._interaction_usage) >= 256:
                     self._interaction_usage.pop(next(iter(self._interaction_usage)))
-                self._interaction_usage[interaction_id] = _usage_fields(response)
+                self._interaction_usage[interaction_id] = response_usage(response)
             error_codes = []
             for item in responses:
                 error_codes.extend(getattr(item, "_hina_error_codes", None) or [])

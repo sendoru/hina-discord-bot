@@ -1,9 +1,8 @@
 import json
 import re
 
-from hina_bot.ai.openai_capabilities import reasoning_options
+from hina_bot.ai.provider_contract import operation_options
 
-from .config import gemini_store_enabled
 from .runtime_knowledge import KNOWLEDGE_LEVELS, RuntimeKnowledgeRegistry
 
 MAX_INGEST_CHARS = 6000
@@ -221,7 +220,9 @@ class KnowledgeIngestor:
             self.llm.client,
             "knowledge_ingest",
             model=self.llm.settings.model,
-            **reasoning_options(self.llm.settings, self.llm.settings.model, "fixed"),
+            **operation_options(
+                self.llm.settings, "knowledge", self.llm.settings.model, "fixed",
+            ),
             instructions=INGEST_INSTRUCTIONS,
             input=json.dumps(input_payload, ensure_ascii=False, separators=(",", ":")),
             text={"format": {
@@ -231,7 +232,6 @@ class KnowledgeIngestor:
                 "schema": INGEST_SCHEMA,
             }},
             max_output_tokens=3500,
-            store=gemini_store_enabled(self.llm.settings, "knowledge"),
         )
         if response.status != "completed" or not response.output_text.strip():
             raise ValueError("knowledge 구조화 응답을 완료하지 못했습니다.")

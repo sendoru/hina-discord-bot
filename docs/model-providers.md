@@ -513,3 +513,16 @@ consolidation failure without exposing source text.
 [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) 및
 [stateless reasoning](https://developers.openai.com/api/docs/guides/reasoning) 문서를 기준으로 확인했다.
 실모델 품질·비용은 이 회귀 테스트의 측정 대상에서 제외한다.
+
+## P1 구현 경계
+
+| 경로 | 담당 모듈과 보존하는 동작 |
+|---|---|
+| 답변·기억·classifier·repair·knowledge | `provider_contract.operation_options`가 호출자가 선택한 모델과 tier로 reasoning, store, include, thinking을 조립한다. classifier는 자신의 provider를 명시한다. 모델 선택과 출력 예산은 각 planner가 소유한다. |
+| 이미지·음성·PDF | `vision`과 각 adapter가 입력 형태를 처리한다. OpenAI 참고 이미지 모델 목록에서 미확인과 미지원을 구별하며, 지원이 확인된 경우에만 참고 이미지를 추가한다. Gemini PDF 변환과 전송은 `pdf_transport`가 소유한다. |
+| 도구·위임 실행 | `managed_tools`의 지원 값은 adapter가 표현할 수 있는 선언을 뜻한다. 개별 모델의 도구 지원은 미확인이다. `delegated_code_execution`은 현재 Gemini client와 기존 fast/fixed 예산을 사용한다. |
+| 응답·재시도 | `usage`는 Responses 형태의 usage를 집계한다. 저장된 Gemini interaction ID를 도구 루프와 공유해 누적 사용량의 차이를 기록한다. 답변의 503 재시도 예산은 턴 단위이며 OpenAI 함수 결과 재전송은 같은 모델을 사용한다. |
+| 후속 요청 | `local_tools`가 OpenAI 암호화 reasoning과 출력 순서, Gemini 저장 ID 또는 원래 단계를 보존한다. Gemini adapter가 Interactions/GenerateContent 선택을 고정한다. |
+| native Decisions | `decisions`와 `retrieval_decisions`가 후보 검증, 배치 한도, deadline, egress 및 전체 fallback을 소유한다. 일반 생성 요청 옵션과 분리된다. |
+
+OpenRouter는 기존 adapter를 사용한다. 이 경계는 provider 간 자동 전송, 모델별 도구 검색 또는 operation별 라우팅을 추가하지 않는다.
