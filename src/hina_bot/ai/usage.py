@@ -82,7 +82,19 @@ def _response_error_codes(response) -> list[str]:
 def _response_diagnostic_fields(response, *, has_visible_text: bool | None = None) -> dict:
     if has_visible_text is None:
         has_visible_text = bool(_visible_text(response).strip())
+    from .pdf_transport import transport_coverage
+
+    observations = getattr(response, "_hina_reference_transport", ()) or ()
     return {
+        **({"pdf_coverage": transport_coverage(observations)} if observations else {}),
+        **({"provider_modality_tokens": response._hina_modality_tokens}
+           if getattr(response, "_hina_modality_tokens", None) else {}),
+        **({"gemini_api": response._hina_gemini_api,
+            "context_transport": "pdf" if any(
+                item["transport"] == "pdf" for item in getattr(response, "_hina_reference_transport", ())
+            ) else "text"} if getattr(response, "_hina_gemini_api", None) else {}),
+        **({"reference_transport": response._hina_reference_transport}
+           if getattr(response, "_hina_reference_transport", None) else {}),
         "response_has_visible_text": bool(has_visible_text),
         "response_output_types": _response_output_types(response),
         **(
@@ -96,6 +108,15 @@ def _response_diagnostic_fields(response, *, has_visible_text: bool | None = Non
 def _provider_error_fields(exc: BaseException) -> dict:
     """Return only adapter-approved diagnostics; never serialize arbitrary exception strings."""
     fields = {}
+    if getattr(exc, "gemini_api", None) in {"generate_content", "interactions"}:
+        fields["gemini_api"] = exc.gemini_api
+        observations = getattr(exc, "reference_transport", ())
+        fields["context_transport"] = "pdf" if any(o["transport"] == "pdf" for o in observations) else "text"
+        if observations:
+            from .pdf_transport import transport_coverage
+
+            fields["reference_transport"] = observations
+            fields["pdf_coverage"] = transport_coverage(observations)
     provider = getattr(exc, "provider", None)
     status_code = getattr(exc, "status_code", None)
     response_status = getattr(exc, "response_status", None)
@@ -358,8 +379,7 @@ class UsageLogger:
                 state["status"] = "completed_with_api_errors"
             else:
                 state["status"] = "completed"
-            state["models"] = sorted(state["models"])
-            self._emit(self.exchange_handler, state)
+            self._emit(self.exchange_handler, {**state, "models": sorted(state["models"])})
 
     async def request(
         self,
@@ -402,6 +422,10 @@ class UsageLogger:
                 "semantic_web_need", "semantic_web_codes", "semantic_web_uncertain",
             }
             row.update({key: value for key, value in route_metadata.items() if key in allowed})
+        if provider == "gemini" and operation in {
+            "extract_memory_items_shadow", "summarize_shared", "knowledge_ingest",
+        }:
+            kwargs["_hina_operation_reference"] = "knowledge" if operation == "knowledge_ingest" else "memory"
         responses = []
         previous_interaction_id = str(kwargs.get("previous_interaction_id") or "")
         cumulative_baseline = (
@@ -425,7 +449,7 @@ class UsageLogger:
             row["web_search_calls"] = web_calls
             row["web_search_used"] = web_calls > 0
             row.update(_url_context_fields(responses))
-            row["api_attempts"] = len(responses)
+            row["api_attempts"] = sum(getattr(item, "_hina_gemini_http_attempts", 1) for item in responses)
 
         async def perform_request():
             response = await client.responses.create(**kwargs)
@@ -456,7 +480,7 @@ class UsageLogger:
                 web_search_calls=web_calls,
                 web_search_used=web_calls > 0,
                 **_url_context_fields(responses),
-                api_attempts=len(responses),
+                api_attempts=sum(getattr(item, "_hina_gemini_http_attempts", 1) for item in responses),
             )
             if cumulative_baseline is not None:
                 row["usage_accounting"] = "gemini_interaction_delta"
@@ -508,7 +532,8 @@ class UsageLogger:
             raise
         finally:
             row["elapsed_ms"] = round((perf_counter() - started) * 1000)
-            if accumulate:
+            # Background extraction can outlive the Discord exchange that spawned it.
+            if accumulate and operation != "extract_server_memory":
                 self._accumulate(row)
             self._emit(self.handler, row)
 
@@ -527,6 +552,8 @@ class UsageLogger:
             "operation": operation,
             "provider": "gemini",
             "model": MODEL,
+            "gemini_api": "decisions",
+            "context_transport": metrics.get("decision_transport", {}).get("transport", "text"),
             "elapsed_ms": metrics["decision_request_ms"],
             "input_tokens": tokens,
             "output_tokens": 0,

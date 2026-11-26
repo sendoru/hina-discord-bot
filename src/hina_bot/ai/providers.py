@@ -10,6 +10,20 @@ from urllib.parse import urlsplit
 import httpx
 from openai import AsyncOpenAI
 
+from .pdf_transport import (
+    GeminiInlinePDF,
+    PreparedPDFReference,
+    encode_reference,
+    instruction_original,
+    native_reference_observation,
+    original_observation,
+    pdf_enabled,
+    prepare_answer_references,
+    strip_document_instructions,
+    text_reference_observation,
+)
+from .reference_context_blocks import PDFReferenceText
+
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
 GEMINI_GENERATE_CONTENT_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -129,6 +143,9 @@ def _gemini_content(value):
         if isinstance(item, str):
             if item:
                 blocks.append({"type": "text", "text": item})
+            continue
+        if isinstance(item, GeminiInlinePDF):
+            blocks.append({"type": "document", "mime_type": "application/pdf", "data": item.data})
             continue
         if not isinstance(item, dict):
             continue
@@ -257,7 +274,7 @@ def _gemini_generate_content_parts(value):
         if block_type == "text":
             parts.append({"text": block["text"]})
             continue
-        if block_type not in {"image", "audio"}:
+        if block_type not in {"image", "audio", "document"}:
             continue
         mime_type = block.get("mime_type") or ("audio/ogg" if block_type == "audio" else "image/png")
         if block.get("data"):
@@ -426,6 +443,37 @@ def _gemini_url_context_statuses(rows) -> list[str]:
             status = "unknown"
         statuses.append(status)
     return statuses
+
+
+def _gemini_modality_counts(value):
+    if not isinstance(value, list):
+        return None
+    counts = {}
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        modality = str(entry.get("modality") or entry.get("type") or "").lower()
+        count = entry.get("tokenCount", entry.get("token_count", entry.get("tokens")))
+        if modality in {"text", "image", "audio", "video", "document", "pdf"} and type(count) is int and count >= 0:
+            counts[modality] = counts.get(modality, 0) + count
+    return counts or None
+
+
+def _gemini_modality_usage(usage):
+    if not isinstance(usage, dict):
+        return {}
+    fields = {}
+    for name, keys in {
+        "input": ("promptTokensDetails", "prompt_tokens_details", "input_tokens_details"),
+        "cached": ("cacheTokensDetails", "cache_tokens_details", "cached_tokens_details"),
+        "output": ("candidatesTokensDetails", "candidates_tokens_details", "output_tokens_details"),
+    }.items():
+        for key in keys:
+            counts = _gemini_modality_counts(usage.get(key))
+            if counts is not None:
+                fields[name] = counts
+                break
+    return fields
 
 
 def _gemini_generate_content_output(data: dict):
@@ -625,6 +673,7 @@ def _gemini_generate_content_output(data: dict):
         output=output,
         usage=usage,
     )
+    response._hina_modality_tokens = _gemini_modality_usage(usage_data)
     response._hina_web_search_calls = web_search_calls
     response._hina_url_context_calls = url_context_calls
     response._hina_url_context_statuses = tuple(url_context_statuses)
@@ -746,6 +795,7 @@ def _gemini_output(data: dict):
         output=output,
         usage=usage,
     )
+    response._hina_modality_tokens = _gemini_modality_usage(usage_data)
     response._hina_web_search_calls = web_search_calls
     response._hina_url_context_calls = url_context_calls
     response._hina_url_context_statuses = tuple(url_context_statuses)
@@ -775,6 +825,101 @@ class _GeminiResponses:
         self.settings = settings
         self._search_failures = 0
         self._search_circuit_until = 0.0
+
+    async def _reference_transport(self, payload, kwargs, field, convert):
+        domain = kwargs.get("_hina_operation_reference", "answer")
+        if not pdf_enabled(self.settings, domain):
+            return []
+        messages = kwargs.get("input")
+        if kwargs.get("_hina_operation_reference") and isinstance(messages, str):
+            messages = [{"role": "user", "content": [PDFReferenceText(type="input_text", text=messages)]}]
+        elif kwargs.get("_hina_operation_reference") and isinstance(messages, list) and len(messages) == 1:
+            content = messages[0].get("content")
+            if isinstance(content, list) and content and content[0].get("type") == "input_text":
+                messages = [{**messages[0], "content": [PDFReferenceText(content[0]), *content[1:]]}]
+        if not isinstance(messages, list):
+            return []
+        code_execution = any(
+            tool.get("type") == "code_execution" or "code_execution" in tool
+            for tool in payload.get("tools", ())
+        )
+        messages, _ = await prepare_answer_references(
+            messages, native_only=code_execution, encoder=encode_reference,
+        )
+        projected = []
+        metrics = []
+        sources = []
+        instruction_chars = 0
+        for message in messages:
+            if not isinstance(message, dict):
+                projected.append(message)
+                continue
+            content = message.get("content")
+            if message.get("role") != "user" or not isinstance(content, list):
+                if isinstance(content, str):
+                    obs = text_reference_observation(content, "native_role_text")
+                    metrics.append({**obs, "section": "native_role_text", "eligible": False})
+                projected.append(message)
+                continue
+            parts = []
+            for part in content:
+                if isinstance(part, PreparedPDFReference):
+                    instruction = instruction_original(part)
+                    if instruction is not None:
+                        instruction_chars += len(instruction.source)
+                    if code_execution and part.document is not None:
+                        obs = original_observation(part, "code_execution_incompatible")
+                        metrics.append(obs)
+                        parts.append(part.original)
+                        continue
+                    if instruction is not None and part.document is not None:
+                        sources.append(instruction.source)
+                    for source_part, document, observation in part.segments:
+                        metrics.append(dict(observation))
+                        if document is not None:
+                            parts.append(document)
+                        elif source_part is not None:
+                            parts.append(source_part)
+                else:
+                    observation = native_reference_observation(part)
+                    if observation:
+                        metrics.append(observation)
+                    parts.append(part)
+            projected.append({**message, "content": parts})
+        instructions = payload.get("system_instruction", "")
+        if isinstance(instructions, dict):
+            instructions = instructions["parts"][0]["text"]
+        if not isinstance(instructions, str):
+            instructions = ""
+        native_chars = max(0, len(instructions) - instruction_chars)
+        if instructions:
+            obs = text_reference_observation(instructions, "trusted_instruction")
+            obs.update(section="system_instruction", eligible=False, source_chars=native_chars)
+            metrics.append(obs)
+        if any(item["transport"] == "pdf" for item in metrics):
+            candidate = {**payload, field: convert(projected)}
+            reduced = strip_document_instructions(instructions, sources)
+            if reduced is not None and sources:
+                candidate["system_instruction"] = (
+                    {"parts": [{"text": reduced}]} if field == "contents" else reduced
+                )
+            # Use the actual HTTP JSON body (including media, schemas and Base64).
+            reason = "instruction_boundary" if reduced is None else ""
+            if not reason:
+                body_bytes = len(httpx.Request("POST", GEMINI_INTERACTIONS_URL, json=candidate).content)
+                if body_bytes > 8_000_000:
+                    reason = "request_size_limit"
+            if not reason:
+                payload.update(candidate)
+            else:
+                for item in metrics:
+                    if item["transport"] == "pdf":
+                        item.update(
+                            transport="text", fallback=reason, documents=0,
+                            attempted_pages=item["pages"], attempted_pdf_bytes=item["pdf_bytes"],
+                            pages=0, pdf_bytes=0,
+                        )
+        return metrics
 
     async def _generate_content(
         self,
@@ -842,15 +987,21 @@ class _GeminiResponses:
             }
 
         url = GEMINI_GENERATE_CONTENT_URL.format(model=model)
+        metrics = await self._reference_transport(payload, kwargs, "contents", _gemini_generate_content_contents)
         response = await self.http.post(url, json=payload)
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            error = _gemini_http_error(response)
+            error = (ProviderAPIError("gemini", response.status_code, code="document_request_failed")
+                     if any(item["transport"] == "pdf" for item in metrics)
+                     else _gemini_http_error(response))
+            error.gemini_api = "generate_content"
+            error.reference_transport = metrics
             log.warning("Provider request failed (%s)", error.safe_diagnostic)
             raise error from exc
         normalized = _gemini_generate_content_output(response.json())
         normalized._hina_gemini_api = "generate_content"
+        normalized._hina_reference_transport = metrics
         return normalized
 
     async def _interaction(
@@ -911,16 +1062,35 @@ class _GeminiResponses:
             payload["tools"] = payload_tools
 
         payload["generation_config"] = generation_config
+        metrics = await self._reference_transport(payload, kwargs, "input", _gemini_input)
         response = await self.http.post(GEMINI_INTERACTIONS_URL, json=payload)
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            error = _gemini_http_error(response)
+            error = (ProviderAPIError("gemini", response.status_code, code="document_request_failed")
+                     if any(item["transport"] == "pdf" for item in metrics)
+                     else _gemini_http_error(response))
+            error.gemini_api = "interactions"
+            error.reference_transport = metrics
             log.warning("Provider request failed (%s)", error.safe_diagnostic)
             raise error from exc
         data = response.json()
         normalized = _gemini_output(data)
         normalized._hina_gemini_api = "interactions"
+        normalized._hina_reference_transport = metrics
+        # Only the initial stored interaction may authorize moving prompt components
+        # out of subsequent native system text; rejected/full-fallback calls cannot.
+        if any(o["transport"] == "pdf" for o in metrics):
+            moved_labels = {o["section"] for o in metrics if o["transport"] == "pdf"}
+            normalized._hina_pdf_moved_sources = tuple(
+                instruction.source
+                for message in kwargs.get("input", ()) if isinstance(message, dict)
+                and isinstance(message.get("content"), list)
+                for part in message["content"]
+                if isinstance(part, PreparedPDFReference)
+                and (instruction := instruction_original(part)) is not None
+                and instruction.section in moved_labels
+            )
         normalized._hina_interaction_id = (
             str(data.get("id") or "") if payload["store"] else ""
         )
@@ -1005,7 +1175,9 @@ class _GeminiResponses:
         except ProviderAPIError as exc:
             if can_fallback and _gemini_interactions_tool_error(exc):
                 self._search_failure("tool_http_error")
-                return await self._generate_content(**tool_kwargs)
+                response = await self._generate_content(**tool_kwargs)
+                response._hina_gemini_http_attempts = 2
+                return response
             raise
 
         broken_builtin = (
@@ -1014,7 +1186,9 @@ class _GeminiResponses:
         )
         if broken_builtin and can_fallback:
             self._search_failure("unexpected_requires_action")
-            return await self._generate_content(**tool_kwargs)
+            response = await self._generate_content(**tool_kwargs)
+            response._hina_gemini_http_attempts = 2
+            return response
         if (web_tools or url_context_tools) and not broken_builtin and response.status in {"completed", "requires_action"}:
             self._search_failures = 0
         return response

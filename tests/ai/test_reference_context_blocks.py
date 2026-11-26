@@ -27,8 +27,8 @@ def test_reference_parts_round_trip_all_sections_without_duplication():
     original = json.dumps(context, ensure_ascii=False)
     blocks = reference_context_blocks(context)
 
-    assert len(blocks) == 5
-    assert [block["type"] for block in blocks] == ["input_text"] * 5
+    assert len(blocks) == 6
+    assert [block["type"] for block in blocks] == ["input_text"] * 6
     assert all(block["text"].startswith("신뢰할 수 없는 참고 데이터(JSON") for block in blocks)
     assert all(block["text"].count("\n") == 1 for block in blocks)
     assert read_reference_context(blocks) == context
@@ -38,8 +38,9 @@ def test_reference_parts_round_trip_all_sections_without_duplication():
     assert '"structured_owner_memory":' in blocks[1]["text"]
     assert '"structured_relation_new_field":' in blocks[1]["text"]
     assert '"active_reply_chain":' in blocks[2]["text"]
-    assert '"lore_reference":' in blocks[3]["text"]
-    assert '"available_custom_emojis":' in blocks[4]["text"]
+    assert '"channel_recent_messages":' in blocks[3]["text"]
+    assert '"lore_reference":' in blocks[4]["text"]
+    assert '"available_custom_emojis":' in blocks[5]["text"]
 
 
 def test_partitioned_reference_is_one_user_step_for_gemini():
@@ -74,3 +75,13 @@ def test_empty_and_new_context_keys_are_not_silently_dropped():
     blocks = reference_context_blocks(context)
     assert read_reference_context(blocks) == context
     assert len(blocks) == 5
+
+
+def test_empty_reply_does_not_exclude_history_from_pdf():
+    from hina_bot.ai.reference_context_blocks import PDFReferenceText
+
+    context = {"active_reply_chain": [], "channel_recent_messages": [{"content": "recent"}]}
+    blocks = reference_context_blocks(context)
+    assert isinstance(blocks[0], PDFReferenceText)
+    assert isinstance(blocks[1], PDFReferenceText)
+    assert read_reference_context(blocks) == context

@@ -83,6 +83,8 @@ RUNTIME_CONFIG_SECTIONS = (
             "conversation_session_gap_minutes",
             "history_max_chars",
             "context_input_mode",
+            "gemini_pdf_transport",
+            "gemini_pdf_scope",
         ),
     ),
     (

@@ -390,3 +390,101 @@ provider 선택은 실제 Discord 답변, 장기 기억 요약, runtime knowledg
 웹 검색은 각 provider의 기능과 과금 정책을 따릅니다. `CHAT_WEB_SEARCH=false`로 공통 검색 사용을 끌 수
 있습니다. provider나 모델을 바꾼 뒤에는 주요 eval과 실제 Discord smoke test를 다시 실행하는 것을
 권장합니다.
+
+## Gemini PDF context transport (P9)
+
+`GEMINI_PDF_TRANSPORT=text|pdf` defaults to text. An old auto value
+is migrated to text because that was its effective behavior.
+`GEMINI_PDF_SCOPE=all` accepts comma-separated selections from
+answer, memory, knowledge, decisions. Startup, stored runtime overrides
+and environment normalization share the same canonical parser.
+`GEMINI_PDF_FONT` remains a local TrueType font path (restart required);
+no new profile or per-section switches are introduced.
+
+The explicit pdf setting collects eligible original text in input order and
+renders one consolidated PDF. Tiny sections share the same pages and embedded
+fonts. The default renderer uses A4, 10 pt, 30 pt margins and 13 pt leading.
+An offline extraction roundtrip guards against silent glyph or line loss.
+Supplementary Unicode characters (including emoji) use UTF-16BE ToUnicode
+mappings, correcting ReportLab's raw scalar hex output in the local PDF font
+subclass before serialization. Unsupported glyphs still fall back to the
+original text; no warnings are suppressed. The Docker image includes DejaVu
+Sans and DejaVu Math TeX Gyre as fallback fonts, in addition to Nanum. The
+renderer also discovers Noto Sans Math when installed, preserving mathematical
+alphanumeric symbols without normalizing them into ordinary Latin letters.
+The new per-document guard is 240,000 source characters, 1.5 MB PDF bytes
+and 100 pages; the wire body guard remains 8 MB for answer operations.
+A bounded planner may render temporary fragments locally to isolate failures,
+but never sends multiple generated PDF documents. If final consolidation fails,
+the largest already verified fragment is retained as the sole document when
+available; remaining fragments stay native. If none is verified, the exact
+original native input is retained. No extra remote request.
+
+| Input | PDF policy |
+|---|---|
+| Answer references | History, direct reply, memories, lore, emoji metadata in the consolidated document. Native current speaker and current utterance. Direct replies remain native when preserving a replay role boundary requires it. |
+| App-owned prompt components | Continuity, world core, character, dialogue context, turn response, conversation-space policy, applicable structured memory and vision guidance, and compact lore; moved only after successful document creation and exact component validation. Native system retains policy, privacy, identity/provenance, relationship, runtime, administrator, tool and output rules. |
+| Memory and knowledge | Authorized existing operation input, with native image/audio and metadata preserved. |
+| Decisions | Candidate map in a single document; native selection rules, current turn and questions. Exact original IDs and 240,000-byte logical and wire guards, 1,000 questions, bounded local prep budget and selection fallback. |
+| DM replay and local tool results | Native roles, call IDs and provider envelopes remain unchanged; no unsafe relocation of result data. |
+
+The system explicitly distinguishes app_guidance from app_reference and
+untrusted user-derived JSON; this is not a claim of equivalent provider-level
+instruction authority. A failed encoder, incompatible native code tool or
+wire-size guard retains the original full native system. Stored continuations
+use the previous interaction ID without resending the document; only successfully
+moved app components may be omitted from the continuation system text.
+Stateless continuations reuse the prepared document and original logical input.
+Stored continuations do not reattach the original images or audio.
+Changing runtime config affects subsequent requests.
+
+With CODE_EXECUTION_BACKEND=auto, enabling PDF for Answer selects delegated
+computation even on local encoding fallback; audio also selects delegated.
+Explicit native preserves compatible text transport. Explicit delegated keeps its
+existing meaning. A late body guard fallback retains the selected backend for
+that turn to preserve continuation consistency. No extra classifier or paid
+shadow traffic. Other providers are unchanged.
+
+Trace and Analytics report physical document count, pages, PDF bytes, section
+coverage, eligible/native fallback reasons and observed provider modality tokens.
+Unreported modalities remain unknown; a cumulative provider count is not
+treated as an incremental per-call count. Coverage is original characters,
+not billed tokens. `scripts/pdf_context_benchmark.py` compares the production
+encoder's synthetic density configurations locally. `scripts/pdf_usage_report.py`
+uses explicitly supplied input/cache prices and existing usage logs to estimate
+input cost; compare model, operation, media, cache, API and attempts. Estimates
+are not invoices. No model fidelity or actual cost saving is established by
+mock tests or extraction alone.
+
+See Google's [document guide](https://aistudio.google.com/docs/document-processing)
+and [Decisions input schema](https://aistudio.google.com/docs/decisions-api#input).
+
+#### Whole-resource answer guidance transport
+
+Existing Markdown resources and the prompt loader are unchanged. The request
+assembler explicitly selects complete, app-owned resources for the single PDF:
+character, continuity, world core, conversation space, dialogue context,
+turn response, structured memory (only when enabled for this turn), and vision
+input (only with active visuals). Compact lore remains app reference data.
+
+Base policy, reference provenance, current relationship mode, dynamic admin
+instructions, runtime facts, tool rules and the entire final output protocol
+remain native. A concise native PDF guidance policy preserves identity,
+disclosure, sensitive-memory and image trust boundaries. PDF instructions
+cannot override native policy. No markers or fragmented Markdown files.
+
+The full original instructions remain in their original order in text mode or
+pre-send fallback. The vision policy is included before PDF preparation only
+when vision augmentation is active; the wrapper does not append it again.
+Actual images/audio stay native. No additional config or remote API call.
+Live model adherence and cost savings still require normal-traffic validation.
+
+Answer PDF preparation allows up to 10 seconds. Decisions preparation allows up to
+2 seconds, capped by its configured timeout, separate from the existing HTTP
+timeout. Lock wait occurs asynchronously and is subject to the planner deadline;
+cancellation requests cooperative renderer shutdown without queueing additional
+worker threads. If a combined render times out or fails after verified fragments
+were obtained, the largest completed fragment is transmitted as the single PDF
+and the rest remains native. If no verified fragment exists, the complete original
+native request is retained. Telemetry records initial failure, attempt count and
+consolidation failure without exposing source text.

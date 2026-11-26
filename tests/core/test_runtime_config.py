@@ -1151,3 +1151,42 @@ def test_code_execution_backend_rejects_invalid_env(monkeypatch, tmp_path: Path,
     monkeypatch.setenv("CODE_EXECUTION_BACKEND", invalid)
     with pytest.raises(ValueError, match="CODE_EXECUTION_BACKEND"):
         Settings.load()
+
+
+def test_pdf_scope_and_legacy_transport_migration(monkeypatch, tmp_path):
+    from hina_bot.core.config import migrate_legacy_env_values
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("GEMINI_PDF_TRANSPORT", "AUTO")
+    monkeypatch.setenv("GEMINI_PDF_SCOPE", "Memory, answer, memory")
+    base = Settings.load()
+    assert base.gemini_pdf_transport == "text"
+    assert base.gemini_pdf_scope == "answer,memory"
+    assert migrate_legacy_env_values({"GEMINI_PDF_TRANSPORT": "auto",
+                                      "GEMINI_PDF_SCOPE": "memory,answer"}) == {
+        "GEMINI_PDF_TRANSPORT": "text", "GEMINI_PDF_SCOPE": "answer,memory",
+    }
+    store = Store.create(":memory:")
+    try:
+        store.settings.set_runtime_value("gemini_pdf_transport", '"auto"')
+        store.settings.set_runtime_value("gemini_pdf_scope", '"knowledge, answer"')
+        runtime = RuntimeSettings(base, store)
+        assert runtime.gemini_pdf_transport == "text"
+        assert runtime.gemini_pdf_scope == "answer,knowledge"
+        assert store.settings.runtime_values()["gemini_pdf_transport"] == '"text"'
+        assert store.settings.runtime_values()["gemini_pdf_scope"] == '"answer,knowledge"'
+        assert runtime.set_text("GEMINI_PDF_SCOPE", "answer,memory,decisions,knowledge") == "all"
+        assert runtime.set_text("GEMINI_PDF_TRANSPORT", "PDF") == "pdf"
+        runtime.reload()
+        assert runtime.gemini_pdf_transport == "pdf"
+        for value in ("all,answer", "answer,,memory", "bogus", ""):
+            with pytest.raises(ValueError):
+                runtime.set_text("GEMINI_PDF_SCOPE", value)
+        with pytest.raises(ValueError):
+            runtime.set_text("GEMINI_PDF_TRANSPORT", "auto")
+        assert runtime.reset("GEMINI_PDF_TRANSPORT") == "text"
+        assert runtime.reset("GEMINI_PDF_SCOPE") == "answer,memory"
+    finally:
+        store.close()

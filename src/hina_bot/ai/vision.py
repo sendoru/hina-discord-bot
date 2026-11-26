@@ -373,17 +373,24 @@ class _VisionResponses:
         include_media_resolution = (
             self._provider_name == "gemini" and model.startswith("gemini-3")
         )
-        if visuals:
+        # Stored Gemini continuations already contain the original media. Do
+        # not attach them to function results or append fixed visual references
+        # again. Stateless continuations still replay their full logical input.
+        stored_continuation = (
+            self._provider_name == "gemini" and bool(request.get("previous_interaction_id"))
+        )
+        if visuals and not stored_continuation:
             request["input"] = _augment_input(
                 request.get("input"),
                 visuals,
                 include_media_resolution=include_media_resolution,
             )
-        if audios:
+        if audios and not stored_continuation:
             request["input"] = augment_audio_input(request.get("input"), audios)
         # Passive recent images alone do not activate the fixed reference.
         if (
             self._provider_name == "gemini"
+            and not stored_continuation
             and self._reference_image_urls
             and any(
                 visual.context_kind == "current_message"
@@ -402,7 +409,8 @@ class _VisionResponses:
             )
         request["instructions"] = (
             (request.get("instructions") or "").rstrip()
-            + ("\n\n" + VISION_INPUT_POLICY if visuals else "")
+            + ("\n\n" + VISION_INPUT_POLICY
+               if visuals and not request.get("_hina_vision_policy_prepared") else "")
             + ("\n\n" + AUDIO_INPUT_POLICY if audios else "")
         ).strip()
         return await self._responses.create(**request)

@@ -86,6 +86,30 @@ def canonical_memory_read_mode(value: str) -> str:
     return "full" if value in {"legacy", "shadow", "tiered_shadow", "tiered", "decision_shadow"} else value
 
 
+GEMINI_PDF_SCOPES = ("answer", "memory", "knowledge", "decisions")
+
+
+def parse_pdf_scope(value: str) -> str:
+    parts = [part.strip().lower() for part in value.split(",")]
+    if parts == ["all"]:
+        return "all"
+    if not parts or any(part not in GEMINI_PDF_SCOPES for part in parts):
+        raise ValueError("Invalid GEMINI_PDF_SCOPE")
+    selected = set(parts)
+    return "all" if selected == set(GEMINI_PDF_SCOPES) else ",".join(
+        domain for domain in GEMINI_PDF_SCOPES if domain in selected
+    )
+
+
+def parse_pdf_transport(value: str, *, legacy=False) -> str:
+    mode = value.strip().lower()
+    if legacy and mode == "auto":
+        return "text"
+    if mode not in {"text", "pdf"}:
+        raise ValueError("GEMINI_PDF_TRANSPORT must be text or pdf")
+    return mode
+
+
 def migrate_legacy_env_values(values, *, warn: bool = False) -> dict[str, str]:
     """Translate retired dotenv keys/values at the input boundary only."""
     result = dict(values)
@@ -102,8 +126,15 @@ def migrate_legacy_env_values(values, *, warn: bool = False) -> dict[str, str]:
             converted = canonical(raw)
             if converted != raw:
                 result[key] = converted
+    if "GEMINI_PDF_TRANSPORT" in result:
+        result["GEMINI_PDF_TRANSPORT"] = parse_pdf_transport(
+            result["GEMINI_PDF_TRANSPORT"].strip() or "text", legacy=True,
+        )
+    if "GEMINI_PDF_SCOPE" in result:
+        result["GEMINI_PDF_SCOPE"] = parse_pdf_scope(result["GEMINI_PDF_SCOPE"].strip() or "all")
     if warn and any(values.get(key) != result.get(key) for key in (
         "OPENAI_MODEL", "MEMORY_SESSION_FOLLOWUP", "RAG_MODE", "PERSONAL_MEMORY_READ_MODE",
+        "GEMINI_PDF_TRANSPORT", "GEMINI_PDF_SCOPE",
     )):
         logging.getLogger("hina").warning(
             "Retired configuration migrated on read; update the environment or run hina-env-normalize"
@@ -184,6 +215,8 @@ class Settings:
     channel_context_chars: int = 6000
     recent_context_window_minutes: int = 60
     conversation_session_gap_minutes: int = 240
+    gemini_pdf_scope: str = "all"
+    gemini_pdf_transport: str = "text"
     context_input_mode: str = "legacy"
     special_dm_user_id: int | None = None
     bot_admin_ids: frozenset[int] = frozenset()
@@ -461,6 +494,9 @@ class Settings:
                 or any(c in runtime_default_location for c in "\r\n\0")):
             raise ValueError("RUNTIME_LOCALE은 32자, RUNTIME_DEFAULT_LOCATION은 100자 이하여야 합니다.")
 
+        # The environment migration boundary has already parsed these values.
+        pdf_scope = migrated_env.get("GEMINI_PDF_SCOPE", "all")
+        pdf_mode = migrated_env.get("GEMINI_PDF_TRANSPORT", "text")
         context_input_mode = (
             os.getenv("CONTEXT_INPUT_MODE", "legacy").strip().lower() or "legacy"
         )
@@ -575,6 +611,8 @@ class Settings:
             recent_context_window_minutes=int(os.getenv("RECENT_CONTEXT_WINDOW_MINUTES", "60")),
             conversation_session_gap_minutes=int(os.getenv("CONVERSATION_SESSION_GAP_MINUTES", "240")),
             context_input_mode=context_input_mode,
+            gemini_pdf_transport=pdf_mode,
+            gemini_pdf_scope=pdf_scope,
             history_turns=int(os.getenv("HISTORY_TURNS", "12")),
             raw_retention_turns=int(os.getenv("RAW_RETENTION_TURNS", "1000")),
             history_max_chars=int(os.getenv("HISTORY_MAX_CHARS", "12000")),

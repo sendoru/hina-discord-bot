@@ -155,3 +155,10 @@ def test_explicit_backend(provider, mode, audio, pdf, expected):
 def test_unimplemented_backend_is_rejected():
     with pytest.raises(ValueError):
         code_execution_backend("gemini", mode="local")
+
+
+def test_auto_keeps_delegated_when_pdf_requested_but_encoding_failed():
+    assert code_execution_backend("gemini", pdf_requested=True, has_pdf=False) == "delegated"
+    assert code_execution_backend("gemini", mode="native", pdf_requested=True) == "native"
+    assert code_execution_backend("gemini", pdf_requested=False) == "native"
+    assert code_execution_backend("openai", pdf_requested=True) == "native"

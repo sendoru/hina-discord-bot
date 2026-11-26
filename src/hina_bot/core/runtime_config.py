@@ -23,6 +23,8 @@ from .config import (
     parse_call_prefixes,
     parse_discord_id_set,
     parse_external_context_policy,
+    parse_pdf_scope,
+    parse_pdf_transport,
 )
 
 
@@ -45,6 +47,8 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "public_memory_in_dm": "공개 서버에서 같은 사용자와 나눈 대화를 DM 답변에서 추가 참고할지 정합니다.",
     "external_context_policy": "외부 LLM provider로 보낼 수 있는 대화 문맥의 최종 프라이버시 경계를 정합니다.",
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
+    "gemini_pdf_scope": "PDF 전송 범위: all 또는 answer,memory,knowledge,decisions 중 쉼표로 구분한 선택.",
+    "gemini_pdf_transport": "Gemini 입력 전송 방식. text가 기본, pdf는 통합 문서 변환을 사용합니다.",
     "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. decision은 Gemini Decisions 선택을 적용하고, off는 지식 검색을 끕니다.",
     "personal_memory_cross_scope": "서버에서 본인의 다른 공간 기억을 읽는 기본값입니다. off이면 직접 동의한 사용자만 허용합니다.",
     "server_memory_read": "서버 공유 기억의 응답 주입과 조회를 제어합니다.",
@@ -73,7 +77,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "gemini_store_output_repair_interactions": "출력 후처리 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
     "gemini_store_knowledge_interactions": "지식 등록 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
     "gemini_search_api_mode": "Gemini 검색에 사용할 API 선택입니다. auto는 Interactions 우선·특정 도구 오류 시 GenerateContent 폴백, interactions/generate_content는 강제 모드입니다.",
-    "code_execution_backend": "Gemini 코드 실행 방식입니다. auto: 호환 입력은 native, 오디오 등 비호환 입력은 delegated. native: 내장 도구만 사용(비호환 입력에서는 미제공). delegated: 필요할 때 별도 Gemini 계산 호출. 다른 provider는 기존 방식 유지.",
+    "code_execution_backend": "Gemini 코드 실행 방식입니다. auto: Answer PDF 설정 또는 오디오 입력은 delegated, 나머지는 native. native: 내장 도구만 사용(비호환 입력에서는 미제공). delegated: 필요할 때 별도 Gemini 계산 호출. 다른 provider는 기존 방식 유지.",
     "gemini_store_classifier_interactions": "semantic/web routing classifier 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
     "model_routing_smart_threshold": "채팅 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
     "memory_routing_smart_threshold": "장기 기억 routing score가 이 값 이상일 때 smart tier를 선택합니다.",
@@ -142,6 +146,12 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         choices=tuple(sorted(EXTERNAL_CONTEXT_POLICIES)),
     ),
     "chat_web_search": _runtime_spec("chat_web_search", "CHAT_WEB_SEARCH", "bool"),
+    "gemini_pdf_scope": _runtime_spec(
+        "gemini_pdf_scope", "GEMINI_PDF_SCOPE", "string",
+    ),
+    "gemini_pdf_transport": _runtime_spec(
+        "gemini_pdf_transport", "GEMINI_PDF_TRANSPORT", "string", choices=("text", "pdf"),
+    ),
     "rag_mode": _runtime_spec(
         "rag_mode",
         "RAG_MODE",
@@ -407,6 +417,10 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
     if spec.kind == "string":
         if spec.attr == "external_context_policy":
             return parse_external_context_policy(text)
+        if spec.attr == "gemini_pdf_scope":
+            return parse_pdf_scope(text)
+        if spec.attr == "gemini_pdf_transport":
+            return parse_pdf_transport(text)
         if spec.attr in {"gemini_search_api_mode", "code_execution_backend"}:
             text = text.lower()
         if spec.empty_allowed and text.lower() in {"none", "null", "off", "-"}:
@@ -473,6 +487,8 @@ def decode_runtime_value(spec: RuntimeSettingSpec, encoded: str, *, settings=Non
             value = canonical_memory_read_mode(value)
         elif spec.attr == "rag_mode":
             value = canonical_rag_mode(value)
+        elif spec.attr == "gemini_pdf_transport":
+            value = parse_pdf_transport(value, legacy=True)
         return parse_runtime_value(spec, value or "none", settings=settings)
     raise ValueError(f"unsupported runtime setting kind: {spec.kind}")
 
@@ -546,6 +562,10 @@ class RuntimeSettings:
                 continue
             try:
                 loaded[attr] = decode_runtime_value(spec, encoded, settings=self._base)
+                if attr in {"gemini_pdf_transport", "gemini_pdf_scope"}:
+                    canonical = encode_runtime_value(loaded[attr])
+                    if canonical != encoded:
+                        self._store.settings.set_runtime_value(attr, canonical)
             except (TypeError, ValueError, json.JSONDecodeError):
                 # Fail closed to the startup value if the DB contains an old or malformed value.
                 continue

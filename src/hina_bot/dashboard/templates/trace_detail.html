@@ -422,6 +422,24 @@
     {% for item in data.timeline %}
     <details class="timeline-item" {% if item.source == "event" %}open{% endif %}>
       <summary><span class="source {{ item.source }}">{{ item.source }}</span> {{ item.at | localtime }}</summary>
+      {% set decision = item.row.get("decision_transport") or {} %}
+      {% set coverage = item.row.get("pdf_coverage") or decision %}
+      {% if coverage and coverage.get("source_chars") is not none %}
+      <p><strong>PDF coverage:</strong>
+        {% if coverage.eligible_coverage is not none %}{{ (coverage.eligible_coverage * 100)|round(1) }}% eligible{% else %}— eligible{% endif %}
+        / {% if coverage.total_coverage is not none %}{{ (coverage.total_coverage * 100)|round(1) }}% all observed text{% else %}—{% endif %}
+        · {{ coverage.get("documents", "—") }} documents · {{ coverage.pages }} pages · {{ coverage.pdf_bytes }} bytes · {{ coverage.encode_ms }} ms
+      </p>
+      {% endif %}
+      {% if item.row.get("provider_modality_tokens") %}
+      <p>Provider-reported modality tokens (may be cumulative):
+      {{ item.row.get("provider_modality_tokens") }}</p>
+      {% endif %}
+      {% for observation in item.row.get("reference_transport") or decision.get("reference_transport") or [] %}
+      <p>{{ observation.get("section", "reference") }} · Gemini {{ observation.transport }} · {{ observation.source_chars }} chars ·
+        {{ observation.pages }} pages · {{ observation.pdf_bytes }} bytes ·
+        {{ observation.encode_ms }} ms{% if observation.fallback %} · {{ observation.fallback }}{% endif %}</p>
+      {% endfor %}
       <pre>{{ item.row | tojson(indent=2) }}</pre>
     </details>
     {% endfor %}

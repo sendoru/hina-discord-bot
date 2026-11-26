@@ -15,8 +15,9 @@ _GROUP_FIELDS = (
     ("기억·설정", frozenset({
         "server_note", "user_note",
     })),
+    ("직접 답장 문맥", frozenset({"active_reply_chain"})),
     ("대화 문맥", frozenset({
-        "active_reply_chain", "channel_recent_messages",
+        "channel_recent_messages",
         "personal_recent_conversation", "conversation_history",
         "public_server_context",
     })),
@@ -26,6 +27,10 @@ _GROUP_FIELDS = (
     ("커스텀 이모지", frozenset({"available_custom_emojis"})),
 )
 _GROUP_NAMES = tuple(label for label, _ in _GROUP_FIELDS)
+
+
+class PDFReferenceText(dict):
+    """Locally marked, already-authorized data. Serializes as ordinary input_text."""
 
 
 def reference_context_blocks(context: dict) -> list[dict]:
@@ -40,17 +45,22 @@ def reference_context_blocks(context: dict) -> list[dict]:
         )
         sections[group][key] = value
 
-    return [
-        {
+    blocks = []
+    for name, rows in sections.items():
+        if not rows:
+            continue
+        block = {
             "type": "input_text",
             "text": (
                 f"{REFERENCE_PREFIX} · {name}):\n"
                 + json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
             ),
         }
-        for name, rows in sections.items()
-        if rows
-    ]
+        if name != "화자·상호작용":
+            block = PDFReferenceText(block)
+        blocks.append(block)
+    return blocks
+
 
 
 def read_reference_context(content) -> dict:

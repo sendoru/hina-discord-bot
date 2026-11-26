@@ -235,6 +235,13 @@ def continuation_request(
             for result in results
         ]
         followup["previous_interaction_id"] = interaction_id
+        moved_sources = getattr(response, "_hina_pdf_moved_sources", ())
+        if isinstance(moved_sources, tuple) and moved_sources:
+            from .pdf_transport import strip_document_instructions
+
+            reduced = strip_document_instructions(request.get("instructions", ""), moved_sources)
+            if reduced is not None:
+                followup["instructions"] = reduced
     else:
         interaction_steps = tuple(
             getattr(response, "_hina_interaction_steps", ()) or ()
