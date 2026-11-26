@@ -133,3 +133,25 @@ def test_delegated_model_settings(mode, fixed_level, fast_level, expected):
         gemini_thinking_level=fixed_level, gemini_fast_thinking_level=fast_level,
     )
     assert delegated_model_settings(config) == expected
+
+
+@pytest.mark.parametrize(("provider", "mode", "audio", "pdf", "expected"), [
+    ("gemini", "native", False, False, "native"),
+    ("gemini", "native", True, False, "none"),
+    ("gemini", "native", False, True, "none"),
+    ("gemini", "native", True, True, "none"),
+    ("gemini", "delegated", False, False, "delegated"),
+    ("gemini", "delegated", True, False, "delegated"),
+    ("gemini", "delegated", False, True, "delegated"),
+    ("openai", "delegated", True, True, "native"),
+    ("openrouter", "delegated", False, False, "none"),
+])
+def test_explicit_backend(provider, mode, audio, pdf, expected):
+    assert code_execution_backend(
+        provider, mode=mode, has_audio=audio, has_pdf=pdf,
+    ) == expected
+
+
+def test_unimplemented_backend_is_rejected():
+    with pytest.raises(ValueError):
+        code_execution_backend("gemini", mode="local")
