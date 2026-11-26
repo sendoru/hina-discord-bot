@@ -14,6 +14,7 @@ from hina_bot.ai.pdf_transport import (
     text_reference_observation,
     transport_coverage,
 )
+from hina_bot.ai.prompts import load_prompt
 from hina_bot.ai.reference_context_blocks import PDFReferenceText, reference_context_blocks
 
 
@@ -131,3 +132,41 @@ def test_provider_modality_tokens_do_not_invent_unobserved_document_tokens():
     })
     assert output._hina_modality_tokens == {"input": {"text": 100, "image": 200}}
     assert providers._gemini_output({"usage": {}})._hina_modality_tokens == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("success", [True, False])
+async def test_whole_memory_and_vision_resources_preserve_native_boundaries(success):
+    memory = load_prompt("structured_memory.md")
+    vision = load_prompt("vision_input.md").strip()
+    output = load_prompt("final_output.md")
+    instructions = "\n".join(("native policy", memory, output, vision))
+    parts = [
+        InstructionReferenceText("structured_memory", memory),
+        InstructionReferenceText("vision_input", vision),
+    ]
+    messages = [{"role": "user", "content": [
+        PDFReferenceText(type="input_text", text="reference"),
+    ]}]
+    encoder = AsyncMock(side_effect=fixture_encoder if success else lambda source: (
+        None, text_reference_observation(source, "unsupported_glyph"),
+    ))
+    projected, has_pdf = await prepare_answer_references(
+        messages, instruction_parts=parts, encoder=encoder,
+    )
+    assert has_pdf is success
+    payload = {"input": providers._gemini_input(projected), "system_instruction": instructions}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: None)) as http:
+        adapter = providers._GeminiResponses(http, settings=SimpleNamespace(gemini_pdf_transport="pdf"))
+        metrics = await adapter._reference_transport(
+            payload, {"input": projected}, "input", providers._gemini_input,
+        )
+    system = payload["system_instruction"]
+    if success:
+        assert memory not in system and vision not in system
+        assert output in system and pdf_transport.DOCUMENT_GUIDANCE in system
+        assert "audience=owner" in system and "sensitive" in system
+        assert transport_coverage(metrics)["documents"] == 1
+    else:
+        assert system == instructions
+        assert transport_coverage(metrics)["documents"] == 0

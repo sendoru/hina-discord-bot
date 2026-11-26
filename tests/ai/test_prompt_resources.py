@@ -5,7 +5,7 @@ from hina_bot.ai.memory_extraction import (
     DIRECTIVE_VERIFICATION_POLICY,
     SHADOW_EXTRACTION_POLICY,
 )
-from hina_bot.ai.prompts import document_prompt_components, load_prompt, prompt_components
+from hina_bot.ai.prompts import load_prompt
 from hina_bot.ai.request_assembly import (
     CURRENT_CHANNEL_SCOPE_POLICY,
     DIALOGUE_CONTEXT_POLICY,
@@ -69,24 +69,3 @@ def test_memory_extraction_policies_are_loaded_from_named_resources():
         "{{ANNOTATION_FIELD_RULES}}", annotation
     )
     assert DIRECTIVE_VERIFICATION_POLICY == verification
-
-
-def test_document_guidance_components_are_exact_ordered_substrings():
-    from hina_bot.ai.pdf_transport import strip_document_instructions
-
-    for name in ("dialogue_context.md", "structured_memory.md", "turn_response.md",
-                 "vision_input.md", "final_output.md"):
-        full = load_prompt(name)
-        parts = prompt_components(name)
-        guidance = document_prompt_components(name)
-        assert guidance
-        assert full == "\n".join(source for _, source in parts)
-        reduced = strip_document_instructions(
-            "prefix\n" + full + "\nsuffix", [source for _, source in guidance],
-        )
-        assert reduced is not None
-        for label, source in parts:
-            if label is None:
-                assert source.strip() in reduced
-            else:
-                assert source not in reduced

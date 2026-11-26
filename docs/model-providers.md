@@ -455,18 +455,22 @@ mock tests or extraction alone.
 See Google's [document guide](https://aistudio.google.com/docs/document-processing)
 and [Decisions input schema](https://aistudio.google.com/docs/decisions-api#input).
 
-#### Additional P9 app guidance split
+#### Whole-resource answer guidance transport
 
-Prompt resources for dialogue context, structured memory, turn response, vision
-input and final response style are explicitly partitioned in
-`ai/prompts.py`; their original complete text and order are reconstructed
-for text mode and all pre-send fallbacks. Conversation-space guidance and
-selected descriptive components are eligible for the existing single PDF.
-Core identity and mention rules, disclosure and sensitive-memory rules,
-relationship mode, image source/identity restrictions, tool policy, and
-Discord output protocol stay native. The request assembler makes the vision
-policy available before encoding only when vision augmentation is active;
-the wrapper avoids appending it twice. Actual images/audio remain native.
-PDF-only native guidance retains a concise priority and privacy/safety anchor.
-No additional configuration or API call; live instruction adherence is not
-established by local extraction or mocked requests.
+Existing Markdown resources and the prompt loader are unchanged. The request
+assembler explicitly selects complete, app-owned resources for the single PDF:
+character, continuity, world core, conversation space, dialogue context,
+turn response, structured memory (only when enabled for this turn), and vision
+input (only with active visuals). Compact lore remains app reference data.
+
+Base policy, reference provenance, current relationship mode, dynamic admin
+instructions, runtime facts, tool rules and the entire final output protocol
+remain native. A concise native PDF guidance policy preserves identity,
+disclosure, sensitive-memory and image trust boundaries. PDF instructions
+cannot override native policy. No markers or fragmented Markdown files.
+
+The full original instructions remain in their original order in text mode or
+pre-send fallback. The vision policy is included before PDF preparation only
+when vision augmentation is active; the wrapper does not append it again.
+Actual images/audio stay native. No additional config or remote API call.
+Live model adherence and cost savings still require normal-traffic validation.

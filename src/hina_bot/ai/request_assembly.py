@@ -43,7 +43,7 @@ from .managed_tools import (
 )
 from .model_routing import ModelPlan, fixed_model_plan
 from .pdf_transport import InstructionReferenceText, answer_pdf_enabled, prepare_answer_references
-from .prompts import document_prompt_components, load_prompt
+from .prompts import load_prompt
 from .providers import ProviderAPIError
 from .retrieval_decisions import select_with_decisions
 from .rp_output_policy import hide_web_citations, provenance_instruction
@@ -686,25 +686,26 @@ class RequestAssembler(BaseLLM):
         )
         memory_policy = STRUCTURED_MEMORY_POLICY if personal_memory["policy"] else None
         if pdf_active:
-            # Explicit prompt components, not heuristics on the assembled string.
-            # Keep core policy, identity/provenance, relationship mode, disclosure,
-            # tools, dynamic admin rules, runtime facts and output protocol native.
+            # Move entire existing prompt resources, without changing their files.
+            # Keep base policy, provenance, relationship mode, tools, dynamic
+            # admin rules, runtime facts and final output protocol native.
+            # DOCUMENT_GUIDANCE preserves critical privacy/identity boundaries.
             document_instructions = [
                 InstructionReferenceText("continuity", reference_policies[0]),
                 InstructionReferenceText("world_core", WORLD_CORE_POLICY),
                 InstructionReferenceText("character", self.character),
                 InstructionReferenceText("conversation_space", space_policy),
+                InstructionReferenceText("dialogue_context", DIALOGUE_CONTEXT_POLICY),
+                InstructionReferenceText("turn_response", TURN_RESPONSE_POLICY),
             ]
-            guidance_resources = ["dialogue_context.md", "turn_response.md", "final_output.md"]
             if memory_policy:
-                guidance_resources.append("structured_memory.md")
+                document_instructions.append(InstructionReferenceText("structured_memory", memory_policy))
             if vision_policy_prepared:
-                guidance_resources.append("vision_input.md")
-            document_instructions.extend(
-                InstructionReferenceText(label, source)
-                for name in guidance_resources
-                for label, source in document_prompt_components(name)
-            )
+                # The vision wrapper trims outer whitespace in the final system
+                # text. Match that exact source for full-resource removal.
+                document_instructions.append(InstructionReferenceText(
+                    "vision_input", VISION_INPUT_POLICY.strip(),
+                ))
             if compact_lore is not None and compact_lore.text:
                 document_instructions.append(InstructionReferenceText(
                     "static_lore", compact_lore.text, guidance=False,

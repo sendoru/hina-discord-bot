@@ -10,7 +10,7 @@ import pytest
 from hina_bot.ai import pdf_transport, providers
 from hina_bot.ai.information_pipeline import InformationPipeline
 from hina_bot.ai.pdf_transport import GeminiInlinePDF, PreparedPDFReference
-from hina_bot.ai.prompts import document_prompt_components, prompt_components
+from hina_bot.ai.prompts import load_prompt
 from hina_bot.ai.reference_context_blocks import PDFReferenceText
 from hina_bot.core.config import Settings
 from hina_bot.core.routing import Scope
@@ -96,12 +96,17 @@ async def test_pdf_answer_prepares_before_tools_and_preserves_wire_compatibility
     if isinstance(system, dict):
         system = system["parts"][0]["text"]
     moved = success and mode != "native"
-    for name in ("dialogue_context.md", "turn_response.md", "final_output.md"):
-        for _, guidance in document_prompt_components(name):
-            assert (guidance in system) == (not moved)
-        for label, policy in prompt_components(name):
-            if label is None:
-                assert policy.strip() in system
+    expected_guidance = {
+        "dialogue_context": load_prompt("dialogue_context.md"),
+        "turn_response": load_prompt("turn_response.md"),
+        "conversation_space": load_prompt("conversation_dm.md"),
+    }
+    for guidance in expected_guidance.values():
+        assert (guidance in system) == (not moved)
+    for name in ("base.md", "final_output.md"):
+        assert load_prompt(name).strip() in system
+    if moved:
+        assert pdf_transport.DOCUMENT_GUIDANCE in system
     if moved:
         def documents(value):
             if isinstance(value, dict):
@@ -114,12 +119,13 @@ async def test_pdf_answer_prepares_before_tools_and_preserves_wire_compatibility
                     yield from documents(item)
 
         (source,) = documents(body)
-        for name in ("dialogue_context.md", "turn_response.md", "final_output.md"):
-            for label, guidance in document_prompt_components(name):
-                assert json.loads(next(
-                    line for line in source.splitlines()
-                    if line.startswith('{"app_guidance":') and label in line
-                ))["app_guidance"][label] == guidance
+        guidance_map = {}
+        for line in source.splitlines():
+            if line.startswith('{"app_guidance":'):
+                guidance_map.update(json.loads(line)["app_guidance"])
+        for label, guidance in expected_guidance.items():
+            assert guidance_map[label] == guidance
+        assert load_prompt("final_output.md") not in guidance_map.values()
 
     assert ("request_computation" in serialized) == (expected == "delegated")
     if api == "generate_content":
