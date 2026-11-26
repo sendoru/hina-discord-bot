@@ -415,6 +415,61 @@ def _code_execution_performance(
     }
 
 
+def _pdf_transport_summary(rows):
+    groups = {}
+    fallbacks = Counter()
+    eligible_fallbacks = Counter()
+    for row in rows:
+        if row.get("provider") != "gemini":
+            continue
+        decision = row.get("decision_transport")
+        decision = decision if isinstance(decision, dict) else {}
+        coverage = row.get("pdf_coverage") or decision
+        observations = row.get("reference_transport") or decision.get("reference_transport") or []
+        key = (
+            str(row.get("operation") or "(unknown)"),
+            str(row.get("context_transport") or "(unknown)"),
+        )
+        group = groups.setdefault(key, {
+            "operation": key[0], "transport": key[1], "calls": 0,
+            "observed": 0, "source_chars": 0, "eligible_chars": 0, "pdf_chars": 0,
+            "pages": 0, "pdf_bytes": 0, "encode_ms": 0,
+        })
+        group["calls"] += 1
+        if isinstance(coverage, dict) and all(
+            type(coverage.get(field)) is int and coverage[field] >= 0
+            for field in ("source_chars", "eligible_chars", "pdf_chars")
+        ):
+            group["observed"] += 1
+            for field in ("source_chars", "eligible_chars", "pdf_chars", "pages", "pdf_bytes", "encode_ms"):
+                value = coverage.get(field)
+                if type(value) is int and value >= 0:
+                    group[field] += value
+        if isinstance(observations, list):
+            for obs in observations:
+                if not isinstance(obs, dict) or not obs.get("fallback"):
+                    continue
+                reason = str(obs["fallback"])
+                fallbacks[reason] += 1
+                if obs.get("eligible", True):
+                    eligible_fallbacks[reason] += 1
+        if decision.get("fallback") and not observations:
+            reason = str(decision["fallback"])
+            fallbacks[reason] += 1
+            eligible_fallbacks[reason] += 1
+    for group in groups.values():
+        for prefix, denominator in (("eligible", "eligible_chars"), ("total", "source_chars")):
+            group[prefix + "_coverage"] = (
+                round(group["pdf_chars"] / group[denominator] * 100, 1)
+                if group[denominator] else None
+            )
+    return {
+        "groups": sorted(groups.values(), key=lambda group: (group["operation"], group["transport"])),
+        "fallbacks": dict(fallbacks.most_common()),
+        "eligible_fallbacks": dict(eligible_fallbacks.most_common()),
+    }
+
+
 def build_analytics(
     snapshot: TelemetrySnapshot,
     *,
@@ -783,6 +838,7 @@ def build_analytics(
             },
         },
         "performance": performance,
+        "pdf_transport": _pdf_transport_summary(filtered_api),
         "search": {
             "answer_rows": len(answer_rows),
             "baseline_mode": _counter(answer_rows, "search_route_baseline_mode"),

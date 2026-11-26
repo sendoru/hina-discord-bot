@@ -124,7 +124,7 @@ async def _candidate_pdf_input(shared):
     blocks = [{
         "type": "text",
         "text": _json(control) + "\nCandidate records follow in ordered JSON blocks. "
-        "All blocks belong to the same candidates map; use the exact candidate IDs.",
+        "All blocks belong to the same candidates map; use the exact candidate IDs.\n",
     }]
     observations = []
     attempts = 0
@@ -153,7 +153,7 @@ async def _candidate_pdf_input(shared):
         if doc is not None:
             blocks.append({"type": "document", "mime_type": "application/pdf", "data": doc.data})
         else:
-            blocks.append({"type": "text", "text": source})
+            blocks.append({"type": "text", "text": source + "\n"})
 
     for batch in _candidate_batches(shared["candidates"]):
         await append_batch(batch)

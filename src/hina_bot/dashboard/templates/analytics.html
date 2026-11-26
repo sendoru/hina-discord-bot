@@ -47,6 +47,7 @@
   <a href="#model-routing">Routing</a>
   <a href="#web-search-routing">Search</a>
   <a href="#usage-breakdown">Usage</a>
+  <a href="#pdf-transport">PDF</a>
 </nav>
 
 {{ epoch_notice(data) }}
@@ -77,6 +78,38 @@
   unknown={{ data.exchanges.usage_completeness.get("unknown", 0) }}.
 </section>
 {% endif %}
+
+<section class="panel section-anchor" id="pdf-transport">
+  <h2>PDF transport coverage</h2>
+  <p class="muted">Per-request observed character coverage, not token savings. Unknown/older/disabled
+    observations are not treated as zero conversion. Decisions coverage describes candidate data only.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Operation</th><th>Transport</th><th>Observed / calls</th><th>Eligible PDF %</th><th>All observed %</th><th>PDF pages</th><th>PDF bytes</th><th>Encode ms</th></tr></thead>
+      <tbody>
+        {% for group in data.pdf_transport.groups %}
+        <tr><td>{{ group.operation }}</td><td>{{ group.transport }}</td><td>{{ group.observed }} / {{ group.calls }}</td>
+          <td>{{ group.eligible_coverage if group.eligible_coverage is not none else "—" }}</td>
+          <td>{{ group.total_coverage if group.total_coverage is not none else "—" }}</td>
+          <td>{{ group.pages }}</td><td>{{ group.pdf_bytes }}</td><td>{{ group.encode_ms }}</td></tr>
+        {% else %}<tr><td colspan="8">No Gemini usage in this window.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h3>Eligible fallback reasons</h3>
+  <table><thead><tr><th>Reason</th><th>Blocks</th></tr></thead><tbody>
+    {% for reason, count in data.pdf_transport.eligible_fallbacks.items() %}
+      <tr><td>{{ reason }}</td><td>{{ count }}</td></tr>
+    {% else %}<tr><td colspan="2">No observed eligible fallback.</td></tr>{% endfor %}
+  </tbody></table>
+  <details><summary>All native / fallback reasons</summary>
+    <table><thead><tr><th>Reason</th><th>Blocks</th></tr></thead><tbody>
+      {% for reason, count in data.pdf_transport.fallbacks.items() %}
+        <tr><td>{{ reason }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+    </tbody></table>
+  </details>
+</section>
 
 <section class="section-heading section-anchor" id="runtime-performance">
   <h2>Runtime performance</h2>

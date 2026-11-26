@@ -422,3 +422,37 @@ def test_code_execution_latency_preserves_missing_coverage():
     assert code["groups"]["delegated"]["turn_latency"]["missing"] == 1
     assert code["groups"]["delegated"]["generation_latency"]["missing"] == 1
     assert code["groups"]["no_execution_observed"]["turns"] == 1
+
+
+def test_pdf_coverage_aggregates_known_rows_without_counting_unobserved_as_zero():
+    original = snapshot()
+    usage = (
+        *original.usage,
+        {
+            "operation": "answer", "provider": "gemini", "model": "fast-model",
+            "at": "2026-09-21T00:00:00+00:00", "elapsed_ms": 30,
+            "context_transport": "pdf",
+            "pdf_coverage": {"source_chars": 100, "eligible_chars": 50, "pdf_chars": 40,
+                             "pages": 2, "pdf_bytes": 200, "encode_ms": 10},
+            "reference_transport": [
+                {"fallback": "unsupported_glyph", "eligible": True},
+                {"fallback": "trusted_instruction", "eligible": False},
+            ],
+        },
+        {
+            "operation": "decision.lore", "provider": "gemini", "model": "gemini-decision-1",
+            "at": "2026-09-21T00:00:00+00:00", "elapsed_ms": 20,
+            "context_transport": "pdf",
+            "decision_transport": {"source_chars": 200, "eligible_chars": 200, "pdf_chars": 180,
+                                   "pages": 2, "pdf_bytes": 100, "encode_ms": 5},
+        },
+    )
+    result = build_analytics(replace(original, usage=usage))["pdf_transport"]
+    groups = {(row["operation"], row["transport"]): row for row in result["groups"]}
+    assert groups["answer", "pdf"]["eligible_coverage"] == 80.0
+    assert groups["answer", "pdf"]["total_coverage"] == 40.0
+    assert groups["decision.lore", "pdf"]["eligible_coverage"] == 90.0
+    assert groups["answer", "(unknown)"]["observed"] == 0
+    assert groups["answer", "(unknown)"]["eligible_coverage"] is None
+    assert result["eligible_fallbacks"] == {"unsupported_glyph": 1}
+    assert result["fallbacks"] == {"unsupported_glyph": 1, "trusted_instruction": 1}
