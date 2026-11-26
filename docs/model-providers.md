@@ -259,6 +259,26 @@ MEMORY_MAX_OUTPUT_TOKENS=4096
 OpenRouter에서는 OpenAI-compatible Responses API를 사용하고, 일반 답변에서 검색이 필요한 경우
 `web` plugin으로 변환합니다.
 
+## Gemini 코드 실행 위임
+
+일반 Gemini 요청은 기존 native `code_execution`을 유지합니다. 오디오를 포함한
+답변 요청에서는 해당 도구 대신 `request_computation` 로컬 함수를 제공합니다.
+이 함수는 봇 호스트에서 Python을 실행하지 않고, 실제 함수 호출이 발생할 때만
+동일 Gemini 모델에 최소한의 계산용 텍스트를 보내 Google managed code execution을
+실행합니다. 별도의 사전 분류/Decision 호출은 없습니다.
+
+위임 호출은 원래 미디어, 전체 대화 문맥, 다른 도구, interaction ID를 전달하지 않고
+저장 설정을 false로 지정합니다. 답변당 최대 2회, 동시 최대 4회, 20초와 기존 답변
+timeout 중 짧은 제한, 입력/반환 데이터 각각 16 KiB, 최대 생성 4096 tokens를 적용합니다.
+동일 요청의 결과/실패는 한 답변 내 재사용하며 빈 결과 재시도를 하지 않습니다.
+실제 코드 실행 결과가 확인되지 않으면 실패로 반환합니다. `usage.jsonl`에는
+`operation=code_execution.delegated`로 별도 호출이 기록됩니다.
+
+이 변경은 PDF 인코딩과 독립적입니다. PDF 입력 경로의 연결은 후속 PDF 브랜치에서
+진행합니다. 실제 API 조합과 모델 품질은 유료 테스트 없이 개발했으므로 운영 검증이
+필요합니다. 위임 계산은 원본 오디오를 직접 읽지 못하고 답변 모델이 전달하는 관측값에
+의존합니다. OpenAI와 OpenRouter의 도구 동작은 변경하지 않습니다.
+
 ## 이미지 입력과 모델 capability
 
 세 provider 모두 일반 답변에 이미지 입력을 전달할 수 있습니다.
