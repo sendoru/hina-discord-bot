@@ -7,7 +7,7 @@ import pytest
 from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS, AudioInput
 from hina_bot.ai.local_tools import LocalToolExecutor, LocalToolRegistry, LocalToolSpec
 from hina_bot.ai.model_routing import fixed_model_plan
-from hina_bot.ai.openrouter_capabilities import parameter_support
+from hina_bot.ai.openrouter_capabilities import catalog_model_slug, parameter_support
 from hina_bot.ai.output_repair import OutputRepair
 from hina_bot.ai.providers import OpenRouterClient, ProviderAPIError
 from hina_bot.ai.runtime_llm import LLM
@@ -38,7 +38,7 @@ def wire(monkeypatch):
             gets.append(req.url)
             return httpx.Response(200, json={"data": {
                 "id": MODEL, "architecture": {"input_modalities": ["text", "image", "audio"]},
-                "endpoints": [{"tag": "fixture", "supported_parameters": [
+                "endpoints": [{"tag": "fixture", "provider_name": "Fixture", "supported_parameters": [
                     "reasoning", "structured_outputs", "tools",
                 ]}],
             }})
@@ -128,6 +128,9 @@ async def test_required_search_local_continuation(wire):
     assert len(posts) == 2 and len(gets) == 1
     assert posts[0]["tool_choice"] == {"type": "allowed_tools", "mode": "required",
                                        "tools": [{"type": "openrouter:web_search"}]}
+    assert posts[0]["provider"]["require_parameters"] is True
+    assert posts[1]["provider"] == {"only": ["fixture"], "order": ["fixture"],
+                                    "allow_fallbacks": False, "require_parameters": True}
     assert posts[1]["input"][1:3] == [reasoning, call]
     assert posts[1]["input"][3]["call_id"] == "call" and posts[1]["tool_choice"] == "auto"
 
@@ -189,6 +192,68 @@ async def test_unknown_media_and_unsupported_effort_stop_before_generation(wire)
                 {"type": "input_image", "image_url": "data:image/png;base64,AA==", "detail": "auto"}]}])
         with pytest.raises(ValueError, match="reasoning effort"):
             await client.responses.create(model=MODEL, input="test", reasoning={"effort": "max"})
+    finally:
+        await client.close()
+    assert not posts
+
+@pytest.mark.parametrize("model", ["openrouter/auto", "openrouter/free", "openrouter/pareto", "@preset/test"])
+async def test_automatic_router_rejected(wire, model):
+    posts, _, _ = wire
+    client = OpenRouterClient("fixture")
+    try:
+        with pytest.raises(ValueError, match="automatic model routing"):
+            await client.responses.create(model=model, input="fixture")
+    finally:
+        await client.close()
+    assert not posts
+
+
+def test_catalog_variant_keys():
+    assert catalog_model_slug("fixture/model:free") == "fixture/model:free"
+    assert catalog_model_slug("fixture/model:nitro") == "fixture/model"
+    assert catalog_model_slug("fixture/model:floor") == "fixture/model"
+    assert catalog_model_slug("fixture/model:exacto") == "fixture/model"
+    assert catalog_model_slug("fixture-alias") is None
+
+
+async def test_required_parameters_override_false(wire):
+    posts, _, _ = wire
+    settings = Settings(discord_token="fixture", provider="openrouter",
+                        openrouter_provider_preferences={"require_parameters": False})
+    client = OpenRouterClient("fixture", settings=settings)
+    try:
+        await client.responses.create(model=MODEL, input="fixture", reasoning={"effort": "low"})
+    finally:
+        await client.close()
+    assert posts[0]["provider"]["require_parameters"] is True
+
+
+async def test_unknown_answer_media_preserves_text(wire):
+    posts, _, _ = wire
+    client = OpenRouterClient("fixture")
+    bot = LLM(Settings(discord_token="fixture", provider="openrouter", model="fixture-alias",
+                       usage_log_path="", chat_web_search=False), client=client)
+    store = Store.create(":memory:")
+    image = VisualInput(b"fixture", "image/png", "attachment", message_id="image-fixture")
+    token = CURRENT_VISUAL_INPUTS.set((image,))
+    try:
+        await bot.answer(store, Scope(None, 1, 2), "test", "hello")
+    finally:
+        CURRENT_VISUAL_INPUTS.reset(token)
+        store.close()
+        await bot.close()
+    assert len(posts) == 1
+    assert "could not be read" in posts[0]["instructions"]
+    assert "input_image" not in json.dumps(posts[0]["input"])
+
+
+async def test_ambiguous_continuation_stops_before_generation(wire):
+    posts, _, _ = wire
+    client = OpenRouterClient("fixture")
+    try:
+        with pytest.raises(ValueError, match="unknown or ambiguous"):
+            await client.responses.create(model=MODEL, input="fixture",
+                                          _hina_openrouter_selected_provider="Different host")
     finally:
         await client.close()
     assert not posts

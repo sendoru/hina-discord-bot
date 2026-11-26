@@ -34,3 +34,12 @@ def test_unknown_capabilities_and_worker_boundary():
     with pytest.raises(ValueError, match="Gemini"):
         attach_delegated_code_execution(None, client=SimpleNamespace(provider_name="openai"),
                                         usage=None, model="fixture", timeout=1, thinking_level="low")
+
+def test_openrouter_tier_effort_inherits_or_overrides():
+    settings = SimpleNamespace(provider="openrouter", openrouter_reasoning_effort="low",
+                               openrouter_fast_reasoning_effort="none",
+                               openrouter_smart_reasoning_effort="inherit")
+    assert operation_options(settings, "answer", "fixture/model", "fast")["reasoning"] == {"enabled": False}
+    assert operation_options(settings, "answer", "fixture/model", "smart")["reasoning"] == {"effort": "low"}
+    settings.openrouter_smart_reasoning_effort = "default"
+    assert "reasoning" not in operation_options(settings, "answer", "fixture/model", "smart")

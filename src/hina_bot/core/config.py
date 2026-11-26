@@ -15,8 +15,10 @@ OPENAI_REASONING_EFFORTS = ("default", "none", "minimal", "low", "medium", "high
 OPENROUTER_REASONING_EFFORTS = ("default", "none", "minimal", "low", "medium", "high", "xhigh", "max")
 
 
-def parse_openrouter_effort(value: str) -> str:
+def parse_openrouter_effort(value: str, *, inherit=False) -> str:
     effort = value.strip().lower()
+    if effort == "inherit" and inherit:
+        return effort
     if effort not in OPENROUTER_REASONING_EFFORTS:
         raise ValueError("Invalid OPENROUTER_REASONING_EFFORT")
     return effort
@@ -223,6 +225,8 @@ class Settings:
     openrouter_api_key: str = ""
     openrouter_provider_preferences: dict = field(default_factory=dict)
     openrouter_reasoning_effort: str = "default"
+    openrouter_fast_reasoning_effort: str = "inherit"
+    openrouter_smart_reasoning_effort: str = "inherit"
     openai_reasoning_effort: str = "default"
     openai_fast_reasoning_effort: str = "default"
     openai_smart_reasoning_effort: str = "default"
@@ -613,6 +617,10 @@ class Settings:
             openrouter_provider_preferences=parse_openrouter_preferences(
                 os.getenv("OPENROUTER_PROVIDER_PREFERENCES", "{}")),
             openrouter_reasoning_effort=parse_openrouter_effort(os.getenv("OPENROUTER_REASONING_EFFORT", "default")),
+            openrouter_fast_reasoning_effort=parse_openrouter_effort(
+                os.getenv("OPENROUTER_FAST_REASONING_EFFORT", "inherit"), inherit=True),
+            openrouter_smart_reasoning_effort=parse_openrouter_effort(
+                os.getenv("OPENROUTER_SMART_REASONING_EFFORT", "inherit"), inherit=True),
             openai_reasoning_effort=parse_openai_effort(os.getenv("OPENAI_REASONING_EFFORT", "default")),
             openai_fast_reasoning_effort=parse_openai_effort(os.getenv("OPENAI_FAST_REASONING_EFFORT", "default")),
             openai_smart_reasoning_effort=parse_openai_effort(os.getenv("OPENAI_SMART_REASONING_EFFORT", "default")),

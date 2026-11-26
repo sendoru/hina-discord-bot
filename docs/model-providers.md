@@ -540,6 +540,8 @@ See [provider routing](https://openrouter.ai/docs/guides/routing/provider-select
 
 `OPENROUTER_REASONING_EFFORT` accepts default, none, minimal, low, medium, high
 xhigh or max. Default omits the reasoning field. None requests disabled reasoning.
+OPENROUTER_FAST_REASONING_EFFORT and OPENROUTER_SMART_REASONING_EFFORT override
+the fixed setting (inherit preserves it; default omits reasoning for that tier).
 Set OPENROUTER_AFFINITY_SECRET to a private random secret to enable answer cache
 affinity. The session ID is an HMAC of the conversation scope. Leaving the secret
 empty disables affinity. Rotating the secret changes session IDs.
@@ -549,14 +551,25 @@ The adapter reads public model and endpoint metadata only for capability-depende
 requests. Successful lookups expire after ten minutes, failures after one minute.
 The cache holds up to 32 models. Catalog requests contain only the model slug.
 Parameter support may vary across upstreams. A mixed or missing endpoint list
-is unknown. An explicit `require_parameters` preference requests router-level
-filtering. Modality declarations are model-level and do not guarantee a particular
-upstream will accept a specific input. A rejected call does not switch APIs or models.
+is unknown. The adapter forces `require_parameters: true` for explicit reasoning, function tools,
+and JSON Schema requests, even if the general preference is false. Model variants
+are catalogued separately except routing-only :floor, :nitro and :exacto.
+Automatic router models and preset/family aliases are rejected. Modality declarations
+are model-level and do not guarantee a particular upstream will accept a specific input.
+Unavailable/unknown answer media is omitted before generation; explicit media gets
+an unavailable notice and passive media is omitted. Known image-capable models can
+receive the configured Hina reference image. Memory extraction retains its existing
+text-only fallback, so omitted photos cannot become visual grounding evidence.
+A rejected call does not switch APIs or models.
 
 Search off omits the server tool. Auto leaves it model-selectable. Required with
 local functions uses Responses `allowed_tools` in required mode with only the
 search tool eligible on the first round. Local continuation replays ordered
 output items, including encrypted reasoning, then appends function outputs.
+For continuation, the selected provider name must resolve to one endpoint tag in
+the model catalog. Only that tag is allowed, with fallback disabled, and current
+privacy/allowlist constraints still apply. Ambiguous or missing attribution stops
+the continuation rather than guessing. Actual upstream acceptance remains unverified.
 Server-side search may involve a search service. Upstream retention settings
 should not be read as a retention guarantee for that service.
 OpenRouter Decisions uses full context fallback. No native selector is called.

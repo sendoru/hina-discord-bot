@@ -26,6 +26,7 @@ from .config import (
     parse_discord_id_set,
     parse_external_context_policy,
     parse_openai_effort,
+    parse_openrouter_effort,
     parse_openrouter_preferences,
     parse_pdf_scope,
     parse_pdf_transport,
@@ -74,6 +75,8 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "routing_classifier_max_output_tokens": "semantic/web routing classifier 응답에 허용할 최대 출력 토큰 예산입니다.",
     "openrouter_reasoning_effort": "OpenRouter reasoning effort. default uses the model default.",
     "openrouter_provider_preferences": "OpenRouter upstream routing and retention policy (JSON).",
+    "openrouter_fast_reasoning_effort": "OpenRouter fast reasoning effort; inherit uses the fixed setting.",
+    "openrouter_smart_reasoning_effort": "OpenRouter smart reasoning effort; inherit uses the fixed setting.",
     "openai_reasoning_effort": "OpenAI fixed 추론 강도입니다. default는 모델 기본값을 사용합니다.",
     "openai_fast_reasoning_effort": "OpenAI fast 추론 강도입니다. default는 모델 기본값을 사용합니다.",
     "openai_smart_reasoning_effort": "OpenAI smart 추론 강도입니다. default는 모델 기본값을 사용합니다.",
@@ -228,6 +231,14 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     "openrouter_reasoning_effort": _runtime_spec(
         "openrouter_reasoning_effort", "OPENROUTER_REASONING_EFFORT", "string",
         choices=OPENROUTER_REASONING_EFFORTS,
+    ),
+    "openrouter_fast_reasoning_effort": _runtime_spec(
+        "openrouter_fast_reasoning_effort", "OPENROUTER_FAST_REASONING_EFFORT", "string",
+        choices=("inherit", *OPENROUTER_REASONING_EFFORTS),
+    ),
+    "openrouter_smart_reasoning_effort": _runtime_spec(
+        "openrouter_smart_reasoning_effort", "OPENROUTER_SMART_REASONING_EFFORT", "string",
+        choices=("inherit", *OPENROUTER_REASONING_EFFORTS),
     ),
     "openrouter_provider_preferences": _runtime_spec(
         "openrouter_provider_preferences", "OPENROUTER_PROVIDER_PREFERENCES", "provider_preferences",
@@ -446,6 +457,8 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             return parse_external_context_policy(text)
         if spec.attr == "gemini_pdf_scope":
             return parse_pdf_scope(text)
+        if spec.attr.startswith("openrouter_") and spec.attr.endswith("reasoning_effort"):
+            return parse_openrouter_effort(text, inherit=spec.attr != "openrouter_reasoning_effort")
         if spec.attr.startswith("openai_") and spec.attr.endswith("reasoning_effort"):
             return parse_openai_effort(text)
         if spec.attr == "gemini_pdf_transport":

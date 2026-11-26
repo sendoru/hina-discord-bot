@@ -10,7 +10,12 @@ def operation_options(settings, domain, model, tier, *, provider=None, thinking_
     options = reasoning_options(settings, model, tier, provider=provider)
     options["store"] = gemini_store_enabled(settings, domain, provider=provider)
     if provider == "openrouter":
-        effort = parse_openrouter_effort(getattr(settings, "openrouter_reasoning_effort", "default"))
+        effort = getattr(settings, "openrouter_reasoning_effort", "default")
+        if tier in {"fast", "smart"}:
+            tier_effort = getattr(settings, f"openrouter_{tier}_reasoning_effort", "inherit")
+            if tier_effort != "inherit":
+                effort = tier_effort
+        effort = parse_openrouter_effort(effort)
         if effort != "default":
             options["reasoning"] = {"enabled": False} if effort == "none" else {"effort": effort}
         if domain == "answer":

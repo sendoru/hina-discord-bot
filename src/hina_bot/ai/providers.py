@@ -12,7 +12,15 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpe
 
 from hina_bot.core.config import SUPPORTED_MODEL_PROVIDERS
 
-from .openrouter_capabilities import EndpointCatalog, validate_request
+from .openrouter_capabilities import (
+    EndpointCatalog,
+    bounded_model,
+    continuation_preferences,
+    modality_support,
+    reject_model_router,
+    request_requirements,
+    validate_request,
+)
 from .pdf_transport import (
     GeminiInlinePDF,
     PreparedPDFReference,
@@ -1228,11 +1236,23 @@ class _OpenRouterResponses:
         self._responses = responses
         self._settings = settings
 
+    async def media_support(self, model):
+        reject_model_router(model)
+        data = await bounded_model(self._catalog, model)
+        return {kind: modality_support(data, kind) for kind in ("image", "audio")}
+
     async def create(self, **kwargs):
         request = dict(kwargs)
-        if request.get("model") == "openrouter/auto":
-            raise ValueError("OpenRouter automatic model routing is unavailable")
-        preferences = getattr(self._settings, "openrouter_provider_preferences", {})
+        reject_model_router(request.get("model"))
+        preferences = dict(getattr(self._settings, "openrouter_provider_preferences", {}))
+        selected = request.pop("_hina_openrouter_selected_provider", None)
+        if selected:
+            preferences = await continuation_preferences(
+                self._catalog, request.get("model"), preferences, selected,
+            )
+        if request_requirements(request):
+            # Do not permit the router to silently drop reasoning, schema or function tools.
+            preferences["require_parameters"] = True
         if self._catalog is not None:
             await validate_request(self._catalog, request, preferences)
         if preferences:

@@ -70,6 +70,8 @@ RUNTIME_CONFIG_SECTIONS = (
             "routing_classifier_max_output_tokens",
             "openrouter_provider_preferences",
             "openrouter_reasoning_effort",
+            "openrouter_fast_reasoning_effort",
+            "openrouter_smart_reasoning_effort",
             "openai_reasoning_effort",
             "openai_fast_reasoning_effort",
             "openai_smart_reasoning_effort",
