@@ -459,7 +459,7 @@ class HinaClient(BaseHinaClient):
                 TARGET_CONTEXT.reset(target_selection_token)
 
         visual_ref_select_started = time.perf_counter()
-        visual_refs = rank_visual_context_refs(selected_context)
+        visual_refs = rank_visual_context_refs([*replied, *selected_context])
         visual_ref_select_ms = round(
             (time.perf_counter() - visual_ref_select_started) * 1000
         )

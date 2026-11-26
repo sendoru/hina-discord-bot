@@ -24,7 +24,15 @@ from hina_bot.discord.vision import (
 from hina_bot.discord.web_bot import HinaClient
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 16
-GIF = b"GIF89a" + b"x" * 16
+def _animated_gif():
+    stream = BytesIO()
+    frames = [Image.new("RGB", (32, 32), color) for color in ("red", "blue")]
+    frames[0].save(stream, "GIF", save_all=True, append_images=frames[1:], duration=40)
+    return stream.getvalue()
+
+
+
+GIF = _animated_gif()
 
 
 def _history(messages):
@@ -166,8 +174,10 @@ async def test_collects_custom_emoji_once_and_raster_sticker():
         ("sticker", "히나 스티커"),
     ]
     assert len([url for url in urls if "/emojis/123." in url]) == 1
-    assert visuals[0].mime_type == "image/gif"
+    assert visuals[0].mime_type == "image/webp"
     assert visuals[0].uri == urls[0]
+    assert visuals[0].input_url().startswith("data:image/webp;base64,")
+    assert visuals[0].representation == "animation_frames"
     assert visuals[1].mime_type == "image/png"
     assert visuals[1].uri == "https://cdn.discordapp.com/stickers/456.png"
 
@@ -1028,13 +1038,23 @@ def test_fit_visual_bytes_keeps_small_originals_and_rejects_invalid_oversize():
     assert fit_visual_bytes(PNG, 8) == (b"", "", "decode_failed")
 
 
-def test_fit_visual_bytes_preserves_animation_or_reports_budget_failure():
-    stream = BytesIO()
-    frames = [Image.new("RGB", (32, 32), color) for color in ("red", "blue")]
-    frames[0].save(stream, "GIF", save_all=True, append_images=frames[1:])
-    data = stream.getvalue()
-    assert fit_visual_bytes(data, len(data)) == (data, "image/gif", "original")
-    assert fit_visual_bytes(data, 8) == (b"", "", "animated_over_budget")
+@pytest.mark.parametrize("budget", [8192, 128])
+def test_fit_visual_bytes_samples_animation_in_chronological_order(budget):
+    data, mime, reason = fit_visual_bytes(GIF, budget)
+    assert (mime, reason) == ("image/webp", "animation_frames")
+    assert len(data) <= budget
+    if budget == 128:
+        assert len(GIF) > budget
+    with Image.open(BytesIO(data)) as sheet:
+        assert sheet.n_frames == 1
+        assert sheet.size == (68, 32)
+        assert sheet.convert("RGB").getpixel((16, 16)) == (255, 0, 0)
+        assert sheet.convert("RGB").getpixel((52, 16)) == (0, 0, 255)
+
+
+def test_animation_rejects_tiny_budget_and_invalid_gif():
+    assert fit_visual_bytes(GIF, 8) == (b"", "", "compression_budget")
+    assert fit_visual_bytes(b"GIF89a", 8192) == (b"", "", "decode_failed")
 
 
 @pytest.mark.asyncio
@@ -1107,3 +1127,94 @@ def test_fit_visual_bytes_reduces_resolution_only_if_needed():
     with Image.open(BytesIO(data)) as restored:
         assert restored.width < image.width
         assert restored.height < image.height
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chatlog", ["on", "off"])
+@pytest.mark.parametrize("available", [True, False])
+async def test_bare_mention_reply_to_animated_image(chatlog, available):
+    observed = []
+
+    async def answer(*args, **kwargs):
+        observed.extend(CURRENT_VISUAL_INPUTS.get())
+        return "움짤이 보여."
+
+    llm = NS(answer=AsyncMock(side_effect=answer), close=AsyncMock())
+    store = Store.create(":memory:")
+    store.set_memory_mode_override("global", "off")
+    store.set_chat_log_mode_override("global", chatlog)
+    bot = HinaClient(
+        Settings(discord_token="test", openai_api_key="test", cooldown=0),
+        store=store, llm=llm,
+    )
+    bot._connection.user = NS(id=99, display_name="히나")
+    bot.emoji_registry.catalog = AsyncMock(return_value=[])
+    channel = MagicMock()
+    channel.id = 10
+    channel.send = AsyncMock(return_value=NS(id=1000))
+    channel.typing.return_value.__aenter__ = AsyncMock(return_value=None)
+    channel.typing.return_value.__aexit__ = AsyncMock(return_value=None)
+    channel.history.side_effect = lambda **kwargs: _history([])
+    author = NS(id=100, bot=False, display_name="사용자",
+                guild_permissions=NS(manage_guild=False))
+    attachment = NS(
+        size=len(GIF), content_type="image/gif", filename="train.gif",
+        url="https://cdn.discordapp.com/attachments/10/1/train.gif",
+        read=AsyncMock(return_value=GIF if available else b"invalid image"),
+    )
+    old = NS(id=1, content="파하하", author=author, channel=channel,
+             attachments=[attachment], stickers=[])
+    channel.fetch_message = AsyncMock(return_value=old)
+    message = NS(id=2, content="<@99>", author=author,
+                 guild=NS(id=1, default_role=NS()), channel=channel,
+                 mentions=[bot.user], webhook_id=None,
+                 reference=NS(message_id=1, channel_id=10, resolved=old),
+                 created_at=None, attachments=[], stickers=[])
+    try:
+        await bot.on_message(message)
+        attachment.read.assert_awaited_once()
+        if available:
+            llm.answer.assert_awaited_once()
+            assert len(observed) == 1
+            assert observed[0].message_id == "1"
+            assert observed[0].reference_strength == "explicit_reply"
+            assert observed[0].representation == "animation_frames"
+            assert observed[0].input_url().startswith("data:image/webp;base64,")
+            assert channel.send.await_args.args[0] == "움짤이 보여."
+        else:
+            llm.answer.assert_not_awaited()
+            assert channel.send.await_args.args[0] == "답장한 메시지의 이미지를 읽지 못했어. 다시 보내 줄래?"
+    finally:
+        await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_transformed_cached_visual_uses_inline_bytes_and_keeps_representation():
+    attachment = NS(size=len(GIF), content_type="image/gif", filename="train.gif",
+                    url="https://cdn.discordapp.com/attachments/10/1/train.gif",
+                    read=AsyncMock(return_value=GIF))
+    old = NS(id=1, content="", attachments=[attachment], stickers=[])
+    channel = NS(id=10, fetch_message=AsyncMock(return_value=old))
+    message = NS(id=2, content="히나야", channel=channel, attachments=[], stickers=[])
+    ref = VisualContextRef("1", "replied_message", "explicit_reply")
+    cache = VisionFetchCache()
+    for _ in range(2):
+        items = await collect_visual_inputs(message, context_refs=[ref], cache=cache)
+        assert len(items) == 1
+        assert items[0].representation == "animation_frames"
+        assert "전체 영상이 아님" in items[0].label(1)
+        assert items[0].input_url().startswith("data:image/webp;base64,")
+    attachment.read.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_compressed_static_attachment_sends_actual_bytes_not_original_cdn():
+    data = _large_png()
+    attachment = NS(size=len(data), content_type="image/png", filename="large.png",
+                    url="https://cdn.discordapp.com/attachments/10/1/large.png",
+                    read=AsyncMock(return_value=data))
+    message = NS(id=1, content="", attachments=[attachment], stickers=[])
+    result = await collect_visual_inputs(message, limits=VisionLimits(max_image_bytes=8192))
+    assert len(result) == 1
+    assert result[0].representation == "lossless"
+    assert result[0].input_url() == result[0].data_url()
