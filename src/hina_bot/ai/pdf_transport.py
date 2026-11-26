@@ -41,6 +41,40 @@ class GeminiInlinePDF:
         return base64.b64encode(self.pdf).decode("ascii")
 
 
+def _repair_supplementary_cmap(cmap, subset):
+    """Repair ReportLab's raw scalar hex mappings, leaving valid UTF-16BE intact.
+
+    The mapping is scoped to known character codes in this font subset; no
+    arbitrary PDF data or user content is rewritten.
+    """
+    replacements = {
+        f"<{index:02X}> <{codepoint:04X}>":
+            f"<{index:02X}> <{chr(codepoint).encode('utf-16-be').hex().upper()}>"
+        for index, codepoint in enumerate(subset) if codepoint > 0xFFFF
+    }
+    return "\n".join(replacements.get(line, line) for line in cmap.split("\n"))
+
+
+class _PDFUnicodeFont(TTFont):
+    """Fix ToUnicode before serialization without monkeypatching ReportLab globally."""
+
+    def addObjects(self, doc):  # noqa: N802 - ReportLab's font hook
+        state = self.state.get(doc)
+        supplementary_subsets = [
+            (self.getSubsetInternalName(index, doc)[1:], tuple(subset))
+            for index, subset in enumerate(state.subsets if state is not None else ())
+            if any(codepoint > 0xFFFF for codepoint in subset)
+        ]
+        super().addObjects(doc)
+        # ReportLab 4.x serializes a scalar like U+1F602 as <1F602> rather
+        # than the required UTF-16BE surrogate pair <D83DDE02>. Correct only
+        # our own generated ToUnicode streams before the PDF is written.
+        for name, subset in supplementary_subsets:
+            font = doc.idToObject["BasicFonts"].dict[name]
+            stream = doc.idToObject[font.ToUnicode.name]
+            stream.content = _repair_supplementary_cmap(stream.content, subset)
+
+
 @lru_cache(maxsize=1)
 def _font():
     configured = os.getenv("GEMINI_PDF_FONT")
@@ -52,7 +86,7 @@ def _font():
                           Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")) if p.is_file()),
         "Vera.ttf",
     )
-    font = TTFont("HinaReferenceFont", path)
+    font = _PDFUnicodeFont("HinaReferenceFont", path)
     pdfmetrics.registerFont(font)
     return font
 
@@ -74,7 +108,7 @@ def _fallback_font(index):
     if not path.is_file():
         return None
     try:
-        font = TTFont(f"HinaReferenceFallback{index}", str(path))
+        font = _PDFUnicodeFont(f"HinaReferenceFallback{index}", str(path))
         pdfmetrics.registerFont(font)
         return font
     except Exception:  # noqa: BLE001 - unsupported local font is not fatal

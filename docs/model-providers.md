@@ -405,6 +405,11 @@ The explicit pdf setting collects eligible original text in input order and
 renders one consolidated PDF. Tiny sections share the same pages and embedded
 fonts. The default renderer uses A4, 10 pt, 30 pt margins and 13 pt leading.
 An offline extraction roundtrip guards against silent glyph or line loss.
+Supplementary Unicode characters (including emoji) use UTF-16BE ToUnicode
+mappings, correcting ReportLab's raw scalar hex output in the local PDF font
+subclass before serialization. Unsupported glyphs still fall back to the
+original text; no warnings are suppressed. The Docker image includes DejaVu
+Sans as a fallback font, in addition to Nanum.
 The new per-document guard is 240,000 source characters, 1.5 MB PDF bytes
 and 100 pages; the wire body guard remains 8 MB for answer operations.
 A bounded planner may render temporary fragments locally to isolate failures,
