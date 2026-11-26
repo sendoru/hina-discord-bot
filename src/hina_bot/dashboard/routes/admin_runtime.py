@@ -119,6 +119,7 @@ RUNTIME_CONFIG_SECTIONS = (
         (
             "chat_web_search",
             "gemini_search_api_mode",
+            "code_execution_backend",
         ),
     ),
     (
