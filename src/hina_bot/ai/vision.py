@@ -365,12 +365,38 @@ class _VisionResponses:
 
     async def create(self, **kwargs):
         visuals = CURRENT_VISUAL_INPUTS.get()
-        audios = CURRENT_AUDIO_INPUTS.get() if self._provider_name == "gemini" else ()
+        audios = CURRENT_AUDIO_INPUTS.get() if self._provider_name in {"gemini", "openrouter"} else ()
         if not VISION_REQUEST_ACTIVE.get() or not (visuals or audios):
             return await self._responses.create(**kwargs)
 
         request = dict(kwargs)
         model = str(request.get("model") or "").lower()
+        openrouter_image_supported = False
+        if self._provider_name == "openrouter":
+            lookup = getattr(self._responses, "media_support", None)
+            support = await lookup(model) if callable(lookup) else {}
+            openrouter_image_supported = support.get("image") is True
+            omitted = []
+            for kind, entries in (("image", visuals), ("audio", audios)):
+                if entries and support.get(kind) is not True:
+                    log.info("vision.openrouter_media_omitted kind=%s count=%d support=%s",
+                             kind, len(entries), support.get(kind))
+                    if any(entry.context_kind == "current_message" or
+                           entry.reference_strength in {"explicit_reply", "prior_explicit_reply"}
+                           for entry in entries):
+                        omitted.append(kind)
+            if not openrouter_image_supported:
+                visuals = ()
+            if support.get("audio") is not True:
+                audios = ()
+            if omitted:
+                notice = (
+                    "The following current or explicitly referenced media could not be read: "
+                    + ", ".join(omitted)
+                    + ". Tell the user when relevant; answer from available text only. "
+                      "Do not claim to have seen or heard omitted media."
+                )
+                request["instructions"] = (request.get("instructions") or "") + "\n\n" + notice
         include_media_resolution = (
             self._provider_name == "gemini" and model.startswith("gemini-3")
         )
@@ -387,11 +413,14 @@ class _VisionResponses:
                 include_media_resolution=include_media_resolution,
             )
         if audios and not stored_continuation:
-            request["input"] = augment_audio_input(request.get("input"), audios)
+            request["input"] = augment_audio_input(
+                request.get("input"), audios, provider=self._provider_name,
+            )
         # Passive recent images alone do not activate the fixed reference.
         if (
             (self._provider_name == "gemini" or
-             (self._provider_name == "openai" and supports_reference_image(model)))
+             (self._provider_name == "openai" and supports_reference_image(model)) or
+             openrouter_image_supported)
             and not stored_continuation
             and self._reference_image_urls
             and any(
@@ -426,7 +455,7 @@ class VisionClient:
         self.provider_name = getattr(client, "provider_name", "openai")
         reference_image_urls = (
             _load_hina_reference_images(reference_image_path)
-            if self.provider_name in {"gemini", "openai"} else ()
+            if self.provider_name in {"gemini", "openai", "openrouter"} else ()
         )
         self.responses = _VisionResponses(
             client.responses,

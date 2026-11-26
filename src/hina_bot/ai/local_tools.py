@@ -11,6 +11,7 @@ from typing import Any
 
 from openai.types.responses import Response
 
+from .openrouter_capabilities import selected_provider
 from .prompts import load_prompt
 from .provider_contract import stored_interaction_id
 
@@ -228,6 +229,12 @@ def continuation_request(
         next_input = [{"role": "user", "content": str(previous_input)}]
     interaction_id = stored_interaction_id(response)
     followup = dict(request)
+    if provider == "openrouter":
+        selected = selected_provider(response)
+        previous = request.get("_hina_openrouter_selected_provider")
+        if not selected or (previous and selected != previous):
+            raise ValueError("OpenRouter continuation provider is unavailable or changed")
+        followup["_hina_openrouter_selected_provider"] = selected
     # Keep one Gemini API throughout a local-function round, even if runtime
     # settings or circuit state change while the function is executing.
     gemini_api = getattr(response, "_hina_gemini_api", "")
@@ -260,9 +267,10 @@ def continuation_request(
                 result.provider_input(include_name=True)
                 for result in results
             )
-        elif provider == "openai" and isinstance(response, Response):
+        elif provider in {"openai", "openrouter"} and isinstance(response, Response):
             # Replay the original interleaving, encrypted reasoning, and hosted tool outputs.
-            next_input.extend(item.model_dump(exclude_none=True) for item in response.output)
+            next_input.extend(dict(item) if isinstance(item, dict) else item.model_dump(exclude_none=True)
+                              for item in response.output)
             next_input.extend(result.provider_input() for result in results)
         else:
             next_input.extend(_reasoning_replay_items(response))

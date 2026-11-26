@@ -9,6 +9,8 @@ from dataclasses import dataclass
 
 from .prompts import load_prompt
 
+OPENROUTER_AUDIO_FORMATS = {"audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/wav": "wav", "audio/x-wav": "wav"}
+
 AUDIO_INPUT_POLICY = load_prompt("audio_input.md")
 AUDIO_UNAVAILABLE_POLICY = load_prompt("audio_unavailable.md")
 CURRENT_AUDIO_UNAVAILABLE: ContextVar[bool] = ContextVar("audio_unavailable", default=False)
@@ -45,10 +47,17 @@ class AudioInput:
         return f"data:{self.mime_type};base64,{encoded}"
 
 
-def _blocks(inputs: list[AudioInput]) -> list[dict]:
+def _blocks(inputs: list[AudioInput], provider: str) -> list[dict]:
     result = []
     for entry in inputs:
         result.append({"type": "input_text", "text": entry.label()})
+        if provider == "openrouter":
+            if entry.mime_type not in OPENROUTER_AUDIO_FORMATS:
+                raise ValueError("OpenRouter Responses accepts WAV or MP3 audio")
+            result.append({"type": "input_audio", "input_audio": {
+                "data": base64.b64encode(entry.data).decode("ascii"), "format": OPENROUTER_AUDIO_FORMATS[entry.mime_type],
+            }})
+            continue
         result.append({
             "type": "input_audio",
             "audio_url": entry.data_url(),
@@ -64,7 +73,7 @@ def _content_blocks(value):
     return [{"type": "input_text", "text": str(value)}]
 
 
-def augment_audio_input(value, inputs: tuple[AudioInput, ...]):
+def augment_audio_input(value, inputs: tuple[AudioInput, ...], *, provider="gemini"):
     """Attach current audio to the current turn; history is untrusted reference material."""
     if not inputs or not isinstance(value, list):
         return value
@@ -116,13 +125,13 @@ def augment_audio_input(value, inputs: tuple[AudioInput, ...]):
                 "text": "과거 Discord 오디오 원본 메시지(JSON): "
                 + json.dumps(metadata, ensure_ascii=False),
             })
-            blocks.extend(_blocks(group))
+            blocks.extend(_blocks(group, provider))
         row = dict(messages[reference])
         body = _content_blocks(row.get("content", ""))
         row["content"] = (blocks + body) if reference == target else (body + blocks)
         messages[reference] = row
     if current:
         row = dict(messages[target])
-        row["content"] = _content_blocks(row.get("content", "")) + _blocks(current)
+        row["content"] = _content_blocks(row.get("content", "")) + _blocks(current, provider)
         messages[target] = row
     return messages

@@ -13,6 +13,7 @@ import re
 from time import perf_counter
 
 from .provider_contract import operation_options
+from .vision import VisionClient
 from .web_search_text import response_text
 
 log = logging.getLogger("hina")
@@ -174,7 +175,7 @@ class OutputRepair:
     def __init__(self, settings, client, usage):
         self.settings = settings
         # A VisionClient would attach original images to the second request.
-        self.client = getattr(client, "_client", client)
+        self.client = client._client if isinstance(client, VisionClient) else client
         self.usage = usage
 
     def _emit(self, *, mode, status, original, candidate="", elapsed_ms=0):

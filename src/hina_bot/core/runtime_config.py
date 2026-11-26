@@ -16,6 +16,7 @@ from .config import (
     GEMINI_THINKING_LEVELS,
     MODEL_ROUTING_MODES,
     OPENAI_REASONING_EFFORTS,
+    OPENROUTER_REASONING_EFFORTS,
     PERSONAL_MEMORY_READ_MODES,
     RAG_MODES,
     Settings,
@@ -25,6 +26,8 @@ from .config import (
     parse_discord_id_set,
     parse_external_context_policy,
     parse_openai_effort,
+    parse_openrouter_effort,
+    parse_openrouter_preferences,
     parse_pdf_scope,
     parse_pdf_transport,
 )
@@ -70,6 +73,10 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "smart_output_tokens": "adaptive smart tier와 명시적 장문 요청에 사용할 최대 출력 토큰 예산입니다.",
     "memory_output_tokens": "장기 기억 요약·추출 요청에 사용할 최대 출력 토큰 예산입니다.",
     "routing_classifier_max_output_tokens": "semantic/web routing classifier 응답에 허용할 최대 출력 토큰 예산입니다.",
+    "openrouter_reasoning_effort": "OpenRouter reasoning effort. default uses the model default.",
+    "openrouter_provider_preferences": "OpenRouter upstream routing and retention policy (JSON).",
+    "openrouter_fast_reasoning_effort": "OpenRouter fast reasoning effort; inherit uses the fixed setting.",
+    "openrouter_smart_reasoning_effort": "OpenRouter smart reasoning effort; inherit uses the fixed setting.",
     "openai_reasoning_effort": "OpenAI fixed 추론 강도입니다. default는 모델 기본값을 사용합니다.",
     "openai_fast_reasoning_effort": "OpenAI fast 추론 강도입니다. default는 모델 기본값을 사용합니다.",
     "openai_smart_reasoning_effort": "OpenAI smart 추론 강도입니다. default는 모델 기본값을 사용합니다.",
@@ -220,6 +227,21 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "int",
         minimum=32,
         maximum=1024,
+    ),
+    "openrouter_reasoning_effort": _runtime_spec(
+        "openrouter_reasoning_effort", "OPENROUTER_REASONING_EFFORT", "string",
+        choices=OPENROUTER_REASONING_EFFORTS,
+    ),
+    "openrouter_fast_reasoning_effort": _runtime_spec(
+        "openrouter_fast_reasoning_effort", "OPENROUTER_FAST_REASONING_EFFORT", "string",
+        choices=("inherit", *OPENROUTER_REASONING_EFFORTS),
+    ),
+    "openrouter_smart_reasoning_effort": _runtime_spec(
+        "openrouter_smart_reasoning_effort", "OPENROUTER_SMART_REASONING_EFFORT", "string",
+        choices=("inherit", *OPENROUTER_REASONING_EFFORTS),
+    ),
+    "openrouter_provider_preferences": _runtime_spec(
+        "openrouter_provider_preferences", "OPENROUTER_PROVIDER_PREFERENCES", "provider_preferences",
     ),
     "openai_reasoning_effort": _runtime_spec(
         "openai_reasoning_effort", "OPENAI_REASONING_EFFORT", "string", choices=OPENAI_REASONING_EFFORTS,
@@ -379,6 +401,8 @@ def runtime_setting_attr(key: str) -> str:
 
 
 def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) -> Any:
+    if spec.kind == "provider_preferences":
+        return parse_openrouter_preferences(raw)
     if spec.kind == "prefixes":
         return parse_call_prefixes(raw)
     text = raw.strip()
@@ -433,6 +457,8 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             return parse_external_context_policy(text)
         if spec.attr == "gemini_pdf_scope":
             return parse_pdf_scope(text)
+        if spec.attr.startswith("openrouter_") and spec.attr.endswith("reasoning_effort"):
+            return parse_openrouter_effort(text, inherit=spec.attr != "openrouter_reasoning_effort")
         if spec.attr.startswith("openai_") and spec.attr.endswith("reasoning_effort"):
             return parse_openai_effort(text)
         if spec.attr == "gemini_pdf_transport":
@@ -470,6 +496,8 @@ def encode_runtime_value(value: Any) -> str:
 
 def decode_runtime_value(spec: RuntimeSettingSpec, encoded: str, *, settings=None) -> Any:
     value = json.loads(encoded)
+    if spec.kind == "provider_preferences":
+        return parse_openrouter_preferences(encoded)
     if spec.kind in {"bool", "optional_bool"}:
         if spec.kind == "optional_bool" and value is None:
             return None
@@ -510,6 +538,8 @@ def decode_runtime_value(spec: RuntimeSettingSpec, encoded: str, *, settings=Non
 
 
 def format_runtime_value(value: Any) -> str:
+    if isinstance(value, dict):
+        return encode_runtime_value(value)
     if isinstance(value, tuple):
         return ", ".join(value)
     if isinstance(value, (set, frozenset)):

@@ -17,6 +17,8 @@ from ..repository import AdminRepository
 
 
 def _runtime_edit_value(value: object) -> str:
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False)
     if isinstance(value, tuple):
         return ", ".join(value)
     if isinstance(value, (set, frozenset)):
@@ -66,6 +68,10 @@ RUNTIME_CONFIG_SECTIONS = (
             "fast_output_tokens",
             "smart_output_tokens",
             "routing_classifier_max_output_tokens",
+            "openrouter_provider_preferences",
+            "openrouter_reasoning_effort",
+            "openrouter_fast_reasoning_effort",
+            "openrouter_smart_reasoning_effort",
             "openai_reasoning_effort",
             "openai_fast_reasoning_effort",
             "openai_smart_reasoning_effort",

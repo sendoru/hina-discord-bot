@@ -191,7 +191,12 @@ MIME type을 전달합니다.
 
 ### OpenRouter
 
-OpenAI-compatible Responses 요청의 `input_image` 형식을 사용합니다.
+OpenRouter Responses uses `input_image` for images and `input_audio` with base64
+data and an explicit `mp3` or `wav` format for audio. The existing attachment
+limits, current-message and historical-reference labels apply. Other audio
+formats are unavailable. The adapter checks the selected model's public input
+modalities before sending media and rejects unknown or unsupported modalities.
+No speech-to-text or native PDF upload is used.
 
 adapter가 이미지 형식을 지원하는 것과 선택한 모델 자체가 vision을 지원하는 것은 별개입니다.
 `LLM_MODEL` 또는 adaptive 모드의 `LLM_FAST_MODEL`/`LLM_SMART_MODEL`에는 실제 이미지 입력을 받을 수

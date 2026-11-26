@@ -12,6 +12,7 @@ from hina_bot.ai.output_repair import (
     normalize_stray_escapes,
     strip_stray_id_markers,
 )
+from hina_bot.ai.vision import VisionClient
 from hina_bot.core.config import Settings
 from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.store import Store
@@ -42,7 +43,7 @@ def make_repair(*, mode="conservative", reply="좋아", model="auto", provider="
         fast_model="fast-llm", model="normal-llm",
     )
     client = NS(provider_name=provider, responses=NS(create=AsyncMock()))
-    vision = NS(_client=client)
+    vision = VisionClient(client)
     usage = Usage(reply=reply)
     return OutputRepair(settings, vision, usage), client, usage
 

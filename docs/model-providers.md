@@ -265,7 +265,7 @@ MEMORY_MAX_OUTPUT_TOKENS=4096
 ```
 
 OpenRouter에서는 OpenAI-compatible Responses API를 사용하고, 일반 답변에서 검색이 필요한 경우
-`web` plugin으로 변환합니다.
+`openrouter:web_search` server tool으로 변환합니다.
 
 ## Gemini 코드 실행 위임
 
@@ -526,3 +526,59 @@ consolidation failure without exposing source text.
 | native Decisions | `decisions`와 `retrieval_decisions`가 후보 검증, 배치 한도, deadline, egress 및 전체 fallback을 소유한다. 일반 생성 요청 옵션과 분리된다. |
 
 OpenRouter는 기존 adapter를 사용한다. 이 경계는 provider 간 자동 전송, 모델별 도구 검색 또는 operation별 라우팅을 추가하지 않는다.
+
+### OpenRouter upstream routing
+
+Set `OPENROUTER_PROVIDER_PREFERENCES` to a JSON object. An empty object uses
+OpenRouter account and routing defaults. Use `only` to restrict eligible
+providers, `order` to rank them, and `allow_fallbacks` to control upstream
+fallback. These settings apply to the selected model. Set `require_parameters`
+to true to request endpoint filtering, `data_collection` to `deny` to restrict
+data collection, and `zdr` to true to request zero-retention endpoints.
+An empty object makes no retention guarantee.
+See [provider routing](https://openrouter.ai/docs/guides/routing/provider-selection).
+
+`OPENROUTER_REASONING_EFFORT` accepts default, none, minimal, low, medium, high
+xhigh or max. Default omits the reasoning field. None requests disabled reasoning.
+OPENROUTER_FAST_REASONING_EFFORT and OPENROUTER_SMART_REASONING_EFFORT override
+the fixed setting (inherit preserves it; default omits reasoning for that tier).
+Set OPENROUTER_AFFINITY_SECRET to a private random secret to enable answer cache
+affinity. The session ID is an HMAC of the conversation scope. Leaving the secret
+empty disables affinity. Rotating the secret changes session IDs.
+Support depends on the endpoint. Responses requests are stateless.
+
+The adapter reads public model and endpoint metadata only for capability-dependent
+requests. Successful lookups expire after ten minutes, failures after one minute.
+The cache holds up to 32 models. Catalog requests contain only the model slug.
+Parameter support may vary across upstreams. A mixed or missing endpoint list
+is unknown. The adapter forces `require_parameters: true` for explicit reasoning, function tools,
+and JSON Schema requests, even if the general preference is false. Model variants
+are catalogued separately except routing-only :floor, :nitro and :exacto.
+Automatic router models and preset/family aliases are rejected. Modality declarations
+are model-level and do not guarantee a particular upstream will accept a specific input.
+Unavailable/unknown answer media is omitted before generation; explicit media gets
+an unavailable notice and passive media is omitted. Known image-capable models can
+receive the configured Hina reference image. Memory extraction retains its existing
+text-only fallback, so omitted photos cannot become visual grounding evidence.
+A rejected call does not switch APIs or models.
+
+Search off omits the server tool. Auto leaves it model-selectable. Required with
+local functions uses Responses `allowed_tools` in required mode with only the
+search tool eligible on the first round. Local continuation replays ordered
+output items, including encrypted reasoning, then appends function outputs.
+For continuation, the selected provider name must resolve to one endpoint tag in
+the model catalog. Only that tag is allowed, with fallback disabled, and current
+privacy/allowlist constraints still apply. Ambiguous or missing attribution stops
+the continuation rather than guessing. Actual upstream acceptance remains unverified.
+Server-side search may involve a search service. Upstream retention settings
+should not be read as a retention guarantee for that service.
+OpenRouter Decisions uses full context fallback. No native selector is called.
+
+Per-call usage stores the returned model, selected endpoint provider from
+`X-OpenRouter-Metadata`, response ID, USD cost, cached and cache-write token
+counts and reasoning tokens when returned. Missing values stay unknown. Reasoning
+is part of output tokens. Cost details are not added to the reported total.
+No generation-detail lookup is made. SDK retries and automatic answer retries
+are disabled for OpenRouter. Upstream retries follow the routing preferences.
+
+OpenRouter audio is request-scoped. The pending memory-audio store remains Gemini-only.

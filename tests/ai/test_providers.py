@@ -1336,7 +1336,7 @@ async def test_gemini_http_error_exposes_safe_diagnostics():
 
 
 @pytest.mark.asyncio
-async def test_openrouter_translates_search_to_web_plugin():
+async def test_openrouter_translates_search_to_server_tool():
     response = NS(status="completed", output_text="ok", output=[], usage=None)
     create = AsyncMock(return_value=response)
     proxy = _OpenRouterResponses(NS(create=create))
@@ -1350,14 +1350,16 @@ async def test_openrouter_translates_search_to_web_plugin():
 
     assert result is response
     kwargs = create.await_args.kwargs
-    assert "tools" not in kwargs
-    assert "tool_choice" not in kwargs
-    assert kwargs["extra_body"]["plugins"] == [{"id": "web", "max_results": 3}]
+    assert kwargs["tools"] == [{
+        "type": "openrouter:web_search",
+        "parameters": {"max_results": 3, "max_uses": 1, "search_context_size": "low"},
+    }]
+    assert kwargs["tool_choice"] == "required"
 
 
 
 @pytest.mark.asyncio
-async def test_openrouter_preserves_function_tools_when_web_plugin_is_enabled():
+async def test_openrouter_preserves_function_tools_alongside_server_search():
     response = NS(status="completed", output_text="ok", output=[], usage=None)
     create = AsyncMock(return_value=response)
     proxy = _OpenRouterResponses(NS(create=create))
@@ -1379,9 +1381,9 @@ async def test_openrouter_preserves_function_tools_when_web_plugin_is_enabled():
     )
 
     kwargs = create.await_args.kwargs
-    assert kwargs["tools"] == [function_tool]
+    assert kwargs["tools"][1:] == [function_tool]
     assert kwargs["tool_choice"] == "auto"
-    assert kwargs["extra_body"]["plugins"] == [{"id": "web", "max_results": 3}]
+    assert kwargs["tools"][0]["type"] == "openrouter:web_search"
 
 
 @pytest.mark.asyncio

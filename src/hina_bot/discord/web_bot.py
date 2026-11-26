@@ -7,7 +7,11 @@ from datetime import UTC, datetime, timedelta
 
 import discord
 
-from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS, CURRENT_AUDIO_UNAVAILABLE
+from hina_bot.ai.audio import (
+    CURRENT_AUDIO_INPUTS,
+    CURRENT_AUDIO_UNAVAILABLE,
+    OPENROUTER_AUDIO_FORMATS,
+)
 from hina_bot.ai.egress_policy import strict_policy
 from hina_bot.ai.local_tools import CURRENT_LOCAL_TOOLS, LocalToolRegistry
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
@@ -480,7 +484,8 @@ class HinaClient(BaseHinaClient):
         audio_fetch_started = time.perf_counter()
         audio_refs = audio_context_refs([*replied, *selected_context])
         unavailable_audio = bool(
-            text is not None and self.settings.audio_input_enabled and self.settings.provider != "gemini"
+            text is not None and self.settings.audio_input_enabled
+            and self.settings.provider not in {"gemini", "openrouter"}
             and (message_has_audio(message) or audio_refs)
         )
         audio_inputs = (
@@ -490,9 +495,13 @@ class HinaClient(BaseHinaClient):
                 limits=self.audio_limits,
             )
             if (text is not None and self.settings.audio_input_enabled
-                and self.settings.provider == "gemini")
+                and self.settings.provider in {"gemini", "openrouter"})
             else []
         )
+        if self.settings.provider == "openrouter" and audio_inputs:
+            supported = [item for item in audio_inputs if item.mime_type in OPENROUTER_AUDIO_FORMATS]
+            unavailable_audio = len(supported) != len(audio_inputs)
+            audio_inputs = supported
         audio_fetch_ms = round((time.perf_counter() - audio_fetch_started) * 1000)
         visual_context_ms = round((time.perf_counter() - visual_context_started) * 1000)
         if preflight_started is not None and preflight_turn_id is not None:
