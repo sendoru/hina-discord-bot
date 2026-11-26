@@ -34,34 +34,34 @@ def test_direct_reply_current_speaker_and_role_replay_remain_native():
     assert all(block["type"] == "input_text" for block in blocks)
 
 
-async def test_pdf_decisions_send_once_with_native_control_and_exact_candidate_map():
-    import io
+async def test_text_decisions_send_once_with_native_control_and_exact_candidate_map():
     import json
+    from types import SimpleNamespace
 
     import httpx
-    from pypdf import PdfReader
 
     from hina_bot.ai.decisions import DecisionsClient
+    from hina_bot.ai.pdf_transport import pdf_enabled
 
+    assert not pdf_enabled(SimpleNamespace(gemini_pdf_transport="pdf", gemini_pdf_scope="all"), "decisions")
     sent = []
     def capture(request):
         body = json.loads(request.content)
         sent.append(len(request.content))
-        control, document = body["input"]
-        assert json.loads(control["text"])["turn"] == {"message": "now"}
-        pdf = PdfReader(io.BytesIO(base64.b64decode(document["data"])))
-        assert json.loads(pdf.pages[0].extract_text()) == {"candidates": {"c1": {"id": "123"}}}
+        shared = json.loads(body["input"])
+        assert shared["turn"] == {"message": "now"}
+        assert shared["candidates"] == {"c1": {"id": "123"}}
         assert list(body["questions"]) == ["c1"]
         return httpx.Response(200, json={"answers": {"c1": {"type": "noul", "noul": 0.8}}})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(capture)) as http:
         result = await DecisionsClient(http).evaluate(
             api_key="synthetic", domain="lore", query={"message": "now"},
-            candidates={"original": {"id": "123"}}, pdf_transport=True,
+            candidates={"original": {"id": "123"}},
         )
     assert result.scores == {"original": 0.8}
     assert sent == [result.request_bytes]
-    assert result.transport_metrics["transport"] == "pdf"
+    assert result.metrics()["decision_transport"] == {"transport": "text"}
 
 
 async def test_reference_transport_requires_local_marker_and_preserves_original():

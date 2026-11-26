@@ -362,7 +362,7 @@ provider 선택은 실제 Discord 답변, 장기 기억 요약, runtime knowledg
 
 GEMINI_PDF_TRANSPORT defaults to text. Runtime Config → Conversation & Privacy
 changes it for subsequent requests. Auto currently chooses text for every model
-and API. GEMINI_PDF_SCOPE limits opt-in to decisions, answer, memory, knowledge, or all. No production cost or fidelity evidence has been collected. An operator
+and API. GEMINI_PDF_SCOPE limits opt-in to answer, memory, knowledge, or all three. The legacy decisions-only scope remains accepted and enables no PDF conversions. No production cost or fidelity evidence has been collected. An operator
 may opt in with pdf for normal traffic and roll back with text. Changing
 GEMINI_PDF_FONT (local TrueType file) requires a restart. Use an installed font
 covering the deployment languages. Unsupported glyphs retain the original text.
@@ -377,7 +377,7 @@ input. There is no new remote retry or shadow request.
 
 | Input | Opt-in scope |
 |---|---|
-| Decisions | Already eligible candidates only. Query, rules and questions stay native. |
+| Decisions | Always text, including candidates, even when PDF scope is all. |
 | Answer references | Local reference blocks only. Current speaker, active reply, current message and role replay stay native. |
 | Memory extraction and shared summaries | Existing authorized payload only. Images and their provenance stay in place. |
 | Persona and style | Native instructions. Model-level authority and quality unverified. |

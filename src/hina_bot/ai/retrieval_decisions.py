@@ -12,7 +12,6 @@ from hina_bot.core.memory_selection import SelectedMemory, decision_memory_candi
 from .decisions import MIN_PROBABILITY, DecisionResult
 from .discord_emoji_input import normalize_custom_emoji_text
 from .egress_policy import filter_channel_context
-from .pdf_transport import pdf_enabled
 from .structured_memory_context import (
     REPLY_CHAIN_KINDS,
     personal_memory_fields,
@@ -174,8 +173,6 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
     policy = llm.settings.external_context_policy
     key = llm.settings.api_key_for("gemini")
     evaluate = llm.decisions_client.evaluate
-    pdf_options = ({"pdf_transport": True}
-                   if pdf_enabled(llm.settings, "decisions") else {})
     use_memory = memory_kwargs["use_memory"]
     mode_reader = getattr(store, "memory_mode", None)
     now = memory_kwargs["now"]
@@ -198,7 +195,7 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
             and (include_community or candidate.lane != "community_meme")
         ]
         requests["lore"] = evaluate(
-            api_key=key, domain="lore", **pdf_options,
+            api_key=key, domain="lore",
             timeout_seconds=llm.settings.decision_timeout_seconds,
             query=decision_query(
                 message, rows, user_id=scope.user_id, policy=policy,
@@ -216,7 +213,7 @@ async def select_with_decisions(llm, store, scope, rows, memory_kwargs, *, lore_
                 memory_run.items, memory_run.annotations, memory_run.ctx,
             )
             requests["memory"] = evaluate(
-                api_key=key, domain="memory", **pdf_options,
+                api_key=key, domain="memory",
                 timeout_seconds=llm.settings.decision_timeout_seconds,
                 query=decision_query(
                     message, rows, user_id=scope.user_id, policy=policy,
