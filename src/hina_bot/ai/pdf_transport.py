@@ -212,7 +212,7 @@ def text_reference_observation(source, reason):
 # Limit failed encode attempts as well as the number of resulting wire parts.
 MAX_FRAGMENT_ATTEMPTS = 15
 _SPLIT_REASONS = {"unsupported_glyph", "unbreakable_token", "source_size_limit",
-                  "pdf_size_limit", "roundtrip", "empty_line"}
+                  "pdf_size_limit", "pdf_page_limit", "roundtrip", "empty_line"}
 
 
 def reference_label(part):
@@ -228,7 +228,16 @@ def reference_label(part):
     return "reference"
 
 
+class DecisionCandidateReference(PDFReferenceText):
+    """An authorized candidate ID map; splitting may only occur between records."""
+
+
 def _fragment(part, rows, suffix=""):
+    if isinstance(part, DecisionCandidateReference):
+        return DecisionCandidateReference(
+            type="input_text",
+            text=json.dumps(rows, ensure_ascii=False, separators=(",", ":")),
+        )
     header = part["text"].partition("\n")[0]
     if suffix:
         header += " " + suffix
@@ -238,7 +247,7 @@ def _fragment(part, rows, suffix=""):
     )
 
 
-def _split_part(rows, ranges):
+def _split_part(rows, ranges, *, candidates=False):
     # First split by complete fields; then by contiguous list records.
     fields = list(rows.items())
     if len(fields) > 1:
@@ -246,6 +255,10 @@ def _split_part(rows, ranges):
         return [(dict(group), {}) for group in (fields[:middle], fields[middle:])]
     if len(fields) == 1:
         key, records = fields[0]
+        if candidates and key == "candidates" and isinstance(records, dict) and len(records) > 1:
+            pairs = list(records.items())
+            middle = len(pairs) // 2
+            return [({key: dict(pairs[:middle])}, {}), ({key: dict(pairs[middle:])}, {})]
         if isinstance(records, list) and len(records) > 1:
             start, total = ranges.get(key, (0, len(records)))
             middle = len(records) // 2
@@ -273,10 +286,11 @@ async def plan_reference(part, *, native_only=False, encoder=None):
     observation = {**observation, "section": label, "eligible": True}
     if document is not None or observation["fallback"] not in _SPLIT_REASONS:
         return PreparedPDFReference(part, document, observation)
-    if not source.startswith(REFERENCE_PREFIX):
+    candidates = isinstance(part, DecisionCandidateReference)
+    if not candidates and not source.startswith(REFERENCE_PREFIX):
         return PreparedPDFReference(part, document, observation)
     try:
-        rows = json.loads(source.partition("\n")[2])
+        rows = json.loads(source if candidates else source.partition("\n")[2])
     except ValueError:
         return PreparedPDFReference(part, document, observation)
     if not isinstance(rows, dict):
@@ -300,14 +314,14 @@ async def plan_reference(part, *, native_only=False, encoder=None):
         elapsed += obs["encode_ms"]
         obs = {**obs, "section": label, "eligible": True}
         if doc is None and obs["fallback"] in _SPLIT_REASONS and attempts + 2 <= MAX_FRAGMENT_ATTEMPTS:
-            children = _split_part(fragment_rows, ranges)
+            children = _split_part(fragment_rows, ranges, candidates=candidates)
             if children:
                 left = await visit(*children[0])
                 right = await visit(*children[1])
                 return left + right
         return [(fragment, doc, obs)]
 
-    children = _split_part(rows, {})
+    children = _split_part(rows, {}, candidates=candidates)
     if not children:
         return PreparedPDFReference(part, document, observation)
     segments = []
@@ -321,7 +335,8 @@ async def plan_reference(part, *, native_only=False, encoder=None):
     # Fragment headers and repeated keys are transport overhead. Attribute the
     # original character count proportionally to serialized record sizes, and
     # retain the actual fragment length separately. The denominator stays exact.
-    weights = [len(fragment["text"].partition("\n")[2]) for fragment, _, _ in segments]
+    weights = [len(fragment["text"] if candidates else fragment["text"].partition("\n")[2])
+               for fragment, _, _ in segments]
     total_weight = sum(weights)
     consumed_weight = allocated = 0
     for weight, (_, _, obs) in zip(weights, segments, strict=True):
@@ -442,7 +457,7 @@ async def consolidate_references(parts, *, native_only=False, encoder=None):
 
     async def bounded(source):
         nonlocal attempts
-        if attempts >= MAX_CONSOLIDATED_ATTEMPTS:
+        if attempts >= MAX_CONSOLIDATED_ATTEMPTS - 1:
             return None, text_reference_observation(source, "fragment_budget")
         attempts += 1
         return await encoder(source)
@@ -487,8 +502,9 @@ async def consolidate_references(parts, *, native_only=False, encoder=None):
                     for fragment, ok, item_obs in group if ok
                 ]
                 if not selected:
-                    return native("no_eligible_document")
-                document, obs = await bounded("\n".join(document_source(fragment) for fragment, _ in selected))
+                    return native(obs["fallback"])
+                # Reserve the final attempt for the one physical document.
+                document, obs = await encoder("\n".join(document_source(fragment) for fragment, _ in selected))
                 if document is None:
                     # No partial PDF is transmitted if final consolidation is unsafe.
                     return native(obs["fallback"])

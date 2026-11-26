@@ -9,8 +9,12 @@ from time import perf_counter
 
 import httpx
 
-from .pdf_transport import consolidate_references, encode_reference, transport_coverage
-from .reference_context_blocks import PDFReferenceText
+from .pdf_transport import (
+    DecisionCandidateReference,
+    consolidate_references,
+    encode_reference,
+    transport_coverage,
+)
 from .prompts import load_prompt
 
 MODEL = "gemini-decision-1"
@@ -111,31 +115,8 @@ async def _candidate_pdf_input(shared):
     }]
     # Try the complete map first; if it cannot be represented, split by intact
     # candidate records and render only the successful pieces into one document.
-    candidate_map = shared["candidates"]
-    whole = PDFReferenceText(type="input_text", text=_json({"candidates": candidate_map}))
+    whole = DecisionCandidateReference(type="input_text", text=_json({"candidates": shared["candidates"]}))
     prepared = await consolidate_references([whole], encoder=encode_reference)
-    if (not prepared[0].document and len(candidate_map) > 1
-            and prepared[0].observation["fallback"] in {
-                "unsupported_glyph", "unbreakable_token", "source_size_limit",
-                "pdf_size_limit", "pdf_page_limit", "roundtrip",
-            }):
-        batches = []
-        batch = {}
-        for key, candidate in candidate_map.items():
-            batch[key] = candidate
-            if len(batch) >= 32:
-                batches.append(batch)
-                batch = {}
-        if batch:
-            batches.append(batch)
-        if len(batches) == 1:
-            middle = len(candidate_map) // 2
-            records = list(candidate_map.items())
-            batches = [dict(records[:middle]), dict(records[middle:])]
-        prepared = await consolidate_references([
-            PDFReferenceText(type="input_text", text=_json({"candidates": batch}))
-            for batch in batches
-        ], encoder=encode_reference)
     observations = []
     for part in prepared:
         for fragment, document, obs in part.segments:

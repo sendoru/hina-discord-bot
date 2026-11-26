@@ -89,3 +89,35 @@ async def test_pdf_http_error_does_not_retry(monkeypatch):
     assert result.reason == "http_error"
     assert result.scores is None
     assert result.metrics()["decision_transport"]["transport"] == "pdf"
+
+
+@pytest.mark.asyncio
+async def test_partial_candidates_keep_one_document_and_exact_candidate_records(monkeypatch):
+    import base64
+
+    sent = []
+
+    async def encode(source):
+        observation = text_reference_observation(source, "")
+        if "unrenderable" in source:
+            observation["fallback"] = "unsupported_glyph"
+            return None, observation
+        document = GeminiInlinePDF(source.encode(), 1)
+        observation.update(transport="pdf", pages=1, pdf_bytes=len(document.pdf))
+        return document, observation
+
+    monkeypatch.setattr(decisions, "encode_reference", encode)
+    blocks, observations = await decisions._candidate_pdf_input({
+        "selection_rules": "rules", "turn": {"message": "now"},
+        "candidates": {"c1": {"text": "one"}, "c2": {"text": "unrenderable"}, "c3": {"text": "three"}},
+    })
+    for block in blocks[1:]:
+        source = base64.b64decode(block["data"]).decode() if block["type"] == "document" else block["text"]
+        sent.extend(json.loads(line)["candidates"] for line in source.splitlines())
+    merged = {}
+    for batch in sent:
+        assert not merged.keys() & batch.keys()
+        merged.update(batch)
+    assert set(merged) == {"c1", "c2", "c3"}
+    assert sum(block["type"] == "document" for block in blocks) == 1
+    assert sum(obs.get("documents", 0) for obs in observations) == 1

@@ -120,13 +120,16 @@ def migrate_legacy_env_values(values, *, warn: bool = False) -> dict[str, str]:
     for key, canonical in (
         ("RAG_MODE", canonical_rag_mode),
         ("PERSONAL_MEMORY_READ_MODE", canonical_memory_read_mode),
-        ("GEMINI_PDF_TRANSPORT", lambda value: parse_pdf_transport(value, legacy=True) if value else "text"),
     ):
         if key in result:
             raw = result[key].strip().lower()
             converted = canonical(raw)
             if converted != raw:
                 result[key] = converted
+    if "GEMINI_PDF_TRANSPORT" in result:
+        result["GEMINI_PDF_TRANSPORT"] = parse_pdf_transport(
+            result["GEMINI_PDF_TRANSPORT"].strip() or "text", legacy=True,
+        )
     if "GEMINI_PDF_SCOPE" in result:
         result["GEMINI_PDF_SCOPE"] = parse_pdf_scope(result["GEMINI_PDF_SCOPE"].strip() or "all")
     if warn and any(values.get(key) != result.get(key) for key in (
