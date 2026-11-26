@@ -55,6 +55,18 @@ def code_execution_backend(provider: str, *, has_audio=False, has_pdf=False) -> 
     return "none"
 
 
+def delegated_model_settings(settings) -> tuple[str, str]:
+    """Use the configured fast tier and at most low thinking for computation."""
+    if settings.model_routing_mode == "adaptive":
+        model = settings.fast_model
+        level = settings.gemini_fast_thinking_level
+    else:
+        # Fixed mode should not unexpectedly select an inactive model.
+        model = settings.model
+        level = settings.gemini_thinking_level
+    return model, "minimal" if level == "minimal" else "low"
+
+
 def _field(value, name, default=None):
     return value.get(name, default) if isinstance(value, dict) else getattr(
         value, name, default
@@ -135,6 +147,10 @@ def attach_delegated_code_execution(
                 store=False,
                 retry_empty=False,
                 deadline_seconds=min(MAX_SECONDS, timeout),
+                route_metadata={
+                    "requested_thinking_level": thinking_level,
+                    "requested_max_output_tokens": MAX_OUTPUT_TOKENS,
+                },
             )
             result = _verified_result(response)
             outcomes[payload] = result
