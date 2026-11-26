@@ -10,7 +10,9 @@ from urllib.parse import urlsplit
 import httpx
 from openai import AsyncOpenAI
 
-from .pdf_transport import GeminiInlinePDF, encode_reference, pdf_enabled
+from .pdf_transport import (
+    GeminiInlinePDF, PreparedPDFReference, encode_reference, pdf_enabled, text_reference_observation,
+)
 from .reference_context_blocks import PDFReferenceText
 
 GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
@@ -809,13 +811,17 @@ class _GeminiResponses:
             parts = []
             for part in message["content"]:
                 if isinstance(part, PDFReferenceText):
-                    if code_execution:
-                        metrics.append({"transport": "text", "source_chars": len(part["text"]),
-                                        "pages": 0, "pdf_bytes": 0, "encode_ms": 0,
-                                        "fallback": "code_execution_incompatible"})
-                        parts.append(part)
-                        continue
-                    document, observation = await encode_reference(part["text"])
+                    if isinstance(part, PreparedPDFReference) and part.document is None:
+                        document, observation = None, dict(part.observation)
+                    elif code_execution:
+                        document = None
+                        observation = text_reference_observation(
+                            part["text"], "code_execution_incompatible",
+                        )
+                    elif isinstance(part, PreparedPDFReference):
+                        document, observation = part.document, dict(part.observation)
+                    else:
+                        document, observation = await encode_reference(part["text"])
                     metrics.append(observation)
                     if document:
                         part = document
