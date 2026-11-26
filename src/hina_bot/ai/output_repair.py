@@ -12,9 +12,7 @@ import logging
 import re
 from time import perf_counter
 
-from hina_bot.core.config import gemini_store_enabled
-
-from .openai_capabilities import reasoning_options
+from .provider_contract import operation_options
 from .web_search_text import response_text
 
 log = logging.getLogger("hina")
@@ -202,14 +200,14 @@ class OutputRepair:
         try:
             request = {
                 "model": self._model(),
-                **reasoning_options(self.settings, self._model(), "fast"),
+                **operation_options(
+                    self.settings, "output_repair", self._model(), "fast",
+                    thinking_level="minimal",
+                ),
                 "instructions": _REPAIR_INSTRUCTIONS,
                 "input": original,
                 "max_output_tokens": _MAX_OUTPUT_TOKENS,
-                "store": gemini_store_enabled(self.settings, "output_repair"),
             }
-            if self.settings.provider == "gemini":
-                request["thinking_level"] = "minimal"
             response = await self.usage.request(
                 self.client,
                 "output_repair",

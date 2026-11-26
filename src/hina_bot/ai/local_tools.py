@@ -12,6 +12,7 @@ from typing import Any
 from openai.types.responses import Response
 
 from .prompts import load_prompt
+from .provider_contract import stored_interaction_id
 
 JsonObject = dict[str, Any]
 ToolHandler = Callable[[JsonObject], Any | Awaitable[Any]]
@@ -225,7 +226,7 @@ def continuation_request(
         next_input = [{"role": "user", "content": previous_input}]
     else:
         next_input = [{"role": "user", "content": str(previous_input)}]
-    interaction_id = str(getattr(response, "_hina_interaction_id", "") or "")
+    interaction_id = stored_interaction_id(response)
     followup = dict(request)
     # Keep one Gemini API throughout a local-function round, even if runtime
     # settings or circuit state change while the function is executing.

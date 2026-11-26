@@ -116,6 +116,9 @@ def attach_delegated_code_execution(
     thinking_level: str,
 ) -> LocalToolRegistry:
     """Request-local handler; no media augmentation, recursion, or automatic retry."""
+    provider = getattr(client, "provider_name", None)
+    if isinstance(provider, str) and provider != "gemini":
+        raise ValueError("Delegated computation requires the Gemini worker client")
     registry = original.copy() if original is not None else LocalToolRegistry()
     attempts = 0
     outcomes: dict[str, dict | str] = {}

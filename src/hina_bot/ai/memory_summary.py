@@ -5,7 +5,6 @@ import json
 import logging
 import re
 
-from hina_bot.core.config import gemini_store_enabled
 from hina_bot.core.memory_annotations import LINT_VISUAL_GROUNDED
 from hina_bot.core.store import SharedSummaryConflict
 
@@ -26,7 +25,7 @@ from .memory_extraction import (
 )
 from .memory_model_routing import build_memory_model_plan
 from .memory_visual import extraction_input, select_memory_visuals, visual_message_ids
-from .openai_capabilities import reasoning_options
+from .provider_contract import operation_options
 
 NO_MEMORY = "<NO_MEMORY>"
 log = logging.getLogger("hina")
@@ -141,7 +140,10 @@ class MemorySummaryMixin:
         )
         request = {
             "model": plan.model,
-            **reasoning_options(self.settings, plan.model, getattr(plan, "tier", "fixed")),
+            **operation_options(
+                self.settings, "memory", plan.model, getattr(plan, "tier", "fixed"),
+                thinking_level=plan.thinking_level,
+            ),
             "instructions": instructions,
             # With no images this stays the plain payload string, as before.
             "input": extraction_input(
@@ -150,12 +152,9 @@ class MemorySummaryMixin:
                 include_media_resolution=include_media_resolution,
             ),
             "max_output_tokens": plan.max_output_tokens,
-            "store": gemini_store_enabled(self.settings, "memory"),
         }
         route_metadata = plan.telemetry()
-        if self.settings.provider == "gemini":
-            request["thinking_level"] = plan.thinking_level
-        else:
+        if self.settings.provider != "gemini":
             route_metadata.pop("requested_thinking_level", None)
         return await self.usage.request(
             self.client,

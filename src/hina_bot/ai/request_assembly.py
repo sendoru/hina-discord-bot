@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import httpx
 from openai import APIStatusError
 
-from hina_bot.core.config import DECISION_MODES, gemini_store_enabled
+from hina_bot.core.config import DECISION_MODES
 from hina_bot.core.conversation_session import active_session_turns
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import (
@@ -46,6 +46,7 @@ from .model_routing import ModelPlan, fixed_model_plan
 from .openai_capabilities import reasoning_options
 from .pdf_transport import InstructionReferenceText, pdf_enabled, prepare_answer_references
 from .prompts import load_prompt
+from .provider_contract import operation_options
 from .providers import ProviderAPIError
 from .retrieval_decisions import select_with_decisions
 from .rp_output_policy import hide_web_citations, provenance_instruction
@@ -60,9 +61,11 @@ from .web_search_runtime import tool_config
 from .web_search_text import response_text
 
 
-def _transient_answer_failure(exc: BaseException) -> bool:
+def _transient_answer_failure(provider: str, exc: BaseException) -> bool:
     # A request timeout already consumed the interactive latency budget. Replaying the
     # whole provider/tool turn can double the stall and repeat expensive managed-tool work.
+    if isinstance(exc, APIStatusError) and provider != "openai":
+        return False
     return isinstance(exc, (ProviderAPIError, APIStatusError)) and exc.status_code == 503
 
 
@@ -864,18 +867,16 @@ class RequestAssembler(BaseLLM):
 
         request = {
             "model": model_plan.model,
-            **reasoning_options(self.settings, model_plan.model, model_plan.tier),
+            **operation_options(
+                self.settings, "answer", model_plan.model, model_plan.tier,
+                thinking_level=model_plan.thinking_level,
+            ),
             "instructions": instructions,
             "input": messages,
             "max_output_tokens": model_plan.max_output_tokens,
-            "store": gemini_store_enabled(self.settings, "answer"),
         }
-        if self.settings.provider == "openai":
-            request["include"] = ["reasoning.encrypted_content"]
-        if self.settings.provider == "gemini":
-            request["thinking_level"] = model_plan.thinking_level
-            if vision_policy_prepared:
-                request["_hina_vision_policy_prepared"] = True
+        if self.settings.provider == "gemini" and vision_policy_prepared:
+            request["_hina_vision_policy_prepared"] = True
         tools = list(tool_config(search_mode) or ())
         managed_tools = (
             managed_tool_config(self.settings.provider) if code_backend == "native" else []
@@ -924,9 +925,7 @@ class RequestAssembler(BaseLLM):
                     **current_request,
                 )
             except (ProviderAPIError, APIStatusError, httpx.TimeoutException) as exc:
-                if isinstance(exc, APIStatusError) and self.settings.provider != "openai":
-                    raise
-                if transient_retry_used or not _transient_answer_failure(exc):
+                if transient_retry_used or not _transient_answer_failure(self.settings.provider, exc):
                     raise
                 transient_retry_used = True
                 fallback_to_fast = (
