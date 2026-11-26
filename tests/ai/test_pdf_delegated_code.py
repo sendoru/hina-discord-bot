@@ -88,7 +88,8 @@ async def test_pdf_answer_prepares_before_tools_and_preserves_wire_compatibility
     assert len(bodies) == 1
     body = bodies[0]
     serialized = json.dumps(body)
-    assert ("application/pdf" in serialized) == (success and mode != "native")
+    assert serialized.count("application/pdf") == int(success and mode != "native")
+    assert ("app_guidance" in serialized) == (success and mode != "native")
     assert ("request_computation" in serialized) == (expected == "delegated")
     if api == "generate_content":
         native = any("code_execution" in tool for tool in body.get("tools", []))

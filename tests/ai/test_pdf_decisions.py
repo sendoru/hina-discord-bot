@@ -18,7 +18,7 @@ async def test_decision_pdf_preserves_question_and_candidate_ids_and_sends_once(
             import asyncio
 
             await asyncio.sleep(5)
-        encoded.append(json.loads(source))
+        encoded.extend(json.loads(line) for line in source.splitlines())
         if mode == "failed":
             return None, text_reference_observation(source, "unsupported_glyph")
         pdf = GeminiInlinePDF(b"X" * decisions.MAX_REQUEST_BYTES if mode == "size" else b"PDF", 1)

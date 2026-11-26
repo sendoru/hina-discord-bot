@@ -391,56 +391,59 @@ provider 선택은 실제 Discord 답변, 장기 기억 요약, runtime knowledg
 있습니다. provider나 모델을 바꾼 뒤에는 주요 eval과 실제 Discord smoke test를 다시 실행하는 것을
 권장합니다.
 
-## Gemini PDF context transport
+## Gemini PDF context transport (P9)
 
-GEMINI_PDF_TRANSPORT defaults to text. Runtime Config → Conversation & Privacy
-changes it for subsequent requests. Auto currently chooses text for every model
-and API. GEMINI_PDF_SCOPE limits opt-in to answer, memory, knowledge, decisions, or all four. No production cost or fidelity evidence has been collected. An operator
-may opt in with pdf for normal traffic and roll back with text. Changing
-GEMINI_PDF_FONT (local TrueType file) requires a restart. Use an installed font
-covering the deployment languages. Unsupported glyphs retain the original text.
+`GEMINI_PDF_TRANSPORT=text|pdf` defaults to text. An old auto value
+is migrated to text because that was its effective behavior.
+`GEMINI_PDF_SCOPE=all` accepts comma-separated selections from
+answer, memory, knowledge, decisions. Startup, stored runtime overrides
+and environment normalization share the same canonical parser.
+`GEMINI_PDF_FONT` remains a local TrueType font path (restart required);
+no new profile or per-section switches are introduced.
 
-The encoder embeds visible 11 pt text on A4, checks extraction against the
-ordered rendered lines, and never writes document bytes to disk. Its local guard
-limits a block to 60,000 characters and 512,000 PDF bytes. Answer requests have
-an additional conservative 8 MB body guard. Decisions keeps its 240,000-byte
-cap and 1,000-question cap. Font metrics can be reused, documents cannot.
-With CODE_EXECUTION_BACKEND=auto, a successfully prepared PDF selects the delegated computation function; native code execution remains available when all reference encodings fail or no PDF is eligible. Explicit native mode keeps references as text and records code_execution_incompatible. Explicit delegated mode exposes the computation function regardless of transport. If the final wire-size guard falls back to text, the selected backend is retained for that turn to keep continuation and tool registration consistent. PDF transport preserves the configured store flag. When storage is enabled, the PDF is part of the stored interaction. A local failure retains the original
-input. There is no new remote retry or shadow request.
+The explicit pdf setting collects eligible original text in input order and
+renders one consolidated PDF. Tiny sections share the same pages and embedded
+fonts. The default renderer uses A4, 10 pt, 30 pt margins and 13 pt leading.
+An offline extraction roundtrip guards against silent glyph or line loss.
+The new per-document guard is 240,000 source characters, 1.5 MB PDF bytes
+and 100 pages; the wire body guard remains 8 MB for answer operations.
+A bounded planner may render temporary fragments locally to isolate failures,
+but never sends multiple generated PDF documents. If final consolidation fails,
+the exact original native input is retained. No extra remote request.
 
-| Input | Opt-in scope |
+| Input | PDF policy |
 |---|---|
-| Decisions | Candidate JSON documents when scope is decisions or all; rules, current turn and questions stay text. |
-| Answer references | Local reference blocks only. Current speaker, active reply, current message and role replay stay native. |
-| Memory extraction and shared summaries | Existing authorized payload only. Images and their provenance stay in place. |
-| Persona and style | Native instructions. Model-level authority and quality unverified. |
-| Knowledge and tool results | Authorized knowledge-ingest data and retrieved Lore in marked answer references are eligible. Tool envelopes and continuations stay native. |
-| Classifier, directive verification, output repair | Text. No measured cost benefit. |
+| Answer references | History, direct reply, memories, lore, emoji metadata in the consolidated document. Native current speaker and current utterance. Direct replies remain native when preserving a replay role boundary requires it. |
+| App-owned prompt components | Explicit continuity, world core, character, selected compact lore; moved only after successful document creation and exact component validation. Native system retains policy, privacy, identity/provenance, relationship, runtime, administrator, tool and output rules. |
+| Memory and knowledge | Authorized existing operation input, with native image/audio and metadata preserved. |
+| Decisions | Candidate map in a single document; native selection rules, current turn and questions. Exact original IDs and 240,000-byte logical and wire guards, 1,000 questions, existing local prep budget and selection fallback. |
+| DM replay and local tool results | Native roles, call IDs and provider envelopes remain unchanged; no unsafe relocation of result data. |
 
-Use existing usage and trace records for normal production requests. Compare by
-operation, model, API, cache usage, attempts and input size. Selection bias in
-ordinary traffic limits comparisons. Token counts and estimates are not invoice
-amounts. No fixed saving or per-page token price is assumed. The offline
-benchmark in scripts/pdf_context_benchmark.py uses synthetic examples and mock
-HTTP only. See Google's [document guide](https://aistudio.google.com/docs/document-processing)
+The system explicitly distinguishes app_guidance from app_reference and
+untrusted user-derived JSON; this is not a claim of equivalent provider-level
+instruction authority. A failed encoder, incompatible native code tool or
+wire-size guard retains the original full native system. Stored continuations
+use the previous interaction ID without resending the document; only successfully
+moved app components may be omitted from the continuation system text.
+Stateless continuations reuse the prepared document and original logical input.
+Changing runtime config affects subsequent requests.
+
+With CODE_EXECUTION_BACKEND=auto, actual prepared PDF presence selects delegated
+computation; explicit native preserves text. Explicit delegated keeps its
+existing meaning. A late body guard fallback retains the selected backend for
+that turn to preserve continuation consistency. No extra classifier or paid
+shadow traffic. Other providers are unchanged.
+
+Trace and Analytics report physical document count, pages, PDF bytes, section
+coverage, eligible/native fallback reasons and observed provider modality tokens.
+Unreported modalities remain unknown; a cumulative provider count is not
+treated as an incremental per-call count. Coverage is original characters,
+not billed tokens. `scripts/pdf_context_benchmark.py` compares the production
+encoder's synthetic density configurations locally. `scripts/pdf_usage_report.py`
+uses explicitly supplied input/cache prices and existing usage logs to estimate
+input cost; compare model, operation, media, cache, API and attempts. Estimates
+are not invoices. No model fidelity or actual cost saving is established by
+mock tests or extraction alone.
+
+See Google's [document guide](https://aistudio.google.com/docs/document-processing)
 and [Decisions input schema](https://aistudio.google.com/docs/decisions-api#input).
-
-For a manual offline cost comparison, run scripts/pdf_usage_report.py against an
-existing usage JSONL with --model, --api, --input-per-million and
---cached-per-million. Supply applicable prices in a single currency. The report
-groups by operation and actual transport. Its estimate covers reported input
-only. Missing cache counts, failed or multiple attempts are excluded from the
-priced count. Output, thinking, taxes, other fees and invoice totals require
-separate reconciliation. Use trace timing and counts alongside this report.
-
-### P7 transport hardening
-
-Direct replies and current speaker metadata are intentionally native and separated from history. An empty reply chain no longer prevents history encoding. The shared planner attempts bounded partial conversion only for already-authorized answer JSON reference records; ordered list fragments retain their original key and absolute record ranges. Unsupported records remain text; if no fragment converts, the original block is used. Memory and knowledge generic payloads remain whole-block fallback to avoid changing their schema. Provider-native tool envelopes, instructions, and role replay remain unchanged. Trace usage includes per-section reasons and coverage over observed text (not tokens; excludes media and tool schema bytes). On body-size fallback, attempted sizes are retained separately from transmitted PDF sizes. The encoder density experiment is offline only; the production default remains 11pt until fidelity is verified.
-
-The renderer tries known installed local fallback TrueType fonts per glyph, validates the extracted runs, and still retains unsupported data as text. No font downloads. The density script now imports the production renderer (install the project dev dependencies first) and compares 9/10/11 pt by default without a network request. Partial-fragment original character counts are apportioned by serialized record length, while actual fragment character counts are logged separately. This is a coverage estimate rather than billed tokens.
-
-### P8 Decisions and remaining authority boundaries
-
-The official [Decisions API guide](https://aistudio.google.com/docs/decisions-api#documents) supports ordered text/document content blocks. P8 opts in via the existing PDF settings (including all). The question map, selection rules, current turn, source ID mapping and original 240,000-byte logical request guard remain unchanged. Candidate records are grouped under the same candidates key across ordered JSON blocks, with bounded local partial encoding and a 250 ms maximum preparation budget (or a quarter of the configured HTTP timeout, whichever is smaller). If encoding times out, no documents are eligible, or the actual base64 request exceeds the cap, send the original text body once. Never retry a rejected document request as text. Failed remote decisions keep the existing full-selection fallback. The original cap remains to avoid changing eligible candidate pools. Both coverage and actual wire bytes are logged. Cost, probability calibration and selection recall in PDF mode remain unmeasured.
-
-Review outcome for the other P8 items: persona, relationship and policy instructions are trusted system text, and converting them to a user document changes their authority. Existing world-fact/lore references are already eligible. Do not move trusted instructions without a dedicated instruction-authority regression and live fidelity check. DM replay has user/model roles and deliberately preserves them; do not turn model output into an input document. Local tool results retain their provider-native function-result/functionResponse envelope and call ID across both APIs, including stored continuations. Large result documents require a separate schema-compatible adapter and egress review rather than moving results into an unrelated user step. No new PDF conversions are enabled for these three paths in P8.

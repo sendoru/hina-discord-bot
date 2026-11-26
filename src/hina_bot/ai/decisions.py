@@ -114,7 +114,11 @@ async def _candidate_pdf_input(shared):
     candidate_map = shared["candidates"]
     whole = PDFReferenceText(type="input_text", text=_json({"candidates": candidate_map}))
     prepared = await consolidate_references([whole], encoder=encode_reference)
-    if not prepared[0].document and len(candidate_map) > 1:
+    if (not prepared[0].document and len(candidate_map) > 1
+            and prepared[0].observation["fallback"] in {
+                "unsupported_glyph", "unbreakable_token", "source_size_limit",
+                "pdf_size_limit", "pdf_page_limit", "roundtrip",
+            }):
         batches = []
         batch = {}
         for key, candidate in candidate_map.items():

@@ -22,7 +22,7 @@ def test_document_stays_between_reference_and_current_turn():
     assert base64.b64decode(document["inline_data"]["data"]) == pdf
 
 
-def test_direct_reply_current_speaker_and_role_replay_remain_native():
+def test_direct_reply_is_eligible_but_current_speaker_remains_native():
     from hina_bot.ai.reference_context_blocks import PDFReferenceText, reference_context_blocks
 
     blocks = reference_context_blocks({
