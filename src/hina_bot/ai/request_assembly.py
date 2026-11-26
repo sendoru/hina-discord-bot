@@ -25,6 +25,7 @@ from .delegated_code_execution import (
     DELEGATED_CODE_POLICY,
     attach_delegated_code_execution,
     code_execution_backend,
+    delegated_model_settings,
 )
 from .discord_emoji_input import normalize_custom_emoji_text, normalized_message_context
 from .egress_policy import apply_context_policy
@@ -657,13 +658,14 @@ class RequestAssembler(BaseLLM):
             self.settings.provider, has_audio=bool(CURRENT_AUDIO_INPUTS.get()),
         )
         if code_backend == "delegated":
+            worker_model, worker_thinking_level = delegated_model_settings(self.settings)
             local_tool_registry = attach_delegated_code_execution(
                 local_tool_registry,
                 client=self.client,
                 usage=self.usage,
-                model=model_plan.model,
+                model=worker_model,
                 timeout=self.settings.answer_timeout_seconds,
-                thinking_level=model_plan.thinking_level,
+                thinking_level=worker_thinking_level,
             )
         local_tool_schemas = (
             local_tool_registry.schemas()
