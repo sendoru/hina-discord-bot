@@ -5,8 +5,9 @@ import io
 import json
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from threading import Event, Lock
 from time import perf_counter
@@ -101,6 +102,7 @@ _FALLBACK_FONT_PATHS = (
     "/usr/share/fonts/truetype/noto/NotoSansMath-Regular.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.ttf",
+    "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf",
 )
 
 
@@ -117,24 +119,54 @@ def _fallback_font(index):
         return None
 
 
-def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
+class _UnsupportedGlyph(Exception):
+    pass
+
+
+class _RequestLayoutCache:
+    """Bounded intermediate layouts, owned by one consolidation only."""
+
+    def __init__(self):
+        self.paragraphs = {}
+        self.chars = 0
+
+    def remember(self, key, lines):
+        paragraph = key[0]
+        if len(paragraph) > 240_000 - self.chars:
+            return
+        self.paragraphs[key] = tuple(lines)
+        self.chars += len(paragraph)
+
+
+def _encode(source, *, size=10, margin=30, leading=13, cancelled=None, layout_cache=None):
     font = _font()
     by_char = {}
+    widths = {}
 
-    def font_for(char):
-        if char in by_char:
-            return by_char[char]
-        if not char.isprintable():
-            return None
-        selected = font if font.face.charToGlyph.get(ord(char)) else None
+    def width_for(char):
+        try:
+            return widths[char]
+        except KeyError:
+            pass
+        # Unicode space separators may be valid TrueType glyphs even though
+        # Python's isprintable rejects them. Require exact extraction as usual;
+        # controls, format characters and Unicode line separators stay native.
+        if not char.isprintable() and unicodedata.category(char) != "Zs":
+            raise _UnsupportedGlyph
+        codepoint = ord(char)
+        selected = font if font.face.charToGlyph.get(codepoint) else None
         if selected is None:
             for index in range(len(_FALLBACK_FONT_PATHS)):
                 alternative = _fallback_font(index)
-                if alternative is not None and alternative.face.charToGlyph.get(ord(char)):
+                if alternative is not None and alternative.face.charToGlyph.get(codepoint):
                     selected = alternative
                     break
+        if selected is None:
+            raise _UnsupportedGlyph
+        glyph_width = selected.face.charWidths[codepoint]
         by_char[char] = selected
-        return selected
+        widths[char] = glyph_width
+        return glyph_width
     width, height = A4
     stream = io.BytesIO()
     canvas = Canvas(stream, pagesize=A4, pageCompression=1, invariant=1)
@@ -143,6 +175,21 @@ def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
     for paragraph in source.split("\n"):
         if not paragraph:
             return None, "empty_line"
+        if cancelled is not None and cancelled.is_set():
+            return None, "encode_deadline"
+        key = (paragraph, font, size, margin)
+        cached = layout_cache.paragraphs.get(key) if layout_cache is not None else None
+        if cached is not None:
+            # Resolve each distinct glyph for this render; no per-paragraph font
+            # maps or document artifacts are retained.
+            try:
+                for char in set(paragraph):
+                    width_for(char)
+            except _UnsupportedGlyph:
+                return None, "unsupported_glyph"
+            rendered.extend(cached)
+            continue
+        line_start = len(rendered)
         start = 0
         advance = 0
         # Keep ASCII identifiers, snowflakes and JSON escape sequences readable across lines.
@@ -150,13 +197,10 @@ def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
             if cancelled is not None and cancelled.is_set():
                 return None, "encode_deadline"
             token = match.group()
-            fonts = [font_for(c) for c in token]
-            if any(selected is None for selected in fonts):
+            try:
+                token_width = sum(map(width_for, token)) * size / 1000
+            except _UnsupportedGlyph:
                 return None, "unsupported_glyph"
-            token_width = sum(
-                selected.face.charWidths[ord(c)]
-                for c, selected in zip(token, fonts, strict=True)
-            ) * size / 1000
             if token_width > width - 2 * margin:
                 return None, "unbreakable_token"
             if advance + token_width > width - 2 * margin:
@@ -165,6 +209,8 @@ def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
                 start = match.start()
             advance += token_width
         rendered.append(paragraph[start:])
+        if layout_cache is not None:
+            layout_cache.remember(key, rendered[line_start:])
     for line in rendered:
         if cancelled is not None and cancelled.is_set():
             return None, "encode_deadline"
@@ -207,7 +253,7 @@ def _encode(source, *, size=10, margin=30, leading=13, cancelled=None):
 ENCODER_LOCK_POLL_SECONDS = 0.02
 
 
-async def encode_reference(source):
+async def encode_reference(source, *, layout_cache=None):
     started = perf_counter()
     cancelled = Event()
 
@@ -215,7 +261,9 @@ async def encode_reference(source):
         try:
             if cancelled.is_set():
                 return None, "encode_deadline"
-            return _encode(source, cancelled=cancelled)
+            if layout_cache is None:
+                return _encode(source, cancelled=cancelled)
+            return _encode(source, cancelled=cancelled, layout_cache=layout_cache)
         except Exception:  # noqa: BLE001 - pre-send fallback at renderer boundary
             # Font, renderer and parser errors must never emit source or PDF bytes.
             return None, "encode_error"
@@ -258,6 +306,11 @@ async def encode_reference(source):
         "encode_ms": round((perf_counter() - started) * 1000),
         "fallback": reason,
     }
+
+
+# The public single-argument encoder injection seam remains supported; only the
+# built-in renderer can consume internal layout state.
+_BUILTIN_ENCODER = encode_reference
 
 
 class PreparedPDFReference(PDFReferenceText):
@@ -340,7 +393,7 @@ def _split_part(rows, ranges, *, candidates=False):
     return []
 
 
-async def plan_reference(part, *, encoder=None):
+async def plan_reference(part, *, encoder=None, initial_result=None):
     """Return original mapping plus bounded, ordered PDF/text fragments.
 
     Repeated list keys in fragments are explicitly labelled with absolute record
@@ -349,7 +402,7 @@ async def plan_reference(part, *, encoder=None):
     encoder = encoder or encode_reference
     source = part["text"]
     label = reference_label(part)
-    document, observation = await encoder(source)
+    document, observation = initial_result if initial_result is not None else await encoder(source)
     observation = {**observation, "section": label, "eligible": True}
     if document is not None or observation["fallback"] not in _SPLIT_REASONS:
         return PreparedPDFReference(part, document, observation)
@@ -365,14 +418,14 @@ async def plan_reference(part, *, encoder=None):
     attempts = 1
     elapsed = observation["encode_ms"]
 
-    async def visit(fragment_rows, ranges):
+    async def visit(fragment_rows, ranges, *, reserve=0):
         nonlocal attempts, elapsed
         suffix = ""
         if ranges:
             key, (start, total) = next(iter(ranges.items()))
             suffix = f"[records {start + 1}-{start + len(fragment_rows[key])} of {total}; ordered fragment]"
         fragment = _fragment(part, fragment_rows, suffix)
-        if attempts >= MAX_FRAGMENT_ATTEMPTS:
+        if attempts >= MAX_FRAGMENT_ATTEMPTS - reserve:
             obs = text_reference_observation(fragment["text"], "fragment_budget")
             doc = None
         else:
@@ -380,11 +433,14 @@ async def plan_reference(part, *, encoder=None):
             doc, obs = await encoder(fragment["text"])
         elapsed += obs["encode_ms"]
         obs = {**obs, "section": label, "eligible": True}
-        if doc is None and obs["fallback"] in _SPLIT_REASONS and attempts + 2 <= MAX_FRAGMENT_ATTEMPTS:
+        if (doc is None and obs["fallback"] in _SPLIT_REASONS
+                and attempts + 2 + reserve <= MAX_FRAGMENT_ATTEMPTS):
             children = _split_part(fragment_rows, ranges, candidates=candidates)
             if children:
-                left = await visit(*children[0])
-                right = await visit(*children[1])
+                # Depth-first failure isolation must not consume the attempts
+                # needed to test siblings that may be entirely representable.
+                left = await visit(*children[0], reserve=reserve + 1)
+                right = await visit(*children[1], reserve=reserve)
                 return left + right
         return [(fragment, doc, obs)]
 
@@ -392,8 +448,8 @@ async def plan_reference(part, *, encoder=None):
     if not children:
         return PreparedPDFReference(part, document, observation)
     segments = []
-    for child in children:
-        segments.extend(await visit(*child))
+    for i, child in enumerate(children):
+        segments.extend(await visit(*child, reserve=len(children) - i - 1))
     first_pdf = next((doc for _, doc, _ in segments if doc is not None), None)
     if first_pdf is None:
         # No useful conversion: retain the exact original wire text.
@@ -534,6 +590,8 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
     verified standalone fragment and keep every other fragment native.
     """
     encoder = encoder or encode_reference
+    if encoder is _BUILTIN_ENCODER:
+        encoder = partial(encoder, layout_cache=_RequestLayoutCache())
     if not parts:
         return []
     started = perf_counter()
@@ -542,6 +600,7 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
     groups = []
     document = None
     failure = ""
+    reserved_sections = 0
     loop = asyncio.get_running_loop()
     expires = loop.time() + (CONSOLIDATED_DEADLINE if deadline_seconds is None else deadline_seconds)
 
@@ -550,7 +609,8 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
         if loop.time() >= expires:
             failure = "encode_deadline"
             return None, text_reference_observation(source, failure)
-        limit = MAX_CONSOLIDATED_ATTEMPTS if final else MAX_CONSOLIDATED_ATTEMPTS - 1
+        limit = (MAX_CONSOLIDATED_ATTEMPTS if final
+                 else MAX_CONSOLIDATED_ATTEMPTS - 1 - reserved_sections)
         if attempts >= limit:
             return None, text_reference_observation(source, "fragment_budget")
         attempts += 1
@@ -584,14 +644,24 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
     else:
         if initial_reason not in _SPLIT_REASONS:
             return native(initial_reason)
-        for part in parts:
+        for index, part in enumerate(parts):
+            # Leave an attempt for each later section whenever the global budget
+            # allows it, in addition to the final consolidation attempt.
+            reserved_sections = min(
+                len(parts) - index - 1, max(0, MAX_CONSOLIDATED_ATTEMPTS - 2 - attempts),
+            )
+            # A single part was already attempted verbatim above; its deterministic
+            # split failure is sufficient to start the existing fragment planner.
+            initial = (document, obs) if len(parts) == 1 else None
             if instruction_original(part) is not None:
-                candidate, item_obs = await bounded(document_source(part))
+                candidate, item_obs = (
+                    initial if initial is not None else await bounded(document_source(part))
+                )
                 groups.append([(
                     part, candidate, original_observation(part, item_obs["fallback"]),
                 )])
             else:
-                prepared = await plan_reference(part, encoder=bounded)
+                prepared = await plan_reference(part, encoder=bounded, initial_result=initial)
                 groups.append(list(prepared.segments))
         selected = [
             fragment for group in groups for fragment, doc, _ in group if doc is not None
