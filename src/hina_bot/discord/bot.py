@@ -10,10 +10,12 @@ from datetime import UTC, datetime, timedelta
 import discord
 
 from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS, CURRENT_AUDIO_UNAVAILABLE
+from hina_bot.ai.egress_policy import allow_channel_row
 from hina_bot.ai.server_memory_extraction import extract_server_batch, pending_spaces
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
 from hina_bot.core.emojis import render_emojis
+from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.memory_context import CURRENT_CONTEXT_PROVENANCE, CURRENT_MEMORY_SELECTION
 from hina_bot.core.memory_selection import memory_usage
 from hina_bot.core.observability import (
@@ -133,6 +135,16 @@ def _has_strong_visual_context(visuals) -> bool:
     return any(
         visual.reference_strength in {"current_message", "explicit_reply"}
         for visual in visuals
+    )
+
+
+def _has_explicit_text_reply(interaction, rows, *, current_user_id, policy) -> bool:
+    """Only an explicit call with already selected, exportable reply text needs the LLM."""
+    return (interaction or {}).get("trigger_kind") == "explicit" and any(
+        row.get("context_kind") == "replied_message"
+        and bool(str(row.get("content") or "").strip())
+        and allow_channel_row(row, current_user_id, policy)
+        for row in rows or ()
     )
 
 
@@ -885,10 +897,24 @@ class HinaClient(discord.Client):
                             for visual in visuals
                         )
                     )
+                    # Do not expand chat-log/egress scope merely to answer a bare call.
+                    explicit_text_reply = (
+                        not text
+                        and guild_id is not None
+                        and use_chat_log
+                        and not CURRENT_AUDIO_UNAVAILABLE.get()
+                        and _has_explicit_text_reply(
+                            CURRENT_INTERACTION_CONTEXT.get(),
+                            CURRENT_CHANNEL_CONTEXT.get(),
+                            current_user_id=scope.user_id,
+                            policy=self.settings.external_context_policy,
+                        )
+                    )
                     if (not text and not message_embed_text(message)
                             and (current_visual_missing or (
                                 not _has_strong_visual_context(visuals)
                                 and not _has_strong_visual_context(CURRENT_AUDIO_INPUTS.get())
+                                and not explicit_text_reply
                             ))):
                         raw_turn_persistence = "skipped"
                         raw_turn_persistence_reason = (

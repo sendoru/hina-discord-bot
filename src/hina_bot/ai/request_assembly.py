@@ -21,7 +21,7 @@ from hina_bot.core.memory_selection import selection_provenance
 from hina_bot.core.server_memory_selection import CURRENT_SERVER_READER
 
 from .audio import AUDIO_UNAVAILABLE_POLICY, CURRENT_AUDIO_INPUTS, CURRENT_AUDIO_UNAVAILABLE
-from .context_input import build_context_input
+from .context_input import EMPTY_CURRENT_TURN_POLICY, build_context_input
 from .context_provenance import build_context_provenance
 from .delegated_code_execution import (
     DELEGATED_CODE_POLICY,
@@ -646,6 +646,13 @@ class RequestAssembler(BaseLLM):
             mode=getattr(self.settings, "context_input_mode", "legacy"),
             provider=self.settings.provider,
             is_dm=scope.guild_id is None,
+            current_media=tuple(
+                kind for kind, entries in (
+                    ("image", CURRENT_VISUAL_INPUTS.get()),
+                    ("audio", CURRENT_AUDIO_INPUTS.get()),
+                )
+                if any(entry.context_kind == "current_message" for entry in entries)
+            ),
         )
 
         local_tool_registry = CURRENT_LOCAL_TOOLS.get()
@@ -846,6 +853,10 @@ class RequestAssembler(BaseLLM):
             FINAL_OUTPUT_CHECK_POLICY
         )
 
+        if not visible_content.strip():
+            # The current-turn boundary must remain native even with PDF transport.
+            instruction_parts.append(EMPTY_CURRENT_TURN_POLICY)
+            instruction_group_chars["instruction_response_chars"] += len(EMPTY_CURRENT_TURN_POLICY)
         if CURRENT_AUDIO_UNAVAILABLE.get():
             instruction_parts.append(AUDIO_UNAVAILABLE_POLICY)
             instruction_group_chars["instruction_response_chars"] += len(AUDIO_UNAVAILABLE_POLICY)
