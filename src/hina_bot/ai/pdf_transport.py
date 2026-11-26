@@ -41,6 +41,7 @@ def _font():
         raise ValueError("Expected an installed local TrueType font")
     path = configured or next(
         (str(p) for p in (Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
+                          Path("/mnt/c/Windows/Fonts/malgun.ttf"),
                           Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")) if p.is_file()),
         "Vera.ttf",
     )
