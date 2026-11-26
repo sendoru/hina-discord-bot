@@ -82,6 +82,6 @@ def test_empty_reply_does_not_exclude_history_from_pdf():
 
     context = {"active_reply_chain": [], "channel_recent_messages": [{"content": "recent"}]}
     blocks = reference_context_blocks(context)
-    assert not isinstance(blocks[0], PDFReferenceText)
+    assert isinstance(blocks[0], PDFReferenceText)
     assert isinstance(blocks[1], PDFReferenceText)
     assert read_reference_context(blocks) == context

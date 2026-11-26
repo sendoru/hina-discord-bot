@@ -9,7 +9,8 @@ from time import perf_counter
 
 import httpx
 
-from .pdf_transport import encode_reference, text_reference_observation, transport_coverage
+from .pdf_transport import consolidate_references, encode_reference, transport_coverage
+from .reference_context_blocks import PDFReferenceText
 from .prompts import load_prompt
 
 MODEL = "gemini-decision-1"
@@ -94,29 +95,11 @@ def _input_tokens(response: dict) -> int | None:
 
 
 
-PDF_BATCH_CHARS = 50_000
-PDF_MAX_ATTEMPTS = 12
 PDF_PREP_TIMEOUT = 0.25
 
 
 def _json(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-
-
-def _candidate_batches(candidates):
-    """Partition by complete candidate records; no ID may be split or dropped."""
-    batch = {}
-    chars = len('{"candidates":{}}')
-    for key, candidate in candidates.items():
-        size = len(_json(key)) + 1 + len(_json(candidate)) + 1
-        if batch and chars + size > PDF_BATCH_CHARS:
-            yield batch
-            batch = {}
-            chars = len('{"candidates":{}}')
-        batch[key] = candidate
-        chars += size
-    if batch:
-        yield batch
 
 
 async def _candidate_pdf_input(shared):
@@ -126,37 +109,37 @@ async def _candidate_pdf_input(shared):
         "text": _json(control) + "\nCandidate records follow in ordered JSON blocks. "
         "All blocks belong to the same candidates map; use the exact candidate IDs.\n",
     }]
+    # Try the complete map first; if it cannot be represented, split by intact
+    # candidate records and render only the successful pieces into one document.
+    candidate_map = shared["candidates"]
+    whole = PDFReferenceText(type="input_text", text=_json({"candidates": candidate_map}))
+    prepared = await consolidate_references([whole], encoder=encode_reference)
+    if not prepared[0].document and len(candidate_map) > 1:
+        batches = []
+        batch = {}
+        for key, candidate in candidate_map.items():
+            batch[key] = candidate
+            if len(batch) >= 32:
+                batches.append(batch)
+                batch = {}
+        if batch:
+            batches.append(batch)
+        if len(batches) == 1:
+            middle = len(candidate_map) // 2
+            records = list(candidate_map.items())
+            batches = [dict(records[:middle]), dict(records[middle:])]
+        prepared = await consolidate_references([
+            PDFReferenceText(type="input_text", text=_json({"candidates": batch}))
+            for batch in batches
+        ], encoder=encode_reference)
     observations = []
-    attempts = 0
-
-    async def append_batch(batch):
-        nonlocal attempts
-        source = _json({"candidates": batch})
-        if attempts < PDF_MAX_ATTEMPTS:
-            attempts += 1
-            doc, obs = await encode_reference(source)
-        else:
-            doc, obs = None, text_reference_observation(source, "fragment_budget")
-        if (doc is None and len(batch) > 1 and attempts + 2 <= PDF_MAX_ATTEMPTS
-                and obs["fallback"] in {"unsupported_glyph", "unbreakable_token",
-                                        "source_size_limit", "pdf_size_limit", "roundtrip"}):
-            pairs = list(batch.items())
-            middle = len(pairs) // 2
-            # Keep time spent on the failed parent visible without counting its
-            # source twice.
-            before = len(observations)
-            await append_batch(dict(pairs[:middle]))
-            await append_batch(dict(pairs[middle:]))
-            observations[before]["encode_ms"] += obs["encode_ms"]
-            return
-        observations.append({**obs, "section": "decision_candidates", "eligible": True})
-        if doc is not None:
-            blocks.append({"type": "document", "mime_type": "application/pdf", "data": doc.data})
-        else:
-            blocks.append({"type": "text", "text": source + "\n"})
-
-    for batch in _candidate_batches(shared["candidates"]):
-        await append_batch(batch)
+    for part in prepared:
+        for fragment, document, obs in part.segments:
+            observations.append({**obs, "section": "decision_candidates"})
+            if document is not None:
+                blocks.append({"type": "document", "mime_type": "application/pdf", "data": document.data})
+            elif fragment is not None:
+                blocks.append({"type": "text", "text": fragment["text"] + "\n"})
     return blocks, observations
 
 
@@ -186,7 +169,7 @@ async def _prepare_decision_body(payload, shared, original_body, deadline):
         meta.update(
             transport="text", fallback="request_size_limit",
             attempted_pages=meta["pages"], attempted_pdf_bytes=meta["pdf_bytes"],
-            pages=0, pdf_bytes=0, pdf_chars=0, eligible_coverage=0.0,
+            documents=0, pages=0, pdf_bytes=0, pdf_chars=0, eligible_coverage=0.0,
             total_coverage=0.0,
         )
         for item in observations:
@@ -194,7 +177,7 @@ async def _prepare_decision_body(payload, shared, original_body, deadline):
                 item.update(
                     transport="text", fallback="request_size_limit",
                     attempted_pages=item["pages"], attempted_pdf_bytes=item["pdf_bytes"],
-                    pages=0, pdf_bytes=0,
+                    documents=0, pages=0, pdf_bytes=0,
                 )
         return original_body, meta
     return body, meta

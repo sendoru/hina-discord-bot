@@ -433,14 +433,27 @@ def _pdf_transport_summary(rows):
         group = groups.setdefault(key, {
             "operation": key[0], "transport": key[1], "calls": 0,
             "observed": 0, "source_chars": 0, "eligible_chars": 0, "pdf_chars": 0,
-            "pages": 0, "pdf_bytes": 0, "encode_ms": 0,
+            "documents": 0, "document_observed": 0, "pages": 0, "pdf_bytes": 0, "encode_ms": 0,
+            "provider_input_modality_tokens": {}, "modality_observed": 0,
         })
         group["calls"] += 1
+        modality = row.get("provider_modality_tokens")
+        if isinstance(modality, dict) and isinstance(modality.get("input"), dict):
+            # Only non-cumulative single-attempt rows can be safely summed.
+            if row.get("usage_accounting") != "gemini_interaction_delta" and row.get("api_attempts", 1) == 1:
+                group["modality_observed"] += 1
+                for key, value in modality["input"].items():
+                    if type(value) is int and value >= 0:
+                        totals = group["provider_input_modality_tokens"]
+                        totals[key] = totals.get(key, 0) + value
         if isinstance(coverage, dict) and all(
             type(coverage.get(field)) is int and coverage[field] >= 0
             for field in ("source_chars", "eligible_chars", "pdf_chars")
         ):
             group["observed"] += 1
+            if type(coverage.get("documents")) is int:
+                group["documents"] += coverage["documents"]
+                group["document_observed"] += 1
             for field in ("source_chars", "eligible_chars", "pdf_chars", "pages", "pdf_bytes", "encode_ms"):
                 value = coverage.get(field)
                 if type(value) is int and value >= 0:

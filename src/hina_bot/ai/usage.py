@@ -87,6 +87,8 @@ def _response_diagnostic_fields(response, *, has_visible_text: bool | None = Non
     observations = getattr(response, "_hina_reference_transport", ()) or ()
     return {
         **({"pdf_coverage": transport_coverage(observations)} if observations else {}),
+        **({"provider_modality_tokens": response._hina_modality_tokens}
+           if getattr(response, "_hina_modality_tokens", None) else {}),
         **({"gemini_api": response._hina_gemini_api,
             "context_transport": "pdf" if any(
                 item["transport"] == "pdf" for item in getattr(response, "_hina_reference_transport", ())

@@ -19,7 +19,7 @@ def measure(font_path: Path, rows: int, size: int, sample: str) -> dict:
         ensure_ascii=False, separators=(",", ":"),
     )
     started = perf_counter()
-    margin, leading = (42, 16) if size == 11 else (36, size * 1.4)
+    margin, leading = (42, 16) if size == 11 else (30, size * 1.3)
     document, reason = _encode(source, size=size, margin=margin, leading=leading)
     encoded_ms = round((perf_counter() - started) * 1000, 2)
     result = {

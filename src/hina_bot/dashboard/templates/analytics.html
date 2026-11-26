@@ -85,14 +85,15 @@
     observations are not treated as zero conversion. Decisions coverage describes candidate data only.</p>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Operation</th><th>Transport</th><th>Observed / calls</th><th>Eligible PDF %</th><th>All observed %</th><th>PDF pages</th><th>PDF bytes</th><th>Encode ms</th></tr></thead>
+      <thead><tr><th>Operation</th><th>Transport</th><th>Observed / calls</th><th>Eligible PDF %</th><th>All observed %</th><th>PDF docs</th><th>PDF pages</th><th>PDF bytes</th><th>Encode ms</th><th>Observed input modalities</th></tr></thead>
       <tbody>
         {% for group in data.pdf_transport.groups %}
         <tr><td>{{ group.operation }}</td><td>{{ group.transport }}</td><td>{{ group.observed }} / {{ group.calls }}</td>
           <td>{{ group.eligible_coverage if group.eligible_coverage is not none else "—" }}</td>
           <td>{{ group.total_coverage if group.total_coverage is not none else "—" }}</td>
-          <td>{{ group.pages }}</td><td>{{ group.pdf_bytes }}</td><td>{{ group.encode_ms }}</td></tr>
-        {% else %}<tr><td colspan="8">No Gemini usage in this window.</td></tr>{% endfor %}
+          <td>{{ group.documents if group.document_observed else '—' }}</td><td>{{ group.pages }}</td><td>{{ group.pdf_bytes }}</td><td>{{ group.encode_ms }}</td>
+          <td>{% for name, count in group.provider_input_modality_tokens.items() %}{{ name }}: {{ count }}{% if not loop.last %} / {% endif %}{% else %}—{% endfor %}</td></tr>
+        {% else %}<tr><td colspan="10">No Gemini usage in this window.</td></tr>{% endfor %}
       </tbody>
     </table>
   </div>

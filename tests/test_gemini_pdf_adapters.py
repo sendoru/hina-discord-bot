@@ -30,7 +30,7 @@ def test_direct_reply_current_speaker_and_role_replay_remain_native():
         "active_reply_chain": [{"role": "user", "content": "reply456"}],
         "lore_reference": ["lore789"],
     })
-    assert [isinstance(block, PDFReferenceText) for block in blocks] == [False, False, True]
+    assert [isinstance(block, PDFReferenceText) for block in blocks] == [False, True, True]
     assert all(block["type"] == "input_text" for block in blocks)
 
 

@@ -445,6 +445,37 @@ def _gemini_url_context_statuses(rows) -> list[str]:
     return statuses
 
 
+def _gemini_modality_counts(value):
+    if not isinstance(value, list):
+        return None
+    counts = {}
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        modality = str(entry.get("modality") or entry.get("type") or "").lower()
+        count = entry.get("tokenCount", entry.get("token_count", entry.get("tokens")))
+        if modality in {"text", "image", "audio", "video", "document", "pdf"} and type(count) is int and count >= 0:
+            counts[modality] = counts.get(modality, 0) + count
+    return counts or None
+
+
+def _gemini_modality_usage(usage):
+    if not isinstance(usage, dict):
+        return {}
+    fields = {}
+    for name, keys in {
+        "input": ("promptTokensDetails", "prompt_tokens_details", "input_tokens_details"),
+        "cached": ("cacheTokensDetails", "cache_tokens_details", "cached_tokens_details"),
+        "output": ("candidatesTokensDetails", "candidates_tokens_details", "output_tokens_details"),
+    }.items():
+        for key in keys:
+            counts = _gemini_modality_counts(usage.get(key))
+            if counts is not None:
+                fields[name] = counts
+                break
+    return fields
+
+
 def _gemini_generate_content_output(data: dict):
     candidates = data.get("candidates") or []
     candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
@@ -642,6 +673,7 @@ def _gemini_generate_content_output(data: dict):
         output=output,
         usage=usage,
     )
+    response._hina_modality_tokens = _gemini_modality_usage(usage_data)
     response._hina_web_search_calls = web_search_calls
     response._hina_url_context_calls = url_context_calls
     response._hina_url_context_statuses = tuple(url_context_statuses)
@@ -763,6 +795,7 @@ def _gemini_output(data: dict):
         output=output,
         usage=usage,
     )
+    response._hina_modality_tokens = _gemini_modality_usage(usage_data)
     response._hina_web_search_calls = web_search_calls
     response._hina_url_context_calls = url_context_calls
     response._hina_url_context_statuses = tuple(url_context_statuses)
