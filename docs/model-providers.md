@@ -264,8 +264,9 @@ OpenRouter에서는 OpenAI-compatible Responses API를 사용하고, 일반 답�
 일반 Gemini 요청은 기존 native `code_execution`을 유지합니다. 오디오를 포함한
 답변 요청에서는 해당 도구 대신 `request_computation` 로컬 함수를 제공합니다.
 이 함수는 봇 호스트에서 Python을 실행하지 않고, 실제 함수 호출이 발생할 때만
-동일 Gemini 모델에 최소한의 계산용 텍스트를 보내 Google managed code execution을
-실행합니다. 별도의 사전 분류/Decision 호출은 없습니다.
+adaptive에서는 기존 fast 모델, fixed에서는 기존 고정 모델에 최소한의 계산용 텍스트를 보내
+Google managed code execution을 실행합니다. thinking은 해당 모델의 기존 설정이 minimal이면
+minimal, 그 외에는 low로 제한합니다. 별도의 사전 분류/Decision 호출이나 신규 환경변수는 없습니다.
 
 위임 호출은 원래 미디어, 전체 대화 문맥, 다른 도구, interaction ID를 전달하지 않고
 저장 설정을 false로 지정합니다. 답변당 최대 2회, 동시 최대 4회, 20초와 기존 답변
