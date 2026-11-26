@@ -5,6 +5,7 @@ import io
 import json
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache, partial
 from pathlib import Path
@@ -146,7 +147,10 @@ def _encode(source, *, size=10, margin=30, leading=13, cancelled=None, layout_ca
             return widths[char]
         except KeyError:
             pass
-        if not char.isprintable():
+        # Unicode space separators may be valid TrueType glyphs even though
+        # Python's isprintable rejects them. Require exact extraction as usual;
+        # controls, format characters and Unicode line separators stay native.
+        if not char.isprintable() and unicodedata.category(char) != "Zs":
             raise _UnsupportedGlyph
         codepoint = ord(char)
         selected = font if font.face.charToGlyph.get(codepoint) else None
@@ -413,14 +417,14 @@ async def plan_reference(part, *, encoder=None, initial_result=None):
     attempts = 1
     elapsed = observation["encode_ms"]
 
-    async def visit(fragment_rows, ranges):
+    async def visit(fragment_rows, ranges, *, reserve=0):
         nonlocal attempts, elapsed
         suffix = ""
         if ranges:
             key, (start, total) = next(iter(ranges.items()))
             suffix = f"[records {start + 1}-{start + len(fragment_rows[key])} of {total}; ordered fragment]"
         fragment = _fragment(part, fragment_rows, suffix)
-        if attempts >= MAX_FRAGMENT_ATTEMPTS:
+        if attempts >= MAX_FRAGMENT_ATTEMPTS - reserve:
             obs = text_reference_observation(fragment["text"], "fragment_budget")
             doc = None
         else:
@@ -428,11 +432,14 @@ async def plan_reference(part, *, encoder=None, initial_result=None):
             doc, obs = await encoder(fragment["text"])
         elapsed += obs["encode_ms"]
         obs = {**obs, "section": label, "eligible": True}
-        if doc is None and obs["fallback"] in _SPLIT_REASONS and attempts + 2 <= MAX_FRAGMENT_ATTEMPTS:
+        if (doc is None and obs["fallback"] in _SPLIT_REASONS
+                and attempts + 2 + reserve <= MAX_FRAGMENT_ATTEMPTS):
             children = _split_part(fragment_rows, ranges, candidates=candidates)
             if children:
-                left = await visit(*children[0])
-                right = await visit(*children[1])
+                # Depth-first failure isolation must not consume the attempts
+                # needed to test siblings that may be entirely representable.
+                left = await visit(*children[0], reserve=reserve + 1)
+                right = await visit(*children[1], reserve=reserve)
                 return left + right
         return [(fragment, doc, obs)]
 
@@ -440,8 +447,8 @@ async def plan_reference(part, *, encoder=None, initial_result=None):
     if not children:
         return PreparedPDFReference(part, document, observation)
     segments = []
-    for child in children:
-        segments.extend(await visit(*child))
+    for i, child in enumerate(children):
+        segments.extend(await visit(*child, reserve=len(children) - i - 1))
     first_pdf = next((doc for _, doc, _ in segments if doc is not None), None)
     if first_pdf is None:
         # No useful conversion: retain the exact original wire text.
@@ -592,6 +599,7 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
     groups = []
     document = None
     failure = ""
+    reserved_sections = 0
     loop = asyncio.get_running_loop()
     expires = loop.time() + (CONSOLIDATED_DEADLINE if deadline_seconds is None else deadline_seconds)
 
@@ -600,7 +608,8 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
         if loop.time() >= expires:
             failure = "encode_deadline"
             return None, text_reference_observation(source, failure)
-        limit = MAX_CONSOLIDATED_ATTEMPTS if final else MAX_CONSOLIDATED_ATTEMPTS - 1
+        limit = (MAX_CONSOLIDATED_ATTEMPTS if final
+                 else MAX_CONSOLIDATED_ATTEMPTS - 1 - reserved_sections)
         if attempts >= limit:
             return None, text_reference_observation(source, "fragment_budget")
         attempts += 1
@@ -634,7 +643,12 @@ async def consolidate_references(parts, *, native_only=False, encoder=None, dead
     else:
         if initial_reason not in _SPLIT_REASONS:
             return native(initial_reason)
-        for part in parts:
+        for index, part in enumerate(parts):
+            # Leave an attempt for each later section whenever the global budget
+            # allows it, in addition to the final consolidation attempt.
+            reserved_sections = min(
+                len(parts) - index - 1, max(0, MAX_CONSOLIDATED_ATTEMPTS - 2 - attempts),
+            )
             # A single part was already attempted verbatim above; its deterministic
             # split failure is sufficient to start the existing fragment planner.
             initial = (document, obs) if len(parts) == 1 else None
