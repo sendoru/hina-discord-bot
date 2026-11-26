@@ -17,6 +17,7 @@ import statistics
 import sys
 import tracemalloc
 from importlib.metadata import version
+from pathlib import Path
 from time import perf_counter, process_time, thread_time
 from unittest.mock import patch
 
@@ -65,10 +66,32 @@ def summary(values):
     }
 
 
+class TimedLock:
+    """Record wait intervals in the benchmark without changing the encoder."""
+
+    def __init__(self, lock):
+        self.lock = lock
+        self.waiting = {}
+        self.acquired_ms = []
+
+    def acquire(self, *, blocking):
+        task = asyncio.current_task()
+        started = self.waiting.setdefault(task, perf_counter())
+        acquired = self.lock.acquire(blocking=blocking)
+        if acquired:
+            self.acquired_ms.append((perf_counter() - started) * 1000)
+            del self.waiting[task]
+        return acquired
+
+    def release(self):
+        self.lock.release()
+
+
 async def measure(parts, *, profile=False, memory=False, concurrency=1):
     real_encode = pdf._encode
     renders = []
     profiles = []
+    timed_lock = TimedLock(pdf._LOCK)
 
     def render(source, **kwargs):
         start = perf_counter()
@@ -101,7 +124,7 @@ async def measure(parts, *, profile=False, memory=False, concurrency=1):
     start = perf_counter()
     cpu = process_time()
     try:
-        with patch.object(pdf, "_encode", render):
+        with patch.object(pdf, "_encode", render), patch.object(pdf, "_LOCK", timed_lock):
             requests = await asyncio.gather(*(request() for _ in range(concurrency)))
         result = {
             "batch_wall_ms": (perf_counter() - start) * 1000,
@@ -109,6 +132,9 @@ async def measure(parts, *, profile=False, memory=False, concurrency=1):
             "render_wall_ms": sum(w for w, _ in renders),
             "render_cpu_ms": sum(c for _, c in renders),
             "renders": len(renders),
+            "lock_wait_ms": sum(timed_lock.acquired_ms),
+            "lock_wait_intervals_ms": timed_lock.acquired_ms,
+            "lock_wait_unfinished": len(timed_lock.waiting),
             "requests": requests,
         }
         if memory:
@@ -131,6 +157,7 @@ async def main(args):
         "python": platform.python_version(), "platform": platform.platform(),
         "reportlab": version("reportlab"), "pypdf": version("pypdf"),
         "font_override": os.getenv("GEMINI_PDF_FONT"), "rows": args.rows,
+        "fallback_paths_present": [path for path in pdf._FALLBACK_FONT_PATHS if Path(path).is_file()],
         "runs": args.runs, "concurrency": args.concurrency,
         "billing": None, "model_fidelity": None,
         "cold_definition": "font caches cleared; fresh process needed for full cold start",
@@ -147,6 +174,7 @@ async def main(args):
             "cold": cold,
             "warm": {key: summary([item[key] for item in warm]) for key in (
                 "batch_wall_ms", "process_cpu_ms", "render_wall_ms", "render_cpu_ms", "renders",
+                "lock_wait_ms",
             )},
             "warm_requests": warm[-1]["requests"],
         }
