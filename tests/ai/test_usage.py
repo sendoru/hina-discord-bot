@@ -51,6 +51,35 @@ def interaction_response(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("finish_before_reply", [True, False])
+async def test_background_extraction_keeps_turn_id_and_separate_usage(tmp_path, finish_before_reply):
+    path = tmp_path / "usage.jsonl"
+    logger = UsageLogger(str(path))
+    result = response(5, 3)
+    client = NS(responses=NS(create=AsyncMock(return_value=result)))
+    token = CURRENT_TURN_ID.set("turn-605")
+    try:
+        with logger.exchange("guild"):
+            await logger.request(client, "answer", model="answer-model")
+            task = asyncio.create_task(logger.request(client, "extract_server_memory", model="memory-model"))
+            if finish_before_reply:
+                await task
+        assert await task is result
+    finally:
+        CURRENT_TURN_ID.reset(token)
+        logger.close()
+
+    answer, memory = map(json.loads, path.read_text().splitlines())
+    assert memory["turn_id"] == answer["turn_id"] == "turn-605"
+    assert memory["operation"] == "extract_server_memory"
+    assert memory["total_tokens"] == 8
+    exchange = json.loads((tmp_path / "discord-usage.jsonl").read_text())
+    assert exchange["models"] == ["answer-model"]
+    assert exchange["calls"] == 1
+    assert exchange["total_tokens"] == 8
+
+
+@pytest.mark.asyncio
 async def test_usage_success_and_error_do_not_log_content(tmp_path):
     path = tmp_path / 'usage.jsonl'
     logger = UsageLogger(str(path))

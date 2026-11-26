@@ -164,6 +164,8 @@ counts, model-tier counts, aggregate exchange token usage, web-search usage, mem
 failures, and recent safe error fingerprints.
 
 Totals come from `discord-usage.jsonl` where possible so per-call rows are not double-counted.
+Background server-memory extraction is recorded in `usage.jsonl` with the originating
+turn ID when available, and is excluded from the Discord exchange total.
 
 ### Traces
 

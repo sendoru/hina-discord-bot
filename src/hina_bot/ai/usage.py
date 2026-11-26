@@ -379,8 +379,7 @@ class UsageLogger:
                 state["status"] = "completed_with_api_errors"
             else:
                 state["status"] = "completed"
-            state["models"] = sorted(state["models"])
-            self._emit(self.exchange_handler, state)
+            self._emit(self.exchange_handler, {**state, "models": sorted(state["models"])})
 
     async def request(
         self,
@@ -533,7 +532,8 @@ class UsageLogger:
             raise
         finally:
             row["elapsed_ms"] = round((perf_counter() - started) * 1000)
-            if accumulate:
+            # Background extraction can outlive the Discord exchange that spawned it.
+            if accumulate and operation != "extract_server_memory":
                 self._accumulate(row)
             self._emit(self.handler, row)
 
