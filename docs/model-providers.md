@@ -405,7 +405,7 @@ ordered rendered lines, and never writes document bytes to disk. Its local guard
 limits a block to 60,000 characters and 512,000 PDF bytes. Answer requests have
 an additional conservative 8 MB body guard. Decisions keeps its 240,000-byte
 cap and 1,000-question cap. Font metrics can be reused, documents cannot.
-Requests offering Gemini code execution keep their references as text before encoding; the trace records code_execution_incompatible. This preserves the tool on ordinary answers. PDF transport preserves the configured store flag. When storage is enabled, the PDF is part of the stored interaction. A local failure retains the original
+With CODE_EXECUTION_BACKEND=auto, a successfully prepared PDF selects the delegated computation function; native code execution remains available when all reference encodings fail or no PDF is eligible. Explicit native mode keeps references as text and records code_execution_incompatible. Explicit delegated mode exposes the computation function regardless of transport. If the final wire-size guard falls back to text, the selected backend is retained for that turn to keep continuation and tool registration consistent. PDF transport preserves the configured store flag. When storage is enabled, the PDF is part of the stored interaction. A local failure retains the original
 input. There is no new remote retry or shadow request.
 
 | Input | Opt-in scope |

@@ -11,7 +11,11 @@ import httpx
 from openai import AsyncOpenAI
 
 from .pdf_transport import (
-    GeminiInlinePDF, PreparedPDFReference, encode_reference, pdf_enabled, text_reference_observation,
+    GeminiInlinePDF,
+    PreparedPDFReference,
+    encode_reference,
+    pdf_enabled,
+    text_reference_observation,
 )
 from .reference_context_blocks import PDFReferenceText
 
