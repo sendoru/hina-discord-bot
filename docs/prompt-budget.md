@@ -23,7 +23,7 @@ Python 모듈은 상수 이름과 조건부 조립 로직만 유지하고, `load
 - `integration/dialogue_context.md`: Discord의 화자·수신자·지칭 대상·주장 출처 구분과 채널 참여자의 사실 귀속
 - `integration/continuity.md`: 최근 대화의 연결성 및 암묵적 지칭 해석, 문맥과 사실 근거의 구분, 시간 차이와 이전 답변의 표현 고착 방지
 - `integration/reply_continuity.md`: 명시적 답장 체인이 있을 때만 연결된 인과관계 보강
-- `integration/turn_response.md`: 이번 발화에 대한 실제 답변·내용 중심 설명·상황에 맞는 후속 대화
+- `integration/turn_response.md`: 이번 발화에 대한 실제 답변·내용 중심 설명·상황에 맞는 후속 대화 및 필요한 정보와 감정 표현에 맞는 답변 분량 조절
 - `integration/final_output.md`: Discord 최종 출력 표현, 대본식 형식 기본값 억제(행동형 역할극은 허용)
 - `integration/conversation_dm.md` / `integration/conversation_guild.md`: 공간의 공개성에 따른 자연스러운 반응 범위. 두 파일 중 하나만 주입
 - `ordinary_relationship.md` / `special_dm.md`: 관계 모드·호칭과 이에 따른 친밀감의 근거. 공간 지침과 독립적
