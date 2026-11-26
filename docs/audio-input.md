@@ -3,6 +3,10 @@
 This feature supplies the **original audio** to Gemini. It does not transcribe speech,
 summarize audio in a separate model call, join voice channels, or produce audio output.
 
+On OpenAI, the bot records an unsupported-audio preflight flag for current or explicit-reply audio.
+The bot can answer accompanying text and tells users when it cannot hear an attachment.
+Audio bytes are never fetched for another provider or sent for transcription.
+
 ## Input policy
 
 - Current Discord message attachments (voice messages and ordinary audio files) have priority.

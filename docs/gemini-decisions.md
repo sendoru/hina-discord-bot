@@ -1,4 +1,4 @@
-# Gemini Decisions for Lore and personal memory
+# Retrieval decisions for Lore and personal memory
 
 Select `decision` independently for lore and personal memory. Both default to `full`.
 Only active Decision selection makes billable Decisions requests.
@@ -7,9 +7,9 @@ Only active Decision selection makes billable Decisions requests.
 
 - The selector sends the domain's relevance rules and all eligible candidates once in the
   shared input. One short `noul` question per candidate references its ID and the shared rules.
-  Lore and memory requests run concurrently when both are enabled. The client uses
-  `GEMINI_API_KEY` and `gemini-decision-1` on the Gemini Developer API. The answer provider is
-  configured independently.
+  Lore and memory requests run concurrently when both are enabled. Gemini uses `GEMINI_API_KEY` and `gemini-decision-1`. OpenAI uses its [native Decisions endpoint](https://developers.openai.com/api/reference/resources/decisions/methods/create) with `gpt-6-luna` and one predicate per candidate; no Responses generation or store parameter.
+  The selector follows the main provider. Unsupported providers use the existing full fallback locally.
+  Enabling decision mode authorizes these extra same-provider requests.
 - Lore uses every reviewed static entry allowed by the current community and awareness settings.
   Selection keeps the source wording and awareness, timeline and uncertainty labels. An inference
   with explicit evidence dependencies is packed together with those sources when they fit.
@@ -18,7 +18,7 @@ Only active Decision selection makes billable Decisions requests.
 - Memory uses the same eligible, deduplicated records as manual full mode. In the owner’s DM these may include sensitive personal memories from any origin. Guild requests exclude sensitive records even when explicitly mentioned. Implicit relationship text never enters the Decisions request.
 - The initial score threshold is 0.65. Empty selection is a valid result. A 1,000-question cap,
   conservative 240,000-byte body cap and configurable `DECISION_TIMEOUT_SECONDS` deadline
-  (default 1.5 seconds, range 0.25–30) bound each call. Change it in Dashboard Runtime Config
+  (default 1.5 seconds, range 0.25–30) bound each domain. OpenAI partitions candidates into at most three sequential batches of up to 400, sharing the deadline and aggregate byte cap. Any batch failure discards all scores; observed usage is summed. Change it in Dashboard Runtime Config
   or with `/config set DECISION_TIMEOUT_SECONDS <seconds>` without restarting the bot. An
   oversized pool is skipped in full. Missing or invalid answers, timeouts and HTTP errors
   fall back without a retry. Active lore falls back to `full`. Active memory uses the same eligible full projection as manual `full` for that

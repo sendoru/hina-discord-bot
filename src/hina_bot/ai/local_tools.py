@@ -9,6 +9,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
+from openai.types.responses import Response
+
 from .prompts import load_prompt
 
 JsonObject = dict[str, Any]
@@ -212,6 +214,7 @@ def continuation_request(
     response,
     calls: tuple[LocalToolCall, ...],
     results: tuple[LocalToolResult, ...],
+    *, provider: str = "",
 ) -> dict:
     """Append one local-tool round using the provider-neutral Responses shape."""
 
@@ -256,6 +259,10 @@ def continuation_request(
                 result.provider_input(include_name=True)
                 for result in results
             )
+        elif provider == "openai" and isinstance(response, Response):
+            # Replay the original interleaving, encrypted reasoning, and hosted tool outputs.
+            next_input.extend(item.model_dump(exclude_none=True) for item in response.output)
+            next_input.extend(result.provider_input() for result in results)
         else:
             next_input.extend(_reasoning_replay_items(response))
             next_input.extend(_normalized_function_call(call) for call in calls)
@@ -299,7 +306,7 @@ class LocalToolExecutor:
         self.registry = registry
         self.max_rounds = int(max_rounds)
 
-    async def run(self, send, request: dict) -> ToolLoopResult:
+    async def run(self, send, request: dict, *, provider: str = "") -> ToolLoopResult:
         """Call send(request) until the model stops requesting local functions."""
 
         current_request = dict(request)
@@ -317,7 +324,7 @@ class LocalToolExecutor:
 
             results = tuple([await self.registry.execute(call) for call in calls])
             local_calls += len(calls)
-            current_request = continuation_request(current_request, response, calls, results)
+            current_request = continuation_request(current_request, response, calls, results, provider=provider)
             if round_index == self.max_rounds - 1:
                 # Give the model one final, tool-free chance to answer rather than
                 # failing just because it would otherwise request another tool.

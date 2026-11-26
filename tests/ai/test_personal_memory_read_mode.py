@@ -95,9 +95,7 @@ async def _decision_answer(
         rag_mode=lore, personal_memory_read_mode=memory, **settings,
     ), client=_client(calls))
     await llm.decisions_client.close()
-    llm.decisions_client = DecisionsClient(
-        httpx.AsyncClient(transport=httpx.MockTransport(handler)),
-    )
+    llm.decisions_client.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
         await llm.answer(store, scope, "사용자", message)
         payload = calls[-1]
@@ -113,6 +111,15 @@ async def _decision_answer(
 
 def _decisions_reply(body, choose):
     candidates = json.loads(body["input"])["candidates"]
+    if isinstance(body["questions"], list):
+        assert {q["name"] for q in body["questions"]} == candidates.keys()
+        assert body["model"] == "gpt-6-luna"
+        return httpx.Response(200, json={
+            "answers": [{"type": "predicate", "name": key,
+                         "probability": 0.99 if choose(row) else 0.01}
+                        for key, row in candidates.items()],
+            "usage": {"input_tokens": 8000, "output_tokens": 0},
+        })
     assert set(body["questions"]) == candidates.keys()
     return httpx.Response(200, json={
         "answers": {
@@ -134,7 +141,7 @@ async def test_decisions_evaluate_both_full_pools_concurrently_and_keep_core():
             body = json.loads(request.content)
             candidates = json.loads(body["input"])["candidates"]
             domain = "memory" if next(iter(candidates.values())).get("state") else "lore"
-            bodies[domain] = candidates
+            bodies.setdefault(domain, {}).update(candidates)
             if len(bodies) == 2:
                 entered.set()
             await asyncio.wait_for(entered.wait(), 0.5)
@@ -162,7 +169,7 @@ async def test_decisions_evaluate_both_full_pools_concurrently_and_keep_core():
     lore = trace["retrieval_decisions"]["lore"]
     assert lore["decision_candidates"] == len(bodies["lore"])
     assert lore["decision_selected"] < len(bodies["lore"])
-    assert lore["decision_applied"] and lore["decision_input_tokens"] == 8000
+    assert lore["decision_applied"] and lore["decision_input_tokens"] == 8000 * lore["decision_request_count"]
     assert trace["retrieval_decisions"]["memory"]["decision_selected"] == 1
     assert run.mode == "decision"
 

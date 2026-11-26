@@ -15,6 +15,7 @@ from .config import (
     GEMINI_SEARCH_API_MODES,
     GEMINI_THINKING_LEVELS,
     MODEL_ROUTING_MODES,
+    OPENAI_REASONING_EFFORTS,
     PERSONAL_MEMORY_READ_MODES,
     RAG_MODES,
     Settings,
@@ -23,6 +24,7 @@ from .config import (
     parse_call_prefixes,
     parse_discord_id_set,
     parse_external_context_policy,
+    parse_openai_effort,
     parse_pdf_scope,
     parse_pdf_transport,
 )
@@ -49,7 +51,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "chat_web_search": "일반 답변에서 provider의 웹 검색 기능을 fallback으로 허용할지 정합니다.",
     "gemini_pdf_scope": "PDF 전송 범위: all 또는 answer,memory,knowledge,decisions 중 쉼표로 구분한 선택.",
     "gemini_pdf_transport": "Gemini 입력 전송 방식. text가 기본, pdf는 통합 문서 변환을 사용합니다.",
-    "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. decision은 Gemini Decisions 선택을 적용하고, off는 지식 검색을 끕니다.",
+    "rag_mode": "RAG 모드입니다. full(기본)은 검수된 정적 lore 전체를 compact 고정 문맥으로 보내고 runtime knowledge만 제한적으로 검색합니다. tool은 LLM이 필요할 때 search_lore를 호출해 정적 lore와 동적 지식을 로컬 키워드 검색합니다. decision은 메인 provider의 Decision 선택을 적용하고, off는 지식 검색을 끕니다.",
     "personal_memory_cross_scope": "서버에서 본인의 다른 공간 기억을 읽는 기본값입니다. off이면 직접 동의한 사용자만 허용합니다.",
     "server_memory_read": "서버 공유 기억의 응답 주입과 조회를 제어합니다.",
     "personal_memory_read_mode": "full은 허용된 개인 기억 전체, decision은 그중 선택된 기억을 사용합니다.",
@@ -57,7 +59,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
     "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
     "answer_timeout_seconds": "일반 답변의 각 provider 요청 전체 데드라인(초)입니다. provider 재시도·관리형 도구 호출은 포함되지만 로컬 도구 후 새 요청은 별도 예산을 사용합니다. 출력 교정에는 적용되지 않습니다.",
-    "decision_timeout_seconds": "Gemini Decisions의 lore·개인 기억 선택 요청 각각에 적용하는 데드라인(초)입니다. 두 요청은 병렬 실행하며, 시간 초과 시 기존 full fallback을 사용합니다. 일반 답변·출력 교정 타임아웃과 독립적입니다.",
+    "decision_timeout_seconds": "메인 provider의 Decision의 lore·개인 기억 선택 요청 각각에 적용하는 데드라인(초)입니다. 두 요청은 병렬 실행하며, 시간 초과 시 기존 full fallback을 사용합니다. 일반 답변·출력 교정 타임아웃과 독립적입니다.",
     "output_repair_mode": "off: 비활성화, conservative: LLM 교정 우선·보수적 후처리, aggressive: 숫자형 인용 마커와 이스케이프 문자를 먼저 제거하고 필요할 때만 LLM을 호출합니다.",
     "output_repair_model": "교정에 사용할 모델입니다. auto는 현재 fast_model을 사용합니다. 기본 채팅 provider와 API 키를 공유합니다.",
     "output_repair_timeout_seconds": "출력 교정 API 호출의 데드라인(초)입니다. 시간 초과 시 각 모드의 deterministic 교정 결과를 사용합니다.",
@@ -68,6 +70,9 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "smart_output_tokens": "adaptive smart tier와 명시적 장문 요청에 사용할 최대 출력 토큰 예산입니다.",
     "memory_output_tokens": "장기 기억 요약·추출 요청에 사용할 최대 출력 토큰 예산입니다.",
     "routing_classifier_max_output_tokens": "semantic/web routing classifier 응답에 허용할 최대 출력 토큰 예산입니다.",
+    "openai_reasoning_effort": "OpenAI fixed 추론 강도입니다. default는 모델 기본값을 사용합니다.",
+    "openai_fast_reasoning_effort": "OpenAI fast 추론 강도입니다. default는 모델 기본값을 사용합니다.",
+    "openai_smart_reasoning_effort": "OpenAI smart 추론 강도입니다. default는 모델 기본값을 사용합니다.",
     "gemini_thinking_level": "Gemini fixed routing에서 사용할 추론 강도입니다.",
     "gemini_fast_thinking_level": "Gemini adaptive fast tier에서 사용할 추론 강도입니다.",
     "gemini_smart_thinking_level": "Gemini adaptive smart tier에서 사용할 추론 강도입니다.",
@@ -215,6 +220,15 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "int",
         minimum=32,
         maximum=1024,
+    ),
+    "openai_reasoning_effort": _runtime_spec(
+        "openai_reasoning_effort", "OPENAI_REASONING_EFFORT", "string", choices=OPENAI_REASONING_EFFORTS,
+    ),
+    "openai_fast_reasoning_effort": _runtime_spec(
+        "openai_fast_reasoning_effort", "OPENAI_FAST_REASONING_EFFORT", "string", choices=OPENAI_REASONING_EFFORTS,
+    ),
+    "openai_smart_reasoning_effort": _runtime_spec(
+        "openai_smart_reasoning_effort", "OPENAI_SMART_REASONING_EFFORT", "string", choices=OPENAI_REASONING_EFFORTS,
     ),
     "gemini_thinking_level": _runtime_spec(
         "gemini_thinking_level",
@@ -419,6 +433,8 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             return parse_external_context_policy(text)
         if spec.attr == "gemini_pdf_scope":
             return parse_pdf_scope(text)
+        if spec.attr.startswith("openai_") and spec.attr.endswith("reasoning_effort"):
+            return parse_openai_effort(text)
         if spec.attr == "gemini_pdf_transport":
             return parse_pdf_transport(text)
         if spec.attr in {"gemini_search_api_mode", "code_execution_backend"}:

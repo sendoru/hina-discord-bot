@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from .prompts import load_prompt
 
 AUDIO_INPUT_POLICY = load_prompt("audio_input.md")
+AUDIO_UNAVAILABLE_POLICY = load_prompt("audio_unavailable.md")
+CURRENT_AUDIO_UNAVAILABLE: ContextVar[bool] = ContextVar("audio_unavailable", default=False)
 CURRENT_AUDIO_INPUTS: ContextVar[tuple[AudioInput, ...]] = ContextVar(
     "current_audio_inputs", default=()
 )

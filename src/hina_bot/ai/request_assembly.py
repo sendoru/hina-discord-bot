@@ -5,6 +5,7 @@ import re
 from datetime import UTC, datetime
 
 import httpx
+from openai import APIStatusError
 
 from hina_bot.core.config import DECISION_MODES, gemini_store_enabled
 from hina_bot.core.conversation_session import active_session_turns
@@ -18,7 +19,7 @@ from hina_bot.core.memory_context import (
 from hina_bot.core.memory_selection import selection_provenance
 from hina_bot.core.server_memory_selection import CURRENT_SERVER_READER
 
-from .audio import CURRENT_AUDIO_INPUTS
+from .audio import AUDIO_UNAVAILABLE_POLICY, CURRENT_AUDIO_INPUTS, CURRENT_AUDIO_UNAVAILABLE
 from .context_input import build_context_input
 from .context_provenance import build_context_provenance
 from .delegated_code_execution import (
@@ -42,6 +43,7 @@ from .managed_tools import (
     search_tool_choice,
 )
 from .model_routing import ModelPlan, fixed_model_plan
+from .openai_capabilities import reasoning_options
 from .pdf_transport import InstructionReferenceText, pdf_enabled, prepare_answer_references
 from .prompts import load_prompt
 from .providers import ProviderAPIError
@@ -61,7 +63,7 @@ from .web_search_text import response_text
 def _transient_answer_failure(exc: BaseException) -> bool:
     # A request timeout already consumed the interactive latency budget. Replaying the
     # whole provider/tool turn can double the stall and repeat expensive managed-tool work.
-    return isinstance(exc, ProviderAPIError) and exc.status_code == 503
+    return isinstance(exc, (ProviderAPIError, APIStatusError)) and exc.status_code == 503
 
 
 def _serialized_chars(value) -> int:
@@ -838,6 +840,9 @@ class RequestAssembler(BaseLLM):
             FINAL_OUTPUT_CHECK_POLICY
         )
 
+        if CURRENT_AUDIO_UNAVAILABLE.get():
+            instruction_parts.append(AUDIO_UNAVAILABLE_POLICY)
+            instruction_group_chars["instruction_response_chars"] += len(AUDIO_UNAVAILABLE_POLICY)
         instructions = "\n".join(instruction_parts)
         if vision_policy_prepared:
             # The wrapper normally appends this policy at send time. For PDF
@@ -859,11 +864,14 @@ class RequestAssembler(BaseLLM):
 
         request = {
             "model": model_plan.model,
+            **reasoning_options(self.settings, model_plan.model, model_plan.tier),
             "instructions": instructions,
             "input": messages,
             "max_output_tokens": model_plan.max_output_tokens,
             "store": gemini_store_enabled(self.settings, "answer"),
         }
+        if self.settings.provider == "openai":
+            request["include"] = ["reasoning.encrypted_content"]
         if self.settings.provider == "gemini":
             request["thinking_level"] = model_plan.thinking_level
             if vision_policy_prepared:
@@ -915,19 +923,27 @@ class RequestAssembler(BaseLLM):
                     route_metadata=metadata,
                     **current_request,
                 )
-            except (ProviderAPIError, httpx.TimeoutException) as exc:
+            except (ProviderAPIError, APIStatusError, httpx.TimeoutException) as exc:
+                if isinstance(exc, APIStatusError) and self.settings.provider != "openai":
+                    raise
                 if transient_retry_used or not _transient_answer_failure(exc):
                     raise
                 transient_retry_used = True
                 fallback_to_fast = (
                     self.settings.model_routing_mode == "adaptive"
                     and current_request["model"] != self.settings.fast_model
+                    and (self.settings.provider != "openai" or not any(
+                        isinstance(item, dict) and item.get("type") == "function_call_output"
+                        for item in current_request["input"]
+                    ))
                 )
                 retry_reason = (
                     "transient_fast_fallback" if fallback_to_fast else "transient_retry"
                 )
                 if fallback_to_fast:
                     current_request["model"] = self.settings.fast_model
+                    current_request.pop("reasoning", None)
+                    current_request.update(reasoning_options(self.settings, self.settings.fast_model, "fast"))
                     metadata["model_tier"] = "fast"
                     if self.settings.provider == "gemini":
                         current_request["thinking_level"] = (
@@ -953,7 +969,7 @@ class RequestAssembler(BaseLLM):
             if local_tool_registry is not None and local_tool_schemas:
                 tool_loop = await LocalToolExecutor(local_tool_registry).run(
                     send_answer,
-                    request,
+                    request, provider=self.settings.provider,
                 )
                 response = tool_loop.response
             else:

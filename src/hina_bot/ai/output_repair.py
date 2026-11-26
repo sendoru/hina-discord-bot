@@ -14,6 +14,7 @@ from time import perf_counter
 
 from hina_bot.core.config import gemini_store_enabled
 
+from .openai_capabilities import reasoning_options
 from .web_search_text import response_text
 
 log = logging.getLogger("hina")
@@ -201,6 +202,7 @@ class OutputRepair:
         try:
             request = {
                 "model": self._model(),
+                **reasoning_options(self.settings, self._model(), "fast"),
                 "instructions": _REPAIR_INSTRUCTIONS,
                 "input": original,
                 "max_output_tokens": _MAX_OUTPUT_TOKENS,

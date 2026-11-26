@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import discord
 
-from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS
+from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS, CURRENT_AUDIO_UNAVAILABLE
 from hina_bot.ai.egress_policy import strict_policy
 from hina_bot.ai.local_tools import CURRENT_LOCAL_TOOLS, LocalToolRegistry
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
@@ -478,10 +478,15 @@ class HinaClient(BaseHinaClient):
         )
         visual_fetch_ms = round((time.perf_counter() - visual_fetch_started) * 1000)
         audio_fetch_started = time.perf_counter()
+        audio_refs = audio_context_refs([*replied, *selected_context])
+        unavailable_audio = bool(
+            text is not None and self.settings.audio_input_enabled and self.settings.provider != "gemini"
+            and (message_has_audio(message) or audio_refs)
+        )
         audio_inputs = (
             await collect_audio_inputs(
                 message,
-                context_refs=audio_context_refs([*replied, *selected_context]),
+                context_refs=audio_refs,
                 limits=self.audio_limits,
             )
             if (text is not None and self.settings.audio_input_enabled
@@ -512,6 +517,7 @@ class HinaClient(BaseHinaClient):
                     visual_fetch_ms=visual_fetch_ms,
                     visual_input_count=len(visuals),
                     visual_diagnostics=visual_diagnostics,
+                    audio_unsupported_provider=unavailable_audio,
                     audio_input_count=len(audio_inputs),
                     audio_duration_seconds=round(sum(a.duration_seconds for a in audio_inputs), 1),
                     audio_input_bytes=sum(len(a.data) for a in audio_inputs),
@@ -547,6 +553,7 @@ class HinaClient(BaseHinaClient):
         reply_token = REPLY_CONTEXT.set(tuple(replied))
         channel_context_token = CURRENT_CHANNEL_CONTEXT.set(tuple(selected_context))
         visual_token = CURRENT_VISUAL_INPUTS.set(tuple(visuals))
+        unavailable_token = CURRENT_AUDIO_UNAVAILABLE.set(unavailable_audio)
         audio_token = CURRENT_AUDIO_INPUTS.set(tuple(audio_inputs))
         provenance_token = CURRENT_TURN_PROVENANCE.set(
             build_turn_provenance(message, text or "", replied, visuals)
@@ -583,6 +590,7 @@ class HinaClient(BaseHinaClient):
             CURRENT_SERVER_READER.reset(reader_token)
             CURRENT_LOCAL_TOOLS.reset(local_tools_token)
             CURRENT_VISUAL_INPUTS.reset(visual_token)
+            CURRENT_AUDIO_UNAVAILABLE.reset(unavailable_token)
             CURRENT_AUDIO_INPUTS.reset(audio_token)
             CURRENT_TURN_PROVENANCE.reset(provenance_token)
             CURRENT_CHANNEL_CONTEXT.reset(channel_context_token)

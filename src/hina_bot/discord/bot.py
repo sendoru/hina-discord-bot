@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 import discord
 
-from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS
+from hina_bot.ai.audio import CURRENT_AUDIO_INPUTS, CURRENT_AUDIO_UNAVAILABLE
 from hina_bot.ai.server_memory_extraction import extract_server_batch, pending_spaces
 from hina_bot.ai.vision import CURRENT_VISUAL_INPUTS
 from hina_bot.core.config import Settings
@@ -893,6 +893,7 @@ class HinaClient(discord.Client):
                         raw_turn_persistence = "skipped"
                         raw_turn_persistence_reason = (
                             "current_visual_unavailable" if current_visual_missing
+                            else "audio_unsupported_provider" if CURRENT_AUDIO_UNAVAILABLE.get()
                             else "fixed_reply_no_raw_turn"
                         )
                         stage = "delivery"
@@ -901,7 +902,8 @@ class HinaClient(discord.Client):
                         await self.send_text(
                             message.channel,
                             "첨부한 이미지를 읽지 못했어. 다시 보내 줄래?"
-                            if current_visual_missing else _bare_call_reply(
+                            if current_visual_missing else "현재 모델에서는 첨부한 오디오를 들을 수 없어."
+                            if CURRENT_AUDIO_UNAVAILABLE.get() else _bare_call_reply(
                                 scope,
                                 self.settings.special_dm_user_id,
                                 self.settings.empty_call_reply,
