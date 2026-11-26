@@ -102,6 +102,7 @@ _FALLBACK_FONT_PATHS = (
     "/usr/share/fonts/truetype/noto/NotoSansMath-Regular.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf",
     "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.ttf",
+    "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf",
 )
 
 
