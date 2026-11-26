@@ -80,6 +80,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
         "GEMINI_STORE_INTERACTIONS",
         "GEMINI_STORE_CLASSIFIER_INTERACTIONS",
         "GEMINI_SEARCH_API_MODE",
+        "CODE_EXECUTION_BACKEND",
         "CHANNEL_CONTEXT_CHARS",
         "RECENT_CONTEXT_WINDOW_MINUTES",
         "CONVERSATION_SESSION_GAP_MINUTES",
@@ -111,6 +112,7 @@ def test_settings_load_uses_code_defaults_when_runtime_env_is_absent(monkeypatch
     assert settings.gemini_store_interactions is False
     assert settings.gemini_store_classifier_interactions is None
     assert settings.gemini_search_api_mode == "auto"
+    assert settings.code_execution_backend == "auto"
     assert settings.routing_classifier_mode == "off"
     assert settings.routing_classifier_provider == "openai"
     assert settings.routing_classifier_model == settings.fast_model
@@ -1113,3 +1115,39 @@ def test_retired_followup_removed_and_all_legacy_writes_rejected():
                     settings.set_text(key, value)
     finally:
         store.close()
+
+
+def test_code_execution_backend_env_runtime_override_and_reset(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("CODE_EXECUTION_BACKEND", "Native")
+    base = Settings.load()
+    assert base.code_execution_backend == "native"
+    assert set(RUNTIME_SETTING_SPECS["code_execution_backend"].choices) == {
+        "auto", "native", "delegated",
+    }
+    store = Store.create(":memory:")
+    try:
+        settings = RuntimeSettings(base, store)
+        assert settings.set_text("CODE_EXECUTION_BACKEND", "Delegated") == "delegated"
+        assert settings.code_execution_backend == "delegated"
+        settings.reload()
+        assert settings.code_execution_backend == "delegated"
+        for invalid in ("", "local", "unknown"):
+            with pytest.raises(ValueError):
+                settings.set_text("CODE_EXECUTION_BACKEND", invalid)
+        assert settings.reset("CODE_EXECUTION_BACKEND") == "native"
+        assert settings.code_execution_backend == "native"
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("invalid", ["", "local", "unknown"])
+def test_code_execution_backend_rejects_invalid_env(monkeypatch, tmp_path: Path, invalid):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("CODE_EXECUTION_BACKEND", invalid)
+    with pytest.raises(ValueError, match="CODE_EXECUTION_BACKEND"):
+        Settings.load()
