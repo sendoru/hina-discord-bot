@@ -54,8 +54,48 @@ def _font():
     return font
 
 
+_FALLBACK_FONT_PATHS = (
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+    "/mnt/c/Windows/Fonts/malgun.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.ttf",
+)
+
+
+@lru_cache(maxsize=len(_FALLBACK_FONT_PATHS))
+def _fallback_font(index):
+    path = Path(_FALLBACK_FONT_PATHS[index])
+    if not path.is_file():
+        return None
+    try:
+        font = TTFont(f"HinaReferenceFallback{index}", str(path))
+        pdfmetrics.registerFont(font)
+        return font
+    except Exception:  # noqa: BLE001 - unsupported local font is not fatal
+        return None
+
+
 def _encode(source, *, size=11, margin=42, leading=16):
     font = _font()
+    by_char = {}
+
+    def font_for(char):
+        if char in by_char:
+            return by_char[char]
+        if not char.isprintable():
+            return None
+        selected = font if font.face.charToGlyph.get(ord(char)) else None
+        if selected is None:
+            for index in range(len(_FALLBACK_FONT_PATHS)):
+                alternative = _fallback_font(index)
+                if alternative is not None and alternative.face.charToGlyph.get(ord(char)):
+                    selected = alternative
+                    break
+        by_char[char] = selected
+        return selected
     width, height = A4
     stream = io.BytesIO()
     canvas = Canvas(stream, pagesize=A4, pageCompression=1, invariant=1)
@@ -69,9 +109,13 @@ def _encode(source, *, size=11, margin=42, leading=16):
         # Keep ASCII identifiers, snowflakes and JSON escape sequences readable across lines.
         for match in re.finditer(r"[A-Za-z0-9_.-]+|\\(?:u[0-9a-fA-F]{4}|.)|.", paragraph):
             token = match.group()
-            if any(not c.isprintable() or not font.face.charToGlyph.get(ord(c)) for c in token):
+            fonts = [font_for(c) for c in token]
+            if any(selected is None for selected in fonts):
                 return None, "unsupported_glyph"
-            token_width = sum(font.face.charWidths[ord(c)] for c in token) * size / 1000
+            token_width = sum(
+                selected.face.charWidths[ord(c)]
+                for c, selected in zip(token, fonts, strict=True)
+            ) * size / 1000
             if token_width > width - 2 * margin:
                 return None, "unbreakable_token"
             if advance + token_width > width - 2 * margin:
@@ -84,8 +128,19 @@ def _encode(source, *, size=11, margin=42, leading=16):
         if y < margin:
             canvas.showPage()
             y = height - margin
-        canvas.setFont(font.fontName, size)
-        canvas.drawString(margin, y, line)
+        # Consecutive glyph runs keep exact Unicode text; extraction below rejects
+        # any font/positioning combination that inserts or drops characters.
+        text = canvas.beginText(margin, y)
+        start = 0
+        while start < len(line):
+            selected = by_char[line[start]]
+            stop = start + 1
+            while stop < len(line) and by_char[line[stop]] is selected:
+                stop += 1
+            text.setFont(selected.fontName, size)
+            text.textOut(line[start:stop])
+            start = stop
+        canvas.drawText(text)
         y -= leading
     canvas.save()
     data = stream.getvalue()
@@ -221,9 +276,10 @@ async def plan_reference(part, *, native_only=False, encoder=None):
     if not isinstance(rows, dict):
         return PreparedPDFReference(part, document, observation)
     attempts = 1
+    elapsed = observation["encode_ms"]
 
     async def visit(fragment_rows, ranges):
-        nonlocal attempts
+        nonlocal attempts, elapsed
         suffix = ""
         if ranges:
             key, (start, total) = next(iter(ranges.items()))
@@ -235,6 +291,7 @@ async def plan_reference(part, *, native_only=False, encoder=None):
         else:
             attempts += 1
             doc, obs = await encoder(fragment["text"])
+        elapsed += obs["encode_ms"]
         obs = {**obs, "section": label, "eligible": True}
         if doc is None and obs["fallback"] in _SPLIT_REASONS and attempts + 2 <= MAX_FRAGMENT_ATTEMPTS:
             children = _split_part(fragment_rows, ranges)
@@ -253,9 +310,21 @@ async def plan_reference(part, *, native_only=False, encoder=None):
     first_pdf = next((doc for _, doc, _ in segments if doc is not None), None)
     if first_pdf is None:
         # No useful conversion: retain the exact original wire text.
-        observation["encode_ms"] += sum(obs["encode_ms"] for _, _, obs in segments)
+        observation["encode_ms"] = elapsed
         return PreparedPDFReference(part, None, observation)
-    segments[0][2]["encode_ms"] += observation["encode_ms"]
+    # Fragment headers and repeated keys are transport overhead. Attribute the
+    # original character count proportionally to serialized record sizes, and
+    # retain the actual fragment length separately. The denominator stays exact.
+    weights = [len(fragment["text"].partition("\n")[2]) for fragment, _, _ in segments]
+    total_weight = sum(weights)
+    consumed_weight = allocated = 0
+    for weight, (_, _, obs) in zip(weights, segments, strict=True):
+        consumed_weight += weight
+        boundary = len(source) * consumed_weight // total_weight
+        obs["wire_text_chars"] = obs["source_chars"]
+        obs["source_chars"] = boundary - allocated
+        allocated = boundary
+    segments[0][2]["encode_ms"] += elapsed - sum(obs["encode_ms"] for _, _, obs in segments)
     return PreparedPDFReference(part, first_pdf, observation, segments=segments)
 
 

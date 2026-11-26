@@ -36,6 +36,8 @@ async def test_partial_reference_preserves_records_in_order_and_native_failures(
     coverage = transport_coverage(observations)
     assert 0 < coverage["eligible_coverage"] < 1
     assert coverage["pages"] == 2
+    assert coverage["source_chars"] == len(part["text"])
+    assert all(obs["wire_text_chars"] >= obs["source_chars"] for obs in observations)
 
 
 @pytest.mark.asyncio
