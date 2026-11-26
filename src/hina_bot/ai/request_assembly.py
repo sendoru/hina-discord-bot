@@ -651,8 +651,8 @@ class RequestAssembler(BaseLLM):
                     ("image", CURRENT_VISUAL_INPUTS.get()),
                     ("audio", CURRENT_AUDIO_INPUTS.get()),
                 )
-                if any(entry.context_kind == "current_message" for entry in entries)
-            ),
+                if any(getattr(entry, "context_kind", None) == "current_message" for entry in entries)
+            ) if not visible_content.strip() else (),
         )
 
         local_tool_registry = CURRENT_LOCAL_TOOLS.get()
