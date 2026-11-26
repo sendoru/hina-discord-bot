@@ -161,7 +161,7 @@ async def test_normal_openai_chat_exposes_code_interpreter_in_one_model_call(tmp
 
 
 @pytest.mark.asyncio
-async def test_gemini_audio_disables_only_code_execution_not_other_tools(tmp_path):
+async def test_gemini_audio_delegates_code_execution_and_keeps_other_tools(tmp_path):
     """Audio + code_execution is a Gemini API 400 even when code execution isn't used."""
     fake = client("음악이 들리네.")
     llm = InformationPipeline(settings(tmp_path), client=fake)
@@ -177,6 +177,10 @@ async def test_gemini_audio_disables_only_code_execution_not_other_tools(tmp_pat
         request = fake.responses.create.await_args.kwargs
         assert {"type": "code_execution"} not in request.get("tools", [])
         assert {"type": "url_context"} in request.get("tools", [])
+        assert any(
+            tool.get("name") == "request_computation" for tool in request.get("tools", [])
+        )
+        assert fake.responses.create.await_count == 1
         assert CODE_EXECUTION_POLICY not in request["instructions"]
     finally:
         CURRENT_AUDIO_INPUTS.reset(token)
