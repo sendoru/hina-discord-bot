@@ -535,7 +535,7 @@ OpenRouter는 기존 adapter를 사용한다. 이 경계는 provider 간 자동 
 
 ### OpenRouter upstream routing
 
-Set `OPENROUTER_PROVIDER_PREFERENCES` to a JSON object. An empty object uses
+Set `OPENROUTER_PROVIDER_PREFERENCES_FILE` to the path of a JSON object file. An empty path or object uses
 OpenRouter account and routing defaults. Use `only` to restrict eligible
 providers, `order` to rank them, and `allow_fallbacks` to control upstream
 fallback. These settings apply to the selected model. Set `require_parameters`
@@ -550,8 +550,12 @@ preferences, not hard limits. `max_price` accepts nonnegative numeric prompt
 and completion caps in USD per million tokens and a request cap in USD per request.
 Explicit sorting replaces OpenRouter's default balancing. For example:
 
-```dotenv
-OPENROUTER_PROVIDER_PREFERENCES='{"sort":"price","preferred_max_latency":{"p90":3,"p99":8},"preferred_min_throughput":{"p90":50}}'
+```json
+{
+  "sort": "price",
+  "preferred_max_latency": {"p90": 3, "p99": 8},
+  "preferred_min_throughput": {"p90": 50}
+}
 ```
 
 See [provider routing](https://openrouter.ai/docs/guides/routing/provider-selection).
@@ -605,4 +609,4 @@ OpenRouter audio is request-scoped. The pending memory-audio store remains Gemin
 
 Copy `config/openrouter_provider_preferences.example.json` to `config/openrouter_provider_preferences.json`, move your existing provider preferences JSON into it and set `OPENROUTER_PROVIDER_PREFERENCES_FILE=config/openrouter_provider_preferences.json` in your startup env (`.env.local` for the supplied Compose service). Relative paths are resolved from the process working directory. Compose mounts `./config` at `/app/config` read-only; ensure the file is readable by the container user. Other deployments can supply an equivalent read-only mount.
 
-The startup baseline is loaded once; editing the file requires a bot restart. A nonempty file path takes precedence over the legacy inline `OPENROUTER_PROVIDER_PREFERENCES`; a missing or invalid file is a startup error. DB runtime overrides still take precedence over the loaded baseline, and resetting one or all overrides restores that baseline without changing the file. The dashboard shows a JSON summary and a multiline override editor. The example is intentionally empty (`{}`); supply your own routing policy.
+The startup baseline is loaded once; editing the file requires a bot restart. The legacy inline environment variable `OPENROUTER_PROVIDER_PREFERENCES` is no longer read; move its JSON to a file before upgrading. An empty path uses `{}`; a missing or invalid explicitly configured file is a startup error. The existing runtime override key is unchanged. DB runtime overrides still take precedence over the loaded baseline, and resetting one or all overrides restores that baseline without changing the file. The dashboard shows a JSON summary and a multiline override editor. The example is intentionally empty (`{}`); supply your own routing policy.

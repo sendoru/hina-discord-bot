@@ -220,7 +220,12 @@ def test_env_example_lists_all_runtime_setting_names():
         encoding="utf-8"
     )
     listed = set(re.findall(r"(?m)^\s*#?\s*([A-Z][A-Z0-9_]*)=", template))
-    missing = {spec.env_name for spec in RUNTIME_SETTING_SPECS.values()} - listed
+    expected = {
+        spec.env_name for spec in RUNTIME_SETTING_SPECS.values()
+        if spec.kind != "provider_preferences"
+    } | {"OPENROUTER_PROVIDER_PREFERENCES_FILE"}
+    missing = expected - listed
+    assert "OPENROUTER_PROVIDER_PREFERENCES" not in listed
     assert not missing, f"Missing runtime environment variables in .env.example: {sorted(missing)}"
 
 
@@ -1297,7 +1302,7 @@ def test_openrouter_preferences_file_baseline_and_reset(monkeypatch, tmp_path):
     finally:
         store.close()
     monkeypatch.delenv("OPENROUTER_PROVIDER_PREFERENCES_FILE")
-    assert Settings.load().openrouter_provider_preferences == {"sort": "price"}
+    assert Settings.load().openrouter_provider_preferences == {}
 
 
 @pytest.mark.parametrize("content", [None, "{", "[]", '{"sort":"invalid"}'])
