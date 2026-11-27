@@ -141,7 +141,9 @@ def test_export_db_precedence_and_startup_only_env(tmp_path):
     finally:
         store.close()
 
-    rendered, dropped, count, override_count = export_env(env, ROOT / ".env.example", db_path)
+    rendered, preferences_json, dropped, count, override_count = export_env(
+        env, ROOT / ".env.example", db_path, preferences_output=tmp_path / "export.json",
+    )
     exported = parse_values(rendered)
     assert exported["DISCORD_TOKEN"] == "secret-token"
     assert exported["OPENAI_API_KEY"] == "secret-api-key"
@@ -154,7 +156,9 @@ def test_export_db_precedence_and_startup_only_env(tmp_path):
     assert not dropped
     assert count > 0
     assert override_count == 3
-    assert json.loads(exported["OPENROUTER_PROVIDER_PREFERENCES"]) == {
+    assert "OPENROUTER_PROVIDER_PREFERENCES" not in exported
+    assert exported["OPENROUTER_PROVIDER_PREFERENCES_FILE"] == str(tmp_path / "export.json")
+    assert json.loads(preferences_json) == {
         "only": ["fixture"], "zdr": True,
     }
 
@@ -165,6 +169,10 @@ def test_export_db_precedence_and_startup_only_env(tmp_path):
     ]
     assert export_main(argv) == 0
     assert output.stat().st_mode & 0o777 == 0o600
+    sidecar = output.with_name(f"{output.name}.openrouter-provider-preferences.json")
+    assert sidecar.stat().st_mode & 0o777 == 0o600
+    assert json.loads(sidecar.read_text()) == {"only": ["fixture"], "zdr": True}
+    assert parse_values(output.read_text())["OPENROUTER_PROVIDER_PREFERENCES_FILE"] == str(sidecar)
     assert export_main(argv) == 2  # No overwriting without --force.
     assert export_main([*argv, "--force"]) == 0
     assert export_main([*argv, "--output", str(env), "--force"]) == 2
@@ -183,10 +191,14 @@ def test_export_db_optional_bool_true_false_and_inherit(tmp_path):
         settings = RuntimeSettings(Settings(discord_token="token"), store)
         settings.capture_startup_snapshot()
         settings.set_text("GEMINI_STORE_MEMORY_INTERACTIONS", "off")
-        rendered, _, _, _ = export_env(env, template, tmp_path / "d.sqlite3")
+        rendered, _, _, _, _ = export_env(
+            env, template, tmp_path / "d.sqlite3", preferences_output=tmp_path / "export.json",
+        )
         assert parse_values(rendered)["GEMINI_STORE_MEMORY_INTERACTIONS"] == "false"
         settings.set_text("GEMINI_STORE_MEMORY_INTERACTIONS", "inherit")
-        rendered, _, _, _ = export_env(env, template, tmp_path / "d.sqlite3")
+        rendered, _, _, _, _ = export_env(
+            env, template, tmp_path / "d.sqlite3", preferences_output=tmp_path / "export.json",
+        )
         assert "GEMINI_STORE_MEMORY_INTERACTIONS" not in parse_values(rendered)
     finally:
         store.close()
@@ -251,7 +263,9 @@ def test_export_ignores_retired_followup_and_converts_stored_modes(tmp_path):
         store.settings.replace_startup_snapshot([("rag_mode", '"decision_shadow"')])
     finally:
         store.close()
-    rendered, _, _, _ = export_env(env, ROOT / ".env.example", db_path)
+    rendered, _, _, _, _ = export_env(
+        env, ROOT / ".env.example", db_path, preferences_output=tmp_path / "export.json",
+    )
     result = parse_values(rendered)
     assert result["LLM_MODEL"] == "old-model"
     assert result["PERSONAL_MEMORY_READ_MODE"] == result["RAG_MODE"] == "full"
@@ -261,12 +275,14 @@ def test_export_ignores_retired_followup_and_converts_stored_modes(tmp_path):
 def test_preferences_file_normalize_and_effective_export(tmp_path):
     env = tmp_path / ".env"
     env.write_text(
-        "OPENROUTER_PROVIDER_PREFERENCES_FILE=config/preferences.json\n",
+        "OPENROUTER_PROVIDER_PREFERENCES_FILE=config/preferences.json\n"
+        "OPENROUTER_PROVIDER_PREFERENCES={}\n",
         encoding="utf-8",
     )
     template = ROOT / ".env.example"
     normalized, dropped = normalize_env(env, template)
-    assert not dropped
+    assert dropped == {"OPENROUTER_PROVIDER_PREFERENCES"}
+    assert "OPENROUTER_PROVIDER_PREFERENCES" not in parse_values(normalized)
     assert parse_values(normalized)["OPENROUTER_PROVIDER_PREFERENCES_FILE"] == "config/preferences.json"
     db_path = tmp_path / "db.sqlite3"
     store = Store.create(str(db_path))
@@ -283,9 +299,30 @@ def test_preferences_file_normalize_and_effective_export(tmp_path):
         for override, expected in ((None, "latency"), ('{"sort":"price"}', "price")):
             if override is not None:
                 runtime.set_text("OPENROUTER_PROVIDER_PREFERENCES", override)
-            rendered, _, _, _ = export_env(env, template, db_path)
+            rendered, preferences_json, _, _, _ = export_env(
+                env, template, db_path, preferences_output=tmp_path / "export.json",
+            )
             values = parse_values(rendered)
-            assert values["OPENROUTER_PROVIDER_PREFERENCES_FILE"] == ""
-            assert json.loads(values["OPENROUTER_PROVIDER_PREFERENCES"]) == {"sort": expected}
+            assert values["OPENROUTER_PROVIDER_PREFERENCES_FILE"] == str(tmp_path / "export.json")
+            assert "OPENROUTER_PROVIDER_PREFERENCES" not in values
+            assert json.loads(preferences_json) == {"sort": expected}
     finally:
         store.close()
+
+
+def test_export_protects_provider_preferences_source(tmp_path):
+    env = tmp_path / ".env"
+    output = tmp_path / "export"
+    source = output.with_name(f"{output.name}.openrouter-provider-preferences.json")
+    source.write_text('{"sort":"price"}', encoding="utf-8")
+    env.write_text(f"OPENROUTER_PROVIDER_PREFERENCES_FILE={source}\n", encoding="utf-8")
+    db = tmp_path / "db.sqlite3"
+    Store.create(str(db)).close()
+    args = ["--env", str(env), "--template", str(ROOT / ".env.example"), "--db", str(db)]
+    assert export_main([*args, "--output", str(output), "--force"]) == 2
+    assert source.read_text() == '{"sort":"price"}'
+    assert not output.exists()
+    other = tmp_path / "other"
+    assert export_main([*args, "--output", str(other)]) == 0
+    copied = Path(parse_values(other.read_text())["OPENROUTER_PROVIDER_PREFERENCES_FILE"])
+    assert json.loads(copied.read_text()) == {"sort": "price"}

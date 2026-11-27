@@ -72,10 +72,10 @@ def parse_openrouter_preferences(value: str) -> dict:
     return preferences
 
 
-def load_openrouter_preferences(file_name: str, inline: str) -> dict:
+def load_openrouter_preferences(file_name: str) -> dict:
     """Load the startup baseline; an explicit file never silently falls back."""
     if not file_name:
-        return parse_openrouter_preferences(inline)
+        return {}
     path = Path(file_name)
     try:
         return parse_openrouter_preferences(path.read_text(encoding="utf-8"))
@@ -665,7 +665,6 @@ class Settings:
             openrouter_api_key=keys["openrouter"],
             openrouter_provider_preferences=load_openrouter_preferences(
                 os.getenv("OPENROUTER_PROVIDER_PREFERENCES_FILE", "").strip(),
-                os.getenv("OPENROUTER_PROVIDER_PREFERENCES", "{}"),
             ),
             openrouter_provider_preferences_file=os.getenv(
                 "OPENROUTER_PROVIDER_PREFERENCES_FILE", ""

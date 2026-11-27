@@ -75,7 +75,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "memory_output_tokens": "장기 기억 요약·추출 요청에 사용할 최대 출력 토큰 예산입니다.",
     "routing_classifier_max_output_tokens": "semantic/web routing classifier 응답에 허용할 최대 출력 토큰 예산입니다.",
     "openrouter_reasoning_effort": "OpenRouter reasoning effort. default uses the model default.",
-    "openrouter_provider_preferences": "OpenRouter upstream routing and retention policy (JSON).",
+    "openrouter_provider_preferences": "OpenRouter upstream routing and retention policy (JSON). Startup baseline: OPENROUTER_PROVIDER_PREFERENCES_FILE; this key is a runtime override only.",
     "openrouter_fast_reasoning_effort": "OpenRouter fast reasoning effort; inherit uses the fixed setting.",
     "openrouter_smart_reasoning_effort": "OpenRouter smart reasoning effort; inherit uses the fixed setting.",
     "openai_reasoning_effort": "OpenAI fixed 추론 강도입니다. default는 모델 기본값을 사용합니다.",

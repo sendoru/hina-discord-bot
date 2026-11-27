@@ -38,7 +38,7 @@ DISCORD_TOKEN, provider API 키, DATABASE_PATH, HISTORY_TURNS처럼 runtime 수�
 없으면 템플릿 값을 사용합니다.
 
 - DB는 **읽기 전용**으로 연결하며 수정하지 않습니다. 모든 runtime 설정은 기존
-  RUNTIME_SETTING_SPECS의 이름과 자료형을 사용해 dotenv 형식으로 변환됩니다.
+  RUNTIME_SETTING_SPECS의 이름과 자료형을 사용해 변환됩니다. Provider preferences는 별도 JSON 파일로 내보냅니다.
 - 영역별 Gemini 저장 플래그가 inherit (null)이면 **변수를 주석 처리**합니다. inherit 문자열을
   환경변수 값으로 쓰지 않습니다.
 - 알 수 없거나 손상된 DB 설정은 오류로 보고하여, 불완전한 추출 결과를 만들지 않습니다.
@@ -53,4 +53,5 @@ DISCORD_TOKEN, provider API 키, DATABASE_PATH, HISTORY_TURNS처럼 runtime 수�
 .env.example에 선언해야 합니다. 관련 회귀 테스트는 runtime 설정에 대응하는 템플릿 키가
 모두 존재하는지 확인합니다.
 
-- `OPENROUTER_PROVIDER_PREFERENCES_FILE`은 normalize에서 유지됩니다. Export는 DB override 또는 startup snapshot에 provider preferences 값이 있으면 실제 JSON을 inline으로 기록하고 파일 경로는 비웁니다. 별도 파일에 대한 의존성을 없애고 export의 값 우선순위를 보존하기 위한 동작입니다.
+- `OPENROUTER_PROVIDER_PREFERENCES_FILE`은 normalize에서 유지되며, 폐기된 인라인 환경변수 `OPENROUTER_PROVIDER_PREFERENCES`는 제거됩니다. 이전 인라인 값이 있다면 정규화 전에 JSON 파일로 옮기세요.
+- Export는 실제 provider preferences를 `<출력 파일명>.openrouter-provider-preferences.json`에 기록하고 dotenv에는 해당 경로만 넣습니다. 두 출력 파일 모두 기존 파일을 덮어쓰려면 --force가 필요하며 입력 설정 파일은 덮어쓰지 않습니다. 각 파일은 개별적으로 원자적 저장됩니다. 경로는 봇의 작업 디렉터리 기준이므로 다른 환경으로 옮길 때는 JSON 파일도 복사하고 경로를 맞춰 주세요.
