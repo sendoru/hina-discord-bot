@@ -390,6 +390,8 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
     ),
 }
 
+OPENROUTER_PREFERENCES_FILE_SNAPSHOT_KEY = "_openrouter_provider_preferences_from_file"
+
 ENV_TO_RUNTIME_ATTR = {spec.env_name: attr for attr, spec in RUNTIME_SETTING_SPECS.items()}
 
 _TRUE = {"1", "true", "yes", "on", "enable", "enabled"}
@@ -597,6 +599,8 @@ class RuntimeSettings:
             (attr, encode_runtime_value(getattr(self._base, attr)))
             for attr in RUNTIME_SETTING_SPECS
         ]
+        if self._base.openrouter_provider_preferences_file:
+            rows.append((OPENROUTER_PREFERENCES_FILE_SNAPSHOT_KEY, "true"))
         self._store.settings.replace_startup_snapshot(rows)
 
     @property

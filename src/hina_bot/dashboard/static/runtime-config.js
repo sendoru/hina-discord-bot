@@ -82,6 +82,29 @@
     const actionEdit = editor.querySelector("[data-runtime-config-action-edit]");
     if (!input || !edit || !cancel || !actionView || !actionEdit) continue;
 
+    if (input instanceof HTMLTextAreaElement && input.hasAttribute("data-runtime-json-input")) {
+      const validateJson = () => {
+        try {
+          const parsed = JSON.parse(input.value);
+          if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+            throw new Error("Expected a JSON object");
+          }
+          input.setCustomValidity("");
+          return parsed;
+        } catch {
+          input.setCustomValidity("Enter a valid JSON object.");
+          return null;
+        }
+      };
+      input.addEventListener("input", validateJson);
+      edit.addEventListener("click", validateJson);
+      editor.querySelector("[data-runtime-json-format]")?.addEventListener("click", () => {
+        const parsed = validateJson();
+        if (parsed === null) input.reportValidity();
+        else input.value = JSON.stringify(parsed, null, 2);
+      });
+    }
+
     edit.addEventListener("click", () => {
       editor.classList.add("is-editing");
       actionView.hidden = true;

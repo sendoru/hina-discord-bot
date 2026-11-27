@@ -3734,3 +3734,52 @@ pre {
 }
 .memory-mobile-select { min-height: 44px; }
 [data-memory-bulk-feedback] { overflow-wrap: anywhere; }
+
+/* Structured runtime values must not determine the table's intrinsic width. */
+.runtime-json-view,
+.runtime-json-form {
+  width: min(100%, 28rem);
+  min-width: 0;
+  max-width: 28rem;
+}
+.runtime-json-preview {
+  max-width: 28rem;
+  min-width: 0;
+}
+.runtime-json-preview pre {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 16rem;
+  overflow: auto;
+}
+.runtime-json-preview summary {
+  cursor: pointer;
+}
+.runtime-json-form {
+  display: none;
+  position: static;
+}
+[data-runtime-config-editor].is-editing .runtime-json-form {
+  display: block;
+}
+[data-runtime-config-editor].is-editing .runtime-json-view {
+  display: none;
+}
+.runtime-json-form textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  resize: vertical;
+  font-family: monospace;
+  margin-bottom: 8px;
+}
+
+.runtime-action-result {
+  display: inline-block;
+  max-width: 32rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

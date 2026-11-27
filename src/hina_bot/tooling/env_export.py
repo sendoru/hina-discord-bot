@@ -10,7 +10,11 @@ from pathlib import Path
 
 from hina_bot.core.config import migrate_legacy_env_values
 from hina_bot.core.db_connections import open_readonly
-from hina_bot.core.runtime_config import RUNTIME_SETTING_SPECS, decode_runtime_value
+from hina_bot.core.runtime_config import (
+    OPENROUTER_PREFERENCES_FILE_SNAPSHOT_KEY,
+    RUNTIME_SETTING_SPECS,
+    decode_runtime_value,
+)
 
 from .env_template import (
     atomic_write,
@@ -58,6 +62,11 @@ def _read_runtime_db(db_path: Path) -> tuple[dict[str, str], dict[str, str]]:
             attr = str(row["key"])
             if attr == "memory_session_followup":
                 continue
+            if (
+                table == "runtime_config_startup"
+                and attr == OPENROUTER_PREFERENCES_FILE_SNAPSHOT_KEY
+            ):
+                continue
             if attr not in RUNTIME_SETTING_SPECS:
                 raise ValueError(f"Unknown runtime setting in {table}: {attr}")
             result[attr] = str(row["value"])
@@ -84,6 +93,9 @@ def export_env(
         else:
             continue
         value = _runtime_to_env(attr, encoded)
+        # Export the captured effective JSON, not a reference that could override it.
+        if spec.kind == "provider_preferences":
+            values["OPENROUTER_PROVIDER_PREFERENCES_FILE"] = ""
         if value is None:
             values.pop(spec.env_name, None)
             disabled.add(spec.env_name)

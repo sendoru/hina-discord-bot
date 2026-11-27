@@ -52,3 +52,5 @@ DISCORD_TOKEN, provider API 키, DATABASE_PATH, HISTORY_TURNS처럼 runtime 수�
 두 도구 모두 .env.example에 없는 임의의 변수는 결과에 포함하지 않으므로, 새 설정은 먼저
 .env.example에 선언해야 합니다. 관련 회귀 테스트는 runtime 설정에 대응하는 템플릿 키가
 모두 존재하는지 확인합니다.
+
+- `OPENROUTER_PROVIDER_PREFERENCES_FILE`은 normalize에서 유지됩니다. Export는 DB override 또는 startup snapshot에 provider preferences 값이 있으면 실제 JSON을 inline으로 기록하고 파일 경로는 비웁니다. 별도 파일에 대한 의존성을 없애고 export의 값 우선순위를 보존하기 위한 동작입니다.
