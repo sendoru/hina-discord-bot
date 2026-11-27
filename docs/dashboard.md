@@ -116,10 +116,26 @@ after completion.
 
 ## Runtime configuration editing
 
-The runtime editor never updates `runtime_config` directly. POST actions append `runtime.set` or
-`runtime.reset` commands to the audited queue; the bot process executes them through
-`RuntimeSettings.set_text()` / `reset()` and applies the same recent-context side effects used by
-Discord `/config` commands.
+The runtime editor never updates `runtime_config` directly. POST actions append `runtime.set`,
+`runtime.reset`, or `runtime.reset_all` commands to the audited queue. The bot applies the changes
+through RuntimeSettings and refreshes recent-context side effects. **Clear All Overrides** shows the
+number of stored rows (including obsolete keys), asks for confirmation, and clears all overrides
+present when the command executes. The startup snapshot and all unrelated data are preserved.
+
+CLI (from the same environment as the bot):
+
+```sh
+hina-reset-runtime-config                      # dry run, counts overrides
+hina-reset-runtime-config --yes                # enqueue; bot applies it without restart
+hina-reset-runtime-config --yes --offline-confirmed  # only with all DB writers stopped
+```
+
+Use `--database PATH` to select an explicit database. The default follows environment,
+`.env.local`, then `.env` precedence. The live command reports a queued ID, not completion;
+check Recent runtime actions in the dashboard. An offline reset refuses pending/running
+runtime commands so they cannot silently reintroduce overrides on startup. The live reset
+restores the **running process's startup values**, not edits to dotenv files made since startup;
+restart to load those edits.
 
 The page shows persisted DB overrides and whether a key currently falls back to startup configuration.
 It intentionally does not reconstruct the bot process's startup fallback value inside the dashboard

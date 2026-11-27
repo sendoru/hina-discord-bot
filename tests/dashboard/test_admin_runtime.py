@@ -311,3 +311,53 @@ def test_runtime_collection_dashboard_posts_full_desired_value(tmp_path):
         "pending",
     )
     db.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_reset_all_applies_side_effects():
+    store = Store.create(":memory:")
+    try:
+        settings = RuntimeSettings(Settings(discord_token="test"), store)
+        settings.set_text("channel_context_chars", "4300")
+        settings.set_text("recent_context_window_minutes", "90")
+        recent = NS(budget=4300, ttl=5400, clear_all=Mock())
+        result = await execute_admin_command(
+            NS(settings=settings, recent=recent),
+            AdminCommand(1, "a" * 32, "local-dashboard", "runtime.reset_all", "all", {}),
+        )
+        assert result == {"cleared": 2, "source": "startup"}
+        assert recent.budget == settings.base.channel_context_chars
+        assert recent.ttl == settings.base.recent_context_window_minutes * 60
+        recent.clear_all.assert_called_once()
+    finally:
+        store.close()
+
+
+def test_runtime_reset_all_dashboard_requires_confirmation_and_enqueues(tmp_path):
+    database = tmp_path / "hina.sqlite3"
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
+    settings = RuntimeSettings(Settings(discord_token="test"), store)
+    settings.capture_startup_snapshot()
+    settings.set_text("channel_context_chars", "4300")
+    store.settings.set_runtime_value("obsolete", "invalid")
+    store.close()
+    app = create_app(DashboardSettings(
+        database_path=str(database),
+        usage_log_path=str(tmp_path / "usage.jsonl"),
+        event_log_path=str(tmp_path / "events.jsonl"),
+        write_enabled=True,
+    ))
+    with TestClient(app) as client:
+        assert "Clear All Overrides (2)" in client.get("/admin/runtime").text
+        form = {"_csrf": app.state.admin_writer.csrf_token, "_request_id": "a" * 32}
+        url = "/admin/runtime/reset-all"
+        assert client.post(url, data=form).status_code == 422
+        assert client.post(url, data={**form, "confirm": "yes", "_csrf": "bad"}).status_code == 403
+        response = client.post(url, data={**form, "confirm": "yes"}, follow_redirects=False)
+        assert response.status_code == 303
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT action,target,status FROM admin_commands").fetchone() == (
+            "runtime.reset_all", "all", "pending",
+        )
+        assert db.execute("SELECT COUNT(*) FROM runtime_config").fetchone()[0] == 2

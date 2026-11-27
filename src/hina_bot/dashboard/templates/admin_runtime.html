@@ -310,6 +310,16 @@
       <p class="muted">현재 적용값과 source를 보여줍니다. DB override가 있으면 startup 기준값도 함께 표시합니다.</p>
     </div>
   </div>
+  <form method="post" action="/admin/runtime/reset-all" data-runtime-reset-all-form>
+    <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
+    <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
+    <input type="hidden" name="confirm" value="">
+    <button type="submit" class="danger"
+            {% if not dashboard_write_enabled or not override_count %}disabled{% endif %}>
+      Clear All Overrides ({{ override_count }})
+    </button>
+    <small class="muted">Resets all DB overrides to the running bot's startup values.</small>
+  </form>
   <div class="runtime-config-toolbar">
     <label class="sr-only" for="runtime-config-search">Search settings</label>
     <input id="runtime-config-search" type="search" data-runtime-config-search-input

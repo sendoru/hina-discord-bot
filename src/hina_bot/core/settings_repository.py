@@ -146,3 +146,8 @@ class SettingsRepository:
                            value=excluded.value, updated_at=CURRENT_TIMESTAMP""",
                     (attr, encoded),
                 )
+
+    def clear_runtime_values(self) -> int:
+        """Delete only persisted runtime overrides, in one transaction."""
+        with self.db:
+            return int(self.db.execute("DELETE FROM runtime_config").rowcount)
