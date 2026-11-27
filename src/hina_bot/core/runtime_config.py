@@ -686,6 +686,13 @@ class RuntimeSettings:
         self._overrides.pop(attr, None)
         return value
 
+    def reset_all(self) -> int:
+        """Restore the complete startup baseline, including coupled settings."""
+        count = self._store.settings.clear_runtime_values()
+        # Update the in-process cache only after the DB transaction commits.
+        self._overrides.clear()
+        return count
+
     def rows(self) -> list[tuple[RuntimeSettingSpec, Any, str]]:
         return [
             (spec, getattr(self, attr), self.source(attr))

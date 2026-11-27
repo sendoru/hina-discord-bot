@@ -1233,3 +1233,43 @@ def test_openrouter_preferences_valid_and_runtime_roundtrip(preferences):
 def test_openrouter_preferences_reject_invalid_values(preferences):
     with pytest.raises(ValueError, match="Invalid"):
         parse_openrouter_preferences(json.dumps(preferences))
+
+
+def test_reset_all_runtime_overrides_preserves_baseline_and_other_data():
+    store = Store.create(":memory:")
+    try:
+        runtime = RuntimeSettings(_base(channel_context_chars=6000), store)
+        runtime.capture_startup_snapshot()
+        store.settings.set_note("unrelated", "keep")
+        runtime.set_text("channel_context_chars", "4300")
+        runtime.set_text("recent_context_window_minutes", "90")
+        store.settings.set_runtime_value("obsolete", "invalid")
+        assert runtime.reset_all() == 3
+        assert runtime.channel_context_chars == 6000
+        assert runtime.source("recent_context_window_minutes") == "startup"
+        assert store.settings.runtime_values() == {}
+        assert store.settings.note("unrelated") == "keep"
+        assert store.db.execute("SELECT COUNT(*) FROM runtime_config_startup").fetchone()[0]
+        assert runtime.reset_all() == 0
+    finally:
+        store.close()
+
+
+def test_reset_all_keeps_cache_on_failed_delete():
+    store = Store.create(":memory:")
+    try:
+        runtime = RuntimeSettings(_base(channel_context_chars=6000), store)
+        runtime.set_text("channel_context_chars", "4300")
+        store.db.execute(
+            "CREATE TRIGGER reject_delete BEFORE DELETE ON runtime_config "
+            "BEGIN SELECT RAISE(ABORT, 'reject'); END"
+        )
+        import sqlite3
+
+        with pytest.raises(sqlite3.IntegrityError):
+            runtime.reset_all()
+        assert runtime.channel_context_chars == 4300
+        assert runtime.source("channel_context_chars") == "db"
+        assert "channel_context_chars" in store.settings.runtime_values()
+    finally:
+        store.close()

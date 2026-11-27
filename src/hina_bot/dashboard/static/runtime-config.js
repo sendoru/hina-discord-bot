@@ -1,5 +1,13 @@
 (() => {
   const scalarEditors = document.querySelectorAll("[data-runtime-config-editor]");
+  const resetAllForm = document.querySelector("[data-runtime-reset-all-form]");
+  resetAllForm?.addEventListener("submit", (event) => {
+    if (!window.confirm("Clear all runtime DB overrides? This restores startup settings.")) {
+      event.preventDefault();
+      return;
+    }
+    resetAllForm.elements.namedItem("confirm").value = "yes";
+  });
 
   const searchInput = document.querySelector("[data-runtime-config-search-input]");
   const searchCount = document.querySelector("[data-runtime-config-search-count]");

@@ -320,11 +320,12 @@ def _runtime_help_meta(spec) -> dict[str, object]:
     }
 
 
-def _runtime_rows(repository: AdminRepository) -> list[dict[str, object]]:
-    overrides = {
-        str(row["key"]): row
-        for row in repository.runtime_config_rows()
-    }
+def _runtime_rows(
+    repository: AdminRepository, *, override_rows: list[dict[str, object]] | None = None
+) -> list[dict[str, object]]:
+    if override_rows is None:
+        override_rows = repository.runtime_config_rows()
+    overrides = {str(row["key"]): row for row in override_rows}
     startup = {
         str(row["key"]): row
         for row in repository.runtime_config_startup_rows()
@@ -417,11 +418,13 @@ def build_router(
 
     @router.get("/admin/runtime", response_class=HTMLResponse)
     def runtime_config(request: Request, queued: int | None = None):
+        override_rows = repository.runtime_config_rows()
         return templates.TemplateResponse(
             request=request,
             name="admin_runtime.html",
             context={
-                "sections": _runtime_sections(_runtime_rows(repository)),
+                "sections": _runtime_sections(_runtime_rows(repository, override_rows=override_rows)),
+                "override_count": len(override_rows),
                 "actions": repository.admin_command_rows(
                     action_prefix="runtime.",
                     limit=30,
@@ -465,6 +468,20 @@ def build_router(
         return RedirectResponse(
             url=f"/admin/runtime?queued={command_id}",
             status_code=303,
+        )
+
+    @router.post("/admin/runtime/reset-all")
+    async def reset_all_runtime_config(request: Request):
+        form = await writer.form(request)
+        if form.get("confirm") != "yes":
+            raise HTTPException(status_code=422, detail="bulk reset confirmation required")
+        command_id, _ = writer.enqueue(
+            request_id=form.get("_request_id", ""),
+            action="runtime.reset_all",
+            target="all",
+        )
+        return RedirectResponse(
+            url=f"/admin/runtime?queued={command_id}", status_code=303,
         )
 
     return router

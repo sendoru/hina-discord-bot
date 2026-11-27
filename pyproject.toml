@@ -41,6 +41,7 @@ hina-review-memory-disclosure = "hina_bot.tooling.review_memory_disclosure:main"
 hina-memory-extraction-eval = "hina_bot.tooling.memory_extraction_eval:main"
 hina-memory-response-eval = "hina_bot.tooling.memory_response_eval:main"
 hina-reset-conversation = "hina_bot.tooling.reset_conversation:main"
+hina-reset-runtime-config = "hina_bot.tooling.reset_runtime_config:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

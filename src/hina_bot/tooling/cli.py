@@ -49,6 +49,9 @@ COMMAND_INFO: dict[str, CommandInfo] = {
     "hina-review-memory-disclosure": CommandInfo(
         "Database / Maintenance", "Review and apply personal memory disclosure changes", warning=True
     ),
+    "hina-reset-runtime-config": CommandInfo(
+        "Database / Maintenance", "Clear all runtime config overrides", warning=True
+    ),
     "hina-reset-conversation": CommandInfo(
         "Database / Maintenance", "Reset conversation history", warning=True
     ),
