@@ -46,9 +46,6 @@ def test_openrouter_tier_effort_inherits_or_overrides():
 
 
 def test_gemini_flex_operation_scope():
-    from types import SimpleNamespace
-    from hina_bot.ai.provider_contract import operation_options
-
     settings = SimpleNamespace(provider="gemini", gemini_service_tier="flex")
     for domain in ("answer", "memory", "knowledge"):
         assert operation_options(settings, domain, "gemini-test", "fixed")["service_tier"] == "flex"
