@@ -67,6 +67,25 @@ runner 기능(`--gemini-thinking-level`, `CHAT_WEB_SEARCH` 반영)을 포함한 
 보고서에 턴별 이름과 ID가 표시돼요. 실제 사용자 정보 대신 가상 ID로 사례를 작성해요.
 캐릭터 자료의 출처와 조정 의도는 [검토 기록](../docs/character-tone-review.md)을 참고해요.
 
+## 상호작용 연속성 응답 평가 (#608 P0)
+
+`interaction_continuity_cases.jsonl`은 실제 사용자 원문을 사용하지 않는 합성 사례입니다.
+같은 파일을 baseline과 candidate의 작업 디렉터리에 복사하여 각 ref에서 동일한
+provider/model/thinking 설정으로 실행합니다. 기본 평가 세트나 운영 설정은 바꾸지 않습니다.
+
+```bash
+CHAT_WEB_SEARCH=false uv run hina-eval \\
+  --cases evals/interaction_continuity_cases.jsonl \\
+  --provider gemini --model <answer-model> --repeat 3
+````
+
+`expected`를 기준으로 실제 응답을 수동 비교합니다. 과거 약속의 근거 없는 부정·수용,
+확인된 대화 정정, 역할극 중단, 앱 관계 모드와 대화 이력 구분, 공개 자리의 사적 정보,
+무관한 과거 언급·불필요한 질문/사과를 각각 확인합니다. 현재 러너는 Discord 원문 조회
+도구나 실제 DM→서버 권한 경로를 재현하지 않으므로, 호출 횟수와 교차 공간 공개 정책은
+운영 trace/별도 권한 검증에서 확인해야 합니다. 합성 데이터의 로딩 테스트와 유료 모델
+평가 및 운영 검증을 구분하며, 러너 정상 종료를 의미 평가 통과로 간주하지 않습니다.
+
 ## 인젝션 평가 실행
 
 일반 테스트는 API 키 없이 실행하며 권한, 데이터 격리, 입력 역할, Discord 멘션 무력화를
