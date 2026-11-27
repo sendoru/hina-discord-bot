@@ -72,6 +72,19 @@ def parse_openrouter_preferences(value: str) -> dict:
     return preferences
 
 
+def load_openrouter_preferences(file_name: str, inline: str) -> dict:
+    """Load the startup baseline; an explicit file never silently falls back."""
+    if not file_name:
+        return parse_openrouter_preferences(inline)
+    path = Path(file_name)
+    try:
+        return parse_openrouter_preferences(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ValueError(
+            f"Invalid OPENROUTER_PROVIDER_PREFERENCES_FILE ({path}): {exc}"
+        ) from exc
+
+
 def parse_openai_effort(value: str) -> str:
     effort = value.strip().lower()
     if effort not in OPENAI_REASONING_EFFORTS:
@@ -255,6 +268,7 @@ class Settings:
     openrouter_affinity_secret: str = field(default="", repr=False)
     openrouter_api_key: str = ""
     openrouter_provider_preferences: dict = field(default_factory=dict)
+    openrouter_provider_preferences_file: str = ""
     openrouter_reasoning_effort: str = "default"
     openrouter_fast_reasoning_effort: str = "inherit"
     openrouter_smart_reasoning_effort: str = "inherit"
@@ -649,8 +663,13 @@ class Settings:
             openai_api_key=keys["openai"], gemini_api_key=keys["gemini"],
             openrouter_affinity_secret=os.getenv("OPENROUTER_AFFINITY_SECRET", "").strip(),
             openrouter_api_key=keys["openrouter"],
-            openrouter_provider_preferences=parse_openrouter_preferences(
-                os.getenv("OPENROUTER_PROVIDER_PREFERENCES", "{}")),
+            openrouter_provider_preferences=load_openrouter_preferences(
+                os.getenv("OPENROUTER_PROVIDER_PREFERENCES_FILE", "").strip(),
+                os.getenv("OPENROUTER_PROVIDER_PREFERENCES", "{}"),
+            ),
+            openrouter_provider_preferences_file=os.getenv(
+                "OPENROUTER_PROVIDER_PREFERENCES_FILE", ""
+            ).strip(),
             openrouter_reasoning_effort=parse_openrouter_effort(os.getenv("OPENROUTER_REASONING_EFFORT", "default")),
             openrouter_fast_reasoning_effort=parse_openrouter_effort(
                 os.getenv("OPENROUTER_FAST_REASONING_EFFORT", "inherit"), inherit=True),

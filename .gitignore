@@ -13,3 +13,5 @@ dist/
 evals/results/
 *.sqlite*
 *.db*
+
+/config/openrouter_provider_preferences.json

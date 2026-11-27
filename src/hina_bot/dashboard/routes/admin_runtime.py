@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from hina_bot.core.runtime_config import (
+    OPENROUTER_PREFERENCES_FILE_SNAPSHOT_KEY,
     RUNTIME_SETTING_SPECS,
     decode_runtime_value,
     format_runtime_value,
@@ -18,7 +19,7 @@ from ..repository import AdminRepository
 
 def _runtime_edit_value(value: object) -> str:
     if isinstance(value, dict):
-        return json.dumps(value, ensure_ascii=False)
+        return json.dumps(value, ensure_ascii=False, indent=2)
     if isinstance(value, tuple):
         return ", ".join(value)
     if isinstance(value, (set, frozenset)):
@@ -286,6 +287,7 @@ def _runtime_help_meta(spec) -> dict[str, object]:
         "gemini_thinking_level": "enum",
         "prefixes": "ordered list",
         "discord_ids": "Discord ID set",
+        "provider_preferences": "JSON object",
     }
     constraints: list[str] = []
 
@@ -366,6 +368,12 @@ def _runtime_rows(
             override_edit_value if override_valid else startup_edit_value
         )
         effective_decoded = decoded_override if override_valid else decoded_startup
+        is_json = spec.kind == "provider_preferences"
+        if is_json and not effective_edit_value:
+            effective_edit_value = "{}"
+        startup_from_file = is_json and startup.get(
+            OPENROUTER_PREFERENCES_FILE_SNAPSHOT_KEY, {}
+        ).get("value") == "true"
         is_collection = spec.kind in COLLECTION_KINDS
         collection_items = (
             _collection_items(effective_decoded, spec.kind) if is_collection else []
@@ -384,6 +392,11 @@ def _runtime_rows(
                 "source": "db" if override_valid else "startup",
                 **_runtime_help_meta(spec),
                 "value": effective_value,
+                "is_json": is_json,
+                "json_count": len(effective_decoded) if isinstance(effective_decoded, dict) else 0,
+                "startup_json_count": len(decoded_startup) if isinstance(decoded_startup, dict) else 0,
+                "startup_edit_value": startup_edit_value,
+                "startup_from_file": startup_from_file,
                 "edit_value": effective_edit_value,
                 "startup_value": startup_value,
                 "startup_captured_at": (

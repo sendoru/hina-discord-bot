@@ -39,7 +39,7 @@
             </div>
             <small><code>{{ row.key }}</code> · {{ row.kind }}</small>
           </td>
-          <td class="runtime-config-source">{{ row.source }}</td>
+          <td class="runtime-config-source">{{ row.source }}{% if row.source == "startup" and row.startup_from_file %} (file){% endif %}</td>
           <td class="runtime-config-current">
             {% if row.is_collection %}
               <div class="runtime-config-current-view runtime-collection-current">
@@ -64,10 +64,15 @@
                 </span>
               </div>
             {% else %}
-              <div class="runtime-config-current-view" data-runtime-config-view>
+              <div class="runtime-config-current-view{% if row.is_json %} runtime-json-view{% endif %}" data-runtime-config-view>
                 <span class="runtime-config-current-value">
                   {% if row.value is not none %}
-                    <code>{{ row.value }}</code>
+                    {% if row.is_json %}
+                    <details class="runtime-json-preview">
+                      <summary>JSON · {{ row.json_count }} properties</summary>
+                      <pre>{{ row.edit_value }}</pre>
+                    </details>
+                    {% else %}<code>{{ row.value }}</code>{% endif %}
                   {% elif row.startup_error %}
                     <span class="badge error">invalid startup snapshot</span>
                   {% else %}
@@ -76,7 +81,12 @@
                   {% if row.override_error %}
                     <small class="runtime-config-value-note">invalid DB override · using startup</small>
                   {% elif row.source == "db" and row.startup_value is not none %}
-                    <small class="runtime-config-value-note">startup {{ row.startup_value }}</small>
+                    {% if row.is_json %}
+                    <details class="runtime-json-preview">
+                      <summary>Startup{% if row.startup_from_file %} (file){% endif %} · {{ row.startup_json_count }} properties</summary>
+                      <pre>{{ row.startup_edit_value }}</pre>
+                    </details>
+                    {% else %}<small class="runtime-config-value-note">startup {{ row.startup_value }}</small>{% endif %}
                   {% elif row.source == "startup" and row.startup_captured_at %}
                     <small class="runtime-config-value-note">captured {{ row.startup_captured_at | localtime }}</small>
                   {% endif %}
@@ -86,14 +96,22 @@
                 </span>
               </div>
               <form id="runtime-config-form-{{ row.key }}"
-                    class="runtime-config-edit-form"
+                    class="runtime-config-edit-form{% if row.is_json %} runtime-json-form{% endif %}"
                     data-runtime-config-form
                     method="post"
                     action="/admin/runtime/set">
                 <input type="hidden" name="_csrf" value="{{ admin_csrf_token }}">
                 <input type="hidden" name="_request_id" value="{{ admin_form_nonce() }}">
                 <input type="hidden" name="key" value="{{ row.key }}">
-                {% if row.editor_type == "select" %}
+                {% if row.is_json %}
+                <textarea id="runtime-{{ row.key }}" name="value" rows="9" cols="24"
+                          data-runtime-config-input data-runtime-json-input
+                          data-original-value="{{ row.edit_value }}"
+                          aria-label="Override value for {{ row.env_name }}"
+                          spellcheck="false" required
+                          {% if not dashboard_write_enabled %}disabled{% endif %}>{{ row.edit_value }}</textarea>
+                <button type="button" class="secondary" data-runtime-json-format {% if not dashboard_write_enabled %}disabled{% endif %}>Format JSON</button>
+                {% elif row.editor_type == "select" %}
                 <select id="runtime-{{ row.key }}"
                         name="value"
                         data-runtime-config-input

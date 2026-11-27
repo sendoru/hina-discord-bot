@@ -600,3 +600,9 @@ No generation-detail lookup is made. SDK retries and automatic answer retries
 are disabled for OpenRouter. Upstream retries follow the routing preferences.
 
 OpenRouter audio is request-scoped. The pending memory-audio store remains Gemini-only.
+
+### External provider preferences file
+
+Copy `config/openrouter_provider_preferences.example.json` to `config/openrouter_provider_preferences.json`, move your existing provider preferences JSON into it and set `OPENROUTER_PROVIDER_PREFERENCES_FILE=config/openrouter_provider_preferences.json` in your startup env (`.env.local` for the supplied Compose service). Relative paths are resolved from the process working directory. Compose mounts `./config` at `/app/config` read-only; ensure the file is readable by the container user. Other deployments can supply an equivalent read-only mount.
+
+The startup baseline is loaded once; editing the file requires a bot restart. A nonempty file path takes precedence over the legacy inline `OPENROUTER_PROVIDER_PREFERENCES`; a missing or invalid file is a startup error. DB runtime overrides still take precedence over the loaded baseline, and resetting one or all overrides restores that baseline without changing the file. The dashboard shows a JSON summary and a multiline override editor. The example is intentionally empty (`{}`); supply your own routing policy.

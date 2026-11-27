@@ -1273,3 +1273,42 @@ def test_reset_all_keeps_cache_on_failed_delete():
         assert "channel_context_chars" in store.settings.runtime_values()
     finally:
         store.close()
+
+
+def test_openrouter_preferences_file_baseline_and_reset(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("OPENROUTER_PROVIDER_PREFERENCES", '{"sort":"price"}')
+    path = tmp_path / "preferences.json"
+    path.write_text('{"sort":"latency"}', encoding="utf-8")
+    monkeypatch.setenv("OPENROUTER_PROVIDER_PREFERENCES_FILE", path.name)
+    base = Settings.load()
+    assert base.openrouter_provider_preferences == {"sort": "latency"}
+    store = Store.create(str(tmp_path / "test.sqlite3"))
+    try:
+        runtime = RuntimeSettings(base, store)
+        runtime.capture_startup_snapshot()
+        runtime.set_text("OPENROUTER_PROVIDER_PREFERENCES", '{"sort":"throughput"}')
+        assert runtime.openrouter_provider_preferences == {"sort": "throughput"}
+        runtime.reset_all()
+        assert runtime.openrouter_provider_preferences == {"sort": "latency"}
+        assert path.read_text(encoding="utf-8") == '{"sort":"latency"}'
+    finally:
+        store.close()
+    monkeypatch.delenv("OPENROUTER_PROVIDER_PREFERENCES_FILE")
+    assert Settings.load().openrouter_provider_preferences == {"sort": "price"}
+
+
+@pytest.mark.parametrize("content", [None, "{", "[]", '{"sort":"invalid"}'])
+def test_explicit_openrouter_preferences_file_errors(monkeypatch, tmp_path, content):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DISCORD_TOKEN", "token")
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("OPENROUTER_PROVIDER_PREFERENCES", "{}")
+    path = tmp_path / "preferences.json"
+    if content is not None:
+        path.write_text(content, encoding="utf-8")
+    monkeypatch.setenv("OPENROUTER_PROVIDER_PREFERENCES_FILE", str(path))
+    with pytest.raises(ValueError, match="OPENROUTER_PROVIDER_PREFERENCES_FILE"):
+        Settings.load()
