@@ -82,6 +82,10 @@ Notable user-facing, operator-facing, compatibility, and migration changes are t
 
 ### Fixed
 
+- 이전 대화·약속·역할극 기록의 누락을 사건 부재로 단정하거나, 앱의 관계 모드를 과거 사건의
+  증거로 사용하는 응답을 줄이도록 연속성·관계 지침을 보완합니다(#608 P0). 기존 기억 저장·조회
+  및 공개 권한은 변경하지 않습니다.
+
 - DB 파일이 없을 때 `hina-bot`이 SQLite의 `unable to open database file` traceback으로 죽던 문제를
   고쳤습니다. 이제 찾은 경로와 `hina-prepare-db --yes --offline-confirmed`로 새로 만들라는 안내(이미
   있어야 하는 DB라면 `DATABASE_PATH`·볼륨 마운트 확인)를 출력하고 종료합니다. 준비되지 않은 DB도

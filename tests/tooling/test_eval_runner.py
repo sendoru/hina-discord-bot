@@ -593,3 +593,11 @@ class SpeakerSwitchTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_interaction_continuity_cases_load_with_supported_modes():
+    cases = read_cases(Path("evals/interaction_continuity_cases.jsonl"))
+    assert len(cases) >= 7
+    assert {case["mode"] for case in cases} == {"dm", "special_dm", "server"}
+    assert any(case.get("channel_context") for case in cases)
+    assert any(not case.get("channel_context") for case in cases)
