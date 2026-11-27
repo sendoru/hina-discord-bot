@@ -80,6 +80,7 @@ def parse_openai_effort(value: str) -> str:
 
 
 GEMINI_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high"})
+GEMINI_SERVICE_TIERS = frozenset({"standard", "flex"})
 GEMINI_SEARCH_API_MODES = frozenset({"auto", "interactions", "generate_content"})
 CODE_EXECUTION_BACKENDS = frozenset({"auto", "native", "delegated"})
 GEMINI_STORE_DOMAINS = frozenset({
@@ -269,6 +270,7 @@ class Settings:
     gemini_store_classifier_interactions: bool | None = None
     gemini_store_output_repair_interactions: bool | None = None
     gemini_store_knowledge_interactions: bool | None = None
+    gemini_service_tier: str = "standard"
     gemini_search_api_mode: str = "auto"
     code_execution_backend: str = "auto"
     db_path: str = "data/hina.sqlite3"
@@ -508,6 +510,9 @@ class Settings:
             if level not in GEMINI_THINKING_LEVELS:
                 allowed = ", ".join(sorted(GEMINI_THINKING_LEVELS))
                 raise ValueError(f"{variable}은 {allowed} 중 하나여야 합니다.")
+        gemini_service_tier = os.getenv("GEMINI_SERVICE_TIER", "standard").strip().lower()
+        if gemini_service_tier not in GEMINI_SERVICE_TIERS:
+            raise ValueError("GEMINI_SERVICE_TIER은 standard 또는 flex여야 합니다.")
         gemini_search_api_mode = os.getenv(
             "GEMINI_SEARCH_API_MODE", "auto"
         ).strip().lower()
@@ -658,6 +663,7 @@ class Settings:
             gemini_fast_thinking_level=gemini_fast_thinking_level,
             gemini_smart_thinking_level=gemini_smart_thinking_level,
             gemini_store_interactions=gemini_store_interactions == "true",
+            gemini_service_tier=gemini_service_tier,
             gemini_search_api_mode=gemini_search_api_mode,
             code_execution_backend=code_execution_backend,
             gemini_store_answer_interactions=store_overrides["ANSWER"],
