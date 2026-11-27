@@ -394,3 +394,155 @@ def test_runtime_dashboard_json_summary_file_baseline_and_override(tmp_path):
     assert "Startup (file) · 1 properties" in response.text
     assert '<textarea id="runtime-openrouter_provider_preferences"' in response.text
     assert "data-runtime-json-format" in response.text
+
+
+@pytest.mark.parametrize(
+    ("path", "fields", "action", "target"),
+    [
+        ("set", {"key": "channel_context_chars", "value": "4300"}, "runtime.set", "channel_context_chars"),
+        ("reset", {"key": "channel_context_chars"}, "runtime.reset", "channel_context_chars"),
+        ("reset-all", {"confirm": "yes"}, "runtime.reset_all", "all"),
+    ],
+)
+def test_runtime_dashboard_async_submission(tmp_path, path, fields, action, target):
+    database = tmp_path / "hina.sqlite3"
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
+    store.close()
+    app = create_app(DashboardSettings(
+        database_path=str(database),
+        usage_log_path=str(tmp_path / "usage.jsonl"),
+        event_log_path=str(tmp_path / "events.jsonl"),
+        write_enabled=True,
+    ))
+    payload = {
+        "_csrf": app.state.admin_writer.csrf_token,
+        "_request_id": "a" * 32,
+        **fields,
+    }
+    with TestClient(app) as client:
+        response = client.post(
+            f"/admin/runtime/{path}", data=payload,
+            headers={"accept": "application/json"}, follow_redirects=False,
+        )
+        assert response.status_code == 202
+        command_id = response.json()["command_id"]
+        status = client.get(f"/admin/commands/{command_id}").json()
+        assert status["status"] == "pending"
+        assert status["action"] == action
+        assert status["target"] == target
+        repeated = client.post(
+            f"/admin/runtime/{path}", data=payload,
+            headers={"accept": "application/json"},
+        )
+        assert repeated.status_code == 202
+        assert repeated.json()["command_id"] == command_id
+        invalid = client.post(
+            f"/admin/runtime/{path}", data={**payload, "_csrf": "invalid"},
+            headers={"accept": "application/json"},
+        )
+        assert invalid.status_code == 403
+        page = client.get("/admin/runtime")
+        assert 'id="runtime-setting-channel_context_chars"' in page.text
+        assert "data-runtime-recent-actions" in page.text
+        assert "runtime-config-async.js" in page.text
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT COUNT(*) FROM admin_commands").fetchone()[0] == 1
+
+
+@pytest.fixture
+def runtime_browser(tmp_path):
+    playwright = pytest.importorskip("playwright.sync_api")
+    import socket
+    import threading
+
+    import uvicorn
+
+    database = tmp_path / "hina.sqlite3"
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
+    RuntimeSettings(Settings(discord_token="test", channel_context_chars=6000), store).capture_startup_snapshot()
+    store.close()
+    app = create_app(DashboardSettings(
+        database_path=str(database),
+        usage_log_path=str(tmp_path / "usage.jsonl"),
+        event_log_path=str(tmp_path / "events.jsonl"),
+        write_enabled=True,
+    ))
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        server = uvicorn.Server(uvicorn.Config(app, log_level="error"))
+        thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+        thread.start()
+        try:
+            with playwright.sync_playwright() as driver:
+                browser = driver.chromium.launch()
+                page = browser.new_page()
+                errors = []
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                page.goto(f"http://127.0.0.1:{port}/admin/runtime")
+                yield page, database
+                assert errors == []
+                browser.close()
+        finally:
+            server.should_exit = True
+            thread.join(timeout=5)
+
+
+def test_browser_runtime_save_reset_and_failure_without_navigation(runtime_browser):
+    page, database = runtime_browser
+    from urllib.parse import parse_qs
+
+    from playwright.sync_api import expect
+
+    def submit(route):
+        response = route.fetch()
+        command_id = response.json()["command_id"]
+        form = parse_qs(route.request.post_data or "")
+        store = Store.open_existing(str(database))
+        try:
+            runtime = RuntimeSettings(Settings(discord_token="test", channel_context_chars=6000), store)
+            if form.get("value") == ["4400"]:
+                store.db.execute(
+                    "UPDATE admin_commands SET status='failed',error_message='fixture rejection' WHERE id=?",
+                    (command_id,),
+                )
+            else:
+                if route.request.url.endswith("/reset"):
+                    runtime.reset(form["key"][0])
+                else:
+                    runtime.set_text(form["key"][0], form["value"][0])
+                store.db.execute("UPDATE admin_commands SET status='succeeded' WHERE id=?", (command_id,))
+            store.db.commit()
+        finally:
+            store.close()
+        route.fulfill(response=response)
+
+    page.route("**/admin/runtime/set", submit)
+    page.route("**/admin/runtime/reset", submit)
+    page.evaluate("window.runtimeTestSentinel = 123")
+    search = page.locator("[data-runtime-config-search-input]")
+    search.fill("chars")
+    first = page.locator("#runtime-setting-channel_context_chars")
+    other = page.locator("#runtime-setting-history_max_chars")
+    other.locator("[data-runtime-config-edit]").click()
+    other.locator("[data-runtime-config-input]").fill("7777")
+    first.locator("[data-runtime-config-edit]").click()
+    first.locator("[data-runtime-config-input]").fill("4400")
+    first.locator('[data-runtime-config-action-edit] button[type="submit"]').click()
+    expect(first.locator("[data-runtime-command-status]")).to_contain_text("fixture rejection")
+    assert first.locator("[data-runtime-config-input]").input_value() == "4400"
+    first.locator("[data-runtime-config-input]").fill("4300")
+    first.locator('[data-runtime-config-action-edit] button[type="submit"]').click()
+    expect(first.locator("[data-runtime-command-status]")).to_contain_text("Applied")
+    assert first.locator(".runtime-config-current-value > code").inner_text() == "4300"
+    assert other.locator("[data-runtime-config-input]").input_value() == "7777"
+    assert search.input_value() == "chars"
+    assert page.evaluate("window.runtimeTestSentinel") == 123
+    first.locator(".runtime-config-reset button").click()
+    expect(first.locator("[data-runtime-command-status]")).to_contain_text("Applied")
+    assert first.locator(".runtime-config-current-value > code").inner_text() == "6000"
+    assert other.locator("[data-runtime-config-input]").input_value() == "7777"
+    assert page.evaluate("window.runtimeTestSentinel") == 123

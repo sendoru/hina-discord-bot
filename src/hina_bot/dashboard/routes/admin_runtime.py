@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from hina_bot.core.runtime_config import (
@@ -446,6 +446,13 @@ def build_router(
             },
         )
 
+    def command_response(request: Request, command_id: int):
+        if request.headers.get("accept") == "application/json":
+            return JSONResponse({"command_id": command_id}, status_code=202)
+        return RedirectResponse(
+            url=f"/admin/runtime?queued={command_id}", status_code=303,
+        )
+
     @router.post("/admin/runtime/set")
     async def set_runtime_config(request: Request):
         form = await writer.form(request)
@@ -460,10 +467,7 @@ def build_router(
             target=key,
             payload={"key": key, "value": value},
         )
-        return RedirectResponse(
-            url=f"/admin/runtime?queued={command_id}",
-            status_code=303,
-        )
+        return command_response(request, command_id)
 
     @router.post("/admin/runtime/reset")
     async def reset_runtime_config(request: Request):
@@ -478,10 +482,7 @@ def build_router(
             target=key,
             payload={"key": key},
         )
-        return RedirectResponse(
-            url=f"/admin/runtime?queued={command_id}",
-            status_code=303,
-        )
+        return command_response(request, command_id)
 
     @router.post("/admin/runtime/reset-all")
     async def reset_all_runtime_config(request: Request):
@@ -493,8 +494,6 @@ def build_router(
             action="runtime.reset_all",
             target="all",
         )
-        return RedirectResponse(
-            url=f"/admin/runtime?queued={command_id}", status_code=303,
-        )
+        return command_response(request, command_id)
 
     return router

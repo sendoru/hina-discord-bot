@@ -26,7 +26,7 @@
       </thead>
       <tbody>
       {% for row in rows %}
-        <tr data-runtime-config-setting-row data-runtime-config-search="{{ (row.env_name ~ ' ' ~ row.key ~ ' ' ~ row.kind ~ ' ' ~ row.help_description) | lower }}" {% if not row.is_collection %}data-runtime-config-editor{% endif %}>
+        <tr id="runtime-setting-{{ row.key }}" data-runtime-config-key="{{ row.key }}" data-runtime-config-setting-row data-runtime-config-search="{{ (row.env_name ~ ' ' ~ row.key ~ ' ' ~ row.kind ~ ' ' ~ row.help_description) | lower }}" {% if not row.is_collection %}data-runtime-config-editor{% endif %}>
           <td class="runtime-config-setting">
             <div class="runtime-config-setting-title">
               <strong>{{ row.env_name }}</strong>
@@ -38,6 +38,7 @@
                       aria-label="Show help for {{ row.env_name }}">ⓘ</button>
             </div>
             <small><code>{{ row.key }}</code> · {{ row.kind }}</small>
+            <div class="runtime-command-status" data-runtime-command-status role="status" aria-live="polite" hidden></div>
           </td>
           <td class="runtime-config-source">{{ row.source }}{% if row.source == "startup" and row.startup_from_file %} (file){% endif %}</td>
           <td class="runtime-config-current">
@@ -337,6 +338,7 @@
       Clear All Overrides ({{ override_count }})
     </button>
     <small class="muted">Resets all DB overrides to the running bot's startup values.</small>
+    <div class="runtime-command-status" data-runtime-bulk-status role="status" aria-live="polite" hidden></div>
   </form>
   <div class="runtime-config-toolbar">
     <label class="sr-only" for="runtime-config-search">Search settings</label>
@@ -363,7 +365,7 @@
   </div>
 </section>
 
-<section class="panel">
+<section class="panel" data-runtime-recent-actions>
   <div class="panel-heading">
     <div>
       <h2>Recent runtime actions</h2>
