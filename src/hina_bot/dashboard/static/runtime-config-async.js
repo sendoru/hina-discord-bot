@@ -32,7 +32,8 @@
   const lock = (key, locked) => {
     const row = rowFor(key);
     if (!row) return;
-    row.toggleAttribute("aria-busy", locked);
+    if (locked) row.setAttribute("aria-busy", "true");
+    else row.removeAttribute("aria-busy");
     for (const cell of row.querySelectorAll(".runtime-config-current, .runtime-config-action, .runtime-config-reset")) {
       cell.inert = locked;
     }
@@ -164,11 +165,7 @@
     const body = new URLSearchParams(new FormData(form));
     const key = path.endsWith("/reset-all") ? "all" : body.get("key");
     if (!key || (key !== "all" && !rowFor(key)) || pending.has(key) || pending.has("all")) return;
-    if (key === "all") {
-      if (pending.size) return;
-      if (document.querySelector('[data-runtime-config-editor].is-editing, [data-runtime-collection-row]:not([hidden])') &&
-          !window.confirm("Clear all overrides and discard open setting drafts?")) return;
-    }
+    if (key === "all" && pending.size) return;
     const job = { key, form, body, id: null, result: null, running: false };
     pending.set(key, job);
     if (key === "all") rows().forEach((row) => lock(row.dataset.runtimeConfigKey, true));

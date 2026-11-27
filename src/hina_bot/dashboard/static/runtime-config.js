@@ -2,7 +2,12 @@
   const boundEditors = new WeakSet();
   const resetAllForm = document.querySelector("[data-runtime-reset-all-form]");
   resetAllForm?.addEventListener("submit", (event) => {
-    if (!window.confirm("Clear all runtime DB overrides? This restores startup settings.")) {
+    const hasDrafts = document.querySelector(
+      '[data-runtime-config-editor].is-editing, [data-runtime-collection-manage][aria-expanded="true"]',
+    );
+    const warning = "Clear all runtime DB overrides? This restores startup settings." +
+      (hasDrafts ? " Open setting drafts will be discarded." : "");
+    if (!window.confirm(warning)) {
       event.preventDefault();
       return;
     }
