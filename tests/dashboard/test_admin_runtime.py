@@ -495,6 +495,8 @@ def test_browser_runtime_save_reset_and_failure_without_navigation(runtime_brows
     page, database = runtime_browser
     from urllib.parse import parse_qs
 
+    from playwright.sync_api import expect
+
     def submit(route):
         response = route.fetch()
         command_id = response.json()["command_id"]
@@ -530,17 +532,17 @@ def test_browser_runtime_save_reset_and_failure_without_navigation(runtime_brows
     first.locator("[data-runtime-config-edit]").click()
     first.locator("[data-runtime-config-input]").fill("4400")
     first.locator('[data-runtime-config-action-edit] button[type="submit"]').click()
-    first.locator("[data-runtime-command-status]").get_by_text("fixture rejection", exact=False).wait_for()
+    expect(first.locator("[data-runtime-command-status]")).to_contain_text("fixture rejection")
     assert first.locator("[data-runtime-config-input]").input_value() == "4400"
     first.locator("[data-runtime-config-input]").fill("4300")
     first.locator('[data-runtime-config-action-edit] button[type="submit"]').click()
-    first.locator("[data-runtime-command-status]").get_by_text("Applied", exact=False).wait_for()
+    expect(first.locator("[data-runtime-command-status]")).to_contain_text("Applied")
     assert first.locator(".runtime-config-current-value > code").inner_text() == "4300"
     assert other.locator("[data-runtime-config-input]").input_value() == "7777"
     assert search.input_value() == "chars"
     assert page.evaluate("window.runtimeTestSentinel") == 123
     first.locator(".runtime-config-reset button").click()
-    first.locator("[data-runtime-command-status]").get_by_text("Applied", exact=False).wait_for()
+    expect(first.locator("[data-runtime-command-status]")).to_contain_text("Applied")
     assert first.locator(".runtime-config-current-value > code").inner_text() == "6000"
     assert other.locator("[data-runtime-config-input]").input_value() == "7777"
     assert page.evaluate("window.runtimeTestSentinel") == 123
