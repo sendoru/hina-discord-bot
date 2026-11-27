@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 import httpx
 from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
-from hina_bot.core.config import SUPPORTED_MODEL_PROVIDERS
+from hina_bot.core.config import GEMINI_SERVICE_TIERS, SUPPORTED_MODEL_PROVIDERS
 
 from .openrouter_capabilities import (
     EndpointCatalog,
@@ -997,6 +997,8 @@ class _GeminiResponses:
                 "functionCallingConfig": {"mode": "VALIDATED"},
             }
 
+        if kwargs.get("service_tier") == "flex":
+            payload["service_tier"] = "flex"
         url = GEMINI_GENERATE_CONTENT_URL.format(model=model)
         metrics = await self._reference_transport(payload, kwargs, "contents", _gemini_generate_content_contents)
         response = await self.http.post(url, json=payload)
@@ -1072,6 +1074,8 @@ class _GeminiResponses:
         if payload_tools:
             payload["tools"] = payload_tools
 
+        if kwargs.get("service_tier") == "flex":
+            payload["service_tier"] = "flex"
         payload["generation_config"] = generation_config
         metrics = await self._reference_transport(payload, kwargs, "input", _gemini_input)
         response = await self.http.post(GEMINI_INTERACTIONS_URL, json=payload)
@@ -1151,6 +1155,9 @@ class _GeminiResponses:
             "code_execution_tools": code_execution_tools,
             **kwargs,
         }
+
+        if kwargs.get("service_tier", "standard") not in GEMINI_SERVICE_TIERS:
+            raise ValueError("GEMINI_SERVICE_TIER가 잘못되었습니다.")
 
         # Callers resolve domain overrides; bare requests inherit the global default.
         tool_kwargs.setdefault(

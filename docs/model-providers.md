@@ -34,6 +34,12 @@ MEMORY_MAX_OUTPUT_TOKENS=4096
 배포 설정도 직접 갱신하세요. `MEMORY_SESSION_FOLLOWUP`은 제거되며 기존 DB 항목은 시작 시 정리됩니다.
 예전에 사용하던 `MEMORY_PROVIDER`, `MEMORY_MODEL`은 더 이상 읽지 않습니다.
 
+### Gemini 직접 API service tier
+
+`GEMINI_SERVICE_TIER=standard|flex` (기본 `standard`)를 `.env` 또는 Dashboard Runtime에서 설정합니다.
+`flex`는 일반 답변, 기억 생성, knowledge ingest의 직접 Gemini API 요청에 적용되며 Interactions와 GenerateContent의 검색 fallback에서도 유지됩니다. 별도 Decisions API, classifier, output repair, delegated code execution은 기존 Standard 동작을 유지합니다. OpenAI/OpenRouter에는 적용하지 않습니다.
+Flex는 지원되는 유료 모델에서만 사용하세요. 혼잡 시 지연 및 429/503이 증가할 수 있으며 자동 Standard 전환이나 timeout 증가는 하지 않습니다. 기존 timeout과 retry 정책을 유지합니다. [Google Flex 문서](https://ai.google.dev/gemini-api/docs/flex-inference).
+
 ### Gemini Google Search API fallback
 
 검색을 포함한 답변의 기본 호출 API는 Interactions입니다. 검색 도구 호환성 문제에 대비해

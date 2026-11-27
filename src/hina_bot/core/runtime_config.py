@@ -13,6 +13,7 @@ from .config import (
     CONTEXT_INPUT_MODES,
     EXTERNAL_CONTEXT_POLICIES,
     GEMINI_SEARCH_API_MODES,
+    GEMINI_SERVICE_TIERS,
     GEMINI_THINKING_LEVELS,
     MODEL_ROUTING_MODES,
     OPENAI_REASONING_EFFORTS,
@@ -88,6 +89,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "gemini_store_memory_interactions": "기억 추출·요약 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
     "gemini_store_output_repair_interactions": "출력 후처리 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
     "gemini_store_knowledge_interactions": "지식 등록 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
+    "gemini_service_tier": "Gemini 답변·기억·knowledge 호출의 서비스 등급입니다. flex는 비용을 줄이지만 지연과 실패율이 증가할 수 있습니다.",
     "gemini_search_api_mode": "Gemini 검색에 사용할 API 선택입니다. auto는 Interactions 우선·특정 도구 오류 시 GenerateContent 폴백, interactions/generate_content는 강제 모드입니다.",
     "code_execution_backend": "Gemini 코드 실행 방식입니다. auto: Answer PDF 설정 또는 오디오 입력은 delegated, 나머지는 native. native: 내장 도구만 사용(비호환 입력에서는 미제공). delegated: 필요할 때 별도 Gemini 계산 호출. 다른 provider는 기존 방식 유지.",
     "gemini_store_classifier_interactions": "semantic/web routing classifier 호출 저장 설정입니다. inherit이면 전역 기본값을 사용합니다.",
@@ -287,6 +289,10 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "gemini_store_knowledge_interactions",
         "GEMINI_STORE_KNOWLEDGE_INTERACTIONS", "optional_bool"
     ),
+    "gemini_service_tier": _runtime_spec(
+        "gemini_service_tier", "GEMINI_SERVICE_TIER", "string",
+        choices=tuple(sorted(GEMINI_SERVICE_TIERS)),
+    ),
     "gemini_search_api_mode": _runtime_spec(
         "gemini_search_api_mode",
         "GEMINI_SEARCH_API_MODE",
@@ -463,7 +469,7 @@ def parse_runtime_value(spec: RuntimeSettingSpec, raw: str, *, settings=None) ->
             return parse_openai_effort(text)
         if spec.attr == "gemini_pdf_transport":
             return parse_pdf_transport(text)
-        if spec.attr in {"gemini_search_api_mode", "code_execution_backend"}:
+        if spec.attr in {"gemini_search_api_mode", "gemini_service_tier", "code_execution_backend"}:
             text = text.lower()
         if spec.empty_allowed and text.lower() in {"none", "null", "off", "-"}:
             text = ""

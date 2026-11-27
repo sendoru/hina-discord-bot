@@ -43,3 +43,13 @@ def test_openrouter_tier_effort_inherits_or_overrides():
     assert operation_options(settings, "answer", "fixture/model", "smart")["reasoning"] == {"effort": "low"}
     settings.openrouter_smart_reasoning_effort = "default"
     assert "reasoning" not in operation_options(settings, "answer", "fixture/model", "smart")
+
+
+def test_gemini_flex_operation_scope():
+    settings = SimpleNamespace(provider="gemini", gemini_service_tier="flex")
+    for domain in ("answer", "memory", "knowledge"):
+        assert operation_options(settings, domain, "gemini-test", "fixed")["service_tier"] == "flex"
+    for domain in ("classifier", "output_repair"):
+        assert "service_tier" not in operation_options(settings, domain, "gemini-test", "fixed")
+    settings.gemini_service_tier = "standard"
+    assert "service_tier" not in operation_options(settings, "answer", "gemini-test", "fixed")

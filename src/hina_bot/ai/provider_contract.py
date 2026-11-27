@@ -20,8 +20,11 @@ def operation_options(settings, domain, model, tier, *, provider=None, thinking_
             options["reasoning"] = {"enabled": False} if effort == "none" else {"effort": effort}
         if domain == "answer":
             options["include"] = ["reasoning.encrypted_content"]
-    if provider == "gemini" and thinking_level is not None:
-        options["thinking_level"] = thinking_level
+    if provider == "gemini":
+        if thinking_level is not None:
+            options["thinking_level"] = thinking_level
+        if domain in {"answer", "memory", "knowledge"} and getattr(settings, "gemini_service_tier", "standard") == "flex":
+            options["service_tier"] = "flex"
     if provider == "openai" and domain == "answer":
         options["include"] = ["reasoning.encrypted_content"]
     return options

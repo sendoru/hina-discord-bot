@@ -1471,3 +1471,30 @@ def test_media_code_execution_error_does_not_retry_via_search_fallback():
         message="google_search is not available for this API.",
     )
     assert _gemini_interactions_tool_error(other)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tier", ["standard", "flex"])
+@pytest.mark.parametrize("api", ["interactions", "generate_content"])
+async def test_gemini_service_tier_wire(tier, api):
+    seen = []
+
+    async def handler(request):
+        seen.append(__import__("json").loads(request.content))
+        if api == "generate_content":
+            return httpx.Response(200, json={
+                "candidates": [{"content": {"parts": [{"text": "OK"}]}, "finishReason": "STOP"}],
+                "usageMetadata": {},
+            })
+        return httpx.Response(200, json={
+            "status": "completed",
+            "steps": [{"type": "model_output", "content": [{"type": "text", "text": "OK"}]}],
+            "usage": {},
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        adapter = _GeminiResponses(http, settings=NS(gemini_search_api_mode=api))
+        await adapter.create(model="gemini-test", input="hello", service_tier=tier,
+                             tools=[{"type": "web_search"}])
+    assert len(seen) == 1
+    assert seen[0].get("service_tier") == ("flex" if tier == "flex" else None)
