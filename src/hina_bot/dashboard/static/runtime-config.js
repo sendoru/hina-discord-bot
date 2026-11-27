@@ -1,5 +1,5 @@
 (() => {
-  const scalarEditors = document.querySelectorAll("[data-runtime-config-editor]");
+  const boundEditors = new WeakSet();
   const resetAllForm = document.querySelector("[data-runtime-reset-all-form]");
   resetAllForm?.addEventListener("submit", (event) => {
     if (!window.confirm("Clear all runtime DB overrides? This restores startup settings.")) {
@@ -14,6 +14,25 @@
   const noResults = document.querySelector("[data-runtime-config-no-results]");
   const sections = Array.from(document.querySelectorAll("[data-runtime-config-section]"));
   let openBeforeSearch = null;
+  const sectionStorageKey = "hina.runtime-config.sections";
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(sectionStorageKey) || "null");
+    if (saved && typeof saved === "object") {
+      for (const section of sections) {
+        if (typeof saved[section.id] === "boolean") section.open = saved[section.id];
+      }
+    }
+  } catch (_) { /* Storage may be disabled. */ }
+  for (const section of sections) {
+    section.addEventListener("toggle", () => {
+      if (searchInput?.value.trim()) return;
+      try {
+        sessionStorage.setItem(sectionStorageKey, JSON.stringify(
+          Object.fromEntries(sections.map((item) => [item.id, item.open])),
+        ));
+      } catch (_) { /* Storage may be disabled. */ }
+    });
+  }
 
   const filterSettings = () => {
     if (!(searchInput instanceof HTMLInputElement)) return;
@@ -74,68 +93,73 @@
     actionView.hidden = false;
   };
 
-  for (const editor of scalarEditors) {
-    const input = editor.querySelector("[data-runtime-config-input]");
-    const edit = editor.querySelector("[data-runtime-config-edit]");
-    const cancel = editor.querySelector("[data-runtime-config-cancel]");
-    const actionView = editor.querySelector("[data-runtime-config-action-view]");
-    const actionEdit = editor.querySelector("[data-runtime-config-action-edit]");
-    if (!input || !edit || !cancel || !actionView || !actionEdit) continue;
+  const bindScalarEditors = () => {
+    for (const editor of document.querySelectorAll("[data-runtime-config-editor]")) {
+      if (boundEditors.has(editor)) continue;
+      boundEditors.add(editor);
+      const input = editor.querySelector("[data-runtime-config-input]");
+      const edit = editor.querySelector("[data-runtime-config-edit]");
+      const cancel = editor.querySelector("[data-runtime-config-cancel]");
+      const actionView = editor.querySelector("[data-runtime-config-action-view]");
+      const actionEdit = editor.querySelector("[data-runtime-config-action-edit]");
+      if (!input || !edit || !cancel || !actionView || !actionEdit) continue;
 
-    if (input instanceof HTMLTextAreaElement && input.hasAttribute("data-runtime-json-input")) {
-      const validateJson = () => {
-        try {
-          const parsed = JSON.parse(input.value);
-          if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-            throw new Error("Expected a JSON object");
+      if (input instanceof HTMLTextAreaElement && input.hasAttribute("data-runtime-json-input")) {
+        const validateJson = () => {
+          try {
+            const parsed = JSON.parse(input.value);
+            if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+              throw new Error("Expected a JSON object");
+            }
+            input.setCustomValidity("");
+            return parsed;
+          } catch {
+            input.setCustomValidity("Enter a valid JSON object.");
+            return null;
           }
-          input.setCustomValidity("");
-          return parsed;
-        } catch {
-          input.setCustomValidity("Enter a valid JSON object.");
-          return null;
+        };
+        input.addEventListener("input", validateJson);
+        edit.addEventListener("click", validateJson);
+        editor.querySelector("[data-runtime-json-format]")?.addEventListener("click", () => {
+          const parsed = validateJson();
+          if (parsed === null) input.reportValidity();
+          else input.value = JSON.stringify(parsed, null, 2);
+        });
+      }
+
+      edit.addEventListener("click", () => {
+        editor.classList.add("is-editing");
+        actionView.hidden = true;
+        actionEdit.hidden = false;
+        input.focus();
+        if (input instanceof HTMLInputElement && input.type === "text") {
+          input.select();
         }
-      };
-      input.addEventListener("input", validateJson);
-      edit.addEventListener("click", validateJson);
-      editor.querySelector("[data-runtime-json-format]")?.addEventListener("click", () => {
-        const parsed = validateJson();
-        if (parsed === null) input.reportValidity();
-        else input.value = JSON.stringify(parsed, null, 2);
+      });
+
+      cancel.addEventListener("click", () => closeScalarEditor(editor));
+
+      input.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        closeScalarEditor(editor);
+        edit.focus();
       });
     }
 
-    edit.addEventListener("click", () => {
-      editor.classList.add("is-editing");
-      actionView.hidden = true;
-      actionEdit.hidden = false;
-      input.focus();
-      if (input instanceof HTMLInputElement && input.type === "text") {
-        input.select();
-      }
-    });
-
-    cancel.addEventListener("click", () => closeScalarEditor(editor));
-
-    input.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      closeScalarEditor(editor);
-      edit.focus();
-    });
-  }
+  };
 
   const tableWraps = Array.from(document.querySelectorAll(".runtime-config-table-wrap"));
-  const helpRows = Array.from(
+  let helpRows = Array.from(
     document.querySelectorAll("[data-runtime-config-help-row]"),
   );
-  const helpButtons = Array.from(
+  let helpButtons = Array.from(
     document.querySelectorAll("[data-runtime-config-help-toggle]"),
   );
-  const collectionRows = Array.from(
+  let collectionRows = Array.from(
     document.querySelectorAll("[data-runtime-collection-row]"),
   );
-  const manageButtons = Array.from(
+  let manageButtons = Array.from(
     document.querySelectorAll("[data-runtime-collection-manage]"),
   );
 
@@ -180,28 +204,27 @@
     if (button) button.setAttribute("aria-expanded", "false");
   };
 
-  const closeOtherCollectionRows = (except) => {
-    for (const row of collectionRows) {
-      if (row !== except && !row.hidden) hideCollectionRow(row);
-    }
-  };
-
   const helpRowForKey = (key) =>
     helpRows.find((row) => row.dataset.runtimeConfigHelpRow === key);
 
-  for (const button of helpButtons) {
-    button.addEventListener("click", () => {
-      const key = button.dataset.runtimeConfigHelpToggle;
-      if (!key) return;
-      const row = helpRowForKey(key);
-      if (!(row instanceof HTMLTableRowElement)) return;
+  const bindHelpButtons = () => {
+    for (const button of helpButtons) {
+      if (boundEditors.has(button)) continue;
+      boundEditors.add(button);
+      button.addEventListener("click", () => {
+        const key = button.dataset.runtimeConfigHelpToggle;
+        if (!key) return;
+        const row = helpRowForKey(key);
+        if (!(row instanceof HTMLTableRowElement)) return;
 
-      const opening = row.hidden;
-      row.hidden = !opening;
-      button.setAttribute("aria-expanded", opening ? "true" : "false");
-      if (opening) sizeHelpRow(row);
-    });
-  }
+        const opening = row.hidden;
+        row.hidden = !opening;
+        button.setAttribute("aria-expanded", opening ? "true" : "false");
+        if (opening) sizeHelpRow(row);
+      });
+    }
+
+  };
 
   const createEditableChip = (value, kind) => {
     const chip = document.createElement("span");
@@ -224,194 +247,217 @@
     return chip;
   };
 
-  for (const row of collectionRows) {
-    const editor = row.querySelector("[data-runtime-collection-editor]");
-    if (!(editor instanceof HTMLElement)) continue;
+  const bindCollectionEditors = () => {
+    for (const row of collectionRows) {
+      if (boundEditors.has(row)) continue;
+      boundEditors.add(row);
+      const editor = row.querySelector("[data-runtime-collection-editor]");
+      if (!(editor instanceof HTMLElement)) continue;
 
-    const form = editor.matches("[data-runtime-collection-form]")
-      ? editor
-      : editor.querySelector("[data-runtime-collection-form]");
-    const list = editor.querySelector("[data-runtime-collection-list]");
-    const hiddenValue = editor.querySelector("[data-runtime-collection-value]");
-    const addInput = editor.querySelector("[data-runtime-collection-add-input]");
-    const addButton = editor.querySelector("[data-runtime-collection-add]");
-    const clearButton = editor.querySelector("[data-runtime-collection-clear]");
-    const cancelButton = editor.querySelector("[data-runtime-collection-cancel]");
-    const saveButton = editor.querySelector("[data-runtime-collection-save]");
-    const count = editor.querySelector("[data-runtime-collection-count]");
-    const error = editor.querySelector("[data-runtime-collection-error]");
+      const form = editor.matches("[data-runtime-collection-form]")
+        ? editor
+        : editor.querySelector("[data-runtime-collection-form]");
+      const list = editor.querySelector("[data-runtime-collection-list]");
+      const hiddenValue = editor.querySelector("[data-runtime-collection-value]");
+      const addInput = editor.querySelector("[data-runtime-collection-add-input]");
+      const addButton = editor.querySelector("[data-runtime-collection-add]");
+      const clearButton = editor.querySelector("[data-runtime-collection-clear]");
+      const cancelButton = editor.querySelector("[data-runtime-collection-cancel]");
+      const saveButton = editor.querySelector("[data-runtime-collection-save]");
+      const count = editor.querySelector("[data-runtime-collection-count]");
+      const error = editor.querySelector("[data-runtime-collection-error]");
 
-    if (
-      !(form instanceof HTMLFormElement) ||
-      !(list instanceof HTMLElement) ||
-      !(hiddenValue instanceof HTMLInputElement) ||
-      !(addInput instanceof HTMLInputElement) ||
-      !(addButton instanceof HTMLButtonElement) ||
-      !(cancelButton instanceof HTMLButtonElement) ||
-      !(saveButton instanceof HTMLButtonElement) ||
-      !(count instanceof HTMLElement) ||
-      !(error instanceof HTMLElement)
-    ) {
-      continue;
-    }
+      if (
+        !(form instanceof HTMLFormElement) ||
+        !(list instanceof HTMLElement) ||
+        !(hiddenValue instanceof HTMLInputElement) ||
+        !(addInput instanceof HTMLInputElement) ||
+        !(addButton instanceof HTMLButtonElement) ||
+        !(cancelButton instanceof HTMLButtonElement) ||
+        !(saveButton instanceof HTMLButtonElement) ||
+        !(count instanceof HTMLElement) ||
+        !(error instanceof HTMLElement)
+      ) {
+        continue;
+      }
 
-    const kind = editor.dataset.kind || "";
-    const maxItems = Number.parseInt(editor.dataset.maxItems || "0", 10);
-    const emptyAllowed = editor.dataset.emptyAllowed === "true";
-    const initialItems = Array.from(
-      list.querySelectorAll("[data-runtime-collection-item]"),
-      (item) => item.dataset.value || "",
-    );
-    let draft = [...initialItems];
+      const kind = editor.dataset.kind || "";
+      const maxItems = Number.parseInt(editor.dataset.maxItems || "0", 10);
+      const emptyAllowed = editor.dataset.emptyAllowed === "true";
+      const initialItems = Array.from(
+        list.querySelectorAll("[data-runtime-collection-item]"),
+        (item) => item.dataset.value || "",
+      );
+      let draft = [...initialItems];
 
-    const sameAsInitial = () =>
-      draft.length === initialItems.length &&
-      draft.every((value, index) => value === initialItems[index]);
+      const sameAsInitial = () =>
+        draft.length === initialItems.length &&
+        draft.every((value, index) => value === initialItems[index]);
 
-    const showError = (message = "") => {
-      error.textContent = message;
-      error.hidden = !message;
-    };
+      const showError = (message = "") => {
+        error.textContent = message;
+        error.hidden = !message;
+      };
 
-    const sync = () => {
-      list.replaceChildren(...draft.map((value) => createEditableChip(value, kind)));
-      hiddenValue.value = draft.join(", ");
-      count.textContent = `${draft.length} ${draft.length === 1 ? "item" : "items"}`;
-      const invalidEmpty = !emptyAllowed && draft.length === 0;
-      saveButton.disabled = sameAsInitial() || invalidEmpty;
-      showError(invalidEmpty ? "이 설정은 최소 한 개의 값이 필요합니다." : "");
-    };
+      const sync = () => {
+        list.replaceChildren(...draft.map((value) => createEditableChip(value, kind)));
+        hiddenValue.value = draft.join(", ");
+        count.textContent = `${draft.length} ${draft.length === 1 ? "item" : "items"}`;
+        const invalidEmpty = !emptyAllowed && draft.length === 0;
+        saveButton.disabled = sameAsInitial() || invalidEmpty;
+        showError(invalidEmpty ? "이 설정은 최소 한 개의 값이 필요합니다." : "");
+      };
 
-    const normalizeNewItem = (raw) => {
-      const value = kind === "prefixes" ? raw.trimStart() : raw.trim();
-      if (kind === "discord_ids" && /^\d+$/.test(value)) {
-        try {
-          return BigInt(value).toString();
-        } catch (_) {
-          return value;
+      const normalizeNewItem = (raw) => {
+        const value = kind === "prefixes" ? raw.trimStart() : raw.trim();
+        if (kind === "discord_ids" && /^\d+$/.test(value)) {
+          try {
+            return BigInt(value).toString();
+          } catch (_) {
+            return value;
+          }
         }
-      }
-      return value;
-    };
+        return value;
+      };
 
-    const validateNewItem = (value) => {
-      if (!value) return "값을 입력해 주세요.";
-      if (draft.includes(value)) return "이미 목록에 있는 값입니다.";
-      if (maxItems > 0 && draft.length >= maxItems) {
-        return `최대 ${maxItems}개까지 추가할 수 있습니다.`;
-      }
-
-      if (kind === "prefixes") {
-        if (value.includes(",")) return "접두어 하나에는 쉼표를 사용할 수 없습니다.";
-        if (value.length > 32) return "접두어는 32자 이하여야 합니다.";
-        if (/[\r\n\0]/.test(value)) return "접두어에는 줄바꿈이나 NUL을 사용할 수 없습니다.";
-      } else if (kind === "discord_ids") {
-        if (!/^\d+$/.test(value)) return "Discord ID는 양의 정수여야 합니다.";
-        try {
-          if (BigInt(value) <= 0n) return "Discord ID는 양의 정수여야 합니다.";
-        } catch (_) {
-          return "Discord ID 형식이 올바르지 않습니다.";
+      const validateNewItem = (value) => {
+        if (!value) return "값을 입력해 주세요.";
+        if (draft.includes(value)) return "이미 목록에 있는 값입니다.";
+        if (maxItems > 0 && draft.length >= maxItems) {
+          return `최대 ${maxItems}개까지 추가할 수 있습니다.`;
         }
-      }
-      return "";
-    };
 
-    const addItem = () => {
-      const value = normalizeNewItem(addInput.value);
-      const message = validateNewItem(value);
-      if (message) {
-        showError(message);
+        if (kind === "prefixes") {
+          if (value.includes(",")) return "접두어 하나에는 쉼표를 사용할 수 없습니다.";
+          if (value.length > 32) return "접두어는 32자 이하여야 합니다.";
+          if (/[\r\n\0]/.test(value)) return "접두어에는 줄바꿈이나 NUL을 사용할 수 없습니다.";
+        } else if (kind === "discord_ids") {
+          if (!/^\d+$/.test(value)) return "Discord ID는 양의 정수여야 합니다.";
+          try {
+            if (BigInt(value) <= 0n) return "Discord ID는 양의 정수여야 합니다.";
+          } catch (_) {
+            return "Discord ID 형식이 올바르지 않습니다.";
+          }
+        }
+        return "";
+      };
+
+      const addItem = () => {
+        const value = normalizeNewItem(addInput.value);
+        const message = validateNewItem(value);
+        if (message) {
+          showError(message);
+          addInput.focus();
+          return;
+        }
+        draft.push(value);
+        addInput.value = "";
+        sync();
         addInput.focus();
-        return;
+      };
+
+      editor._resetCollectionDraft = () => {
+        draft = [...initialItems];
+        addInput.value = "";
+        sync();
+      };
+
+      addButton.addEventListener("click", addItem);
+
+      addInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          addItem();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          hideCollectionRow(row);
+          const key = row.dataset.runtimeCollectionRow;
+          const button = key ? buttonForKey(key) : null;
+          if (button) button.focus();
+        }
+      });
+
+      list.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const remove = target.closest("[data-runtime-collection-remove]");
+        if (!(remove instanceof HTMLElement)) return;
+        const chip = remove.closest("[data-runtime-collection-item]");
+        if (!(chip instanceof HTMLElement)) return;
+        const value = chip.dataset.value || "";
+        const index = draft.indexOf(value);
+        if (index < 0) return;
+        draft.splice(index, 1);
+        sync();
+      });
+
+      if (clearButton instanceof HTMLButtonElement) {
+        clearButton.addEventListener("click", () => {
+          draft = [];
+          sync();
+        });
       }
-      draft.push(value);
-      addInput.value = "";
-      sync();
-      addInput.focus();
-    };
 
-    editor._resetCollectionDraft = () => {
-      draft = [...initialItems];
-      addInput.value = "";
-      sync();
-    };
-
-    addButton.addEventListener("click", addItem);
-
-    addInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        addItem();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
+      cancelButton.addEventListener("click", () => {
         hideCollectionRow(row);
         const key = row.dataset.runtimeCollectionRow;
         const button = key ? buttonForKey(key) : null;
         if (button) button.focus();
-      }
-    });
+      });
 
-    list.addEventListener("click", (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const remove = target.closest("[data-runtime-collection-remove]");
-      if (!(remove instanceof HTMLElement)) return;
-      const chip = remove.closest("[data-runtime-collection-item]");
-      if (!(chip instanceof HTMLElement)) return;
-      const value = chip.dataset.value || "";
-      const index = draft.indexOf(value);
-      if (index < 0) return;
-      draft.splice(index, 1);
+      form.addEventListener("submit", (event) => {
+        if (!emptyAllowed && draft.length === 0) {
+          event.preventDefault();
+          showError("이 설정은 최소 한 개의 값이 필요합니다.");
+          return;
+        }
+        hiddenValue.value = draft.join(", ");
+      });
+
       sync();
-    });
+    }
 
-    if (clearButton instanceof HTMLButtonElement) {
-      clearButton.addEventListener("click", () => {
-        draft = [];
-        sync();
+  };
+
+  const bindManageButtons = () => {
+    for (const button of manageButtons) {
+      if (boundEditors.has(button)) continue;
+      boundEditors.add(button);
+      button.addEventListener("click", () => {
+        const key = button.dataset.runtimeCollectionManage;
+        if (!key) return;
+        const row = rowForKey(key);
+        if (!row) return;
+
+        if (!row.hidden) {
+          hideCollectionRow(row);
+          return;
+        }
+
+        row.hidden = false;
+        sizeCollectionEditor(row);
+        button.setAttribute("aria-expanded", "true");
+        const addInput = row.querySelector("[data-runtime-collection-add-input]");
+        if (addInput instanceof HTMLInputElement) addInput.focus();
       });
     }
 
-    cancelButton.addEventListener("click", () => {
-      hideCollectionRow(row);
-      const key = row.dataset.runtimeCollectionRow;
-      const button = key ? buttonForKey(key) : null;
-      if (button) button.focus();
-    });
+  };
 
-    form.addEventListener("submit", (event) => {
-      if (!emptyAllowed && draft.length === 0) {
-        event.preventDefault();
-        showError("이 설정은 최소 한 개의 값이 필요합니다.");
-        return;
-      }
-      hiddenValue.value = draft.join(", ");
-      saveButton.disabled = true;
-    });
-
-    sync();
-  }
-
-  for (const button of manageButtons) {
-    button.addEventListener("click", () => {
-      const key = button.dataset.runtimeCollectionManage;
-      if (!key) return;
-      const row = rowForKey(key);
-      if (!row) return;
-
-      if (!row.hidden) {
-        hideCollectionRow(row);
-        return;
-      }
-
-      closeOtherCollectionRows(row);
-      row.hidden = false;
-      sizeCollectionEditor(row);
-      button.setAttribute("aria-expanded", "true");
-      const addInput = row.querySelector("[data-runtime-collection-add-input]");
-      if (addInput instanceof HTMLInputElement) addInput.focus();
-    });
-  }
+  const bindEditors = () => {
+    helpRows = Array.from(document.querySelectorAll("[data-runtime-config-help-row]"));
+    helpButtons = Array.from(document.querySelectorAll("[data-runtime-config-help-toggle]"));
+    collectionRows = Array.from(document.querySelectorAll("[data-runtime-collection-row]"));
+    manageButtons = Array.from(document.querySelectorAll("[data-runtime-collection-manage]"));
+    bindScalarEditors();
+    bindHelpButtons();
+    bindCollectionEditors();
+    bindManageButtons();
+    for (const row of helpRows) if (!row.hidden) sizeHelpRow(row);
+    for (const row of collectionRows) if (!row.hidden) sizeCollectionEditor(row);
+  };
+  bindEditors();
+  document.addEventListener("runtime-config:refresh", bindEditors);
 
   if (tableWraps.length && "ResizeObserver" in window) {
     const observer = new ResizeObserver(() => {

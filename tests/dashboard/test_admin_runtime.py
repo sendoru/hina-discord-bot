@@ -394,3 +394,57 @@ def test_runtime_dashboard_json_summary_file_baseline_and_override(tmp_path):
     assert "Startup (file) · 1 properties" in response.text
     assert '<textarea id="runtime-openrouter_provider_preferences"' in response.text
     assert "data-runtime-json-format" in response.text
+
+
+@pytest.mark.parametrize(
+    ("path", "fields", "action", "target"),
+    [
+        ("set", {"key": "channel_context_chars", "value": "4300"}, "runtime.set", "channel_context_chars"),
+        ("reset", {"key": "channel_context_chars"}, "runtime.reset", "channel_context_chars"),
+        ("reset-all", {"confirm": "yes"}, "runtime.reset_all", "all"),
+    ],
+)
+def test_runtime_dashboard_async_submission(tmp_path, path, fields, action, target):
+    database = tmp_path / "hina.sqlite3"
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
+    store.close()
+    app = create_app(DashboardSettings(
+        database_path=str(database),
+        usage_log_path=str(tmp_path / "usage.jsonl"),
+        event_log_path=str(tmp_path / "events.jsonl"),
+        write_enabled=True,
+    ))
+    payload = {
+        "_csrf": app.state.admin_writer.csrf_token,
+        "_request_id": "a" * 32,
+        **fields,
+    }
+    with TestClient(app) as client:
+        response = client.post(
+            f"/admin/runtime/{path}", data=payload,
+            headers={"accept": "application/json"}, follow_redirects=False,
+        )
+        assert response.status_code == 202
+        command_id = response.json()["command_id"]
+        status = client.get(f"/admin/commands/{command_id}").json()
+        assert status["status"] == "pending"
+        assert status["action"] == action
+        assert status["target"] == target
+        repeated = client.post(
+            f"/admin/runtime/{path}", data=payload,
+            headers={"accept": "application/json"},
+        )
+        assert repeated.status_code == 202
+        assert repeated.json()["command_id"] == command_id
+        invalid = client.post(
+            f"/admin/runtime/{path}", data={**payload, "_csrf": "invalid"},
+            headers={"accept": "application/json"},
+        )
+        assert invalid.status_code == 403
+        page = client.get("/admin/runtime")
+        assert 'id="runtime-setting-channel_context_chars"' in page.text
+        assert "data-runtime-recent-actions" in page.text
+        assert "runtime-config-async.js" in page.text
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT COUNT(*) FROM admin_commands").fetchone()[0] == 1

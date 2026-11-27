@@ -3783,3 +3783,15 @@ pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.runtime-command-status {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 22rem;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.runtime-config-table tr[aria-busy] .runtime-config-action,
+.runtime-config-table tr[aria-busy] .runtime-config-reset {
+  opacity: .55;
+}
