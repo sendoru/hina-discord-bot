@@ -62,7 +62,10 @@ def _read_runtime_db(db_path: Path) -> tuple[dict[str, str], dict[str, str]]:
             attr = str(row["key"])
             if attr == "memory_session_followup":
                 continue
-            if table == "runtime_config_startup" and attr == OPENROUTER_PREFERENCES_FILE_SNAPSHOT_KEY:
+            if (
+                table == "runtime_config_startup"
+                and attr == OPENROUTER_PREFERENCES_FILE_SNAPSHOT_KEY
+            ):
                 continue
             if attr not in RUNTIME_SETTING_SPECS:
                 raise ValueError(f"Unknown runtime setting in {table}: {attr}")

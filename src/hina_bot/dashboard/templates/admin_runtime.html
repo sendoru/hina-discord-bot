@@ -385,7 +385,7 @@
             {% if action.error_type %}
               <strong>{{ action.error_type }}</strong><br><small>{{ action.error_message }}</small>
             {% elif action.result_json and action.result_json != "{}" %}
-              <code>{{ action.result_json }}</code>
+              <code class="runtime-action-result">{{ action.result_json }}</code>
             {% else %}—{% endif %}
           </td>
           <td>{{ action.created_at | localtime }}</td>

@@ -256,3 +256,36 @@ def test_export_ignores_retired_followup_and_converts_stored_modes(tmp_path):
     assert result["LLM_MODEL"] == "old-model"
     assert result["PERSONAL_MEMORY_READ_MODE"] == result["RAG_MODE"] == "full"
     assert "MEMORY_SESSION_FOLLOWUP" not in result
+
+
+def test_preferences_file_normalize_and_effective_export(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text(
+        "OPENROUTER_PROVIDER_PREFERENCES_FILE=config/preferences.json\n",
+        encoding="utf-8",
+    )
+    template = ROOT / ".env.example"
+    normalized, dropped = normalize_env(env, template)
+    assert not dropped
+    assert parse_values(normalized)["OPENROUTER_PROVIDER_PREFERENCES_FILE"] == "config/preferences.json"
+    db_path = tmp_path / "db.sqlite3"
+    store = Store.create(str(db_path))
+    try:
+        runtime = RuntimeSettings(
+            Settings(
+                discord_token="token",
+                openrouter_provider_preferences={"sort": "latency"},
+                openrouter_provider_preferences_file="config/preferences.json",
+            ),
+            store,
+        )
+        runtime.capture_startup_snapshot()
+        for override, expected in ((None, "latency"), ('{"sort":"price"}', "price")):
+            if override is not None:
+                runtime.set_text("OPENROUTER_PROVIDER_PREFERENCES", override)
+            rendered, _, _, _ = export_env(env, template, db_path)
+            values = parse_values(rendered)
+            assert values["OPENROUTER_PROVIDER_PREFERENCES_FILE"] == ""
+            assert json.loads(values["OPENROUTER_PROVIDER_PREFERENCES"]) == {"sort": expected}
+    finally:
+        store.close()

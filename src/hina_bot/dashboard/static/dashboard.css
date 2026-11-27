@@ -3776,3 +3776,10 @@ pre {
   font-family: monospace;
   margin-bottom: 8px;
 }
+
+.runtime-action-result {
+  display: inline-block;
+  max-width: 32rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -361,3 +361,36 @@ def test_runtime_reset_all_dashboard_requires_confirmation_and_enqueues(tmp_path
             "runtime.reset_all", "all", "pending",
         )
         assert db.execute("SELECT COUNT(*) FROM runtime_config").fetchone()[0] == 2
+
+
+def test_runtime_dashboard_json_summary_file_baseline_and_override(tmp_path):
+    database = tmp_path / "hina.sqlite3"
+    store = Store.create(str(database))
+    initialize_connection(store.db, ("admin",))
+    try:
+        runtime = RuntimeSettings(
+            Settings(
+                discord_token="test",
+                openrouter_provider_preferences={"sort": "latency"},
+                openrouter_provider_preferences_file="config/preferences.json",
+            ),
+            store,
+        )
+        runtime.capture_startup_snapshot()
+        runtime.set_text("OPENROUTER_PROVIDER_PREFERENCES", '{"sort":"price","zdr":true}')
+    finally:
+        store.close()
+    app = create_app(
+        DashboardSettings(
+            database_path=str(database),
+            usage_log_path=str(tmp_path / "usage.jsonl"),
+            event_log_path=str(tmp_path / "events.jsonl"),
+        )
+    )
+    with TestClient(app) as client:
+        response = client.get("/admin/runtime")
+    assert response.status_code == 200
+    assert "JSON · 2 properties" in response.text
+    assert "Startup (file) · 1 properties" in response.text
+    assert '<textarea id="runtime-openrouter_provider_preferences"' in response.text
+    assert "data-runtime-json-format" in response.text
