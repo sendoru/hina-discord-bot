@@ -4,6 +4,7 @@ import re
 from hina_bot.ai.provider_contract import operation_options
 
 from .runtime_knowledge import KNOWLEDGE_LEVELS, RuntimeKnowledgeRegistry
+from hina_bot.core.runtime_config import pin_provider_route
 
 MAX_INGEST_CHARS = 6000
 MAX_EXTRACTED_ITEMS = 20
@@ -201,6 +202,7 @@ class KnowledgeIngestor:
     def _registry_for(self, kind: str):
         return self.llm.runtime_lore if kind == "world_fact" else self.llm.story_context
 
+    @pin_provider_route
     async def ingest(self, text: str) -> dict:
         text = text.strip()
         if not 1 <= len(text) <= MAX_INGEST_CHARS:

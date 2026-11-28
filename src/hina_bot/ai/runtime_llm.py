@@ -1,4 +1,5 @@
 from hina_bot.core.memory_context import CURRENT_EGRESS_DECISION
+from hina_bot.core.runtime_config import pin_provider_route
 
 from .egress_policy import filter_channel_context, filter_public_context
 from .information_pipeline import InformationPipeline
@@ -29,6 +30,7 @@ class LLM(InformationPipeline):
             admin_db=admin_db,
         )
 
+    @pin_provider_route
     async def answer(
         self,
         store,

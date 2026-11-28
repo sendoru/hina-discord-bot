@@ -606,3 +606,28 @@ OpenRouter audio is request-scoped. The pending memory-audio store remains Gemin
 Copy `config/openrouter_provider_preferences.example.json` to `config/openrouter_provider_preferences.json`, move your existing provider preferences JSON into it and set `OPENROUTER_PROVIDER_PREFERENCES_FILE=config/openrouter_provider_preferences.json` in your startup env (`.env.local` for the supplied Compose service). Relative paths are resolved from the process working directory. Compose mounts `./config` at `/app/config` read-only; ensure the file is readable by the container user. Other deployments can supply an equivalent read-only mount.
 
 The startup baseline is loaded once; editing the file requires a bot restart. A nonempty file path takes precedence over the legacy inline `OPENROUTER_PROVIDER_PREFERENCES`; a missing or invalid file is a startup error. DB runtime overrides still take precedence over the loaded baseline, and resetting one or all overrides restores that baseline without changing the file. The dashboard shows a JSON summary and a multiline override editor. The example is intentionally empty (`{}`); supply your own routing policy.
+
+
+### Global provider hot switch
+
+Dashboard → Runtime Config → Models & Generation → LLM_PROVIDER switches
+the main provider and fixed, fast, smart and repair model IDs together in one
+audited SQLite transaction. Set each desired provider's API key in the startup
+environment first; keys never enter runtime overrides or the dashboard. Use
+`auto` for the repair model to follow the fast model. Model IDs are operator
+inputs, not live-verified; no paid validation request is sent.
+
+New operations use the selected route. An active Discord turn (including media
+preflight, tool continuation, retries, Decisions, repair and memory work it
+starts) retains its provider-facing settings. Independently scheduled memory
+and knowledge work pins its route at entry. The separate classifier retains
+its startup provider and credentials. Provider clients are created lazily and
+reused until shutdown. Unsupported Decisions use the existing full fallback;
+no automatic cross-provider fallback is introduced.
+
+The route persists across restart. Reset route clears the entire provider/model
+group; Clear All Overrides also restores it. Individual model overrides remain
+editable, but resetting them independently while a provider route override is
+active is rejected to avoid inheriting a model from a different provider.
+A persisted incomplete route or missing credential fails startup explicitly;
+restore the credential or remove the entire route override before restarting.

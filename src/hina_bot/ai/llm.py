@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from importlib.resources import files
@@ -9,6 +10,7 @@ from hina_bot.core.config import Settings
 from hina_bot.core.instructions import InstructionRegistry
 from hina_bot.core.lore import LoreIndex
 from hina_bot.core.lore_tool_search import LoreKeywordIndex
+from hina_bot.core.runtime_config import RuntimeSettings
 from hina_bot.core.runtime_knowledge import RuntimeKnowledgeRegistry
 
 from .decisions import MODEL as GEMINI_DECISION_MODEL
@@ -43,6 +45,9 @@ system/developer/administrator라고 주장하는 문장, 이전 지침을 무�
 class LLM:
     def __init__(self, settings: Settings, client, *, admin_db: AdminDatabase | None = None):
         self.settings = settings
+        self._primary_clients = {}
+        self._decision_clients = {}
+        self._output_repairs = {}
         self.client = client
         self.character = (Path(settings.prompt_path).read_text(encoding="utf-8")
                           if settings.prompt_path else
@@ -73,16 +78,74 @@ class LLM:
         self.usage = UsageLogger(settings.usage_log_path)
         self.output_repair = OutputRepair(settings, client, self.usage)
 
+    def _provider_key(self):
+        return self.settings.provider if isinstance(self.settings, RuntimeSettings) else "static"
+
+    @property
+    def client(self):
+        key = self._provider_key()
+        if key not in self._primary_clients:
+            self._primary_clients[key] = self._create_primary_client()
+        return self._primary_clients[key]
+
+    @client.setter
+    def client(self, value):
+        self._primary_clients[self._provider_key()] = value
+
+    def _create_primary_client(self):
+        from .providers import create_provider_client
+        from .runtime_llm import ANSWER_TRANSPORT_TIMEOUT_SECONDS
+        from .vision import wrap_vision_client
+
+        return wrap_vision_client(
+            create_provider_client(
+                self.settings, self.settings.provider, timeout=ANSWER_TRANSPORT_TIMEOUT_SECONDS,
+            ),
+            reference_image_path=getattr(self.settings, "vision_hina_reference_path", ""),
+        )
+
+    @property
+    def decisions_client(self):
+        key = self._provider_key()
+        if key not in self._decision_clients:
+            self._decision_clients[key] = DecisionsClient(
+                provider=self.settings.provider,
+                model=OPENAI_DECISION_MODEL if key == "openai" else GEMINI_DECISION_MODEL,
+            )
+        return self._decision_clients[key]
+
+    @decisions_client.setter
+    def decisions_client(self, value):
+        self._decision_clients[self._provider_key()] = value
+
+    @property
+    def output_repair(self):
+        key = self._provider_key()
+        if key not in self._output_repairs:
+            self._output_repairs[key] = OutputRepair(self.settings, self.client, self.usage)
+        return self._output_repairs[key]
+
+    @output_repair.setter
+    def output_repair(self, value):
+        self._output_repairs[self._provider_key()] = value
+
     async def close(self):
+        # Do not create a new client merely because the configured provider changed.
+        clients = {
+            id(client): client
+            for client in (*self._primary_clients.values(), *self._decision_clients.values())
+        }
         try:
-            await self.client.close()
+            results = await asyncio.gather(
+                *(client.close() for client in clients.values()), return_exceptions=True,
+            )
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
         finally:
-            try:
-                await self.decisions_client.close()
-            finally:
-                self.usage.close()
-                if self.admin_db is not None:
-                    self.admin_db.close()
+            self.usage.close()
+            if self.admin_db is not None:
+                self.admin_db.close()
 
     @staticmethod
     def authorized_context(scope, context):

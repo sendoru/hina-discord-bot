@@ -6,6 +6,7 @@ import logging
 import re
 
 from hina_bot.core.memory_annotations import LINT_VISUAL_GROUNDED
+from hina_bot.core.runtime_config import pin_provider_route
 from hina_bot.core.store import SharedSummaryConflict
 
 from .llm import SUMMARY_POLICY as BASE_SUMMARY_POLICY
@@ -449,6 +450,7 @@ class MemorySummaryMixin:
             log.warning("Structured memory shadow extraction failed (%s)", type(exc).__name__)
             return False
 
+    @pin_provider_route
     async def extract_structured_memory(self, store, scope, *, min_turns: int | None = None):
         """Run one bounded structured-memory batch and report whether it committed."""
 
@@ -466,6 +468,7 @@ class MemorySummaryMixin:
             store, scope, pending, expected_cursor=expected_cursor
         )
 
+    @pin_provider_route
     async def summarize_shared(self, store, scope):
         if hasattr(store, "memory_mode") and store.memory_mode(scope) in {"off", "read_only"}:
             return False

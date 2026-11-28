@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
+from functools import wraps
 from dataclasses import dataclass
 from math import isfinite
 from typing import Any
@@ -21,6 +25,7 @@ from .config import (
     PERSONAL_MEMORY_READ_MODES,
     RAG_MODES,
     Settings,
+    SUPPORTED_MODEL_PROVIDERS,
     canonical_memory_read_mode,
     canonical_rag_mode,
     parse_call_prefixes,
@@ -61,6 +66,7 @@ _RUNTIME_SETTING_DESCRIPTIONS: dict[str, str] = {
     "personal_memory_read_mode": "full은 허용된 개인 기억 전체, decision은 그중 선택된 기억을 사용합니다.",
     "community_lore": "community_meme 분류의 lore 항목을 런타임에서 사용할지 정합니다.",
     "model_routing_mode": "fixed 모델 하나를 쓸지, 요청 난이도에 따라 fast/smart tier를 고르는 adaptive routing을 사용할지 정합니다.",
+    "provider": "전역 LLM provider입니다. 모델들과 함께 원자적으로 변경하며 진행 중인 요청은 기존 경로를 유지합니다.",
     "model": "fixed routing에서 사용할 기본 LLM 모델 이름입니다.",
     "answer_timeout_seconds": "일반 답변의 각 provider 요청 전체 데드라인(초)입니다. provider 재시도·관리형 도구 호출은 포함되지만 로컬 도구 후 새 요청은 별도 예산을 사용합니다. 출력 교정에는 적용되지 않습니다.",
     "decision_timeout_seconds": "메인 provider의 Decision의 lore·개인 기억 선택 요청 각각에 적용하는 데드라인(초)입니다. 두 요청은 병렬 실행하며, 시간 초과 시 기존 full fallback을 사용합니다. 일반 답변·출력 교정 타임아웃과 독립적입니다.",
@@ -188,6 +194,9 @@ RUNTIME_SETTING_SPECS: dict[str, RuntimeSettingSpec] = {
         "MODEL_ROUTING_MODE",
         "string",
         choices=tuple(sorted(MODEL_ROUTING_MODES)),
+    ),
+    "provider": _runtime_spec(
+        "provider", "LLM_PROVIDER", "string", choices=tuple(sorted(SUPPORTED_MODEL_PROVIDERS))
     ),
     "model": _runtime_spec("model", "LLM_MODEL", "string", maximum=200),
     "answer_timeout_seconds": _runtime_spec(
@@ -580,6 +589,36 @@ def _validate_combined_runtime_value(settings, attr: str, value: Any) -> None:
 
 
 
+PROVIDER_ROUTE_KEYS = ("provider", "model", "fast_model", "smart_model", "output_repair_model")
+
+# Pin provider-facing options, not authorization or memory access policy:
+# revocations and other privacy controls must remain live.
+_PROVIDER_SNAPSHOT_KEYS = frozenset(PROVIDER_ROUTE_KEYS) | frozenset(
+    key for key in RUNTIME_SETTING_SPECS
+    if key.startswith(("gemini_", "openai_", "openrouter_"))
+    or key in {
+        "model_routing_mode", "model_routing_smart_threshold", "memory_routing_smart_threshold",
+        "output_tokens", "fast_output_tokens", "smart_output_tokens", "memory_output_tokens",
+        "answer_timeout_seconds", "decision_timeout_seconds", "output_repair_mode",
+        "output_repair_timeout_seconds", "chat_web_search", "code_execution_backend",
+    }
+)
+
+
+def pin_provider_route(function):
+    """Keep one provider route across await points and nested operations."""
+    @wraps(function)
+    async def wrapped(owner, *args, **kwargs):
+        settings = getattr(owner, "settings", None)
+        if settings is None:
+            settings = getattr(getattr(owner, "llm", None), "settings", None)
+        if isinstance(settings, RuntimeSettings):
+            with settings.pin_provider_route():
+                return await function(owner, *args, **kwargs)
+        return await function(owner, *args, **kwargs)
+    return wrapped
+
+
 class RuntimeSettings:
     """Read-through Settings facade with persistent SQLite overrides.
 
@@ -591,6 +630,7 @@ class RuntimeSettings:
         object.__setattr__(self, "_base", base)
         object.__setattr__(self, "_store", store)
         object.__setattr__(self, "_overrides", {})
+        object.__setattr__(self, "_provider_snapshot", ContextVar("provider_route", default=None))
         self.reload()
 
     def capture_startup_snapshot(self) -> None:
@@ -612,7 +652,8 @@ class RuntimeSettings:
 
     def reload(self) -> None:
         loaded: dict[str, Any] = {}
-        for attr, encoded in self._stored().items():
+        stored = self._stored()
+        for attr, encoded in stored.items():
             spec = RUNTIME_SETTING_SPECS.get(attr)
             if spec is None:
                 continue
@@ -625,9 +666,30 @@ class RuntimeSettings:
             except (TypeError, ValueError, json.JSONDecodeError):
                 # Fail closed to the startup value if the DB contains an old or malformed value.
                 continue
+        if "provider" in stored:
+            # A damaged or partially restored route must not silently send content
+            # to another provider.
+            if not all(key in loaded for key in PROVIDER_ROUTE_KEYS):
+                raise ValueError("Incomplete persisted provider route")
+            self._validate_provider_route(loaded)
         object.__setattr__(self, "_overrides", loaded)
 
+    @contextmanager
+    def pin_provider_route(self):
+        if self._provider_snapshot.get() is not None:
+            yield
+            return
+        snapshot = deepcopy({key: getattr(self, key) for key in _PROVIDER_SNAPSHOT_KEYS})
+        token = self._provider_snapshot.set(snapshot)
+        try:
+            yield
+        finally:
+            self._provider_snapshot.reset(token)
+
     def __getattr__(self, name: str):
+        snapshot = object.__getattribute__(self, "_provider_snapshot").get()
+        if snapshot is not None and name in snapshot:
+            return snapshot[name]
         overrides = object.__getattribute__(self, "_overrides")
         if name in overrides:
             return overrides[name]
@@ -648,8 +710,37 @@ class RuntimeSettings:
     def _write(self, attr: str, encoded: str | None) -> None:
         self._store.settings.set_runtime_value(attr, encoded)
 
+    def _validate_provider_route(self, values):
+        provider = values["provider"]
+        if not self._base.api_key_for(provider):
+            raise ValueError(f"{provider} provider API key is not configured at startup")
+
+    def set_provider_route(self, raw: dict[str, str]) -> dict[str, str]:
+        if set(raw) != set(PROVIDER_ROUTE_KEYS):
+            raise ValueError("Provider and all model fields must be supplied together")
+        if not all(isinstance(value, str) for value in raw.values()):
+            raise ValueError("Invalid provider route values")
+        values = {
+            key: parse_runtime_value(RUNTIME_SETTING_SPECS[key], raw[key], settings=self)
+            for key in PROVIDER_ROUTE_KEYS
+        }
+        self._validate_provider_route(values)
+        self._store.settings.set_runtime_values({
+            key: encode_runtime_value(value) for key, value in values.items()
+        })
+        self._overrides.update(values)
+        return values
+
+    def reset_provider_route(self) -> str:
+        self._store.settings.set_runtime_values(dict.fromkeys(PROVIDER_ROUTE_KEYS))
+        for key in PROVIDER_ROUTE_KEYS:
+            self._overrides.pop(key, None)
+        return self._base.provider
+
     def set_text(self, key: str, raw: str):
         attr = runtime_setting_attr(key)
+        if attr == "provider":
+            raise ValueError("Use the atomic provider route editor")
         spec = RUNTIME_SETTING_SPECS[attr]
         value = parse_runtime_value(spec, raw, settings=self)
         _validate_combined_runtime_value(self, attr, value)
@@ -684,6 +775,10 @@ class RuntimeSettings:
 
     def reset(self, key: str):
         attr = runtime_setting_attr(key)
+        if attr == "provider":
+            return self.reset_provider_route()
+        if attr in PROVIDER_ROUTE_KEYS and "provider" in self._overrides:
+            raise ValueError("Reset the complete provider route instead of an individual model")
         value = getattr(self._base, attr)
         _validate_combined_runtime_value(self, attr, value)
         self._write(attr, None)

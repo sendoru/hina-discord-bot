@@ -3,6 +3,7 @@ import json
 
 from hina_bot.ai.memory_model_routing import build_memory_model_plan
 from hina_bot.ai.prompts import load_prompt
+from hina_bot.core.runtime_config import pin_provider_route
 from hina_bot.core.server_memory_repository import ServerSourceRef
 
 POLICY = load_prompt("server_extraction.md", section="memory")
@@ -47,6 +48,7 @@ def _candidates(repo, guild, channel, space_key):
             and all(s["source_channel_id"] == str(channel) for s in refs)}
 
 
+@pin_provider_route
 async def extract_server_batch(llm, store, guild, channel, *, stale=False, admin_verifier=None, batch_size=16):
     key = (guild, channel)
     running = store._server_extractions

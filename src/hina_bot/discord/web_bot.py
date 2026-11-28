@@ -19,6 +19,7 @@ from hina_bot.core.config import Settings
 from hina_bot.core.interaction_context import CURRENT_INTERACTION_CONTEXT
 from hina_bot.core.observability import CURRENT_TURN_ID, new_turn_id
 from hina_bot.core.routing import Scope, trigger_text
+from hina_bot.core.runtime_config import pin_provider_route
 from hina_bot.core.server_memory_selection import CURRENT_SERVER_READER
 
 from .audio import (
@@ -252,6 +253,7 @@ class HinaClient(BaseHinaClient):
             return
         self.recent.mark_hydrated(scope)
 
+    @pin_provider_route
     async def on_message(self, message):
         if self.user is None:
             return await super().on_message(message)

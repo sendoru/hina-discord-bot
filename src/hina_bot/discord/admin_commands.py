@@ -36,6 +36,12 @@ async def execute_admin_command(client, command: AdminCommand) -> dict[str, obje
             apply_runtime_setting_side_effects(client, key)
         return {"cleared": count, "source": "startup"}
 
+    if command.action == "runtime.provider":
+        if not isinstance(client.settings, RuntimeSettings):
+            raise ValueError("runtime settings are not hot-reloadable in this process")
+        values = client.settings.set_provider_route(command.payload)
+        return {**values, "source": "db"}
+
     if command.action in {"runtime.set", "runtime.reset"}:
         if not isinstance(client.settings, RuntimeSettings):
             raise ValueError("runtime settings are not hot-reloadable in this process")
