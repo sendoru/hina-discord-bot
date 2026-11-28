@@ -9,6 +9,7 @@
   const statusFor = (key) => key === "all"
     ? document.querySelector("[data-runtime-bulk-status]")
     : rowFor(key)?.querySelector("[data-runtime-command-status]");
+  const routeKeys = ["provider", "model", "fast_model", "smart_model", "output_repair_model"];
   const pending = new Map();
   let bulkDisabled = bulkButton.disabled;
   let refreshTail = Promise.resolve();
@@ -66,7 +67,7 @@
       const nextActions = page.querySelector("[data-runtime-recent-actions]");
       const actions = document.querySelector("[data-runtime-recent-actions]");
       if (!nextBulk || !nextActions || !actions) throw new Error("Invalid settings snapshot");
-      const keys = replaceSettings ? (key === "all" ? rows().map((row) => row.dataset.runtimeConfigKey) : [key]) : [];
+      const keys = replaceSettings ? (key === "all" ? rows().map((row) => row.dataset.runtimeConfigKey) : key === "provider" ? routeKeys : [key]) : [];
       const replacements = [];
       for (const setting of keys) {
         for (const id of [`runtime-setting-${setting}`, `runtime-config-help-${setting}`, `runtime-collection-${setting}`]) {
@@ -104,6 +105,7 @@
   const finish = (job, text, error = false) => {
     pending.delete(job.key);
     if (job.key === "all") rows().forEach((row) => lock(row.dataset.runtimeConfigKey, false));
+    else if (job.key === "provider") routeKeys.forEach((key) => lock(key, false));
     else lock(job.key, false);
     // A completed or rejected request must not reuse the command nonce on a later save.
     const nonce = job.form.elements.namedItem("_request_id");
@@ -160,15 +162,18 @@
     const form = event.target;
     if (event.defaultPrevented || !(form instanceof HTMLFormElement)) return;
     const path = new URL(form.action, window.location.href).pathname;
-    if (!["/admin/runtime/set", "/admin/runtime/reset", "/admin/runtime/reset-all"].includes(path)) return;
+    if (!["/admin/runtime/set", "/admin/runtime/reset", "/admin/runtime/reset-all", "/admin/runtime/provider"].includes(path)) return;
     event.preventDefault();
     const body = new URLSearchParams(new FormData(form));
-    const key = path.endsWith("/reset-all") ? "all" : body.get("key");
+    const key = path.endsWith("/reset-all") ? "all" : path.endsWith("/provider") ? "provider" : body.get("key");
     if (!key || (key !== "all" && !rowFor(key)) || pending.has(key) || pending.has("all")) return;
     if (key === "all" && pending.size) return;
+    if (key === "provider" && routeKeys.some((setting) => pending.has(setting))) return;
+    if (routeKeys.includes(key) && pending.has("provider")) return;
     const job = { key, form, body, id: null, result: null, running: false };
     pending.set(key, job);
     if (key === "all") rows().forEach((row) => lock(row.dataset.runtimeConfigKey, true));
+    else if (key === "provider") routeKeys.forEach((setting) => lock(setting, true));
     else lock(key, true);
     updateBulk();
     void run(job);

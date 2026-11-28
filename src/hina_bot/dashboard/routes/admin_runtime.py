@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 
 from hina_bot.core.runtime_config import (
     OPENROUTER_PREFERENCES_FILE_SNAPSHOT_KEY,
+    PROVIDER_ROUTE_KEYS,
     RUNTIME_SETTING_SPECS,
     decode_runtime_value,
     format_runtime_value,
@@ -58,6 +59,7 @@ RUNTIME_CONFIG_SECTIONS = (
         "Models & Generation",
         "Model selection, routing, tokens, and thinking levels",
         (
+            "provider",
             "model_routing_mode",
             "model",
             "answer_timeout_seconds",
@@ -453,12 +455,24 @@ def build_router(
             url=f"/admin/runtime?queued={command_id}", status_code=303,
         )
 
+    @router.post("/admin/runtime/provider")
+    async def set_runtime_provider(request: Request):
+        form = await writer.form(request)
+        payload = {key: form.get(key, "") for key in PROVIDER_ROUTE_KEYS}
+        command_id, _ = writer.enqueue(
+            request_id=form.get("_request_id", ""),
+            action="runtime.provider",
+            target="provider",
+            payload=payload,
+        )
+        return command_response(request, command_id)
+
     @router.post("/admin/runtime/set")
     async def set_runtime_config(request: Request):
         form = await writer.form(request)
         key = form.get("key", "")
-        if key not in RUNTIME_SETTING_SPECS:
-            raise HTTPException(status_code=422, detail="unknown runtime setting")
+        if key not in RUNTIME_SETTING_SPECS or key == "provider":
+            raise HTTPException(status_code=422, detail="unknown or grouped runtime setting")
         value = form.get("value", "")
         request_id = form.get("_request_id", "")
         command_id, _ = writer.enqueue(

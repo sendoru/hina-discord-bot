@@ -27,6 +27,7 @@ from hina_bot.core.observability import (
 )
 from hina_bot.core.recent import RecentMessages
 from hina_bot.core.routing import Scope, chunks, trigger_text
+from hina_bot.core.runtime_config import pin_provider_route
 from hina_bot.core.scope_overrides import MemoryMode
 from hina_bot.core.store import Store
 
@@ -670,6 +671,7 @@ class HinaClient(discord.Client):
                 break
         return allowed
 
+    @pin_provider_route
     async def on_message(self, message):
         if self.stopping or not self.user:
             return

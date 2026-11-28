@@ -147,6 +147,21 @@ class SettingsRepository:
                     (attr, encoded),
                 )
 
+    def set_runtime_values(self, values: dict[str, str | None]) -> None:
+        """Commit a coupled set of runtime overrides in one SQLite transaction."""
+        with self.db:
+            for attr, encoded in values.items():
+                if encoded is None:
+                    self.db.execute("DELETE FROM runtime_config WHERE key=?", (attr,))
+                else:
+                    self.db.execute(
+                        """INSERT INTO runtime_config(key,value,updated_at)
+                           VALUES (?,?,CURRENT_TIMESTAMP)
+                           ON CONFLICT(key) DO UPDATE SET
+                               value=excluded.value, updated_at=CURRENT_TIMESTAMP""",
+                        (attr, encoded),
+                    )
+
     def clear_runtime_values(self) -> int:
         """Delete only persisted runtime overrides, in one transaction."""
         with self.db:
